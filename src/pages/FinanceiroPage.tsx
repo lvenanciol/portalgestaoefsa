@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import RealPage from './financeiro/RealPage'
 import DrePage from './financeiro/DrePage'
+import FluxoRealPage from './financeiro/FluxoRealPage'
 import FluxoPage from './financeiro/FluxoPage'
 import ApArPage from './financeiro/ApArPage'
 import BalancetePage from './financeiro/BalancetePage'
@@ -71,7 +72,7 @@ export default function FinanceiroPage() {
           <DrePage />
         </TabsContent>
         <TabsContent value="fluxo" className="mt-4">
-          <FluxoPage />
+          <FluxoRealPage />
         </TabsContent>
         <TabsContent value="ap_ar" className="mt-4">
           <ApArPage />
