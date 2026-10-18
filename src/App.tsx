@@ -8,6 +8,7 @@ import Index from './pages/Index'
 import Login from './pages/Login'
 import ControleAcessos from './pages/ControleAcessos'
 import FinanceiroPage from './pages/FinanceiroPage'
+import DesempenhoPage from './pages/DesempenhoPage'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
@@ -27,6 +28,7 @@ const AppRoutes = () => {
       >
         <Route path="/" element={<Index />} />
         <Route path="/financeiro" element={<FinanceiroPage />} />
+        <Route path="/desempenho" element={<DesempenhoPage />} />
         <Route path="/acessos" element={<ControleAcessos />} />
       </Route>
       <Route path="*" element={<NotFound />} />

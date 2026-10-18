@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   Briefcase,
@@ -75,6 +76,8 @@ const navSections: NavSection[] = [
 
 export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
   const { user, signOut } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
   const [permissoes, setPermissoes] = useState<Permissoes | null>(null)
 
   useEffect(() => {
@@ -121,13 +124,17 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
               <div className="space-y-0.5">
                 {visiveis.map((item) => {
                   const Icon = item.icon
-                  const isActive = item.active
+                  const isActive =
+                    item.rota === '/'
+                      ? location.pathname === '/'
+                      : location.pathname.startsWith(item.rota)
 
                   return (
                     <button
                       key={item.label}
                       type="button"
                       onClick={() => {
+                        navigate(item.rota)
                         if (onItemClick) onItemClick()
                       }}
                       className={cn(

@@ -59,6 +59,14 @@ routerAdd(
         "SELECT TO_CHAR(DHBAIXA,'YYYY-MM') MES, SUM(CASE WHEN RECDESP=1 THEN VLRDESDOB ELSE 0 END) ENT, SUM(CASE WHEN RECDESP=-1 THEN VLRDESDOB ELSE 0 END) SAI FROM TGFFIN WHERE DHBAIXA IS NOT NULL AND DHBAIXA >= " +
         W +
         " GROUP BY TO_CHAR(DHBAIXA,'YYYY-MM') ORDER BY 1",
+      ap_por_empresa:
+        'SELECT e.CODEMP, e.RAZAOABREV, SUM(f.VLRDESDOB) TOT FROM TGFFIN f JOIN SANKHYA.TSIEMP e ON e.CODEMP=f.CODEMP WHERE f.RECDESP=-1 AND f.DHBAIXA IS NULL AND f.DTVENC >= ' +
+        W +
+        ' GROUP BY e.CODEMP, e.RAZAOABREV ORDER BY 3 DESC',
+      ar_por_empresa:
+        'SELECT e.CODEMP, e.RAZAOABREV, SUM(f.VLRDESDOB) TOT FROM TGFFIN f JOIN SANKHYA.TSIEMP e ON e.CODEMP=f.CODEMP WHERE f.RECDESP=1 AND f.DHBAIXA IS NULL AND f.DTVENC >= ' +
+        W +
+        ' GROUP BY e.CODEMP, e.RAZAOABREV ORDER BY 3 DESC',
     }
 
     const rodar = function (sql) {
@@ -93,6 +101,8 @@ routerAdd(
       'ap_top',
       'ar_top',
       'fluxo',
+      'ap_por_empresa',
+      'ar_por_empresa',
     ]
     for (let i = 0; i < chaves.length; i++) {
       const k = chaves[i]
