@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Leaf, ChevronDown, Search, Bell, AlertCircle, Clock, User } from 'lucide-react'
+import { Leaf, Calendar, ChevronDown, Search, Bell, AlertCircle, Clock, User } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
 import { CompanyId, COMPANIES } from '@/data/mockData'
@@ -271,9 +271,6 @@ export function Topbar() {
 }
 
 // Item de timeout de inatividade configurável (Fase 3)
-import { Menu, Calendar } from 'lucide-react'
-import { useAuth } from '@/hooks/use-auth'
-
 function TimeoutMenuItem() {
   const { timeoutMin, setTimeoutMin } = useAuth()
   const [valor, setValor] = useState(String(timeoutMin))

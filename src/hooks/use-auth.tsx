@@ -74,8 +74,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
     [registrarAuditoria, navigate],
   )
-
-  // Timeout de inatividade: eventos de interação resetam o timer
   useEffect(() => {
     if (!isAuthenticated) return
     let timer: ReturnType<typeof setTimeout>
