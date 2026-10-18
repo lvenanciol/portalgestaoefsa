@@ -1,17 +1,8 @@
-import React, { useState } from 'react'
-import {
-  Menu,
-  ChevronDown,
-  Search,
-  Bell,
-  Check,
-  AlertCircle,
-  Clock,
-  Leaf,
-  Calendar,
-  User,
-} from 'lucide-react'
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Leaf, ChevronDown, Search, Bell, AlertCircle, Clock, User } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
+import { useAuth } from '@/hooks/use-auth'
 import { CompanyId, COMPANIES } from '@/data/mockData'
 import {
   DropdownMenu,
@@ -25,13 +16,15 @@ import { cn } from '@/lib/utils'
 
 export function Topbar() {
   const { selectedCompany, setSelectedCompany, toggleSidebar, criticalAlerts } = useApp()
+  const { user, signOut } = useAuth()
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [avatarOpen, setAvatarOpen] = useState(false)
 
   const activeCompany = COMPANIES.find((c) => c.id === selectedCompany) || COMPANIES[0]
 
   return (
     <header className="sticky top-0 z-30 h-16 w-full bg-white border-b border-[#E5E7EB] px-4 md:px-6 flex items-center justify-between shadow-xs">
-      {/* Esquerda: hambúrguer (mobile) + seletor de empresas com mini-logo */}
+      {/* Esquerda: hambúrguer (mobile) + seletor de empresas com mini-logo + período */}
       <div className="flex items-center gap-3 md:gap-4">
         <button
           type="button"
@@ -48,7 +41,6 @@ export function Topbar() {
               type="button"
               className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-lg border border-[#E5E7EB] bg-gray-50/70 hover:bg-gray-100 text-[13.5px] font-semibold text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20"
             >
-              {/* Mini-logo quadrada com folha */}
               <span className="h-6 w-6 rounded-md bg-[#1B5E20] flex items-center justify-center shrink-0">
                 <Leaf className="h-3.5 w-3.5 text-white" />
               </span>
@@ -87,7 +79,6 @@ export function Topbar() {
                     />
                     <span>{company.name}</span>
                   </div>
-                  {isSelected && <Check className="h-4 w-4 text-[#1B5E20]" />}
                 </DropdownMenuItem>
               )
             })}
@@ -128,9 +119,8 @@ export function Topbar() {
         </DropdownMenu>
       </div>
 
-      {/* Direita: bandeira BRASIL ▾ + busca Ctrl+K + sino + avatar */}
+      {/* Direita: bandeira BRASIL ▾ + busca Ctrl+K + sino + avatar com logout */}
       <div className="flex items-center gap-2.5 sm:gap-4">
-        {/* Botão bandeira "BRASIL ▾" com dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -157,15 +147,14 @@ export function Topbar() {
             className="w-36 p-1.5 bg-white rounded-xl shadow-lg border border-gray-200"
           >
             <DropdownMenuItem className="px-2.5 py-2 rounded-lg cursor-pointer text-[13px] font-medium bg-emerald-50 text-[#1B5E20]">
-              🇧🇷 Brasil
+              Brasil
             </DropdownMenuItem>
             <DropdownMenuItem className="px-2.5 py-2 rounded-lg cursor-pointer text-[13px] font-medium text-gray-700">
-              🇺🇸 English
+              English
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Busca com atalho Ctrl+K */}
         <button
           type="button"
           className="hidden md:flex items-center gap-2 w-48 lg:w-64 h-9 pl-3 pr-2 bg-gray-50 border border-gray-200 rounded-full text-xs text-gray-400 hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20"
@@ -177,7 +166,6 @@ export function Topbar() {
           </kbd>
         </button>
 
-        {/* Sino com badge */}
         <Popover>
           <PopoverTrigger asChild>
             <button
@@ -240,15 +228,79 @@ export function Topbar() {
           </PopoverContent>
         </Popover>
 
-        {/* Avatar do usuário */}
-        <button
-          type="button"
-          className="h-9 w-9 rounded-full bg-[#1B5E20] border border-emerald-800 flex items-center justify-center text-white shrink-0 hover:ring-2 hover:ring-[#1B5E20]/30 transition-all focus:outline-none"
-          aria-label="Menu do usuário"
-        >
-          <User className="h-4 w-4" />
-        </button>
+        {/* Avatar com menu: nome, cargo, timeout de inatividade, logout */}
+        <DropdownMenu open={avatarOpen} onOpenChange={setAvatarOpen}>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="h-9 w-9 rounded-full bg-[#1B5E20] border border-emerald-800 flex items-center justify-center text-white shrink-0 hover:ring-2 hover:ring-[#1B5E20]/30 transition-all focus:outline-none"
+              aria-label="Menu do usuário"
+            >
+              {user?.name ? (
+                user.name
+                  .split(' ')
+                  .map((p: string) => p[0])
+                  .slice(0, 2)
+                  .join('')
+                  .toUpperCase()
+              ) : (
+                <User className="h-4 w-4" />
+              )}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-64 p-1.5 bg-white rounded-xl shadow-lg border border-gray-200"
+          >
+            <div className="px-2.5 py-2 border-b border-gray-100 mb-1">
+              <div className="text-[13px] font-bold text-gray-900 truncate">{user?.name}</div>
+              <div className="text-[11px] text-gray-500 truncate">{user?.email}</div>
+            </div>
+            <TimeoutMenuItem />
+            <DropdownMenuItem
+              onClick={() => signOut('manual')}
+              className="px-2.5 py-2 rounded-lg cursor-pointer text-[13px] font-semibold text-red-600 hover:bg-red-50 focus:bg-red-50"
+            >
+              Sair
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
+  )
+}
+
+// Item de timeout de inatividade configurável (Fase 3)
+import { Menu, Calendar } from 'lucide-react'
+import { useAuth } from '@/hooks/use-auth'
+
+function TimeoutMenuItem() {
+  const { timeoutMin, setTimeoutMin } = useAuth()
+  const [valor, setValor] = useState(String(timeoutMin))
+
+  return (
+    <div className="px-2.5 py-2 border-b border-gray-100 mb-1">
+      <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">
+        Sair por inatividade
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          min={5}
+          max={240}
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          className="w-16 h-8 px-2 text-[13px] bg-gray-50 border border-gray-200 rounded-md text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20"
+        />
+        <span className="text-[12px] text-gray-500">min</span>
+        <button
+          type="button"
+          onClick={() => setTimeoutMin(Math.max(5, Math.min(240, parseInt(valor, 10) || 30)))}
+          className="ml-auto text-[12px] font-bold text-[#1B5E20] hover:underline"
+        >
+          Aplicar
+        </button>
+      </div>
+    </div>
   )
 }

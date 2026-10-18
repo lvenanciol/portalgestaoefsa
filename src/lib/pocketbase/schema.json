@@ -29,19 +29,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "cargo",
@@ -134,24 +129,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE UNIQUE INDEX idx_empresas_nome ON empresas (nome)"
-      ]
+      "indexes": ["CREATE UNIQUE INDEX idx_empresas_nome ON empresas (nome)"]
     },
     {
       "name": "unidades",
@@ -182,12 +170,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "loja",
-            "cd",
-            "matriz",
-            "administrativo"
-          ]
+          "selectValues": ["loja", "cd", "matriz", "administrativo"]
         },
         {
           "name": "gestor_id",
@@ -213,24 +196,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE UNIQUE INDEX idx_unidades_nome_empresa ON unidades (empresa_id, nome)"
-      ]
+      "indexes": ["CREATE UNIQUE INDEX idx_unidades_nome_empresa ON unidades (empresa_id, nome)"]
     },
     {
       "name": "grupos_permissao",
@@ -266,11 +242,7 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "grupo",
-            "empresa",
-            "unidade"
-          ]
+          "selectValues": ["grupo", "empresa", "unidade"]
         },
         {
           "name": "empresa_id",
@@ -291,24 +263,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE UNIQUE INDEX idx_grupos_nome ON grupos_permissao (nome)"
-      ]
+      "indexes": ["CREATE UNIQUE INDEX idx_grupos_nome ON grupos_permissao (nome)"]
     },
     {
       "name": "menus",
@@ -362,24 +327,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE INDEX idx_menus_secao_ordem ON menus (secao, ordem)"
-      ]
+      "indexes": ["CREATE INDEX idx_menus_secao_ordem ON menus (secao, ordem)"]
     },
     {
       "name": "auditoria",
@@ -448,19 +406,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
