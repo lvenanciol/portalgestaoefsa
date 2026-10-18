@@ -7,6 +7,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute'
 import Index from './pages/Index'
 import Login from './pages/Login'
 import ControleAcessos from './pages/ControleAcessos'
+import FinanceiroPage from './pages/FinanceiroPage'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
@@ -25,6 +26,7 @@ const AppRoutes = () => {
         }
       >
         <Route path="/" element={<Index />} />
+        <Route path="/financeiro" element={<FinanceiroPage />} />
         <Route path="/acessos" element={<ControleAcessos />} />
       </Route>
       <Route path="*" element={<NotFound />} />
