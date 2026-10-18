@@ -51,22 +51,26 @@ routerAdd(
       })
     }
 
-    const out = rows.map((r) => ({
-      conta: r.conta || '',
-      nome: r.nome || '',
-      grau: Number(r.grau || 0),
-      ordem: Number(r.ordem || 0),
-      nivel: r.nivel || '',
-      saldo_anterior: Number(r.saldo_anterior || 0),
-      debitos: Number(r.debitos || 0),
-      creditos: Number(r.creditos || 0),
-      saldo_atual: Number(r.saldo_atual || 0),
-      valor: Number(r.valor || 0),
-      fonte: r.fonte || '',
-      empresa: r.empresa || '',
-      importado_por: r.importado_por || '',
-      updated: r.updated || '',
-    }))
+    const out = []
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i]
+      out.push({
+        conta: r.getString('conta'),
+        nome: r.getString('nome'),
+        grau: r.getInt('grau'),
+        ordem: r.getInt('ordem'),
+        nivel: r.getString('nivel'),
+        saldo_anterior: r.getFloat('saldo_anterior'),
+        debitos: r.getFloat('debitos'),
+        creditos: r.getFloat('creditos'),
+        saldo_atual: r.getFloat('saldo_atual'),
+        valor: r.getFloat('valor'),
+        fonte: r.getString('fonte'),
+        empresa: r.getString('empresa'),
+        importado_por: r.getString('importado_por'),
+        updated: r.getString('updated'),
+      })
+    }
 
     let totais = null
     if (tipo === 'balancete') {
