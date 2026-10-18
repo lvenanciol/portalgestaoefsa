@@ -1,4 +1,5 @@
 // Fase 3 — Lista os últimos registros de auditoria (somente Admin).
+// redeploy v2 — arquivo não subiu no build v0.0.10 (deploy gap)
 routerAdd(
   'GET',
   '/backend/v1/auditoria',

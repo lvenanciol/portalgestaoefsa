@@ -1,4 +1,5 @@
 // Fase 3 — Editar vínculos/status de um usuário (Controle de Acessos). Somente Admin.
+// redeploy v2 — arquivo não subiu no build v0.0.10 (deploy gap)
 routerAdd(
   'PATCH',
   '/backend/v1/usuarios/{id}',

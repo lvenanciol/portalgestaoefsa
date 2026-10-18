@@ -1,4 +1,5 @@
 // Fase 3 — CRUD de usuários (Controle de Acessos). Somente Admin.
+// redeploy v2 — arquivo não subiu no build v0.0.10 (deploy gap)
 // POST cria usuário (grupo/empresa/unidade/ativo); PATCH edita vínculos;
 // GET lista usuários com grupo expandido. Auditoria em toda ação.
 routerAdd(

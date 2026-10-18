@@ -1,4 +1,5 @@
 // Fase 3 — Guarda de self-update no users via API: usuário comum NÃO pode
+// redeploy v2 — arquivo não subiu no build v0.0.10 (deploy gap)
 // alterar os próprios vínculos (grupo/empresa/unidade/ativo/verified).
 // Edições administrativas passam pela rota /backend/v1/usuarios/{id}
 // ($app.save não dispara request hooks — só este gate HTTP é bloqueado).
