@@ -6,7 +6,7 @@ import {
   ArrowDownToLine,
   Scale,
   ClipboardCheck,
-  Download,
+  Upload,
 } from 'lucide-react'
 import RealPage from './financeiro/RealPage'
 import DrePage from './financeiro/DrePage'
@@ -15,9 +15,11 @@ import FluxoPage from './financeiro/FluxoPage'
 import ApArPage from './financeiro/ApArPage'
 import BalancetePage from './financeiro/BalancetePage'
 import FechamentoPage from './financeiro/FechamentoPage'
+import ImportarDemonstrativos from './financeiro/ImportarDemonstrativos'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 
-// Fase 4 — Financeiro & Contábil: 5 módulos em abas na rota /financeiro.
+// Fase 8 — Financeiro & Contábil: módulos em abas (Real, DRE, Fluxo,
+// A/P-A/R, Balancete, Fechamento) + Importação de demonstrativos.
 
 const ABAS = [
   { value: 'real', label: 'Real (Sankhya)', icon: Database },
@@ -26,6 +28,7 @@ const ABAS = [
   { value: 'ap_ar', label: 'A Pagar & Receber', icon: ArrowDownToLine },
   { value: 'balancete', label: 'Balancete', icon: Scale },
   { value: 'fechamento', label: 'Fechamento', icon: ClipboardCheck },
+  { value: 'importar', label: 'Importar', icon: Upload },
 ]
 
 export default function FinanceiroPage() {
@@ -82,6 +85,9 @@ export default function FinanceiroPage() {
         </TabsContent>
         <TabsContent value="fechamento" className="mt-4">
           <FechamentoPage />
+        </TabsContent>
+        <TabsContent value="importar" className="mt-4">
+          <ImportarDemonstrativos />
         </TabsContent>
       </Tabs>
     </div>
