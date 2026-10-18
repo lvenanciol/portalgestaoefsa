@@ -1,5 +1,14 @@
 import { useState } from 'react'
-import { Table2, Waves, ArrowDownToLine, Scale, ClipboardCheck, Download } from 'lucide-react'
+import {
+  Database,
+  Table2,
+  Waves,
+  ArrowDownToLine,
+  Scale,
+  ClipboardCheck,
+  Download,
+} from 'lucide-react'
+import RealPage from './financeiro/RealPage'
 import DrePage from './financeiro/DrePage'
 import FluxoPage from './financeiro/FluxoPage'
 import ApArPage from './financeiro/ApArPage'
@@ -10,6 +19,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 // Fase 4 — Financeiro & Contábil: 5 módulos em abas na rota /financeiro.
 
 const ABAS = [
+  { value: 'real', label: 'Real (Sankhya)', icon: Database },
   { value: 'dre', label: 'DRE', icon: Table2 },
   { value: 'fluxo', label: 'Fluxo de Caixa', icon: Waves },
   { value: 'ap_ar', label: 'A Pagar & Receber', icon: ArrowDownToLine },
@@ -18,7 +28,7 @@ const ABAS = [
 ]
 
 export default function FinanceiroPage() {
-  const [aba, setAba] = useState('dre')
+  const [aba, setAba] = useState('real')
 
   return (
     <div className="space-y-5 pb-8">
@@ -54,6 +64,9 @@ export default function FinanceiroPage() {
             )
           })}
         </TabsList>
+        <TabsContent value="real" className="mt-4">
+          <RealPage />
+        </TabsContent>
         <TabsContent value="dre" className="mt-4">
           <DrePage />
         </TabsContent>
