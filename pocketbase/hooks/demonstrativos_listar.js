@@ -20,24 +20,24 @@ routerAdd(
     let rows = []
     try {
       if (tipo === 'balancete') {
-        rows = $app
-          .db()
-          .newQuery(
-            'SELECT conta, nome, grau, saldo_anterior, debitos, creditos, saldo_atual, fonte, empresa, importado_por, updated FROM balancete_linhas WHERE periodo = {:p} ORDER BY conta',
-          )
-          .bind({ p: periodo })
-          .all()
+        rows = $app.findRecordsByFilter(
+          'balancete_linhas',
+          "periodo = '" + periodo + "'",
+          'conta',
+          5000,
+          0,
+        )
       } else {
-        rows = $app
-          .db()
-          .newQuery(
-            'SELECT ordem, conta, nome, nivel, valor, empresa, importado_por, updated FROM dre_linhas WHERE periodo = {:p} ORDER BY ordem',
-          )
-          .bind({ p: periodo })
-          .all()
+        rows = $app.findRecordsByFilter(
+          'dre_linhas',
+          "periodo = '" + periodo + "'",
+          'ordem',
+          5000,
+          0,
+        )
       }
     } catch (err) {
-      return e.json(500, { ok: false, erro: String(err) })
+      return e.json(500, { ok: false, erro: 'query: ' + String(err) })
     }
 
     if (rows.length === 0) {
