@@ -1,7 +1,9 @@
-// Fase 5 — Proxy Sankhya (mesma instância/conta de serviço do Foldbox).
-// Credenciais em secrets: SANKHYA_BASE_URL, SANKHYA_CLIENT_ID,
-// SANKHYA_CLIENT_SECRET, SANKHYA_X_TOKEN, SANKHYA_USER, SANKHYA_PASSWORD.
-// OAuth client_credentials (com X-Token) + fallback /login, igual ao Foldbox.
+// Fase 5 — Proxy Sankhya do PGE via edge do Foldbox (egress autorizado).
+// O pod Skip não tem IP na allowlist do app OAuth Sankhya (401
+// invalid_client provado 18/10; teste direto do Supabase OK 19:32).
+// Fluxo: hook (admin-only) → edge sankhya-proxy-pge (Foldbox, IPs
+// Supabase autorizados) → Sankhya. Autenticação da edge: header
+// X-PGE-Secret com o segredo compartilhado PGE_PROXY_SECRET.
 
 routerAdd(
   'POST',
@@ -11,7 +13,7 @@ routerAdd(
     const auth = e.auth
     if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
 
-    // Somente Admin chama o proxy (Financeiro entra na Fase 6 se o dono liberar)
+    // Somente Admin chama o proxy
     let isAdmin = false
     try {
       const g = $app.findRecordById('grupos_permissao', auth.getString('grupo_id'))
@@ -25,131 +27,23 @@ routerAdd(
     if (!op) return e.badRequestError('op é obrigatório')
     const payload = body.payload || {}
 
-    const baseUrl = ($secrets.get('SANKHYA_BASE_URL') || 'https://api.sankhya.com.br').replace(
-      /\/+$/,
-      '',
-    )
-    const clientId = $secrets.get('SANKHYA_CLIENT_ID') || ''
-    const clientSecret = $secrets.get('SANKHYA_CLIENT_SECRET') || ''
-    const xToken = $secrets.get('SANKHYA_X_TOKEN') || ''
-    const user = $secrets.get('SANKHYA_USER') || ''
-    const password = $secrets.get('SANKHYA_PASSWORD') || ''
-
-    // 1) OAuth client_credentials (com X-Token) — igual ao Foldbox
-    let bearer = ''
-    let via = ''
-    if (clientId && clientSecret) {
-      const headers = { 'Content-Type': 'application/x-www-form-urlencoded' }
-      if (xToken) headers['X-Token'] = xToken
-      const form = new URLSearchParams()
-      form.set('grant_type', 'client_credentials')
-      form.set('client_id', clientId)
-      form.set('client_secret', clientSecret)
-      try {
-        const res = $http.send({
-          url: baseUrl + '/authenticate',
-          method: 'POST',
-          headers: headers,
-          body: form.toString(),
-          timeout: 20,
-        })
-        if (res.statusCode === 200) {
-          const d = res.json || {}
-          const tok =
-            d.bearerToken ||
-            d.access_token ||
-            d.token ||
-            (d.responseBody && d.responseBody.bearerToken) ||
-            ''
-          if (tok) {
-            bearer = tok
-            via = 'oauth'
-          }
-        }
-      } catch (_) {}
-    }
-
-    // 2) Fallback /login (user/senha) — igual ao Foldbox
-    if (!bearer && user && password) {
-      try {
-        const res = $http.send({
-          url: baseUrl + '/login',
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: user, password: password }),
-          timeout: 20,
-        })
-        if (res.statusCode === 200) {
-          const d = res.json || {}
-          const jsession = (d.json && d.json.jsessionid) || d.jsessionid || ''
-          if (jsession) {
-            bearer = jsession
-            via = 'login'
-          }
-        }
-      } catch (_) {}
-    }
-
-    if (!bearer) {
-      $app.logger().error('sankhya_proxy: falha de autenticacao')
-      return e.json(502, { ok: false, erro: 'Falha de autenticação no Sankhya (OAuth e login).' })
-    }
-
-    // 3) Chamada ao serviço alvo
-    let url = ''
-    let method = 'POST'
-    let outBody = ''
-    if (op === 'login') {
-      return e.json(200, { ok: true, via: via })
-    } else if (op === 'loadRecords') {
-      // CRUDServiceProvider.loadRecords — payload: { serviceName, requestBody }
-      url =
-        baseUrl +
-        '/gateway/v1/mge/service.sbr?serviceName=' +
-        encodeURIComponent(payload.serviceName || 'CRUDServiceProvider.loadRecords') +
-        '&outputType=json'
-      outBody = JSON.stringify(payload.requestBody || {})
-    } else if (op === 'crudSave') {
-      url =
-        baseUrl +
-        '/gateway/v1/mge/service.sbr?serviceName=' +
-        encodeURIComponent('CRUDServiceProvider.saveRecord') +
-        '&outputType=json'
-      outBody = JSON.stringify(payload.requestBody || {})
-    } else if (op === 'dbExplorer') {
-      url =
-        baseUrl +
-        '/gateway/v1/mge/service.sbr?serviceName=' +
-        encodeURIComponent('DbExplorerSP.executeQuery') +
-        '&outputType=json'
-      outBody = JSON.stringify(payload.requestBody || {})
-    } else if (op === 'service') {
-      // serviço genérico: payload.serviceName + payload.requestBody
-      url =
-        baseUrl +
-        '/gateway/v1/mge/service.sbr?serviceName=' +
-        encodeURIComponent(payload.serviceName) +
-        '&outputType=json'
-      outBody = JSON.stringify(payload.requestBody || {})
-    } else {
-      return e.badRequestError('op desconhecida: ' + op)
-    }
-
-    const headers = { 'Content-Type': 'application/json' }
-    if (via === 'oauth') {
-      headers['Authorization'] = 'Bearer ' + bearer
-    } else {
-      headers['Cookie'] = 'JSESSIONID=' + bearer
+    const edgeUrl = $secrets.get('PGE_EDGE_URL') || ''
+    const edgeSecret = $secrets.get('PGE_PROXY_SECRET') || ''
+    if (!edgeUrl || !edgeSecret) {
+      return e.json(502, {
+        ok: false,
+        erro: 'Proxy não configurado (PGE_EDGE_URL/PGE_PROXY_SECRET).',
+      })
     }
 
     let resposta
     try {
       const res = $http.send({
-        url: url,
-        method: method,
-        headers: headers,
-        body: outBody,
-        timeout: 30,
+        url: edgeUrl,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-PGE-Secret': edgeSecret },
+        body: JSON.stringify({ op: op, payload: payload }),
+        timeout: 45,
       })
       let parsed = null
       try {
@@ -159,8 +53,8 @@ routerAdd(
       }
       resposta = { status: res.statusCode, data: parsed }
     } catch (err) {
-      $app.logger().error('sankhya_proxy: erro na chamada', 'error', String(err))
-      return e.json(502, { ok: false, erro: 'Falha na chamada ao Sankhya: ' + String(err) })
+      $app.logger().error('sankhya_proxy: erro na edge', 'error', String(err))
+      return e.json(502, { ok: false, erro: 'Falha na edge proxy: ' + String(err) })
     }
 
     // Auditoria da operação (best-effort)
@@ -181,11 +75,12 @@ routerAdd(
         .execute()
     } catch (_) {}
 
+    const d = resposta.data || {}
     return e.json(200, {
-      ok: resposta.status >= 200 && resposta.status < 300,
-      via: via,
+      ok: resposta.status === 200 && d.ok !== false,
+      via: d.via || null,
       status: resposta.status,
-      data: resposta.data,
+      data: d.data !== undefined ? d.data : d,
     })
   },
   $apis.requireAuth(),
