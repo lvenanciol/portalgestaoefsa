@@ -10,10 +10,10 @@ export function UpcomingCommitmentsCard({ commitments }: UpcomingCommitmentsCard
     <div
       className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-[3px] flex flex-col justify-between"
       style={{
-        animation: 'fade-in-up 400ms ease-out 500ms both',
+        animation: 'fade-in-up 400ms ease-out 550ms both',
       }}
     >
-      {/* Header com ícone de calendário */}
+      {/* Header */}
       <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
         <div className="flex items-center gap-2">
           <div className="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-[#1B5E20]">
@@ -33,15 +33,14 @@ export function UpcomingCommitmentsCard({ commitments }: UpcomingCommitmentsCard
         </button>
       </div>
 
-      {/* Lista de 4 compromissos */}
+      {/* Lista: 4 compromissos da SPEC (dia/mês + título + horário | local + seta) */}
       <div className="space-y-2.5">
         {commitments.map((item) => (
           <div
             key={item.id}
-            className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-gray-100 bg-gray-50/40 hover:bg-gray-50 transition-colors"
+            className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-gray-100 bg-emerald-50/40 hover:bg-emerald-50/70 transition-colors"
           >
             <div className="flex items-center gap-3 min-w-0">
-              {/* Chip de data (dia + mês abreviado) */}
               <div className="flex flex-col items-center justify-center w-11 h-11 rounded-lg bg-emerald-50 border border-emerald-200/60 text-[#1B5E20] shrink-0">
                 <span className="text-xs font-extrabold leading-none tabular-nums">{item.day}</span>
                 <span className="text-[9px] font-bold uppercase tracking-wider text-[#1B5E20]/80">
@@ -49,28 +48,17 @@ export function UpcomingCommitmentsCard({ commitments }: UpcomingCommitmentsCard
                 </span>
               </div>
 
-              {/* Título */}
               <div className="min-w-0">
                 <span className="text-xs font-semibold text-gray-800 line-clamp-1 block">
                   {item.title}
                 </span>
-                <span className="text-[11px] text-gray-400">
-                  Horário: 09:30 — Sala de Reunião 01
+                <span className="text-[11px] text-gray-500 truncate block">
+                  {item.time} | {item.location}
                 </span>
               </div>
             </div>
 
-            {/* Tag-pill com o nome da empresa */}
-            <span
-              className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 border"
-              style={{
-                backgroundColor: `${item.companyColor}12`,
-                borderColor: `${item.companyColor}30`,
-                color: item.companyColor,
-              }}
-            >
-              {item.company}
-            </span>
+            <ArrowUpRight className="h-3.5 w-3.5 text-gray-400 shrink-0" />
           </div>
         ))}
       </div>

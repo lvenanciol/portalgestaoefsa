@@ -4,7 +4,6 @@ export interface CompanyInfo {
   id: CompanyId
   name: string
   color: string
-  dotColor: string
 }
 
 export interface KPI {
@@ -12,12 +11,9 @@ export interface KPI {
   label: string
   value: string
   numericValue: number
-  unit?: string
   delta: string
   deltaType: 'positive' | 'negative'
-  deltaLabel?: string
   iconName: 'dollar-sign' | 'chart-line' | 'percent' | 'alert-triangle' | 'clock' | 'users'
-  description?: string
 }
 
 export interface MonthlyRevenue {
@@ -25,13 +21,12 @@ export interface MonthlyRevenue {
   monthShort: string
   extrafruti: number
   casafruti: number
-  foldbox: number
-  total: number
 }
 
 export interface MarginPoint {
   month: string
-  margem: number
+  extrafruti: number
+  casafruti: number
 }
 
 export interface ExpenseSegment {
@@ -41,13 +36,17 @@ export interface ExpenseSegment {
   color: string
 }
 
+export interface UnitRevenue {
+  name: string
+  value: number
+}
+
 export interface CriticalAlert {
   id: string
   title: string
   description: string
-  timeAgo: string
+  detail: string
   severity: 'critical' | 'warning'
-  company?: string
 }
 
 export interface Commitment {
@@ -55,385 +54,185 @@ export interface Commitment {
   day: string
   monthShort: string
   title: string
-  company: string
-  companyColor: string
+  time: string
+  location: string
 }
 
 export interface MockDataset {
   companies: CompanyInfo[]
-  kpisByCompany: Record<CompanyId, KPI[]>
+  kpis: KPI[]
   monthlyRevenues: MonthlyRevenue[]
   marginSeries: MarginPoint[]
   expenseComposition: ExpenseSegment[]
+  expenseTotal: string
+  topUnits: UnitRevenue[]
   criticalAlerts: CriticalAlert[]
   commitments: Commitment[]
 }
 
 export const COMPANIES: CompanyInfo[] = [
-  { id: 'extrafruti', name: 'Extrafruti', color: '#1B5E20', dotColor: 'bg-[#1B5E20]' },
-  { id: 'casafruti', name: 'Casafruti', color: '#0F3D13', dotColor: 'bg-[#0F3D13]' },
-  { id: 'foldbox', name: 'FoldBox', color: '#F59E0B', dotColor: 'bg-[#F59E0B]' },
+  { id: 'extrafruti', name: 'Extrafruti', color: '#1B5E20' },
+  { id: 'casafruti', name: 'Casafruti', color: '#F59E0B' },
+  { id: 'foldbox', name: 'FoldBox', color: '#0F3D13' },
 ]
 
+// SPEC mockup (fonte única): valores exatos
 export const MOCK_DATA: MockDataset = {
   companies: COMPANIES,
-  kpisByCompany: {
-    extrafruti: [
-      {
-        id: 'fat-ytd',
-        label: 'FATURAMENTO YTD',
-        value: 'R$ 48,2M',
-        numericValue: 48.2,
-        delta: '+12,4%',
-        deltaType: 'positive',
-        iconName: 'dollar-sign',
-        description: 'vs. mesmo período do ano anterior',
-      },
-      {
-        id: 'ebitda',
-        label: 'EBITDA',
-        value: 'R$ 6,8M',
-        numericValue: 6.8,
-        delta: '+8,1%',
-        deltaType: 'positive',
-        iconName: 'chart-line',
-        description: 'Margem EBITDA de 14,1%',
-      },
-      {
-        id: 'margem-bruta',
-        label: 'MARGEM BRUTA',
-        value: '32,5%',
-        numericValue: 32.5,
-        delta: '+1,2 p.p.',
-        deltaType: 'positive',
-        iconName: 'percent',
-        description: 'Alvo orçamentário: 31,8%',
-      },
-      {
-        id: 'recebivel-vencido',
-        label: 'RECEBÍVEL VENCIDO',
-        value: 'R$ 1,4M',
-        numericValue: 1.4,
-        delta: '+6,3%',
-        deltaType: 'negative',
-        iconName: 'alert-triangle',
-        description: 'Inadimplência líquida de 2,9%',
-      },
-      {
-        id: 'pagar-30d',
-        label: 'PAGAR 30D',
-        value: 'R$ 2,1M',
-        numericValue: 2.1,
-        delta: '-3,1%',
-        deltaType: 'positive',
-        iconName: 'clock',
-        description: 'Redução de passivo circulante',
-      },
-      {
-        id: 'turnover',
-        label: 'TURNOVER',
-        value: '4,8%',
-        numericValue: 4.8,
-        delta: '-0,5 p.p.',
-        deltaType: 'positive',
-        iconName: 'users',
-        description: 'Rotatividade no centro de distribuição',
-      },
-    ],
-    casafruti: [
-      {
-        id: 'fat-ytd',
-        label: 'FATURAMENTO YTD',
-        value: 'R$ 29,4M',
-        numericValue: 29.4,
-        delta: '+9,6%',
-        deltaType: 'positive',
-        iconName: 'dollar-sign',
-        description: 'vs. mesmo período do ano anterior',
-      },
-      {
-        id: 'ebitda',
-        label: 'EBITDA',
-        value: 'R$ 4,1M',
-        numericValue: 4.1,
-        delta: '+6,4%',
-        deltaType: 'positive',
-        iconName: 'chart-line',
-        description: 'Margem EBITDA de 13,9%',
-      },
-      {
-        id: 'margem-bruta',
-        label: 'MARGEM BRUTA',
-        value: '34,1%',
-        numericValue: 34.1,
-        delta: '+0,8 p.p.',
-        deltaType: 'positive',
-        iconName: 'percent',
-        description: 'Alvo orçamentário: 33,5%',
-      },
-      {
-        id: 'recebivel-vencido',
-        label: 'RECEBÍVEL VENCIDO',
-        value: 'R$ 820K',
-        numericValue: 0.82,
-        delta: '+4,1%',
-        deltaType: 'negative',
-        iconName: 'alert-triangle',
-        description: 'Inadimplência líquida de 2,7%',
-      },
-      {
-        id: 'pagar-30d',
-        label: 'PAGAR 30D',
-        value: 'R$ 1,3M',
-        numericValue: 1.3,
-        delta: '-2,4%',
-        deltaType: 'positive',
-        iconName: 'clock',
-        description: 'Fluxo fornecedores hortifrúti',
-      },
-      {
-        id: 'turnover',
-        label: 'TURNOVER',
-        value: '5,2%',
-        numericValue: 5.2,
-        delta: '-0,3 p.p.',
-        deltaType: 'positive',
-        iconName: 'users',
-        description: 'Rotatividade equipes de loja',
-      },
-    ],
-    foldbox: [
-      {
-        id: 'fat-ytd',
-        label: 'FATURAMENTO YTD',
-        value: 'R$ 16,8M',
-        numericValue: 16.8,
-        delta: '+15,2%',
-        deltaType: 'positive',
-        iconName: 'dollar-sign',
-        description: 'vs. mesmo período do ano anterior',
-      },
-      {
-        id: 'ebitda',
-        label: 'EBITDA',
-        value: 'R$ 2,4M',
-        numericValue: 2.4,
-        delta: '+11,8%',
-        deltaType: 'positive',
-        iconName: 'chart-line',
-        description: 'Margem EBITDA de 14,3%',
-      },
-      {
-        id: 'margem-bruta',
-        label: 'MARGEM BRUTA',
-        value: '31,2%',
-        numericValue: 31.2,
-        delta: '+1,6 p.p.',
-        deltaType: 'positive',
-        iconName: 'percent',
-        description: 'Alvo orçamentário: 30,0%',
-      },
-      {
-        id: 'recebivel-vencido',
-        label: 'RECEBÍVEL VENCIDO',
-        value: 'R$ 490K',
-        numericValue: 0.49,
-        delta: '+2,8%',
-        deltaType: 'negative',
-        iconName: 'alert-triangle',
-        description: 'Inadimplência líquida de 2,9%',
-      },
-      {
-        id: 'pagar-30d',
-        label: 'PAGAR 30D',
-        value: 'R$ 780K',
-        numericValue: 0.78,
-        delta: '-4,2%',
-        deltaType: 'positive',
-        iconName: 'clock',
-        description: 'Matéria-prima e embalagens',
-      },
-      {
-        id: 'turnover',
-        label: 'TURNOVER',
-        value: '3,9%',
-        numericValue: 3.9,
-        delta: '-0,8 p.p.',
-        deltaType: 'positive',
-        iconName: 'users',
-        description: 'Rotatividade na manufatura',
-      },
-    ],
-  },
+  kpis: [
+    {
+      id: 'fat-ytd',
+      label: 'FATURAMENTO YTD',
+      value: 'R$ 187,4M',
+      numericValue: 187.4,
+      delta: '12,3%',
+      deltaType: 'positive',
+      iconName: 'dollar-sign',
+    },
+    {
+      id: 'ebitda',
+      label: 'EBITDA',
+      value: 'R$ 21,6M',
+      numericValue: 21.6,
+      delta: '8,1%',
+      deltaType: 'positive',
+      iconName: 'chart-line',
+    },
+    {
+      id: 'margem-bruta',
+      label: 'MARGEM BRUTA',
+      value: '23,4%',
+      numericValue: 23.4,
+      delta: '0,6 p.p.',
+      deltaType: 'positive',
+      iconName: 'percent',
+    },
+    {
+      id: 'recebivel-vencido',
+      label: 'RECEBÍVEL VENCIDO',
+      value: 'R$ 8,2M',
+      numericValue: 8.2,
+      delta: '',
+      deltaType: 'negative',
+      iconName: 'alert-triangle',
+    },
+    {
+      id: 'pagar-30d',
+      label: 'PAGAR 30D',
+      value: 'R$ 12,7M',
+      numericValue: 12.7,
+      delta: '',
+      deltaType: 'negative',
+      iconName: 'clock',
+    },
+    {
+      id: 'turnover',
+      label: 'TURNOVER MÊS',
+      value: '4,2%',
+      numericValue: 4.2,
+      delta: '',
+      deltaType: 'negative',
+      iconName: 'users',
+    },
+  ],
   monthlyRevenues: [
-    {
-      month: 'Janeiro',
-      monthShort: 'Jan',
-      extrafruti: 3.8,
-      casafruti: 2.3,
-      foldbox: 1.3,
-      total: 7.4,
-    },
-    {
-      month: 'Fevereiro',
-      monthShort: 'Fev',
-      extrafruti: 3.7,
-      casafruti: 2.2,
-      foldbox: 1.2,
-      total: 7.1,
-    },
-    {
-      month: 'Março',
-      monthShort: 'Mar',
-      extrafruti: 3.9,
-      casafruti: 2.4,
-      foldbox: 1.3,
-      total: 7.6,
-    },
-    {
-      month: 'Abril',
-      monthShort: 'Abr',
-      extrafruti: 4.0,
-      casafruti: 2.4,
-      foldbox: 1.4,
-      total: 7.8,
-    },
-    { month: 'Maio', monthShort: 'Mai', extrafruti: 4.1, casafruti: 2.5, foldbox: 1.4, total: 8.0 },
-    {
-      month: 'Junho',
-      monthShort: 'Jun',
-      extrafruti: 3.9,
-      casafruti: 2.4,
-      foldbox: 1.3,
-      total: 7.6,
-    },
-    {
-      month: 'Julho',
-      monthShort: 'Jul',
-      extrafruti: 4.2,
-      casafruti: 2.5,
-      foldbox: 1.5,
-      total: 8.2,
-    },
-    {
-      month: 'Agosto',
-      monthShort: 'Ago',
-      extrafruti: 4.3,
-      casafruti: 2.6,
-      foldbox: 1.5,
-      total: 8.4,
-    },
-    {
-      month: 'Setembro',
-      monthShort: 'Set',
-      extrafruti: 4.0,
-      casafruti: 2.5,
-      foldbox: 1.4,
-      total: 7.9,
-    },
-    {
-      month: 'Outubro',
-      monthShort: 'Out',
-      extrafruti: 4.4,
-      casafruti: 2.7,
-      foldbox: 1.6,
-      total: 8.7,
-    },
-    {
-      month: 'Novembro',
-      monthShort: 'Nov',
-      extrafruti: 4.6,
-      casafruti: 2.8,
-      foldbox: 1.7,
-      total: 9.1,
-    },
-    {
-      month: 'Dezembro',
-      monthShort: 'Dez',
-      extrafruti: 5.1,
-      casafruti: 3.1,
-      foldbox: 1.9,
-      total: 10.1,
-    },
+    { month: 'Novembro', monthShort: 'Nov', extrafruti: 12.8, casafruti: 2.6 },
+    { month: 'Dezembro', monthShort: 'Dez', extrafruti: 13.9, casafruti: 2.9 },
+    { month: 'Janeiro', monthShort: 'Jan', extrafruti: 11.6, casafruti: 2.4 },
+    { month: 'Fevereiro', monthShort: 'Fev', extrafruti: 10.9, casafruti: 2.2 },
+    { month: 'Março', monthShort: 'Mar', extrafruti: 12.4, casafruti: 2.5 },
+    { month: 'Abril', monthShort: 'Abr', extrafruti: 11.9, casafruti: 2.6 },
+    { month: 'Maio', monthShort: 'Mai', extrafruti: 12.7, casafruti: 2.7 },
+    { month: 'Junho', monthShort: 'Jun', extrafruti: 13.1, casafruti: 2.8 },
+    { month: 'Julho', monthShort: 'Jul', extrafruti: 13.6, casafruti: 2.9 },
+    { month: 'Agosto', monthShort: 'Ago', extrafruti: 13.9, casafruti: 3.0 },
+    { month: 'Setembro', monthShort: 'Set', extrafruti: 16.2, casafruti: 3.1 },
+    { month: 'Outubro', monthShort: 'Out', extrafruti: 15.9, casafruti: 3.2 },
   ],
   marginSeries: [
-    { month: 'Jan', margem: 31.4 },
-    { month: 'Fev', margem: 31.8 },
-    { month: 'Mar', margem: 32.0 },
-    { month: 'Abr', margem: 31.9 },
-    { month: 'Mai', margem: 32.2 },
-    { month: 'Jun', margem: 32.5 },
-    { month: 'Jul', margem: 32.3 },
-    { month: 'Ago', margem: 32.7 },
-    { month: 'Set', margem: 32.4 },
-    { month: 'Out', margem: 32.9 },
-    { month: 'Nov', margem: 33.1 },
-    { month: 'Dez', margem: 32.5 },
+    { month: 'Nov', extrafruti: 22.8, casafruti: 26.4 },
+    { month: 'Dez', extrafruti: 23.1, casafruti: 26.8 },
+    { month: 'Jan', extrafruti: 22.5, casafruti: 26.1 },
+    { month: 'Fev', extrafruti: 22.2, casafruti: 25.8 },
+    { month: 'Mar', extrafruti: 22.9, casafruti: 26.5 },
+    { month: 'Abr', extrafruti: 23.0, casafruti: 26.7 },
+    { month: 'Mai', extrafruti: 23.2, casafruti: 27.0 },
+    { month: 'Jun', extrafruti: 23.4, casafruti: 27.2 },
+    { month: 'Jul', extrafruti: 23.1, casafruti: 26.9 },
+    { month: 'Ago', extrafruti: 23.6, casafruti: 27.4 },
+    { month: 'Set', extrafruti: 23.8, casafruti: 27.6 },
+    { month: 'Out', extrafruti: 23.4, casafruti: 27.2 },
   ],
   expenseComposition: [
-    { name: 'Custo de Mercadorias', value: 54, percentage: 54, color: '#1B5E20' },
-    { name: 'Logística & Frete', value: 18, percentage: 18, color: '#F59E0B' },
-    { name: 'Folha de Pagamento', value: 20, percentage: 20, color: '#0F3D13' },
-    { name: 'Outras Despesas Op.', value: 8, percentage: 8, color: '#D1D5DB' },
+    { name: 'Logística', value: 18.0, percentage: 42, color: '#1B5E20' },
+    { name: 'Pessoal', value: 9.4, percentage: 22, color: '#F59E0B' },
+    { name: 'Comercial', value: 6.4, percentage: 15, color: '#FBBF24' },
+    { name: 'Administrativo', value: 4.7, percentage: 11, color: '#3B82F6' },
+    { name: 'Outros', value: 4.3, percentage: 10, color: '#9CA3AF' },
+  ],
+  expenseTotal: 'R$ 42,8M',
+  topUnits: [
+    { name: 'SP - Capital', value: 48.2 },
+    { name: 'RJ - Grande Rio', value: 32.7 },
+    { name: 'MG - BH', value: 24.1 },
+    { name: 'PR - Curitiba', value: 18.8 },
+    { name: 'RS - Porto Alegre', value: 14.3 },
   ],
   criticalAlerts: [
     {
       id: 'alt-1',
-      title: 'Inadimplência Rede Super Sul',
-      description: 'Duplicata de R$ 340k vencida há mais de 15 dias com pedido de prorrogação.',
-      timeAgo: 'há 2h',
+      title: 'Contrato vence em 30 dias',
+      description: 'Fornecedor: Logística Norte',
+      detail: '18/11/2026',
       severity: 'critical',
-      company: 'Extrafruti',
     },
     {
       id: 'alt-2',
-      title: 'Atraso Frete Refrigerado ES-RJ',
-      description: 'Carga de perecíveis retida por manutenção mecânica na BR-101.',
-      timeAgo: 'há 4h',
-      severity: 'critical',
-      company: 'Logística',
+      title: 'KPI abaixo da meta',
+      description: 'Margem Bruta (unidade SP)',
+      detail: '-2,4 p.p.',
+      severity: 'warning',
     },
     {
       id: 'alt-3',
-      title: 'Divergência Contábil FoldBox',
-      description: 'Conciliação de inventário de embalagens kraft com desvio de 3,2%.',
-      timeAgo: 'há 6h',
-      severity: 'warning',
-      company: 'FoldBox',
+      title: '5 tarefas atrasadas',
+      description: 'Projetos em andamento',
+      detail: '',
+      severity: 'critical',
     },
   ],
   commitments: [
     {
       id: 'com-1',
-      day: '12',
-      monthShort: 'fev',
-      title: 'Comitê Financeiro Extrafruti — Fechamento Mensal',
-      company: 'Extrafruti',
-      companyColor: '#1B5E20',
+      day: '21',
+      monthShort: 'Out',
+      title: 'Reunião de Resultados',
+      time: '10:00 - 11:30',
+      location: 'Online',
     },
     {
       id: 'com-2',
-      day: '15',
-      monthShort: 'fev',
-      title: 'Renegociação de Fornecedores de Hortifrúti',
-      company: 'Casafruti',
-      companyColor: '#0F3D13',
+      day: '23',
+      monthShort: 'Out',
+      title: 'Assembleia de Acionistas',
+      time: '14:00 - 16:00',
+      location: 'Sede',
     },
     {
       id: 'com-3',
-      day: '18',
-      monthShort: 'fev',
-      title: 'Auditoria de Estoque & Linha Cartonagem',
-      company: 'FoldBox',
-      companyColor: '#F59E0B',
+      day: '27',
+      monthShort: 'Out',
+      title: 'Entrega de Relatório Financeiro',
+      time: '09:00 - 10:00',
+      location: 'Online',
     },
     {
       id: 'com-4',
-      day: '22',
-      monthShort: 'fev',
-      title: 'Reunião de Diretoria Executiva do Grupo',
-      company: 'Grupo',
-      companyColor: '#1B5E20',
+      day: '29',
+      monthShort: 'Out',
+      title: 'Reunião Comercial',
+      time: '15:00 - 17:00',
+      location: 'Sede',
     },
   ],
 }

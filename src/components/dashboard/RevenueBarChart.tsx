@@ -17,14 +17,24 @@ interface CustomTooltipProps {
 
 function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (active && payload && payload.length) {
-    const total = payload.reduce((acc, curr) => acc + (curr.value || 0), 0)
+    const meses: Record<string, string> = {
+      Nov: 'Nov/25',
+      Dez: 'Dez/25',
+      Jan: 'Jan/26',
+      Fev: 'Fev/26',
+      Mar: 'Mar/26',
+      Abr: 'Abr/26',
+      Mai: 'Mai/26',
+      Jun: 'Jun/26',
+      Jul: 'Jul/26',
+      Ago: 'Ago/26',
+      Set: 'Set/26',
+      Out: 'Out/26',
+    }
     return (
       <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xl text-xs space-y-1.5 min-w-[170px]">
         <div className="font-bold text-gray-800 border-b border-gray-100 pb-1 flex justify-between items-center">
-          <span>{label} 2025</span>
-          <span className="text-[11px] font-normal text-gray-500">
-            Total: R$ {total.toFixed(1)}M
-          </span>
+          <span>{meses[label || ''] || label}</span>
         </div>
         <div className="space-y-1 pt-0.5">
           {payload.map((entry) => (
@@ -37,7 +47,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
                 <span className="text-gray-600 font-medium">{entry.name}</span>
               </div>
               <span className="font-semibold text-gray-900 tabular-nums">
-                R$ {entry.value.toFixed(1)}M
+                R$ {entry.value.toFixed(1).replace('.', ',')}M
               </span>
             </div>
           ))}
@@ -56,33 +66,28 @@ export function RevenueBarChart({ data }: RevenueBarChartProps) {
         animation: 'fade-in-up 400ms ease-out 300ms both',
       }}
     >
-      {/* Header com título e legenda com os 3 pontos coloridos */}
+      {/* Header com título e legenda 2 séries */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
-          <h3 className="text-base font-bold text-gray-900">Receita 12m por empresa</h3>
+          <h3 className="text-base font-bold text-gray-900">Receita — Últimos 12 meses</h3>
           <p className="text-xs text-gray-500">
             Faturamento bruto mensal consolidado em R$ milhões
           </p>
         </div>
 
-        {/* Legenda com 3 pontos coloridos */}
         <div className="flex items-center flex-wrap gap-3 text-xs font-medium text-gray-600 bg-gray-50/80 px-3 py-1.5 rounded-lg border border-gray-100">
           <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#1B5E20]" />
+            <span className="w-2.5 h-2.5 rounded-sm bg-[#1B5E20]" />
             <span>Extrafruti</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#0F3D13]" />
+            <span className="w-2.5 h-2.5 rounded-sm bg-[#F59E0B]" />
             <span>Casafruti</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B]" />
-            <span>FoldBox</span>
           </div>
         </div>
       </div>
 
-      {/* Gráfico de barras agrupadas */}
+      {/* Barras agrupadas — 2 séries (verde Extrafruti, laranja Casafruti) */}
       <div className="h-[280px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
@@ -101,8 +106,8 @@ export function RevenueBarChart({ data }: RevenueBarChartProps) {
               axisLine={false}
               tickLine={false}
               tick={{ fill: '#6B7280', fontSize: 11 }}
-              tickFormatter={(val) => `R$${val}M`}
-              domain={[0, 6]}
+              tickFormatter={(val) => `${val}M`}
+              domain={[0, 25]}
             />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: '#F9FAFB' }} />
             <Bar
@@ -116,14 +121,6 @@ export function RevenueBarChart({ data }: RevenueBarChartProps) {
             <Bar
               dataKey="casafruti"
               name="Casafruti"
-              fill="#0F3D13"
-              radius={[4, 4, 0, 0]}
-              animationDuration={600}
-              animationEasing="ease-out"
-            />
-            <Bar
-              dataKey="foldbox"
-              name="FoldBox"
               fill="#F59E0B"
               radius={[4, 4, 0, 0]}
               animationDuration={600}

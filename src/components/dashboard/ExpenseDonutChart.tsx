@@ -3,6 +3,7 @@ import { ExpenseSegment } from '@/data/mockData'
 
 interface ExpenseDonutChartProps {
   data: ExpenseSegment[]
+  total: string
 }
 
 interface CustomTooltipProps {
@@ -21,14 +22,16 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
           <span>{item.name}</span>
         </div>
-        <div className="font-bold text-gray-900 tabular-nums">{item.percentage}% das despesas</div>
+        <div className="font-bold text-gray-900 tabular-nums">
+          {item.percentage}% · R$ {item.value.toFixed(1).replace('.', ',')}M
+        </div>
       </div>
     )
   }
   return null
 }
 
-export function ExpenseDonutChart({ data }: ExpenseDonutChartProps) {
+export function ExpenseDonutChart({ data, total }: ExpenseDonutChartProps) {
   return (
     <div
       className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-[3px] flex flex-col justify-between"
@@ -42,7 +45,7 @@ export function ExpenseDonutChart({ data }: ExpenseDonutChartProps) {
       </div>
 
       <div className="flex items-center justify-between gap-4">
-        {/* Rosca com 100% no centro */}
+        {/* Rosca com total no centro */}
         <div className="relative w-[130px] h-[130px] shrink-0">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -66,16 +69,18 @@ export function ExpenseDonutChart({ data }: ExpenseDonutChartProps) {
               </Pie>
             </PieChart>
           </ResponsiveContainer>
-          {/* Centro exibindo o total 100% */}
+          {/* Centro: total da SPEC */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-[15px] font-extrabold text-gray-900 leading-none">100%</span>
+            <span className="text-[15px] font-extrabold text-gray-900 leading-none tabular-nums">
+              {total}
+            </span>
             <span className="text-[9px] font-medium text-gray-400 uppercase tracking-tighter mt-0.5">
               Total
             </span>
           </div>
         </div>
 
-        {/* Legenda lateral com cor, nome e % de cada segmento (soma = 100%) */}
+        {/* Legenda lateral: cor, nome e % */}
         <div className="flex-1 space-y-1.5 min-w-0">
           {data.map((segment) => (
             <div key={segment.name} className="flex items-center justify-between text-xs gap-2">
