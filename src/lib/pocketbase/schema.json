@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-18T21:57:12.485Z",
+  "generatedAt": "2026-10-18T23:12:20.533Z",
   "collections": [
     {
       "name": "users",
@@ -29,14 +29,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "cargo",
@@ -129,17 +134,24 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
-      "indexes": ["CREATE UNIQUE INDEX idx_empresas_nome ON empresas (nome)"]
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_empresas_nome ON empresas (nome)"
+      ]
     },
     {
       "name": "unidades",
@@ -170,7 +182,12 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["loja", "cd", "matriz", "administrativo"]
+          "selectValues": [
+            "loja",
+            "cd",
+            "matriz",
+            "administrativo"
+          ]
         },
         {
           "name": "gestor_id",
@@ -196,17 +213,24 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
-      "indexes": ["CREATE UNIQUE INDEX idx_unidades_nome_empresa ON unidades (empresa_id, nome)"]
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_unidades_nome_empresa ON unidades (empresa_id, nome)"
+      ]
     },
     {
       "name": "grupos_permissao",
@@ -242,7 +266,11 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["grupo", "empresa", "unidade"]
+          "selectValues": [
+            "grupo",
+            "empresa",
+            "unidade"
+          ]
         },
         {
           "name": "empresa_id",
@@ -263,17 +291,24 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
-      "indexes": ["CREATE UNIQUE INDEX idx_grupos_nome ON grupos_permissao (nome)"]
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_grupos_nome ON grupos_permissao (nome)"
+      ]
     },
     {
       "name": "menus",
@@ -327,17 +362,24 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
-      "indexes": ["CREATE INDEX idx_menus_secao_ordem ON menus (secao, ordem)"]
+      "indexes": [
+        "CREATE INDEX idx_menus_secao_ordem ON menus (secao, ordem)"
+      ]
     },
     {
       "name": "auditoria",
@@ -406,19 +448,215 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
         "CREATE INDEX idx_auditoria_usuario ON auditoria (usuario_id, created DESC)",
         "CREATE INDEX idx_auditoria_acao ON auditoria (acao, created DESC)"
+      ]
+    },
+    {
+      "name": "balancete_linhas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "periodo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "empresa",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conta",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "grau",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "saldo_anterior",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "debitos",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "creditos",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "saldo_atual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fonte",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "importado_por",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_bal_periodo ON balancete_linhas (periodo)",
+        "CREATE INDEX idx_bal_periodo_conta ON balancete_linhas (periodo, conta)"
+      ]
+    },
+    {
+      "name": "dre_linhas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "periodo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "empresa",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ordem",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conta",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "nivel",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "grupo",
+            "subtotal",
+            "linha"
+          ]
+        },
+        {
+          "name": "valor",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "importado_por",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_dre_periodo ON dre_linhas (periodo)",
+        "CREATE INDEX idx_dre_periodo_ordem ON dre_linhas (periodo, ordem)"
       ]
     }
   ]
