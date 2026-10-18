@@ -55,6 +55,10 @@ routerAdd(
         'SELECT * FROM (SELECT p.NOMEPARC NOME, SUM(f.VLRDESDOB) TOT FROM TGFFIN f JOIN SANKHYA.TGFPAR p ON p.CODPARC=f.CODPARC WHERE f.RECDESP=1 AND f.DHBAIXA IS NULL AND f.DTVENC >= ' +
         W +
         ' GROUP BY p.NOMEPARC ORDER BY SUM(f.VLRDESDOB) DESC) WHERE ROWNUM <= 5',
+      fluxo:
+        "SELECT TO_CHAR(DHBAIXA,'YYYY-MM') MES, SUM(CASE WHEN RECDESP=1 THEN VLRDESDOB ELSE 0 END) ENT, SUM(CASE WHEN RECDESP=-1 THEN VLRDESDOB ELSE 0 END) SAI FROM TGFFIN WHERE DHBAIXA IS NOT NULL AND DHBAIXA >= " +
+        W +
+        " GROUP BY TO_CHAR(DHBAIXA,'YYYY-MM') ORDER BY 1",
     }
 
     const rodar = function (sql) {
@@ -88,6 +92,7 @@ routerAdd(
       'ar_aging',
       'ap_top',
       'ar_top',
+      'fluxo',
     ]
     for (let i = 0; i < chaves.length; i++) {
       const k = chaves[i]
