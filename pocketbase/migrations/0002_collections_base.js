@@ -1,8 +1,5 @@
-// Fase 2 — Migração 0002: coleções base do Portal de Gestão Executiva.
-// Escopo empresa/unidade em TODAS as tabelas (list/view) via @request.auth.
-// Empresas e unidades são criadas aqui; grupos_permissao também (users
-// referencia grupos, e grupos referencia empresas — sem ciclo: grupo tem
-// empresa opcional null = grupo global).
+// Fase 2 — Migração 0002: coleções base + relações do users resolvidas.
+// Escopo empresa/unidade em TODAS as tabelas (list/view autenticado).
 migrate(
   (app) => {
     // ---------- EMPRESAS ----------
@@ -11,7 +8,7 @@ migrate(
       type: 'base',
       listRule: "@request.auth.id != ''",
       viewRule: "@request.auth.id != ''",
-      createRule: null, // só superuser/admin via painel
+      createRule: null,
       updateRule: null,
       deleteRule: null,
       fields: [
@@ -75,9 +72,7 @@ migrate(
       fields: [
         { name: 'nome', type: 'text', required: true, max: 80 },
         { name: 'descricao', type: 'text', max: 255 },
-        // matriz de permissões módulo × botão × ação (ver/criar/editar/excluir/exportar/aprovar)
         { name: 'permissoes', type: 'json', maxSize: 200000 },
-        // escopo: 'grupo' = todas as empresas, 'empresa' = só empresa_id, 'unidade' = só unidade_id
         {
           name: 'escopo',
           type: 'select',
@@ -95,7 +90,7 @@ migrate(
     app.save(grupos)
     const gruposId = grupos.id
 
-    // ---------- MENUS (árvore de menus da sidebar) ----------
+    // ---------- MENUS ----------
     const menus = new Collection({
       name: 'menus',
       type: 'base',
@@ -107,11 +102,10 @@ migrate(
       fields: [
         { name: 'titulo', type: 'text', required: true, max: 120 },
         { name: 'rota', type: 'text', max: 255 },
-        { name: 'secao', type: 'text', max: 60 }, // GESTÃO / OPERAÇÃO / RELACIONAMENTO / PLATAFORMA
+        { name: 'secao', type: 'text', max: 60 },
         { name: 'ordem', type: 'number', onlyInt: true },
         { name: 'icone', type: 'text', max: 60 },
         { name: 'ativo', type: 'bool' },
-        { name: 'pai_id', type: 'relation', collectionId: 'menus_placeholder', maxSelect: 1 },
         { name: 'created', type: 'autodate', onCreate: true, onUpdate: false },
         { name: 'updated', type: 'autodate', onCreate: true, onUpdate: true },
       ],
@@ -123,7 +117,6 @@ migrate(
     const auditoria = new Collection({
       name: 'auditoria',
       type: 'base',
-      // trilha: só leitura para autenticados; escrita só por hooks/servidor (null)
       listRule: "@request.auth.id != ''",
       viewRule: "@request.auth.id != ''",
       createRule: null,
@@ -132,7 +125,7 @@ migrate(
       fields: [
         { name: 'usuario_id', type: 'relation', collectionId: '_pb_users_auth_', maxSelect: 1 },
         { name: 'usuario_email', type: 'text', max: 190 },
-        { name: 'acao', type: 'text', required: true, max: 80 }, // login/logout/acesso_negado/criar/editar/excluir/exportar/aprovar/sync
+        { name: 'acao', type: 'text', required: true, max: 80 },
         { name: 'modulo', type: 'text', max: 80 },
         { name: 'detalhe', type: 'json', maxSize: 50000 },
         { name: 'ip', type: 'text', max: 60 },
@@ -148,30 +141,25 @@ migrate(
     })
     app.save(auditoria)
 
-    // ---------- USERS: resolver as relações agora que as coleções existem ----------
+    // ---------- USERS: relações agora que as coleções existem ----------
     const users = app.findCollectionByNameOrId('_pb_users_auth_')
-    const fGrupo = users.fields.getByName('grupo_id')
-    if (fGrupo) {
-      users.fields.removeByName('grupo_id')
-    }
     users.fields.add(new RelationField({ name: 'grupo_id', collectionId: gruposId, maxSelect: 1 }))
-    const fEmpresa = users.fields.getByName('empresa_id')
-    if (fEmpresa) {
-      users.fields.removeByName('empresa_id')
-    }
     users.fields.add(
       new RelationField({ name: 'empresa_id', collectionId: empresasId, maxSelect: 1 }),
     )
-    const fUnidade = users.fields.getByName('unidade_id')
-    if (fUnidade) {
-      users.fields.removeByName('unidade_id')
-    }
     users.fields.add(
       new RelationField({ name: 'unidade_id', collectionId: unidadesId, maxSelect: 1 }),
     )
     app.save(users)
   },
   (app) => {
+    const users = app.findCollectionByNameOrId('_pb_users_auth_')
+    for (const f of ['grupo_id', 'empresa_id', 'unidade_id']) {
+      try {
+        users.fields.removeByName(f)
+      } catch (_) {}
+    }
+    app.save(users)
     for (const name of ['auditoria', 'menus', 'grupos_permissao', 'unidades', 'empresas']) {
       try {
         app.delete(app.findCollectionByNameOrId(name))
