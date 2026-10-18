@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ArrowDownToLine, ArrowUpFromLine, Download, Clock, AlertTriangle } from 'lucide-react'
 import { TITULOS_AP, TITULOS_AR, TituloAP, TituloAR } from '@/data/financeiroData'
+import { ParecerIaCard } from '@/components/ParecerIaCard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -357,6 +358,18 @@ export default function ApArPage() {
           <TabelaTitulos titulos={ar} tipo="ar" />
         </TabsContent>
       </Tabs>
+
+      {/* Parecer IA — títulos (dados de demonstração) */}
+      <ParecerIaCard
+        titulo="Parecer IA — contas a pagar & receber"
+        contexto={
+          'Carteira de títulos (dados de demonstração, referência 18/10/2026): ' +
+          'A/P: 12 títulos, total em aberto R$ 2,42M, vencidos R$ 191,6K (Insumos Tropicais 34d, Manutenção Frota 50d). ' +
+          'A/R: 12 títulos, total em aberto R$ 2,60M, vencidos R$ 735,0K (Atacado Frutas Centro 21d, Varejo Fresh Market 39d, Distribuidora Capixaba 44d). ' +
+          'Aging consolidado e top devedores visíveis na tela.'
+        }
+        prompt="Analise a carteira de títulos a pagar e receber. Destaque riscos de inadimplência (clientes vencidos), custo financeiro de atraso com fornecedores e dê 2-3 recomendações de cobrança/negociação."
+      />
     </div>
   )
 }

@@ -9,8 +9,9 @@ import {
   Tooltip,
   Legend,
 } from 'recharts'
-import { Database, Loader2, RefreshCw, Sparkles, AlertTriangle } from 'lucide-react'
+import { Database, Loader2, RefreshCw, AlertTriangle } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
+import { ParecerIaCard } from '@/components/ParecerIaCard'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -124,8 +125,6 @@ export default function RealPage() {
   const [dados, setDados] = useState<FinReal | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
-  const [parecer, setParecer] = useState('')
-  const [gerando, setGerando] = useState(false)
 
   const carregar = async () => {
     setLoading(true)
@@ -174,14 +173,8 @@ export default function RealPage() {
     return { fatMensal, fatEmpresas, fatTotal, apTotal, arTotal, vencidoAp, vencidoAr, ultimoMes }
   }, [dados])
 
-  const gerarParecer = async () => {
-    if (!agg || !dados) return
-    setGerando(true)
-    setParecer('')
-    const top = (dados.ap_top || []).map((t) => t[0] + ' (' + fmtBRL(t[1]) + ')').join('; ')
-    const topAr = (dados.ar_top || []).map((t) => t[0] + ' (' + fmtBRL(t[1]) + ')').join('; ')
-    const contexto =
-      'Faturamento 12m consolidado: ' +
+  const contextoParecer = agg
+    ? 'Faturamento 12m consolidado: ' +
       fmtBRL(agg.fatTotal) +
       '. Último mês: ' +
       agg.ultimoMes +
@@ -194,28 +187,12 @@ export default function RealPage() {
       ', vencido: ' +
       fmtBRL(agg.vencidoAr) +
       '. Maiores fornecedores em aberto: ' +
-      top +
+      (dados.ap_top || []).map((t) => t[0] + ' (' + fmtBRL(t[1]) + ')').join('; ') +
       '. Maiores clientes em aberto: ' +
-      topAr +
+      (dados.ar_top || []).map((t) => t[0] + ' (' + fmtBRL(t[1]) + ')').join('; ') +
       '. Faturamento por empresa (top): ' +
       agg.fatEmpresas.map((f) => f.nome + ' ' + fmtBRL(f.total)).join('; ')
-    try {
-      const r = await pb.send('/backend/v1/ia/parecer', {
-        method: 'POST',
-        body: JSON.stringify({
-          prompt:
-            'Analise a posição financeira do grupo com base nestes dados reais do ERP. Destaque riscos (inadimplência, concentração, vencidos) e 2-3 recomendações práticas.',
-          contexto: contexto,
-        }),
-      })
-      const resp = r as { texto?: string }
-      setParecer(resp.texto || 'IA não retornou conteúdo.')
-    } catch (e) {
-      setParecer('Erro ao gerar parecer: ' + String(e))
-    } finally {
-      setGerando(false)
-    }
-  }
+    : ''
 
   if (loading) {
     return (
@@ -358,39 +335,11 @@ export default function RealPage() {
       </div>
 
       {/* Parecer IA */}
-      <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-amber-500" />
-            <span className="text-sm font-bold text-gray-900">
-              Parecer IA — análise da posição financeira real
-            </span>
-          </div>
-          <Button
-            size="sm"
-            onClick={gerarParecer}
-            disabled={gerando}
-            className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
-          >
-            {gerando ? (
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-            ) : (
-              <Sparkles className="h-3.5 w-3.5 mr-1" />
-            )}
-            {gerando ? 'Analisando...' : 'Gerar parecer'}
-          </Button>
-        </div>
-        {parecer ? (
-          <div className="text-[13px] text-gray-700 leading-relaxed whitespace-pre-wrap bg-gray-50 rounded-lg p-4 border border-gray-100">
-            {parecer}
-          </div>
-        ) : (
-          <p className="text-[12px] text-gray-400">
-            Gera análise com os números reais consultados agora (faturamento, aging, top parceiros)
-            via IA Gemini Flash.
-          </p>
-        )}
-      </div>
+      <ParecerIaCard
+        titulo="Parecer IA — posição financeira real"
+        contexto={contextoParecer}
+        prompt="Analise a posição financeira do grupo com base nestes dados reais do ERP. Destaque riscos (inadimplência, concentração, vencidos) e 2-3 recomendações práticas."
+      />
 
       <div className="flex items-center justify-between text-[11px] text-gray-400">
         <span>Fonte: Sankhya via edge proxy (DbExplorerSP) · janela 12 meses</span>

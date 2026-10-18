@@ -9,6 +9,7 @@ import {
   Lock,
 } from 'lucide-react'
 import { CHECKLIST_FECHAMENTO, ChecklistItem, MESES_12 } from '@/data/financeiroData'
+import { ParecerIaCard } from '@/components/ParecerIaCard'
 import {
   Select,
   SelectContent,
@@ -218,6 +219,31 @@ export default function FechamentoPage() {
           </table>
         </div>
       </div>
+
+      {/* Parecer IA — status do fechamento */}
+      <ParecerIaCard
+        titulo={'Parecer IA — fechamento ' + mes.label}
+        contexto={
+          'Checklist do fechamento contábil de ' +
+          mes.label +
+          ' ' +
+          mes.ano +
+          ': ' +
+          progresso.concluidos +
+          ' de ' +
+          progresso.total +
+          ' tarefas concluídas (' +
+          progresso.pct +
+          '%). ' +
+          'Itens pendentes/em andamento: ' +
+          itens
+            .filter((i) => i.status !== 'concluido')
+            .map((i) => i.tarefa + ' (' + i.responsavel + ', prazo dia ' + i.prazoDia + ')')
+            .join('; ') +
+          '.'
+        }
+        prompt="Analise o andamento do fechamento contábil. Identifique gargalos (itens atrasados ou bloqueados, dependências entre áreas) e dê 2-3 recomendações para cumprir o prazo de fechamento no dia 10."
+      />
     </div>
   )
 }

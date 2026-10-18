@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { Waves, Download, Loader2, RefreshCw, Database, FlaskConical } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
+import { ParecerIaCard } from '@/components/ParecerIaCard'
 import { FLUXO_12 } from '@/data/financeiroData'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -315,6 +316,31 @@ export default function FluxoRealPage() {
               </table>
             </div>
           </div>
+
+          {/* Parecer IA — contexto conforme a fonte */}
+          <ParecerIaCard
+            titulo="Parecer IA — fluxo de caixa"
+            contexto={
+              fonte === 'real' && dados
+                ? 'Fluxo de caixa REAL (baixas TGFFIN, 12m): ' +
+                  dados
+                    .map(
+                      (m) =>
+                        m.label +
+                        ' entradas R$ ' +
+                        fmtK(m.entradas) +
+                        ' mil, saídas R$ ' +
+                        fmtK(m.saidas) +
+                        ' mil',
+                    )
+                    .join('; ') +
+                  '. Saldo acumulado 12m: R$ ' +
+                  fmtK(dados[dados.length - 1].saldoFinal) +
+                  ' mil.'
+                : 'Fluxo de caixa de demonstração (mock) — dados não reais.'
+            }
+            prompt="Analise o fluxo de caixa (entradas vs saídas por mês, saldo acumulado). Destaque meses de pressão de caixa, tendência e 2-3 recomendações de gestão de tesouraria."
+          />
         </>
       )}
     </div>

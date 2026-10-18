@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Table2, Download, TrendingUp, TrendingDown } from 'lucide-react'
 import { DRE_LINHAS, MESES_12 } from '@/data/financeiroData'
+import { ParecerIaCard } from '@/components/ParecerIaCard'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -228,6 +229,30 @@ export default function DrePage() {
           ))}
         </div>
       </div>
+
+      {/* Parecer IA — DRE do mês selecionado (dados de demonstração) */}
+      <ParecerIaCard
+        titulo={'Parecer IA — DRE ' + MESES_12[mesSelecionado].label}
+        contexto={
+          'DRE gerencial de ' +
+          MESES_12[mesSelecionado].label +
+          ' (dados de demonstração, R$ mil): ' +
+          'receita bruta ' +
+          fmtK(receitaBruta) +
+          ', CMV ' +
+          fmtK(DRE_LINHAS[idx['CMV']].valores[mesSelecionado]) +
+          ', lucro bruto ' +
+          fmtK(DRE_LINHAS[idx['LUCRO BRUTO']].valores[mesSelecionado]) +
+          ', EBITDA ' +
+          fmtK(ebitda) +
+          ', lucro líquido ' +
+          fmtK(lucroLiquido) +
+          ', margem líquida ' +
+          fmtPct(margemLiquida) +
+          '.'
+        }
+        prompt="Analise a DRE do mês (receita, custos, despesas, EBITDA e margem). Compare implicitamente com benchmarks de varejo alimentar frescos, aponte desvios e dê 2-3 recomendações de melhoria de margem."
+      />
     </div>
   )
 }
