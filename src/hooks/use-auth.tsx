@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .catch(() => pb.authStore.clear())
         .finally(() => setLoading(false))
     } else {
-      if (pb.authStore.record) pb.authStore.clear()
+      if (pb.authStore.record) pb.authStore.clear() // sessão expirada localmente
       setLoading(false)
     }
     return () => {
@@ -62,7 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         method: 'POST',
         body: JSON.stringify({ acao }),
       })
-    } catch (_) {}
+    } catch (_) {
+      // auditoria é best-effort: falha de rede não deve bloquear o fluxo
+    }
   }, [])
 
   const signOut = useCallback(
