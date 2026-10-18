@@ -1,5 +1,6 @@
 import { Download, Calendar, RefreshCw } from 'lucide-react'
 import { MOCK_DATA, COMPANIES } from '@/data/mockData'
+import { useBotoes } from '@/services/botoes-service'
 import { KpiCard } from '@/components/dashboard/KpiCard'
 import { RevenueBarChart } from '@/components/dashboard/RevenueBarChart'
 import { MarginLineChart } from '@/components/dashboard/MarginLineChart'
@@ -11,6 +12,7 @@ import { AiInsightsCard } from '@/components/dashboard/AiInsightsCard'
 
 export default function Index() {
   const activeCompany = COMPANIES[0]
+  const { pode } = useBotoes()
 
   return (
     <div className="space-y-6 pb-8">
@@ -49,13 +51,15 @@ export default function Index() {
             <span>Janeiro 2026</span>
           </div>
 
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 active:bg-gray-100 text-xs font-semibold text-gray-800 shadow-2xs transition-all duration-150 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20"
-          >
-            <Download className="h-3.5 w-3.5 text-gray-600" />
-            <span>Exportar</span>
-          </button>
+          {pode('dashboard', 'exportar') && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 active:bg-gray-100 text-xs font-semibold text-gray-800 shadow-2xs transition-all duration-150 hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20"
+            >
+              <Download className="h-3.5 w-3.5 text-gray-600" />
+              <span>Exportar</span>
+            </button>
+          )}
         </div>
       </div>
 

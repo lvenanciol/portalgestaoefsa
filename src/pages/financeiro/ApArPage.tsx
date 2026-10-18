@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { ArrowDownToLine, ArrowUpFromLine, Download, Clock, AlertTriangle } from 'lucide-react'
 import { TITULOS_AP, TITULOS_AR, TituloAP, TituloAR } from '@/data/financeiroData'
 import { ParecerIaCard } from '@/components/ParecerIaCard'
+import { useBotoes } from '@/services/botoes-service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -115,6 +116,7 @@ function TabelaTitulos({ titulos, tipo }: { titulos: TituloComum[]; tipo: 'ap' |
   const [busca, setBusca] = useState('')
   const [empresa, setEmpresa] = useState('todas')
   const [status, setStatus] = useState('todos')
+  const { pode } = useBotoes()
 
   const filtrados = titulos.filter((t) => {
     if (busca && !(t.nome + t.documento).toLowerCase().includes(busca.toLowerCase())) return false
@@ -191,9 +193,11 @@ function TabelaTitulos({ titulos, tipo }: { titulos: TituloComum[]; tipo: 'ap' |
               <AlertTriangle className="h-3 w-3" /> {atrasados.length} vencido(s)
             </span>
           )}
-          <Button variant="outline" size="sm" onClick={exportCsv} className="h-9">
-            <Download className="h-3.5 w-3.5 mr-1" /> CSV
-          </Button>
+          {pode('financeiro', 'exportar_csv') && (
+            <Button variant="outline" size="sm" onClick={exportCsv} className="h-9">
+              <Download className="h-3.5 w-3.5 mr-1" /> CSV
+            </Button>
+          )}
         </div>
       </div>
 

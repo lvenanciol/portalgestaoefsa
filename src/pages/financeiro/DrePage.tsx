@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Table2, Download, TrendingUp, TrendingDown } from 'lucide-react'
 import { DRE_LINHAS, MESES_12 } from '@/data/financeiroData'
 import { ParecerIaCard } from '@/components/ParecerIaCard'
+import { useBotoes } from '@/services/botoes-service'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -21,6 +22,7 @@ const fmtPct = (v: number) =>
 
 export default function DrePage() {
   const [mesSelecionado, setMesSelecionado] = useState(11) // Out/26 (índice)
+  const { pode } = useBotoes()
 
   const idx = useMemo(() => {
     const m: Record<string, number> = {}
@@ -95,9 +97,11 @@ export default function DrePage() {
             Demonstração do Resultado — 12 meses (R$ mil) · consolidado grupo
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={exportCsv} className="h-9">
-          <Download className="h-4 w-4 mr-1.5" /> Exportar CSV
-        </Button>
+        {pode('financeiro', 'exportar_csv') && (
+          <Button variant="outline" size="sm" onClick={exportCsv} className="h-9">
+            <Download className="h-4 w-4 mr-1.5" /> Exportar CSV
+          </Button>
+        )}
       </div>
 
       {/* KPIs do mês selecionado */}

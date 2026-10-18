@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { Upload, FileSpreadsheet, Loader2, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
+import { useBotoes } from '@/services/botoes-service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -41,6 +42,7 @@ export default function ImportarDemonstrativos() {
   const [enviando, setEnviando] = useState(false)
   const [resultado, setResultado] = useState<{ ok: boolean; msg: string } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { pode } = useBotoes()
 
   // Parser de CSV (separador ; ou tab) → linhas conforme tipo
   const parseCsv = (texto: string) => {
@@ -262,20 +264,26 @@ export default function ImportarDemonstrativos() {
       )}
 
       <div className="flex items-center gap-2">
-        <Button
-          onClick={enviar}
-          disabled={enviando || !jsonTexto}
-          className="h-10 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
-        >
-          {enviando ? (
-            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-          ) : (
-            <Upload className="h-4 w-4 mr-1.5" />
-          )}
-          {enviando
-            ? 'Importando...'
-            : 'Importar ' + (tipo === 'balancete' ? 'Balancete' : 'DRE') + ' — ' + periodo}
-        </Button>
+        {pode('financeiro', 'importar') ? (
+          <Button
+            onClick={enviar}
+            disabled={enviando || !jsonTexto}
+            className="h-10 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+          >
+            {enviando ? (
+              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4 mr-1.5" />
+            )}
+            {enviando
+              ? 'Importando...'
+              : 'Importar ' + (tipo === 'balancete' ? 'Balancete' : 'DRE') + ' — ' + periodo}
+          </Button>
+        ) : (
+          <p className="text-[12px] text-red-600 font-medium">
+            Sem permissão para importar demonstrativos.
+          </p>
+        )}
         {jsonTexto && (
           <Button
             variant="ghost"

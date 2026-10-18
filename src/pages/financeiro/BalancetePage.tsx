@@ -9,6 +9,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { BALANCETE_OUT26 } from '@/data/financeiroData'
+import { useBotoes } from '@/services/botoes-service'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
@@ -24,6 +25,7 @@ export default function BalancetePage() {
   const [fonte, setFonte] = useState<'importado' | 'mock'>('mock')
   const [periodo, setPeriodo] = useState('')
   const [loading, setLoading] = useState(true)
+  const { pode } = useBotoes()
 
   const carregar = async () => {
     setLoading(true)
@@ -122,12 +124,13 @@ export default function BalancetePage() {
               <FlaskConical className="h-3 w-3" /> Demonstração (mock)
             </span>
           )}
-          <Button variant="outline" size="sm" onClick={exportCsv} className="h-9">
-            <Download className="h-3.5 w-3.5 mr-1.5" /> CSV
-          </Button>
+          {pode('financeiro', 'exportar_csv') && (
+            <Button variant="outline" size="sm" onClick={exportCsv} className="h-9">
+              <Download className="h-3.5 w-3.5 mr-1.5" /> CSV
+            </Button>
+          )}
         </div>
       </div>
-
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-5 w-5 animate-spin text-[#1B5E20]" />

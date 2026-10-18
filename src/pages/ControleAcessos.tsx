@@ -1,6 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
-import { ShieldCheck, Plus, Loader2, Search, X } from 'lucide-react'
+import { ShieldCheck, Plus, Loader2, Search, X, MousePointerClick } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
+import {
+  useBotoes,
+  BUTTON_GATES,
+  salvarBotoesGrupo,
+  lerBotoesGrupo,
+} from '@/services/botoes-service'
 import {
   listarUsuarios,
   criarUsuario,
@@ -69,6 +75,9 @@ export default function ControleAcessos() {
   const [dialogNovo, setDialogNovo] = useState(false)
   const [dialogEditar, setDialogEditar] = useState<UsuarioLista | null>(null)
   const [dialogAuditoria, setDialogAuditoria] = useState(false)
+  const [dialogBotoes, setDialogBotoes] = useState<Grupo | null>(null)
+  const [botoesConfig, setBotoesConfig] = useState<Record<string, string[]>>({})
+  const [salvandoBotoes, setSalvandoBotoes] = useState(false)
 
   // form novo/editar
   const [fNome, setFNome] = useState('')
@@ -138,6 +147,39 @@ export default function ControleAcessos() {
     setFUnidade(un?.id || '')
     setFAtivo(u.ativo)
     setDialogEditar(u)
+  }
+
+  const abrirBotoes = async (g: Grupo) => {
+    setDialogBotoes(g)
+    try {
+      const cfg = await lerBotoesGrupo(g.id)
+      setBotoesConfig(cfg)
+    } catch (_) {
+      setBotoesConfig({})
+    }
+  }
+
+  const toggleBotao = (screen: string, key: string) => {
+    setBotoesConfig((prev) => {
+      const atual = prev[screen] || []
+      return {
+        ...prev,
+        [screen]: atual.includes(key) ? atual.filter((k) => k !== key) : [...atual, key],
+      }
+    })
+  }
+
+  const salvarBotoes = async () => {
+    if (!dialogBotoes) return
+    setSalvandoBotoes(true)
+    try {
+      await salvarBotoesGrupo(dialogBotoes.id, botoesConfig)
+      setDialogBotoes(null)
+    } catch (e) {
+      setErro(getErrorMessage(e) || 'Erro ao salvar botões.')
+    } finally {
+      setSalvandoBotoes(false)
+    }
   }
 
   const salvarNovo = async () => {
@@ -217,21 +259,25 @@ export default function ControleAcessos() {
         </div>
         {isAdmin && (
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDialogAuditoria(true)}
-              className="h-9"
-            >
-              Trilha de Auditoria
-            </Button>
-            <Button
-              size="sm"
-              onClick={abrirNovo}
-              className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
-            >
-              <Plus className="h-4 w-4 mr-1" /> Novo Usuário
-            </Button>
+            {pode('acessos', 'auditoria') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDialogAuditoria(true)}
+                className="h-9"
+              >
+                Trilha de Auditoria
+              </Button>
+            )}
+            {pode('acessos', 'novo_usuario') && (
+              <Button
+                size="sm"
+                onClick={abrirNovo}
+                className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+              >
+                <Plus className="h-4 w-4 mr-1" /> Novo Usuário
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -260,6 +306,15 @@ export default function ControleAcessos() {
               <p className="text-[11px] text-gray-500 mt-1">
                 {usuarios.filter((u) => u.grupo === g.nome).length} usuário(s)
               </p>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => abrirBotoes(g)}
+                  className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#1B5E20] hover:text-[#0F3D13] transition-colors"
+                >
+                  <MousePointerClick className="h-3.5 w-3.5" /> Botões
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -337,7 +392,7 @@ export default function ControleAcessos() {
                           : 'Nunca'}
                       </td>
                       <td className="px-4 py-3">
-                        {isAdmin ? (
+                        {isAdmin && pode('acessos', 'alternar_ativo') ? (
                           <Switch checked={u.ativo} onCheckedChange={() => alternarAtivo(u)} />
                         ) : (
                           <span
@@ -353,7 +408,7 @@ export default function ControleAcessos() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {isAdmin && (
+                        {isAdmin && pode('acessos', 'editar_usuario') && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -583,6 +638,65 @@ export default function ControleAcessos() {
               </div>
             ))}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Botões por grupo (Fase 9) */}
+      <Dialog open={!!dialogBotoes} onOpenChange={(o) => !o && setDialogBotoes(null)}>
+        <DialogContent className="bg-white max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <MousePointerClick className="h-4 w-4 text-[#1B5E20]" />
+                Botões — {dialogBotoes?.nome}
+              </span>
+              <button
+                onClick={() => setDialogBotoes(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-[12px] text-gray-500 -mt-2">
+            Botões LIGADOS ficam visíveis; DESLIGADOS são ocultados para os usuários deste grupo.
+            Botão sem configuração = sempre visível.
+          </p>
+          <div className="space-y-4">
+            {BUTTON_GATES.map((tela) => (
+              <div key={tela.key} className="border border-gray-100 rounded-lg p-3">
+                <div className="text-[12px] font-bold text-gray-900 mb-2">{tela.label}</div>
+                <div className="space-y-2">
+                  {tela.buttons.map((b) => {
+                    const ocultos = botoesConfig[tela.key] || []
+                    const visivel = !ocultos.includes(b.key)
+                    return (
+                      <div key={b.key} className="flex items-center justify-between gap-3">
+                        <span className="text-[12px] text-gray-700">{b.label}</span>
+                        <Switch
+                          checked={visivel}
+                          onCheckedChange={() => toggleBotao(tela.key, b.key)}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogBotoes(null)} className="h-9">
+              Cancelar
+            </Button>
+            <Button
+              onClick={salvarBotoes}
+              disabled={salvandoBotoes}
+              className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+            >
+              {salvandoBotoes ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+              Salvar
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -14,6 +14,7 @@ import { Waves, Download, Loader2, RefreshCw, Database, FlaskConical } from 'luc
 import pb from '@/lib/pocketbase/client'
 import { ParecerIaCard } from '@/components/ParecerIaCard'
 import { FLUXO_12 } from '@/data/financeiroData'
+import { useBotoes } from '@/services/botoes-service'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -64,6 +65,7 @@ export default function FluxoRealPage() {
   const [fonte, setFonte] = useState<'real' | 'mock'>('real')
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
+  const { pode } = useBotoes()
 
   const carregar = async () => {
     setLoading(true)
@@ -155,9 +157,11 @@ export default function FluxoRealPage() {
               <RefreshCw className="h-3.5 w-3.5" />
             )}
           </Button>
-          <Button variant="outline" size="sm" onClick={exportCsv} className="h-9">
-            <Download className="h-3.5 w-3.5 mr-1" /> CSV
-          </Button>
+          {pode('financeiro', 'exportar_csv') && (
+            <Button variant="outline" size="sm" onClick={exportCsv} className="h-9">
+              <Download className="h-3.5 w-3.5 mr-1" /> CSV
+            </Button>
+          )}
         </div>
       </div>
 
