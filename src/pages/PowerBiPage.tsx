@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { ChartColumnBig, ExternalLink, RefreshCw, Info, Loader2, MonitorPlay } from 'lucide-react'
-// T11: MSAL é carregado dinamicamente (import()) — dependência opcional;
-// se não estiver instalada, a listagem mostra instrução de configuração.
+// T11: MSAL é carregado dinamicamente via CDN — dependência opcional;
+// se não estiver disponível, a listagem mostra instrução de configuração.
 import pb from '@/lib/pocketbase/client'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 
 // Ajustes PGE — T11: Power BI lista os relatórios disponíveis para o usuário.
@@ -26,6 +28,9 @@ export default function PowerBiPage() {
   const [relatorios, setRelatorios] = useState<any[] | null>(null)
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState('')
+  const [clientIdInput, setClientIdInput] = useState(
+    () => localStorage.getItem('pge_ms_client_id') || '',
+  )
 
   const salvar = () => {
     if (url.trim()) {
@@ -119,6 +124,37 @@ export default function PowerBiPage() {
             Listar relatórios
           </Button>
         </div>
+      </div>
+
+      {/* T11: configuração do app registration (Entra ID) — client_id salvo no navegador */}
+      <div className="bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-2">
+          <div className="flex-1 grid gap-1.5">
+            <Label className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+              Power BI — App registration (Entra ID) — Application (client) ID
+            </Label>
+            <Input
+              value={clientIdInput}
+              onChange={(e) => setClientIdInput(e.target.value)}
+              placeholder="00000000-0000-0000-0000-000000000000"
+              className="h-9 bg-gray-50 text-[12px]"
+            />
+          </div>
+          <Button
+            size="sm"
+            className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+            onClick={() => {
+              localStorage.setItem('pge_ms_client_id', clientIdInput.trim())
+              setErro('')
+            }}
+          >
+            Salvar
+          </Button>
+        </div>
+        <p className="text-[11px] text-gray-400 mt-2">
+          Cole aqui o "Application (client) ID" do app registration criado no Entra ID (passo a
+          passo no rodapé da tela).
+        </p>
       </div>
 
       {erro && (

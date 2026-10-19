@@ -64,16 +64,17 @@ routerAdd(
       let r = rodarSql('SELECT CODCRR, DESCRICAO FROM TTRBC ORDER BY DESCRICAO')
       let tipoDim = 'crr'
       if (r.erro) {
+        // TSICUS = Centros de Custo/Resultado (tabela correta, indicada pelo dono)
+        r = rodarSql('SELECT CODCCU, DESCUS FROM TSICUS ORDER BY DESCUS')
+        tipoDim = 'ccu'
+      }
+      if (r.erro) {
+        r = rodarSql('SELECT CODCCU, DESCUS FROM SANKHYA.TSICUS ORDER BY DESCUS')
+        tipoDim = 'ccu'
+      }
+      if (r.erro) {
         r = rodarSql('SELECT CODCCU, DESCRCCU FROM TTCCU ORDER BY DESCRCCU')
         tipoDim = 'ccu'
-      }
-      if (r.erro) {
-        r = rodarSql('SELECT CODCCU, DESCRCCU FROM SANKHYA.TTCCU ORDER BY DESCRCCU')
-        tipoDim = 'ccu'
-      }
-      if (r.erro) {
-        r = rodarSql('SELECT CODCRR, DESCRICAO FROM SANKHYA.TTRBC ORDER BY DESCRICAO')
-        tipoDim = 'crr'
       }
       if (r.erro)
         return e.json(502, {
