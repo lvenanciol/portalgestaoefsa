@@ -37,35 +37,40 @@ routerAdd(
       const edgeUrl = $secrets.get('PGE_EDGE_URL') || ''
       const edgeSecret = $secrets.get('PGE_PROXY_SECRET') || ''
       if (!edgeUrl || !edgeSecret) return e.json(502, { ok: false, erro: 'Proxy não configurado.' })
-      const res = $http.send({
-        url: edgeUrl,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-PGE-Secret': edgeSecret },
-        body: JSON.stringify({
-          op: 'dbExplorer',
-          payload: {
-            requestBody: {
-              serviceName: 'DbExplorerSP.executeQuery',
+      // TTRBC (Centro de Resultado) sem owner — instância não expõe SANKHYA.TTRBC
+      // (ORA-00942 com owner). Se a tabela não existir, cai para Centro de Custo (TTCCU).
+      const rodarSql = function (sql) {
+        const res = $http.send({
+          url: edgeUrl,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-PGE-Secret': edgeSecret },
+          body: JSON.stringify({
+            op: 'dbExplorer',
+            payload: {
               requestBody: {
-                sql: 'SELECT CODCRR, DESCRICAO FROM SANKHYA.TTRBC ORDER BY DESCRICAO',
+                serviceName: 'DbExplorerSP.executeQuery',
+                requestBody: { sql: sql },
               },
             },
-          },
-        }),
-        timeout: 45,
-      })
-      if (res.statusCode !== 200) return e.json(502, { ok: false, erro: 'edge ' + res.statusCode })
-      const d = res.json || {}
-      const rb = (d.data && d.data.responseBody) || {}
-      if (!rb.rows) {
-        return e.json(502, {
-          ok: false,
-          erro:
-            'edge sem rows: ' +
-            ((d.data && (d.data.statusMessage || d.data.error)) || JSON.stringify(d).slice(0, 200)),
+          }),
+          timeout: 45,
         })
+        if (res.statusCode !== 200) return { erro: 'edge ' + res.statusCode }
+        const d = res.json || {}
+        const rb = (d.data && d.data.responseBody) || {}
+        if (!rb.rows) return { erro: (d.data && d.data.statusMessage) || 'sem rows' }
+        return { rows: rb.rows }
       }
-      itens = rb.rows.map((r) => ({ codigo: String(r[0]), descricao: String(r[1]) }))
+      let r = rodarSql('SELECT CODCRR, DESCRICAO FROM TTRBC ORDER BY DESCRICAO')
+      let tipoDim = 'crr'
+      if (r.erro) {
+        r = rodarSql('SELECT CODCCU, DESCRCCU FROM TTCCU ORDER BY DESCRCCU')
+        tipoDim = 'ccu'
+      }
+      if (r.erro) return e.json(502, { ok: false, erro: r.erro })
+      itens = r.rows.map(function (row) {
+        return { codigo: String(row[0]), descricao: String(row[1]), tipo: tipoDim }
+      })
       fonte = 'sankhya'
       // grava cache
       try {
