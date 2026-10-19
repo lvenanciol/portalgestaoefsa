@@ -99,6 +99,26 @@ export const BUTTON_GATES: TelaBotoes[] = [
       { key: 'exportar_csv', label: 'Exportar CSV' },
     ],
   },
+  {
+    key: 'indicadores',
+    label: 'Indicadores',
+    buttons: [{ key: 'atualizar', label: 'Atualizar dados' }],
+  },
+  {
+    key: 'ia',
+    label: 'IA Gemini Flash',
+    buttons: [{ key: 'gerar', label: 'Gerar análise' }],
+  },
+  {
+    key: 'power-bi',
+    label: 'Power BI',
+    buttons: [{ key: 'configurar', label: 'Configurar relatório' }],
+  },
+  {
+    key: 'menus',
+    label: 'Árvore de Menus',
+    buttons: [{ key: 'toggle_ativo', label: 'Ativar/desativar item (switch)' }],
+  },
 ]
 
 // botoesOcultos(p) → Record<screen, string[]>

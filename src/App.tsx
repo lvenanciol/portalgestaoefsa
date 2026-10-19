@@ -15,6 +15,11 @@ import ProjetosPage from './pages/operacional/ProjetosPage'
 import AtasPage from './pages/operacional/AtasPage'
 import EmailsPage from './pages/operacional/EmailsPage'
 import ContratosPage from './pages/operacional/ContratosPage'
+import IndicadoresPage from './pages/IndicadoresPage'
+import IaPage from './pages/IaPage'
+import PowerBiPage from './pages/PowerBiPage'
+import MenusPage from './pages/MenusPage'
+import ConfiguracoesPage from './pages/ConfiguracoesPage'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
@@ -41,6 +46,11 @@ const AppRoutes = () => {
         <Route path="/atas" element={<AtasPage />} />
         <Route path="/emails" element={<EmailsPage />} />
         <Route path="/contratos" element={<ContratosPage />} />
+        <Route path="/indicadores" element={<IndicadoresPage />} />
+        <Route path="/ia" element={<IaPage />} />
+        <Route path="/power-bi" element={<PowerBiPage />} />
+        <Route path="/menus" element={<MenusPage />} />
+        <Route path="/configuracoes" element={<ConfiguracoesPage />} />
         <Route path="/acessos" element={<ControleAcessos />} />
       </Route>
       <Route path="*" element={<NotFound />} />
