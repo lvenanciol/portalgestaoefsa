@@ -12,6 +12,9 @@ import {
   Upload,
   Download,
   RefreshCw,
+  Mail,
+  Inbox,
+  LogOut,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -86,6 +89,108 @@ export default function ConfiguracoesCompletaPage() {
   const [tSalvo, setTSalvo] = useState(false)
   const [syncando, setSyncando] = useState(false)
   const [syncMsg, setSyncMsg] = useState('')
+
+  // COR-4 F8 — conexão real Gmail/Outlook (OAuth)
+  const [oauth, setOauth] = useState<Record<string, { conectado: boolean; conta?: string }>>({
+    google: { conectado: false },
+    microsoft: { conectado: false },
+  })
+  const [oauthMsg, setOauthMsg] = useState('')
+  const [oauthLoading, setOauthLoading] = useState('')
+  const [inbox, setInbox] = useState<any[]>([])
+  const [inboxOpen, setInboxOpen] = useState(false)
+
+  const carregarOauth = async () => {
+    try {
+      const r = (await pb.send('/backend/v1/email/oauth/status', { method: 'GET' })) as any
+      setOauth({
+        google: r.google || { conectado: false },
+        microsoft: r.microsoft || { conectado: false },
+      })
+    } catch (_) {}
+  }
+
+  const carregarInbox = async () => {
+    try {
+      const r = await pb.collection('emails_inbox').getFullList({ sort: '-recebido_em' })
+      setInbox(r as any[])
+    } catch (_) {
+      setInbox([])
+    }
+  }
+
+  useEffect(() => {
+    carregarOauth()
+    // retorno do callback OAuth: ?oauth=ok|erro
+    const p = new URLSearchParams(window.location.search)
+    if (p.get('oauth') === 'ok') {
+      setOauthMsg('Conectado com sucesso (' + (p.get('provedor') || '') + ').')
+      carregarOauth()
+      window.history.replaceState({}, '', '/configuracoes')
+    } else if (p.get('oauth') === 'erro') {
+      setOauthMsg('Falha na conexão: ' + (p.get('det') || 'erro desconhecido'))
+      window.history.replaceState({}, '', '/configuracoes')
+    }
+  }, [])
+
+  const conectarOauth = async (provedor: string) => {
+    setOauthLoading(provedor)
+    setOauthMsg('')
+    try {
+      const r = (await pb.send('/backend/v1/email/oauth/iniciar', {
+        method: 'POST',
+        body: JSON.stringify({ provedor }),
+      })) as any
+      if (r.ok && r.url) {
+        window.location.href = r.url
+        return
+      }
+      setOauthMsg(r.erro || 'Falha ao iniciar OAuth.')
+    } catch (e) {
+      setOauthMsg('Erro: ' + String(e))
+    } finally {
+      setOauthLoading('')
+    }
+  }
+
+  const sincronizarInbox = async (provedor: string) => {
+    setOauthLoading('sync-' + provedor)
+    setOauthMsg('')
+    try {
+      const r = (await pb.send('/backend/v1/email/oauth/sync', {
+        method: 'POST',
+        body: JSON.stringify({ provedor }),
+      })) as any
+      if (r.ok) {
+        setOauthMsg('Caixa sincronizada — ' + r.novos + ' novo(s) e-mail(s).')
+        await carregarInbox()
+        setInboxOpen(true)
+      } else {
+        setOauthMsg('Falha no sync: ' + (r.erro || 'desconhecido'))
+      }
+    } catch (e) {
+      setOauthMsg('Erro no sync: ' + String(e))
+    } finally {
+      setOauthLoading('')
+      setTimeout(() => setOauthMsg(''), 10000)
+    }
+  }
+
+  const desconectarOauth = async (provedor: string) => {
+    setOauthLoading('desc-' + provedor)
+    try {
+      await pb.send('/backend/v1/email/oauth/desconectar', {
+        method: 'POST',
+        body: JSON.stringify({ provedor }),
+      })
+      setOauthMsg('Desconectado (' + provedor + ').')
+      await carregarOauth()
+    } catch (e) {
+      setOauthMsg('Erro: ' + String(e))
+    } finally {
+      setOauthLoading('')
+    }
+  }
 
   const sincronizarAgora = async () => {
     setSyncando(true)
@@ -301,6 +406,126 @@ export default function ConfiguracoesCompletaPage() {
             )
           })}
         </div>
+      </section>
+
+      {/* COR-4 F8 — Conexão real Gmail/Outlook (OAuth) */}
+      <section className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs">
+        <h2 className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-2">
+          <Mail className="h-4 w-4 text-[#1B5E20]" /> E-mail — conexão real (Gmail / Outlook)
+        </h2>
+        <p className="text-[11px] text-gray-500 mb-3">
+          OAuth 2.0 com escopos de leitura e envio. Após conectar: sincronize a caixa de entrada e
+          envie e-mails pela sua conta real.
+        </p>
+        {oauthMsg && (
+          <div
+            className={cn(
+              'p-2.5 rounded-lg text-[12px] font-semibold mb-3',
+              oauthMsg.startsWith('Falha') || oauthMsg.startsWith('Erro')
+                ? 'bg-red-50 text-red-700 border border-red-200'
+                : 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+            )}
+          >
+            {oauthMsg}
+          </div>
+        )}
+        <div className="space-y-2">
+          {(['google', 'microsoft'] as const).map((prov) => {
+            const st = oauth[prov] || { conectado: false }
+            const nome = prov === 'google' ? 'Gmail (Google)' : 'Outlook (Microsoft 365)'
+            return (
+              <div
+                key={prov}
+                className="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50"
+              >
+                <div className="min-w-0">
+                  <div className="text-[13px] font-bold text-gray-900 flex items-center gap-2">
+                    {nome}
+                    {st.conectado ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Conectado
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
+                        Desconectado
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    {st.conectado ? st.conta || 'conta conectada' : 'OAuth 2.0 — leitura + envio'}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {st.conectado ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8"
+                        onClick={() => sincronizarInbox(prov)}
+                        disabled={oauthLoading === 'sync-' + prov}
+                      >
+                        {oauthLoading === 'sync-' + prov ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Inbox className="h-4 w-4 mr-1" />
+                        )}
+                        Sincronizar caixa
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8"
+                        onClick={() => desconectarOauth(prov)}
+                        disabled={oauthLoading === 'desc-' + prov}
+                      >
+                        {oauthLoading === 'desc-' + prov ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <LogOut className="h-4 w-4 mr-1" />
+                        )}
+                        Desconectar
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="h-8 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+                      onClick={() => conectarOauth(prov)}
+                      disabled={oauthLoading === prov}
+                    >
+                      {oauthLoading === prov ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Plug className="h-4 w-4 mr-1" />
+                      )}
+                      Conectar {prov === 'google' ? 'Gmail' : 'Outlook'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        {inboxOpen && inbox.length > 0 && (
+          <div className="mt-3 border border-gray-100 rounded-lg overflow-hidden">
+            <div className="px-3 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              Caixa de entrada sincronizada ({inbox.length})
+            </div>
+            <div className="max-h-64 overflow-y-auto divide-y divide-gray-50">
+              {inbox.slice(0, 15).map((m) => (
+                <div key={m.id} className="px-3 py-2">
+                  <div className="text-[12px] font-semibold text-gray-800 truncate">
+                    {m.assunto}
+                  </div>
+                  <div className="text-[11px] text-gray-500 truncate">
+                    {m.de} · {String(m.recebido_em).slice(0, 16).replace('T', ' ')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Identidade visual */}

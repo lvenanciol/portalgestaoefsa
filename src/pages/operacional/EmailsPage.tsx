@@ -100,11 +100,37 @@ export default function EmailsPage() {
     setEnviando(true)
     setMsg('')
     try {
-      await pb.send('/backend/v1/emails/enviar', {
-        method: 'POST',
-        body: JSON.stringify({ para, assunto, corpo, modelo: modeloSel }),
-      })
-      setMsg('E-mail enviado com sucesso.')
+      // COR-4 F8: conexão real OAuth disponível? envia pela conta conectada
+      let oauthProvider = ''
+      try {
+        const st = (await pb.send('/backend/v1/email/oauth/status', { method: 'GET' })) as any
+        if (st.google?.conectado) oauthProvider = 'google'
+        else if (st.microsoft?.conectado) oauthProvider = 'microsoft'
+      } catch (_) {
+        /* sem conexão — usa relay */
+      }
+      if (oauthProvider) {
+        const r = (await pb.send('/backend/v1/email/oauth/enviar', {
+          method: 'POST',
+          body: JSON.stringify({
+            provedor: oauthProvider,
+            para,
+            assunto,
+            corpo,
+            modelo: modeloSel,
+          }),
+        })) as any
+        if (!r.ok) throw new Error(r.erro || 'falha no envio OAuth')
+        setMsg(
+          'E-mail enviado pela conta ' + (oauthProvider === 'google' ? 'Gmail' : 'Outlook') + '.',
+        )
+      } else {
+        await pb.send('/backend/v1/emails/enviar', {
+          method: 'POST',
+          body: JSON.stringify({ para, assunto, corpo, modelo: modeloSel }),
+        })
+        setMsg('E-mail enviado com sucesso.')
+      }
       setDialog(false)
       await carregar()
     } catch (e: any) {
