@@ -140,7 +140,9 @@ export function Topbar() {
     setIdioma(k)
     try {
       localStorage.setItem(LS_IDIOMA, k)
-    } catch (_) {}
+    } catch (_) {
+      /* localStorage indisponível — segue sem persistir */
+    }
     window.dispatchEvent(new Event('pge_idioma_change'))
   }
 

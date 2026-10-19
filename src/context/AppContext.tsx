@@ -59,7 +59,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedCompanyState(id)
     try {
       localStorage.setItem(LS_EMPRESA, id)
-    } catch (_) {}
+    } catch (_) {
+      /* localStorage indisponível — segue sem persistir */
+    }
   }
 
   const toggleSidebar = () => setSidebarOpen((prev) => !prev)
