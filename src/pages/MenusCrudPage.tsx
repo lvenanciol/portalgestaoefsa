@@ -149,7 +149,7 @@ export default function MenusCrudPage() {
   const salvar = async () => {
     setSalvando(true)
     try {
-      const dados: any = {
+      const dados = {
         titulo: form.titulo,
         rota: form.rota,
         secao: form.secao,
@@ -157,8 +157,12 @@ export default function MenusCrudPage() {
         icone: form.icone,
         ativo: !!form.ativo,
       }
-      if (editando) await pb.collection('menus').update(editando.id, dados)
-      else await pb.collection('menus').create(dados)
+      if (editando)
+        await pb.send('/backend/v1/menus/' + editando.id, {
+          method: 'PATCH',
+          body: JSON.stringify(dados),
+        })
+      else await pb.send('/backend/v1/menus', { method: 'POST', body: JSON.stringify(dados) })
       setDialog(false)
       await carregar()
     } catch (e) {
@@ -170,7 +174,7 @@ export default function MenusCrudPage() {
 
   const excluir = async (m: any) => {
     try {
-      await pb.collection('menus').delete(m.id)
+      await pb.send('/backend/v1/menus/' + m.id, { method: 'DELETE' })
       await carregar()
     } catch (e) {
       setErro(String(e))
@@ -197,10 +201,14 @@ export default function MenusCrudPage() {
     )
       return
     try {
-      // remove todos e recria o padrão
+      // remove todos e recria o padrão (via hooks admin-only)
       const todos = await pb.collection('menus').getFullList()
-      for (const m of todos) await pb.collection('menus').delete(m.id)
-      for (const m of PADRAO) await pb.collection('menus').create({ ...m, ativo: true })
+      for (const m of todos) await pb.send('/backend/v1/menus/' + m.id, { method: 'DELETE' })
+      for (const m of PADRAO)
+        await pb.send('/backend/v1/menus', {
+          method: 'POST',
+          body: JSON.stringify({ ...m, ativo: true }),
+        })
       await carregar()
     } catch (e) {
       setErro(String(e))
