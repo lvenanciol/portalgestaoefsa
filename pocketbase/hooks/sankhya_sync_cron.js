@@ -525,6 +525,41 @@ routerAdd(
     const maxJanelas = Number(body.max_janelas) || 0
     const janelas = []
     const falhas = []
+    // simular_dias: persiste a watermark N dias atrás ANTES de rodar (validação
+    // de backfill chunked — ex.: 500 dias → janelas de ≤30 dias até hoje)
+    let simulacao = ''
+    if (body.simular_dias) {
+      const dias = Number(body.simular_dias) || 0
+      if (dias > 0) {
+        const alvo = new Date(Date.now() - dias * 86400000)
+        const valor = alvo.toISOString().replace('T', ' ')
+        try {
+          let wm = null
+          try {
+            wm = $app.findFirstRecordByFilter('sankhya_cache', "chave = 'financeiro_watermark'")
+          } catch (_) {
+            wm = null
+          }
+          if (wm) {
+            wm.set('gerado_em', valor)
+            wm.set('status', 'simulacao_' + dias + 'd')
+            wm.set('payload', JSON.stringify({ simulacao: dias + 'd' }))
+            $app.save(wm)
+          } else {
+            const col = $app.findCollectionByNameOrId('sankhya_cache')
+            const novo = new Record(col)
+            novo.set('chave', 'financeiro_watermark')
+            novo.set('gerado_em', valor)
+            novo.set('status', 'simulacao_' + dias + 'd')
+            novo.set('payload', JSON.stringify({ simulacao: dias + 'd' }))
+            $app.save(novo)
+          }
+          simulacao = valor
+        } catch (err) {
+          return e.json(500, { ok: false, erro: 'falha ao simular watermark: ' + String(err) })
+        }
+      }
+    }
 
     function sjFmtD(d) {
       return d.toISOString().slice(0, 10)
@@ -999,6 +1034,7 @@ routerAdd(
       ok: falhas.length === 0,
       completa: completa,
       inicio_backfill: sjFmtD(inicio),
+      simulacao: simulacao,
       total_janelas: lista.length,
       concluidas: concluidas,
       janelas: janelas,
