@@ -20,6 +20,9 @@ import {
   X,
   Leaf,
   ChevronDown,
+  Plug,
+  Database,
+  MessageCircle,
 } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
@@ -74,6 +77,14 @@ const navSections: NavSection[] = [
       { label: 'Árvore de Menus', rota: '/menus', icon: ListTree },
       { label: 'Controle de Acessos', rota: '/acessos', icon: ShieldCheck },
       { label: 'Configurações', rota: '/configuracoes', icon: Settings },
+    ],
+  },
+  {
+    title: 'INTEGRAÇÕES',
+    items: [
+      { label: 'Status Integrações', rota: '/integracoes', icon: Plug },
+      { label: 'Sankhya', rota: '/integracoes/sankhya', icon: Database },
+      { label: 'WhatsApp', rota: '/integracoes/whatsapp', icon: MessageCircle },
     ],
   },
 ]
@@ -137,8 +148,11 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
       'list-tree': ListTree,
       shield: ShieldCheck,
       settings: Settings,
+      plug: Plug,
+      database: Database,
+      message: MessageCircle,
     }
-    const ordemSecoes = ['GESTÃO', 'OPERAÇÃO', 'RELACIONAMENTO', 'PLATAFORMA']
+    const ordemSecoes = ['GESTÃO', 'OPERAÇÃO', 'RELACIONAMENTO', 'PLATAFORMA', 'INTEGRAÇÕES']
     const out: NavSection[] = []
     for (const sec of ordemSecoes) {
       const itens = menusDb

@@ -37,7 +37,7 @@ export default function PowerBiPage() {
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState('')
   const [clientIdInput, setClientIdInput] = useState(
-    () => localStorage.getItem('pge_ms_client_id') || '',
+    () => localStorage.getItem('pge_ms_client_id') || '14f8fa0e-432c-4d1a-baea-a208d8eed1cd',
   )
   const [clientIdSalvo, setClientIdSalvo] = useState(false)
 
