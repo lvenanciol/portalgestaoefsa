@@ -4,6 +4,7 @@ import { BarChart3, Loader2, RefreshCw, AlertTriangle, Database, Building2 } fro
 import pb from '@/lib/pocketbase/client'
 import { ParecerIaCard } from '@/components/ParecerIaCard'
 import { Button } from '@/components/ui/button'
+import { useBotoes } from '@/services/botoes-service'
 import { cn } from '@/lib/utils'
 
 // Fase 8 — Desempenho por Unidade (REAL): faturamento e posição de títulos
@@ -91,6 +92,7 @@ function RankingList({
 }
 
 export default function DesempenhoPage() {
+  const { pode } = useBotoes()
   const [dados, setDados] = useState<FinReal | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
@@ -282,13 +284,15 @@ export default function DesempenhoPage() {
 
       <div className="flex items-center justify-between text-[11px] text-gray-400">
         <span>Fonte: Sankhya via edge proxy (DbExplorerSP) · janela 12 meses · TGFCAB/TGFFIN</span>
-        <button
-          type="button"
-          onClick={carregar}
-          className="inline-flex items-center gap-1 hover:text-gray-600 font-semibold"
-        >
-          <RefreshCw className="h-3 w-3" /> Atualizar
-        </button>
+        {pode('desempenho', 'atualizar') && (
+          <button
+            type="button"
+            onClick={carregar}
+            className="inline-flex items-center gap-1 hover:text-gray-600 font-semibold"
+          >
+            <RefreshCw className="h-3 w-3" /> Atualizar
+          </button>
+        )}
       </div>
     </div>
   )

@@ -119,6 +119,16 @@ export const BUTTON_GATES: TelaBotoes[] = [
     label: 'Árvore de Menus',
     buttons: [{ key: 'toggle_ativo', label: 'Ativar/desativar item (switch)' }],
   },
+  {
+    key: 'desempenho',
+    label: 'Desempenho por Unidade',
+    buttons: [{ key: 'atualizar', label: 'Atualizar dados' }],
+  },
+  {
+    key: 'financeiro_real',
+    label: 'Financeiro — aba Real (Sankhya)',
+    buttons: [{ key: 'atualizar', label: 'Atualizar dados (aba Real)' }],
+  },
 ]
 
 // botoesOcultos(p) → Record<screen, string[]>

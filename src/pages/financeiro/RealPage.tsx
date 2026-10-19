@@ -13,6 +13,7 @@ import { Database, Loader2, RefreshCw, AlertTriangle } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { ParecerIaCard } from '@/components/ParecerIaCard'
 import { Button } from '@/components/ui/button'
+import { useBotoes } from '@/services/botoes-service'
 import { cn } from '@/lib/utils'
 
 // Fase 6 — Aba "Real (Sankhya)": faturamento 12m por empresa, A/P e A/R
@@ -122,6 +123,7 @@ function AgingCard({ titulo, buckets }: { titulo: string; buckets?: [string, num
 }
 
 export default function RealPage() {
+  const { pode } = useBotoes()
   const [dados, setDados] = useState<FinReal | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
@@ -343,13 +345,15 @@ export default function RealPage() {
 
       <div className="flex items-center justify-between text-[11px] text-gray-400">
         <span>Fonte: Sankhya via edge proxy (DbExplorerSP) · janela 12 meses</span>
-        <button
-          type="button"
-          onClick={carregar}
-          className="inline-flex items-center gap-1 hover:text-gray-600 font-semibold"
-        >
-          <RefreshCw className="h-3 w-3" /> Atualizar
-        </button>
+        {pode('financeiro_real', 'atualizar') && (
+          <button
+            type="button"
+            onClick={carregar}
+            className="inline-flex items-center gap-1 hover:text-gray-600 font-semibold"
+          >
+            <RefreshCw className="h-3 w-3" /> Atualizar
+          </button>
+        )}
       </div>
     </div>
   )
