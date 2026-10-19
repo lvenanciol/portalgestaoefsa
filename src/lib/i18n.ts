@@ -517,6 +517,59 @@ function dicionarioInverso(): Record<string, string> {
   return inv
 }
 
+// COR-2: frases para passada de SUBSTRING — rótulos dentro de frases longas
+// (ex.: subtítulo "...balancete e fechamento — Real (Sankhya)", badge
+// "Real (Sankhya) + Importação"). Só termos inequívocos (≥8 chars ou
+// expressões multi-palavra) com borda de palavra.
+const FRASES_SUBST: [string, string][] = [
+  ['parecer ia — contas a pagar & receber', 'AI opinion — payables & receivables'],
+  ['pareceres ia — gemini flash', 'AI opinions — Gemini Flash'],
+  ['contas a pagar & receber', 'Payables & Receivables'],
+  ['a pagar & receber', 'Payables & Receivables'],
+  ['top unidades por receita', 'Top units by revenue'],
+  ['próximos compromissos', 'Upcoming commitments'],
+  ['alertas críticos', 'Critical alerts'],
+  ['buscar por nome ou documento', 'Search by name or document'],
+  ['carregando dashboard', 'Loading dashboard'],
+  ['todas as empresas', 'All companies'],
+  ['todos os status', 'All statuses'],
+  ['gerar parecer', 'Generate opinion'],
+  ['resumir com ia', 'Summarize with AI'],
+  ['menu do usuário', 'User menu'],
+  ['ver alertas', 'View alerts'],
+  ['abrir menu', 'Open menu'],
+  ['real (sankhya)', 'Actual (Sankhya)'],
+  ['fluxo de caixa', 'Cash flow'],
+  ['contas a pagar', 'Accounts payable'],
+  ['contas a receber', 'Accounts receivable'],
+  ['nova tarefa', 'New task'],
+  ['nova ata', 'New minutes'],
+  ['importação', 'Import'],
+  ['balancete', 'Trial balance'],
+  ['fechamento', 'Closing'],
+  ['vencimento', 'Due date'],
+  ['fornecedor', 'Vendor'],
+  ['documento', 'Document'],
+  ['calendário', 'Calendar'],
+  ['carregando', 'Loading'],
+  ['débito', 'Debit'],
+  ['crédito', 'Credit'],
+]
+
+let SUBST: { re: RegExp; alvo: string }[] | null = null
+
+function frasesSubst(): { re: RegExp; alvo: string }[] {
+  if (SUBST) return SUBST
+  SUBST = FRASES_SUBST.map(([pt, en]) => ({
+    re: new RegExp(
+      '(^|[^\\p{L}])' + pt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=[^\\p{L}]|$)',
+      'giu',
+    ),
+    alvo: en,
+  }))
+  return SUBST
+}
+
 function traduzirTexto(texto: string, idioma: Idioma): string {
   if (idioma === 'pt-BR') return texto
   const inv = dicionarioInverso()
@@ -527,7 +580,18 @@ function traduzirTexto(texto: string, idioma: Idioma): string {
     if (t[0] === t[0]?.toUpperCase()) return alvo[0].toUpperCase() + alvo.slice(1)
     return alvo.toLowerCase()
   }
-  return texto
+  // passada de substrings: frases conhecidas dentro de nós longos
+  let out = texto
+  for (const s of frasesSubst()) {
+    out = out.replace(s.re, (m: string, pre: string) => {
+      const corpo = m.slice(pre.length)
+      return (
+        pre +
+        (corpo[0] === corpo[0].toUpperCase() ? s.alvo[0].toUpperCase() + s.alvo.slice(1) : s.alvo)
+      )
+    })
+  }
+  return out
 }
 
 function traduzirArvore(raiz: Element | Document, idioma: Idioma) {
