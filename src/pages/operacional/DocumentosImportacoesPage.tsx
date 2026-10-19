@@ -638,12 +638,12 @@ export default function DocumentosImportacoesPage() {
                           </button>
                           <button
                             type="button"
-                            disabled
-                            title="Disponível na Fase 9"
-                            className="p-1.5 rounded-md text-gray-300 cursor-not-allowed"
+                            onClick={() => abrirDetalhe(r)}
+                            title="Ver detalhes e linhas importadas"
+                            className="p-1.5 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100"
                           >
-                            <Sparkles className="h-3.5 w-3.5" />
-                          </button>
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>{' '}
                           <button
                             type="button"
                             onClick={() => excluir(r)}
