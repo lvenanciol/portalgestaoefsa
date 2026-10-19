@@ -89,6 +89,69 @@ const MES_CURTO = [
   'Dez',
 ]
 
+// COR-3 F8: alertas de contratos (vigência efetiva = último aditivo) e
+// tarefas atrasadas usam coleções LOCAIS — função extraída para também
+// rodar no modo mock (Sankhya fora), senão o deslocamento por aditivo
+// desapareceria exatamente quando o ERP está indisponível.
+async function alertasLocais(als: CriticalAlert[]) {
+  try {
+    const contratos = await pb.collection('contratos').getFullList()
+    const aditivos = await pb.collection('contratos_aditivos').getFullList({ sort: '-data' })
+    const vigAdt: Record<string, string> = {}
+    for (const a of aditivos as any[]) {
+      if (a.contrato_id && a.nova_vigencia && !vigAdt[a.contrato_id])
+        vigAdt[a.contrato_id] = a.nova_vigencia
+    }
+    const hoje = new Date()
+    const fim = (c: any) => (vigAdt[c.id] || c.fim ? new Date(vigAdt[c.id] || c.fim) : null)
+    contratos
+      .filter((c: any) => {
+        const f = fim(c)
+        return f && c.status !== 'encerrado'
+      })
+      .sort((a: any, b: any) => fim(a)!.getTime() - fim(b)!.getTime())
+      .slice(0, 3)
+      .forEach((c: any) => {
+        const f = fim(c)!
+        const dias = Math.ceil((f.getTime() - hoje.getTime()) / 86400000)
+        if (dias <= 90) {
+          als.push({
+            id: 'alt-contr-' + c.id,
+            title:
+              dias <= 0
+                ? 'Contrato vencido'
+                : dias <= 30
+                  ? 'Contrato vence em até 30 dias'
+                  : dias <= 60
+                    ? 'Contrato vence em 31-60 dias'
+                    : 'Contrato vence em 61-90 dias',
+            description: c.parte + ' — ' + (c.titulo || '') + (vigAdt[c.id] ? ' (aditivo)' : ''),
+            detail: f.toLocaleDateString('pt-BR'),
+            severity: dias <= 30 ? 'critical' : 'warning',
+          })
+        }
+      })
+  } catch (_e) {
+    // contratos/aditivos sem permissão ou coleção vazia — segue sem alerta
+  }
+  try {
+    const hoje = new Date().toISOString().slice(0, 10)
+    const ts = await pb.collection('tarefas').getFullList({ filter: "status!='concluida'" })
+    const atrasadas = ts.filter((t: any) => t.prazo && String(t.prazo).slice(0, 10) < hoje)
+    if (atrasadas.length) {
+      als.push({
+        id: 'alt-tar',
+        title: atrasadas.length + ' tarefa(s) atrasada(s)',
+        description: 'Tarefas & Agenda',
+        detail: '',
+        severity: 'critical',
+      })
+    }
+  } catch (_e2) {
+    // tarefas sem permissão — segue
+  }
+}
+
 export default function Index() {
   const [fonte, setFonte] = useState<'real' | 'mock' | 'loading'>('loading')
   const [kpis, setKpis] = useState<KPI[]>([])
@@ -333,11 +396,14 @@ export default function Index() {
         )
         setFonte('real')
       } catch (_) {
+        // COR-3 F8: modo mock — alertas locais (contratos c/ aditivo + tarefas)
         setFonte('mock')
+        const alsMock: CriticalAlert[] = []
+        await alertasLocais(alsMock)
+        setAlertas(alsMock)
       }
     })()
   }, [])
-
   const activeCompany = COMPANIES[0]
 
   if (fonte === 'loading') {
