@@ -10,10 +10,20 @@ routerAdd(
     const auth = e.auth
     if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
     let isAdmin = false
+    let escopo = 'grupo'
+    let nomeEmpresaUser = ''
     try {
       const g = $app.findRecordById('grupos_permissao', auth.getString('grupo_id'))
       isAdmin = g.getString('nome') === 'Admin'
+      escopo = g.getString('escopo') || 'grupo'
     } catch (_) {}
+    // escopo empresa/unidade: resolve a empresa do usuário p/ filtrar Sankhya
+    if (!isAdmin && (escopo === 'empresa' || escopo === 'unidade')) {
+      try {
+        const emp = $app.findRecordById('empresas', auth.getString('empresa_id'))
+        nomeEmpresaUser = emp.getString('nome') || ''
+      } catch (_) {}
+    }
     if (!isAdmin && !e.hasSuperuserAuth()) {
       throw new ForbiddenError('Acesso restrito a administradores.')
     }
@@ -25,47 +35,64 @@ routerAdd(
     }
 
     const W = "ADD_MONTHS(TRUNC(SYSDATE,'MM'),-12)"
+    // escopo empresa/unidade: restrição por RAZAOABREV (empresas do PGE casam
+    // com RAZAOABREV da TSIEMP; queries com TSIEMP filtram no SQL, as demais
+    // são filtradas pós-consulta pelas CODEMP permitidas)
+    let filtroEmpSql = ''
+    if (nomeEmpresaUser)
+      filtroEmpSql = " AND e.RAZAOABREV = '" + nomeEmpresaUser.replace(/'/g, "''") + "' "
     const SQLS = {
       empresas: 'SELECT CODEMP, RAZAOABREV FROM SANKHYA.TSIEMP ORDER BY CODEMP',
       fat:
-        "SELECT TO_CHAR(DTNEG,'YYYY-MM') MES, CODEMP, SUM(VLRNOTA) TOT FROM TGFCAB WHERE DTNEG >= " +
+        "SELECT TO_CHAR(DTNEG,'YYYY-MM') MES, f.CODEMP, SUM(f.VLRNOTA) TOT FROM TGFCAB f JOIN SANKHYA.TSIEMP e ON e.CODEMP=f.CODEMP WHERE f.DTNEG >= " +
         W +
-        " AND STATUSNOTA='L' GROUP BY TO_CHAR(DTNEG,'YYYY-MM'), CODEMP ORDER BY 1",
+        " AND f.STATUSNOTA='L'" +
+        filtroEmpSql +
+        " GROUP BY TO_CHAR(f.DTNEG,'YYYY-MM'), f.CODEMP ORDER BY 1",
       ap_mensal:
-        "SELECT TO_CHAR(DTVENC,'YYYY-MM') MES, SUM(VLRDESDOB) TOT, COUNT(*) N FROM TGFFIN WHERE RECDESP=-1 AND DHBAIXA IS NULL AND DTVENC >= " +
+        "SELECT TO_CHAR(f.DTVENC,'YYYY-MM') MES, SUM(f.VLRDESDOB) TOT, COUNT(*) N FROM TGFFIN f JOIN SANKHYA.TSIEMP e ON e.CODEMP=f.CODEMP WHERE f.RECDESP=-1 AND f.DHBAIXA IS NULL AND f.DTVENC >= " +
         W +
-        " GROUP BY TO_CHAR(DTVENC,'YYYY-MM') ORDER BY 1",
+        filtroEmpSql +
+        " GROUP BY TO_CHAR(f.DTVENC,'YYYY-MM') ORDER BY 1",
       ar_mensal:
-        "SELECT TO_CHAR(DTVENC,'YYYY-MM') MES, SUM(VLRDESDOB) TOT, COUNT(*) N FROM TGFFIN WHERE RECDESP=1 AND DHBAIXA IS NULL AND DTVENC >= " +
+        "SELECT TO_CHAR(f.DTVENC,'YYYY-MM') MES, SUM(f.VLRDESDOB) TOT, COUNT(*) N FROM TGFFIN f JOIN SANKHYA.TSIEMP e ON e.CODEMP=f.CODEMP WHERE f.RECDESP=1 AND f.DHBAIXA IS NULL AND f.DTVENC >= " +
         W +
-        " GROUP BY TO_CHAR(DTVENC,'YYYY-MM') ORDER BY 1",
+        filtroEmpSql +
+        " GROUP BY TO_CHAR(f.DTVENC,'YYYY-MM') ORDER BY 1",
       ap_aging:
-        "SELECT CASE WHEN DTVENC < TRUNC(SYSDATE) THEN 'vencido' WHEN DTVENC <= TRUNC(SYSDATE)+30 THEN '0-30d' WHEN DTVENC <= TRUNC(SYSDATE)+60 THEN '31-60d' ELSE '+60d' END FAIXA, SUM(VLRDESDOB) TOT, COUNT(*) N FROM TGFFIN WHERE RECDESP=-1 AND DHBAIXA IS NULL AND DTVENC >= " +
+        "SELECT CASE WHEN f.DTVENC < TRUNC(SYSDATE) THEN 'vencido' WHEN f.DTVENC <= TRUNC(SYSDATE)+30 THEN '0-30d' WHEN f.DTVENC <= TRUNC(SYSDATE)+60 THEN '31-60d' ELSE '+60d' END FAIXA, SUM(f.VLRDESDOB) TOT, COUNT(*) N FROM TGFFIN f JOIN SANKHYA.TSIEMP e ON e.CODEMP=f.CODEMP WHERE f.RECDESP=-1 AND f.DHBAIXA IS NULL AND f.DTVENC >= " +
         W +
-        " GROUP BY CASE WHEN DTVENC < TRUNC(SYSDATE) THEN 'vencido' WHEN DTVENC <= TRUNC(SYSDATE)+30 THEN '0-30d' WHEN DTVENC <= TRUNC(SYSDATE)+60 THEN '31-60d' ELSE '+60d' END",
+        filtroEmpSql +
+        " GROUP BY CASE WHEN f.DTVENC < TRUNC(SYSDATE) THEN 'vencido' WHEN f.DTVENC <= TRUNC(SYSDATE)+30 THEN '0-30d' WHEN f.DTVENC <= TRUNC(SYSDATE)+60 THEN '31-60d' ELSE '+60d' END",
       ar_aging:
-        "SELECT CASE WHEN DTVENC < TRUNC(SYSDATE) THEN 'vencido' WHEN DTVENC <= TRUNC(SYSDATE)+30 THEN '0-30d' WHEN DTVENC <= TRUNC(SYSDATE)+60 THEN '31-60d' ELSE '+60d' END FAIXA, SUM(VLRDESDOB) TOT, COUNT(*) N FROM TGFFIN WHERE RECDESP=1 AND DHBAIXA IS NULL AND DTVENC >= " +
+        "SELECT CASE WHEN f.DTVENC < TRUNC(SYSDATE) THEN 'vencido' WHEN f.DTVENC <= TRUNC(SYSDATE)+30 THEN '0-30d' WHEN f.DTVENC <= TRUNC(SYSDATE)+60 THEN '31-60d' ELSE '+60d' END FAIXA, SUM(f.VLRDESDOB) TOT, COUNT(*) N FROM TGFFIN f JOIN SANKHYA.TSIEMP e ON e.CODEMP=f.CODEMP WHERE f.RECDESP=1 AND f.DHBAIXA IS NULL AND f.DTVENC >= " +
         W +
-        " GROUP BY CASE WHEN DTVENC < TRUNC(SYSDATE) THEN 'vencido' WHEN DTVENC <= TRUNC(SYSDATE)+30 THEN '0-30d' WHEN DTVENC <= TRUNC(SYSDATE)+60 THEN '31-60d' ELSE '+60d' END",
+        filtroEmpSql +
+        " GROUP BY CASE WHEN f.DTVENC < TRUNC(SYSDATE) THEN 'vencido' WHEN f.DTVENC <= TRUNC(SYSDATE)+30 THEN '0-30d' WHEN f.DTVENC <= TRUNC(SYSDATE)+60 THEN '31-60d' ELSE '+60d' END",
       ap_top:
-        'SELECT * FROM (SELECT p.NOMEPARC NOME, SUM(f.VLRDESDOB) TOT FROM TGFFIN f JOIN SANKHYA.TGFPAR p ON p.CODPARC=f.CODPARC WHERE f.RECDESP=-1 AND f.DHBAIXA IS NULL AND f.DTVENC >= ' +
+        'SELECT * FROM (SELECT p.NOMEPARC NOME, SUM(f.VLRDESDOB) TOT FROM TGFFIN f JOIN SANKHYA.TSIEMP eu ON eu.CODEMP=f.CODEMP JOIN SANKHYA.TGFPAR p ON p.CODPARC=f.CODPARC WHERE f.RECDESP=-1 AND f.DHBAIXA IS NULL AND f.DTVENC >= ' +
         W +
+        filtroEmpSql +
         ' GROUP BY p.NOMEPARC ORDER BY SUM(f.VLRDESDOB) DESC) WHERE ROWNUM <= 5',
       ar_top:
-        'SELECT * FROM (SELECT p.NOMEPARC NOME, SUM(f.VLRDESDOB) TOT FROM TGFFIN f JOIN SANKHYA.TGFPAR p ON p.CODPARC=f.CODPARC WHERE f.RECDESP=1 AND f.DHBAIXA IS NULL AND f.DTVENC >= ' +
+        'SELECT * FROM (SELECT p.NOMEPARC NOME, SUM(f.VLRDESDOB) TOT FROM TGFFIN f JOIN SANKHYA.TSIEMP eu ON eu.CODEMP=f.CODEMP JOIN SANKHYA.TGFPAR p ON p.CODPARC=f.CODPARC WHERE f.RECDESP=1 AND f.DHBAIXA IS NULL AND f.DTVENC >= ' +
         W +
+        filtroEmpSql +
         ' GROUP BY p.NOMEPARC ORDER BY SUM(f.VLRDESDOB) DESC) WHERE ROWNUM <= 5',
       fluxo:
-        "SELECT TO_CHAR(DHBAIXA,'YYYY-MM') MES, SUM(CASE WHEN RECDESP=1 THEN VLRDESDOB ELSE 0 END) ENT, SUM(CASE WHEN RECDESP=-1 THEN VLRDESDOB ELSE 0 END) SAI FROM TGFFIN WHERE DHBAIXA IS NOT NULL AND DHBAIXA >= " +
+        "SELECT TO_CHAR(f.DHBAIXA,'YYYY-MM') MES, SUM(CASE WHEN f.RECDESP=1 THEN f.VLRDESDOB ELSE 0 END) ENT, SUM(CASE WHEN f.RECDESP=-1 THEN f.VLRDESDOB ELSE 0 END) SAI FROM TGFFIN f JOIN SANKHYA.TSIEMP e ON e.CODEMP=f.CODEMP WHERE f.DHBAIXA IS NOT NULL AND f.DHBAIXA >= " +
         W +
-        " GROUP BY TO_CHAR(DHBAIXA,'YYYY-MM') ORDER BY 1",
+        filtroEmpSql +
+        " GROUP BY TO_CHAR(f.DHBAIXA,'YYYY-MM') ORDER BY 1",
       ap_por_empresa:
         'SELECT e.CODEMP, e.RAZAOABREV, SUM(f.VLRDESDOB) TOT FROM TGFFIN f JOIN SANKHYA.TSIEMP e ON e.CODEMP=f.CODEMP WHERE f.RECDESP=-1 AND f.DHBAIXA IS NULL AND f.DTVENC >= ' +
         W +
+        filtroEmpSql +
         ' GROUP BY e.CODEMP, e.RAZAOABREV ORDER BY 3 DESC',
       ar_por_empresa:
         'SELECT e.CODEMP, e.RAZAOABREV, SUM(f.VLRDESDOB) TOT FROM TGFFIN f JOIN SANKHYA.TSIEMP e ON e.CODEMP=f.CODEMP WHERE f.RECDESP=1 AND f.DHBAIXA IS NULL AND f.DTVENC >= ' +
         W +
+        filtroEmpSql +
         ' GROUP BY e.CODEMP, e.RAZAOABREV ORDER BY 3 DESC',
     }
 

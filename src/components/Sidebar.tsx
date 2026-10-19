@@ -25,6 +25,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { carregarPermissoes, menuVisivel, Permissoes } from '@/services/permissoes-service'
 import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
+import { idiomaSalvo, traduzir } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
 interface NavSection {
@@ -82,10 +83,18 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
   const location = useLocation()
   const [permissoes, setPermissoes] = useState<Permissoes | null>(null)
   const [menusDb, setMenusDb] = useState<any[] | null>(null)
+  const [idiomaTick, setIdiomaTick] = useState(0)
 
   useEffect(() => {
     carregarPermissoes().then(setPermissoes)
   }, [user])
+
+  // i18n: re-renderiza quando o idioma muda (evento global disparado pelas Configurações)
+  useEffect(() => {
+    const h = () => setIdiomaTick((t) => t + 1)
+    window.addEventListener('pge_idioma_change', h)
+    return () => window.removeEventListener('pge_idioma_change', h)
+  }, [])
 
   // Fase 10 — sidebar DINÂMICA: lê a árvore de menus do banco (CRUD reflete
   // em tempo real via realtime) e mescla com o fallback estático por rota.
@@ -187,6 +196,26 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
                     item.rota === '/'
                       ? location.pathname === '/'
                       : location.pathname.startsWith(item.rota)
+                  // i18n: rótulo do dicionário pela rota (fallback = label do banco/estático)
+                  const CHAVES_I18N: Record<string, string> = {
+                    '/': 'dashboard',
+                    '/financeiro': 'financeiro',
+                    '/desempenho': 'desempenho',
+                    '/indicadores': 'indicadores',
+                    '/documentos': 'documentos',
+                    '/tarefas': 'tarefas',
+                    '/projetos': 'projetos',
+                    '/atas': 'atas',
+                    '/emails': 'emails',
+                    '/contratos': 'contratos',
+                    '/power-bi': 'powerbi',
+                    '/ia': 'ia',
+                    '/menus': 'menus',
+                    '/acessos': 'acessos',
+                    '/configuracoes': 'configuracoes',
+                  }
+                  const chave = CHAVES_I18N[item.rota]
+                  const rotulo = chave ? traduzir(idiomaSalvo(), chave) : item.label
 
                   return (
                     <button
@@ -215,7 +244,7 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
                             : 'text-emerald-100/70 group-hover:text-white',
                         )}
                       />
-                      <span className="truncate">{item.label}</span>
+                      <span className="truncate">{rotulo}</span>
                     </button>
                   )
                 })}

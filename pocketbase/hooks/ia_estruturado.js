@@ -74,6 +74,11 @@ routerAdd(
       rec.set('status', 'rascunho')
       rec.set('observacao', '')
       rec.set('criado_por', auth.getString('email'))
+      rec.set('modelo', 'fast')
+      // custo estimado: tokens ≈ chars/4 (entrada+saída); gateway $ai não expõe usage
+      const tokensIn = Math.ceil((userMsg.length + sys.length) / 4)
+      const tokensOut = Math.ceil(texto.length / 4)
+      rec.set('observacao', 'tokens_est:~' + (tokensIn + tokensOut))
       $app.save(rec)
       parecerId = rec.id
     } catch (_) {}

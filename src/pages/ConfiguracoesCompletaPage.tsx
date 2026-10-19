@@ -191,6 +191,8 @@ export default function ConfiguracoesCompletaPage() {
   const trocarIdioma = (i: Idioma) => {
     setIdioma(i)
     salvarIdioma(i)
+    // notifica módulos abertos (sidebar etc.) sem reload
+    window.dispatchEvent(new Event('pge_idioma_change'))
   }
 
   const trocarPadrao = (p: PadraoContabil) => {

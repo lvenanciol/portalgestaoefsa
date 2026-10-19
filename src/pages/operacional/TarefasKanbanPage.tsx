@@ -118,6 +118,9 @@ export default function TarefasKanbanPage() {
       prioridade_p: 'P2',
       status_kanban: 'a_fazer',
       descricao: '',
+      vinculo_tipo: '',
+      vinculo_id: '',
+      empresa: '',
     })
     setEditando(null)
     setDialog(true)
@@ -133,6 +136,9 @@ export default function TarefasKanbanPage() {
         prioridade_p: form.prioridade_p,
         status_kanban: form.status_kanban,
         descricao: form.descricao,
+        vinculo_tipo: form.vinculo_tipo || '',
+        vinculo_id: form.vinculo_id || '',
+        empresa: form.empresa || '',
         prioridade:
           form.prioridade_p === 'P1' ? 'alta' : form.prioridade_p === 'P2' ? 'media' : 'baixa',
         status:
@@ -369,6 +375,15 @@ export default function TarefasKanbanPage() {
                       <div className="text-[13px] font-semibold text-gray-900 leading-snug">
                         {t.titulo}
                       </div>
+                      {t.vinculo_tipo && (
+                        <span className="inline-flex mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          {t.vinculo_tipo === 'ata'
+                            ? 'de Ata'
+                            : t.vinculo_tipo === 'projeto'
+                              ? 'de Projeto'
+                              : t.vinculo_tipo}
+                        </span>
+                      )}
                       <div className="flex items-center justify-between mt-2 text-[10px] text-gray-400">
                         <span>{t.responsavel || '—'}</span>
                         <span className="tabular-nums">{fmtData(t.prazo)}</span>
@@ -604,6 +619,53 @@ export default function TarefasKanbanPage() {
                 rows={2}
               />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Vínculo (origem)
+                </Label>
+                <Select
+                  value={form.vinculo_tipo || ''}
+                  onValueChange={(v) =>
+                    setForm({ ...form, vinculo_tipo: v, vinculo_id: v ? form.vinculo_id : '' })
+                  }
+                >
+                  <SelectTrigger className="h-10 bg-gray-50">
+                    <SelectValue placeholder="Nenhum" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value=" ">Nenhum</SelectItem>
+                    <SelectItem value="ata">Ata</SelectItem>
+                    <SelectItem value="projeto">Projeto</SelectItem>
+                    <SelectItem value="contrato">Contrato</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Empresa (escopo)
+                </Label>
+                <Input
+                  value={form.empresa || ''}
+                  onChange={(e) => setForm({ ...form, empresa: e.target.value })}
+                  placeholder="Extrafruti / Casafruti / FoldBox"
+                  className="h-10 bg-gray-50"
+                />
+              </div>
+            </div>
+            {form.vinculo_tipo && form.vinculo_tipo !== ' ' && (
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  ID do vínculo (opcional)
+                </Label>
+                <Input
+                  value={form.vinculo_id || ''}
+                  onChange={(e) => setForm({ ...form, vinculo_id: e.target.value })}
+                  placeholder="deixe vazio se não souber o id"
+                  className="h-10 bg-gray-50"
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog(false)} className="h-9">
