@@ -20,9 +20,6 @@
 // Toda a lógica vive DENTRO de cada callback (a VM do PocketBase executa
 // callbacks em pools separados — declarações de topo não são visíveis lá).
 
-const SJ_JANELA_DIAS = 30
-const SJ_RETRO_MAX_MESES = 12
-
 // Cron diário 06:00 BRT (09:00 UTC) — cadência inalterada (COR-1)
 cronAdd('sankhya_sync_diario', '0 9 * * *', () => {
   const maxJanelas = 0
@@ -135,7 +132,7 @@ cronAdd('sankhya_sync_diario', '0 9 * * *', () => {
   // ---- intervalo [início, hoje]
   const hoje = new Date()
   hoje.setUTCHours(0, 0, 0, 0)
-  const piso = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - SJ_RETRO_MAX_MESES, 1))
+  const piso = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - 12, 1))
   let inicio = null
   let wmRec = null
   try {
@@ -157,7 +154,7 @@ cronAdd('sankhya_sync_diario', '0 9 * * *', () => {
   let s = new Date(inicio.getTime())
   while (s.getTime() <= hoje.getTime()) {
     const f = new Date(s.getTime())
-    f.setUTCDate(f.getUTCDate() + SJ_JANELA_DIAS - 1)
+    f.setUTCDate(f.getUTCDate() + 30 - 1)
     if (f.getTime() > hoje.getTime()) f.setTime(hoje.getTime())
     lista.push([new Date(s.getTime()), new Date(f.getTime())])
     s = new Date(f.getTime())
@@ -184,7 +181,7 @@ cronAdd('sankhya_sync_diario', '0 9 * * *', () => {
       ok: true,
       gerado_em: '',
       incremental: true,
-      meses_janela: SJ_RETRO_MAX_MESES,
+      meses_janela: 12,
       dados: {},
       falhas: [],
     }
@@ -332,7 +329,7 @@ cronAdd('sankhya_sync_diario', '0 9 * * *', () => {
   function salvarSnapshot() {
     snap.gerado_em = new DateTime().string()
     snap.incremental = true
-    snap.meses_janela = SJ_RETRO_MAX_MESES
+    snap.meses_janela = 12
     try {
       if (snapRec) {
         snapRec.set('payload', JSON.stringify(snap))
@@ -636,9 +633,7 @@ routerAdd(
     // ---- intervalo [início, hoje]
     const hoje = new Date()
     hoje.setUTCHours(0, 0, 0, 0)
-    const piso = new Date(
-      Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - SJ_RETRO_MAX_MESES, 1),
-    )
+    const piso = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - 12, 1))
     let inicio = null
     let wmRec = null
     try {
@@ -660,7 +655,7 @@ routerAdd(
     let s = new Date(inicio.getTime())
     while (s.getTime() <= hoje.getTime()) {
       const f = new Date(s.getTime())
-      f.setUTCDate(f.getUTCDate() + SJ_JANELA_DIAS - 1)
+      f.setUTCDate(f.getUTCDate() + 30 - 1)
       if (f.getTime() > hoje.getTime()) f.setTime(hoje.getTime())
       lista.push([new Date(s.getTime()), new Date(f.getTime())])
       s = new Date(f.getTime())
@@ -687,7 +682,7 @@ routerAdd(
         ok: true,
         gerado_em: '',
         incremental: true,
-        meses_janela: SJ_RETRO_MAX_MESES,
+        meses_janela: 12,
         dados: {},
         falhas: [],
       }
@@ -835,7 +830,7 @@ routerAdd(
     function salvarSnapshot() {
       snap.gerado_em = new DateTime().string()
       snap.incremental = true
-      snap.meses_janela = SJ_RETRO_MAX_MESES
+      snap.meses_janela = 12
       try {
         if (snapRec) {
           snapRec.set('payload', JSON.stringify(snap))
