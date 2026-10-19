@@ -14,6 +14,7 @@ import {
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
 import { marcaAtiva } from '@/pages/ConfiguracoesCompletaPage'
+import { aplicarIdiomaNoDOM, type Idioma } from '@/lib/i18n'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -143,6 +144,8 @@ export function Topbar() {
     } catch (_) {
       /* localStorage indisponível — segue sem persistir */
     }
+    // COR-2: tradutor de DOM em runtime — cobre TODA a página sem reload
+    aplicarIdiomaNoDOM(k as Idioma)
     window.dispatchEvent(new Event('pge_idioma_change'))
   }
 

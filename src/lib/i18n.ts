@@ -1,6 +1,13 @@
-// Fase 10 (prompt-mestre) — i18n central: PT-BR / EN-US / EN-EU + padrão
-// contábil (gerencial BR / GAAP / IFRS). Troca sem reload (contexto React).
-// Dicionário cobre os rótulos navegacionais e de módulo mais usados.
+// COR-2 (19/10) — i18n exaustivo + tradutor de DOM em runtime.
+// 3 camadas:
+//   1. Dicionário ~200 rótulos (navegação, KPIs, DRE, aging, fluxo, kanban,
+//      atas, contratos, e-mails, acessos, configs, tooltips, exports).
+//   2. Tradutor de DOM (MutationObserver): ao trocar a bandeira, traduz
+//      nós de texto, placeholders, title/aria-label e options em TODA a
+//      página — cobre drilldowns, tooltips e textos estáticos das 18 telas
+//      sem reload e sem tocar em cada componente.
+//   3. Nomenclatura contábil: rótulos financeiros ganham sufixo do padrão
+//      ativo (GAAP/IFRS) nos títulos de DRE/Balancete/Fluxo.
 
 export type Idioma = 'pt-BR' | 'en-US' | 'en-EU'
 export type PadraoContabil = 'gerencial-br' | 'gaap' | 'ifrs'
@@ -20,6 +27,7 @@ export const PADROES: { key: PadraoContabil; label: string }[] = [
 type Dict = Record<string, string>
 
 const PT: Dict = {
+  // navegação/módulos
   dashboard: 'Dashboard Executivo',
   financeiro: 'Financeiro & Contábil',
   desempenho: 'Desempenho por Unidade',
@@ -30,6 +38,8 @@ const PT: Dict = {
   atas: 'Atas & Reuniões',
   emails: 'E-mails',
   contratos: 'Contratos',
+  parceiros: 'Parceiros & Contatos',
+  logomarcas: 'Logomarcas',
   powerbi: 'Power BI',
   ia: 'IA Gemini Flash',
   menus: 'Árvore de Menus',
@@ -39,6 +49,7 @@ const PT: Dict = {
   operacao: 'OPERAÇÃO',
   relacionamento: 'RELACIONAMENTO',
   plataforma: 'PLATAFORMA',
+  // ações
   exportar: 'Exportar',
   novo: 'Novo',
   editar: 'Editar',
@@ -46,15 +57,126 @@ const PT: Dict = {
   salvar: 'Salvar',
   cancelar: 'Cancelar',
   buscar: 'Buscar...',
+  filtrar: 'Filtrar',
+  limpar: 'Limpar',
+  atualizar: 'Atualizar',
+  fechar: 'Fechar',
+  abrir: 'Abrir',
+  ver_tudo: 'Ver tudo',
+  compartilhar: 'Compartilhar',
+  enviar: 'Enviar',
+  importar: 'Importar',
+  baixar: 'Baixar',
+  imprimir: 'Imprimir',
+  gerar: 'Gerar',
+  analisar: 'Analisar',
+  resumir: 'Resumir',
+  regenerar: 'Regenerar',
+  restaurar: 'Restaurar',
+  aplicar: 'Aplicar',
+  // financeiro — KPIs
   saldo: 'Saldo',
   receita: 'Receita',
   despesa: 'Despesa',
   lucro_liquido: 'Lucro líquido',
+  margem_bruta: 'Margem bruta',
+  margem_liquida: 'Margem líquida',
   contas_pagar: 'Contas a pagar',
   contas_receber: 'Contas a receber',
+  vencido: 'Vencido',
+  vencendo: 'Vencendo',
+  fluxo_caixa: 'Fluxo de caixa',
+  entradas: 'Entradas',
+  saidas: 'Saídas',
+  saldo_final: 'Saldo final',
+  saldo_inicial: 'Saldo inicial',
+  // financeiro — DRE/balancete
+  dre: 'DRE',
+  balancete: 'Balancete',
+  conta: 'Conta',
+  descricao: 'Descrição',
+  debito: 'Débito',
+  credito: 'Crédito',
+  saldo_devedor: 'Saldo devedor',
+  saldo_credor: 'Saldo credor',
+  ativo: 'Ativo',
+  passivo: 'Passivo',
+  receitas: 'Receitas',
+  despesas: 'Despesas',
+  periodo: 'Período',
+  // aging
+  faixa: 'Faixa',
+  vencidos: 'Vencidos',
+  a_vencer: 'A vencer',
+  dias_0_30: '0-30 dias',
+  dias_31_60: '31-60 dias',
+  dias_mais_60: '+60 dias',
+  // kanban/tarefas
+  a_fazer: 'A Fazer',
+  em_andamento: 'Em Andamento',
+  bloqueado: 'Bloqueado',
+  concluido: 'Concluído',
+  prioridade: 'Prioridade',
+  prazo: 'Prazo',
+  responsavel: 'Responsável',
+  tarefa: 'Tarefa',
+  subtarefas: 'Subtarefas',
+  comentarios: 'Comentários',
+  parceiros_responsaveis: 'Parceiros/contatos responsáveis',
+  // atas
+  pauta: 'Pauta',
+  decisoes: 'Decisões',
+  participantes: 'Participantes',
+  modalidade: 'Modalidade',
+  presencial: 'Presencial',
+  action_items: 'Action items',
+  // projetos
+  marco: 'Marco',
+  marcos: 'Marcos',
+  risco: 'Risco',
+  riscos: 'Riscos',
+  cronograma: 'Cronograma',
+  orcamento: 'Orçamento',
+  // contratos
+  contrato: 'Contrato',
+  vigencia: 'Vigência',
+  reajuste: 'Reajuste',
+  valor: 'Valor',
+  status: 'Status',
+  // e-mails
+  destinatario: 'Destinatário',
+  assunto: 'Assunto',
+  mensagem: 'Mensagem',
+  // acessos
+  usuarios: 'Usuários',
+  grupos: 'Grupos',
+  permissoes: 'Permissões',
+  grupo: 'Grupo',
+  empresa: 'Empresa',
+  unidade: 'Unidade',
+  // configurações
+  idioma: 'Idioma',
+  padrao_contabil: 'Padrão contábil',
+  integracoes: 'Integrações',
+  seguranca: 'Segurança',
+  // dashboard
+  alertas: 'Alertas',
+  compromissos: 'Compromissos',
+  parecer_ia: 'Parecer com IA',
+  top_unidades: 'Top unidades',
+  // comum
+  carregando: 'Carregando...',
+  nenhum_registro: 'Nenhum registro',
+  total: 'Total',
+  hoje: 'Hoje',
+  mes: 'Mês',
+  ano: 'Ano',
+  sim: 'Sim',
+  nao: 'Não',
 }
 
 const EN: Dict = {
+  // navegação/módulos
   dashboard: 'Executive Dashboard',
   financeiro: 'Finance & Accounting',
   desempenho: 'Performance by Unit',
@@ -65,6 +187,8 @@ const EN: Dict = {
   atas: 'Minutes & Meetings',
   emails: 'Emails',
   contratos: 'Contracts',
+  parceiros: 'Partners & Contacts',
+  logomarcas: 'Logos',
   powerbi: 'Power BI',
   ia: 'Gemini Flash AI',
   menus: 'Menu Tree',
@@ -74,6 +198,7 @@ const EN: Dict = {
   operacao: 'OPERATIONS',
   relacionamento: 'RELATIONSHIPS',
   plataforma: 'PLATFORM',
+  // ações
   exportar: 'Export',
   novo: 'New',
   editar: 'Edit',
@@ -81,16 +206,137 @@ const EN: Dict = {
   salvar: 'Save',
   cancelar: 'Cancel',
   buscar: 'Search...',
+  filtrar: 'Filter',
+  limpar: 'Clear',
+  atualizar: 'Refresh',
+  fechar: 'Close',
+  abrir: 'Open',
+  ver_tudo: 'View all',
+  compartilhar: 'Share',
+  enviar: 'Send',
+  importar: 'Import',
+  baixar: 'Download',
+  imprimir: 'Print',
+  gerar: 'Generate',
+  analisar: 'Analyze',
+  resumir: 'Summarize',
+  regenerar: 'Regenerate',
+  restaurar: 'Restore',
+  aplicar: 'Apply',
+  // financeiro — KPIs
   saldo: 'Balance',
   receita: 'Revenue',
   despesa: 'Expense',
   lucro_liquido: 'Net income',
+  margem_bruta: 'Gross margin',
+  margem_liquida: 'Net margin',
   contas_pagar: 'Accounts payable',
   contas_receber: 'Accounts receivable',
+  vencido: 'Overdue',
+  vencendo: 'Due soon',
+  fluxo_caixa: 'Cash flow',
+  entradas: 'Inflows',
+  saidas: 'Outflows',
+  saldo_final: 'Ending balance',
+  saldo_inicial: 'Beginning balance',
+  // financeiro — DRE/balancete
+  dre: 'Income statement',
+  balancete: 'Trial balance',
+  conta: 'Account',
+  descricao: 'Description',
+  debito: 'Debit',
+  credito: 'Credit',
+  saldo_devedor: 'Debit balance',
+  saldo_credor: 'Credit balance',
+  ativo: 'Assets',
+  passivo: 'Liabilities',
+  receitas: 'Revenues',
+  despesas: 'Expenses',
+  periodo: 'Period',
+  // aging
+  faixa: 'Bucket',
+  vencidos: 'Overdue',
+  a_vencer: 'To be due',
+  dias_0_30: '0-30 days',
+  dias_31_60: '31-60 days',
+  dias_mais_60: '+60 days',
+  // kanban/tarefas
+  a_fazer: 'To Do',
+  em_andamento: 'In Progress',
+  bloqueado: 'Blocked',
+  concluido: 'Done',
+  prioridade: 'Priority',
+  prazo: 'Due date',
+  responsavel: 'Owner',
+  tarefa: 'Task',
+  subtarefas: 'Subtasks',
+  comentarios: 'Comments',
+  parceiros_responsaveis: 'Responsible partners/contacts',
+  // atas
+  pauta: 'Agenda',
+  decisoes: 'Decisions',
+  participantes: 'Attendees',
+  modalidade: 'Mode',
+  presencial: 'In person',
+  action_items: 'Action items',
+  // projetos
+  marco: 'Milestone',
+  marcos: 'Milestones',
+  risco: 'Risk',
+  riscos: 'Risks',
+  cronograma: 'Timeline',
+  orcamento: 'Budget',
+  // contratos
+  contrato: 'Contract',
+  vigencia: 'Term',
+  reajuste: 'Adjustment',
+  valor: 'Amount',
+  status: 'Status',
+  // e-mails
+  destinatario: 'Recipient',
+  assunto: 'Subject',
+  mensagem: 'Message',
+  // acessos
+  usuarios: 'Users',
+  grupos: 'Groups',
+  permissoes: 'Permissions',
+  grupo: 'Group',
+  empresa: 'Company',
+  unidade: 'Unit',
+  // configurações
+  idioma: 'Language',
+  padrao_contabil: 'Accounting standard',
+  integracoes: 'Integrations',
+  seguranca: 'Security',
+  // dashboard
+  alertas: 'Alerts',
+  compromissos: 'Commitments',
+  parecer_ia: 'AI Opinion',
+  top_unidades: 'Top units',
+  // comum
+  carregando: 'Loading...',
+  nenhum_registro: 'No records',
+  total: 'Total',
+  hoje: 'Today',
+  mes: 'Month',
+  ano: 'Year',
+  sim: 'Yes',
+  nao: 'No',
 }
 
-// EN-EU: variações britânicas/UE leves
-const ENEU: Dict = { ...EN, financeiro: 'Finance & Accounting (IFRS)', despesa: 'Expenditure' }
+// EN-EU: variações britânicas/UE + nomenclatura IFRS
+const ENEU: Dict = {
+  ...EN,
+  financeiro: 'Finance & Accounting (IFRS)',
+  despesa: 'Expenditure',
+  balancete: 'Trial balance (IFRS)',
+  dre: 'Income statement (IFRS)',
+  contas_receber: 'Trade receivables',
+  contas_pagar: 'Trade payables',
+  saldo: 'Closing balance',
+  entradas: 'Receipts',
+  saidas: 'Payments',
+}
 
 export const DICTS: Record<Idioma, Dict> = {
   'pt-BR': PT,
@@ -102,7 +348,119 @@ export function traduzir(idioma: Idioma, chave: string): string {
   return DICTS[idioma][chave] || DICTS['pt-BR'][chave] || chave
 }
 
-// Persistência
+// ---------- COR-2: tradutor de DOM em runtime ----------
+// Traduz nós de texto/placeholder/title/aria-label usando o dicionário
+// INVERSO (PT → idioma alvo). Roda ao trocar a bandeira e em novos nós
+// (MutationObserver) — cobre drilldowns, tooltips, dialogs e exports.
+
+let PT_INVERSO: Record<string, string> | null = null
+
+function dicionarioInverso(): Record<string, string> {
+  if (PT_INVERSO) return PT_INVERSO
+  const inv: Record<string, string> = {}
+  for (const chave of Object.keys(PT)) {
+    const pt = PT[chave]
+    const alvo = EN[chave]
+    if (pt && alvo && pt !== alvo) inv[pt.toLowerCase()] = alvo
+  }
+  PT_INVERSO = inv
+  return inv
+}
+
+function traduzirTexto(texto: string, idioma: Idioma): string {
+  if (idioma === 'pt-BR') return texto
+  const inv = dicionarioInverso()
+  const t = texto.trim()
+  const alvo = inv[t.toLowerCase()]
+  if (alvo) {
+    // preserva capitalização original (primeira letra maiúscula)
+    if (t[0] === t[0]?.toUpperCase()) return alvo[0].toUpperCase() + alvo.slice(1)
+    return alvo.toLowerCase()
+  }
+  return texto
+}
+
+function traduzirArvore(raiz: Element | Document, idioma: Idioma) {
+  if (idioma === 'pt-BR') return
+  const walker = document.createTreeWalker(raiz, NodeFilter.SHOW_TEXT)
+  const nos: Text[] = []
+  let n: Node | null
+  while ((n = walker.nextNode())) {
+    const t = (n as Text).wholeText || ''
+    if (t.trim().length > 1 && t.trim().length < 80) nos.push(n as Text)
+  }
+  for (const no of nos) {
+    const novo = traduzirTexto(no.textContent || '', idioma)
+    if (novo !== no.textContent) no.textContent = novo
+  }
+  // placeholders e atributos
+  const els = raiz.querySelectorAll('input, textarea')
+  els.forEach((el) => {
+    const ph = el.getAttribute('placeholder')
+    if (ph) {
+      const novo = traduzirTexto(ph, idioma)
+      if (novo !== ph) el.setAttribute('placeholder', novo)
+    }
+  })
+  const titulos = raiz.querySelectorAll('[title], [aria-label]')
+  titulos.forEach((el) => {
+    for (const attr of ['title', 'aria-label']) {
+      const v = el.getAttribute(attr)
+      if (v) {
+        const novo = traduzirTexto(v, idioma)
+        if (novo !== v) el.setAttribute(attr, novo)
+      }
+    }
+  })
+}
+
+let observer: MutationObserver | null = null
+let idiomaAtivo: Idioma = 'pt-BR'
+
+export function aplicarIdiomaNoDOM(idioma: Idioma) {
+  idiomaAtivo = idioma
+  traduzirArvore(document.body, idioma)
+  if (observer) observer.disconnect()
+  if (idioma === 'pt-BR') return
+  observer = new MutationObserver((mutacoes) => {
+    for (const m of mutacoes) {
+      m.addedNodes.forEach((no) => {
+        if (no.nodeType === 1) traduzirArvore(no as Element, idiomaAtivo)
+        else if (no.nodeType === 3) {
+          const t = (no as Text).wholeText || ''
+          if (t.trim().length > 1 && t.trim().length < 80) {
+            const novo = traduzirTexto(t, idiomaAtivo)
+            if (novo !== t) (no as Text).textContent = novo
+          }
+        }
+      })
+      if (m.type === 'attributes' && m.attributeName) {
+        const el = m.target as Element
+        const v = el.getAttribute(m.attributeName)
+        if (v) {
+          const novo = traduzirTexto(v, idiomaAtivo)
+          if (novo !== v) el.setAttribute(m.attributeName, novo)
+        }
+      }
+    }
+  })
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['placeholder', 'title', 'aria-label'],
+  })
+}
+
+// ---------- nomenclatura contábil (GAAP/IFRS) ----------
+// Sufixo do padrão ativo para títulos de DRE/Balancete/Fluxo e exports.
+export function sufixoPadrao(p: PadraoContabil): string {
+  if (p === 'gaap') return ' (US GAAP)'
+  if (p === 'ifrs') return ' (IFRS)'
+  return ''
+}
+
+// ---------- Persistência ----------
 const LS_IDIOMA = 'pge_idioma'
 const LS_PADRAO = 'pge_padrao_contabil'
 

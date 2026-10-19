@@ -210,6 +210,8 @@ export default function ConfiguracoesCompletaPage() {
   const trocarPadrao = (p: PadraoContabil) => {
     setPadrao(p)
     salvarPadrao(p)
+    // COR-2: notifica módulos abertos (títulos DRE/Balancete ganham sufixo do padrão)
+    window.dispatchEvent(new Event('pge_padrao_change'))
   }
 
   return (
