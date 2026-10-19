@@ -11,6 +11,7 @@ import {
   Mic,
   Share2,
   Mail,
+  Paperclip,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -69,7 +70,10 @@ export default function TarefasKanbanPage() {
   const [form, setForm] = useState<any>({})
   const [salvando, setSalvando] = useState(false)
   const [detalhe, setDetalhe] = useState<any | null>(null)
-  const [novoComentario, setNovoComentario] = useState('')
+  const [novoChat, setNovoChat] = useState('')
+  const [chatAnexo, setChatAnexo] = useState<File | null>(null)
+  const [chatMsgs, setChatMsgs] = useState<any[]>([])
+  const [chatErro, setChatErro] = useState('')
   const [novaSub, setNovaSub] = useState('')
   const [mesRef, setMesRef] = useState(() => new Date().toISOString().slice(0, 7))
 
@@ -95,6 +99,12 @@ export default function TarefasKanbanPage() {
     (t) => t.status_kanban !== 'concluido' && t.prazo && String(t.prazo).slice(0, 10) < hoje,
   )
   const deHoje = itens.filter((t) => t.prazo && String(t.prazo).slice(0, 10) === hoje)
+
+  // T2: abre o detalhe e carrega o histórico (chat)
+  const abrirDetalhe = (t: any) => {
+    setDetalhe(t)
+    carregarChat(t.id)
+  }
 
   const mover = async (t: any, novo: string) => {
     try {
@@ -287,21 +297,51 @@ export default function TarefasKanbanPage() {
     }
   }
 
-  const addComentario = async () => {
-    if (!detalhe || !novoComentario.trim()) return
-    const lista = Array.isArray(detalhe.comentarios)
-      ? detalhe.comentarios
-      : JSON.parse(detalhe.comentarios || '[]')
-    lista.push({ autor: user?.email || '', texto: novoComentario, when: hoje })
+  // T2: chat da tarefa — carrega histórico + envia mensagem c/ anexo opcional
+  const carregarChat = async (tarefaId: string) => {
+    setChatErro('')
     try {
-      await pb.collection('tarefas').update(detalhe.id, { comentarios: JSON.stringify(lista) })
-      setNovoComentario('')
-      const upd = await pb.collection('tarefas').getOne(detalhe.id)
-      setDetalhe(upd)
-      await carregar()
+      const r = await pb
+        .collection('tarefas_chat')
+        .getFullList({ filter: 'tarefa_id = "' + tarefaId + '"', sort: 'created' })
+      setChatMsgs(r as any[])
     } catch (e) {
-      setErro(String(e))
+      setChatErro('Histórico indisponível: ' + String(e).slice(0, 60))
+      setChatMsgs([])
     }
+  }
+
+  const enviarChat = async () => {
+    if (!detalhe || (!novoChat.trim() && !chatAnexo)) return
+    setChatErro('')
+    try {
+      const fd = new FormData()
+      fd.append('tarefa_id', detalhe.id)
+      fd.append('autor', user?.email || '')
+      fd.append('autor_tipo', 'portal')
+      if (novoChat.trim()) fd.append('texto', novoChat.trim())
+      if (chatAnexo) fd.append('anexo', chatAnexo)
+      await pb.collection('tarefas_chat').create(fd)
+      // auditoria (best-effort)
+      try {
+        await pb.send('/backend/v1/auditoria', {
+          method: 'POST',
+          body: JSON.stringify({
+            acao: 'criar_registro',
+            modulo: 'tarefas_chat',
+            detalhe: 'Chat em "' + (detalhe.titulo || '') + '"',
+          }),
+        })
+      } catch (_) {
+        /* best-effort */
+      }
+      setNovoChat('')
+      setChatAnexo(null)
+      await carregarChat(detalhe.id)
+    } catch (e) {
+      setChatErro('Falha ao enviar: ' + String(e).slice(0, 80))
+    }
+  }
   }
 
   const addSub = async () => {
@@ -419,7 +459,7 @@ export default function TarefasKanbanPage() {
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => setDetalhe(t)}
+                  onClick={() => abrirDetalhe(t)}
                   className="block w-full text-left text-[13px] font-medium text-gray-800 hover:text-[#1B5E20] truncate"
                 >
                   · {t.titulo} <span className="text-gray-400">({t.responsavel})</span>
@@ -448,7 +488,7 @@ export default function TarefasKanbanPage() {
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => setDetalhe(t)}
+                  onClick={() => abrirDetalhe(t)}
                   className="block w-full text-left text-[13px] font-medium text-red-700 hover:underline truncate"
                 >
                   · {t.titulo} <span className="text-red-400">{fmtData(t.prazo)}</span>
@@ -480,7 +520,7 @@ export default function TarefasKanbanPage() {
                     <div
                       key={t.id}
                       className="bg-white rounded-lg border border-gray-100 p-3 shadow-xs hover:shadow-md transition-shadow cursor-pointer"
-                      onClick={() => setDetalhe(t)}
+                      onClick={() => abrirDetalhe(t)}
                     >
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <span
@@ -627,7 +667,7 @@ export default function TarefasKanbanPage() {
                           <button
                             key={t.id}
                             type="button"
-                            onClick={() => setDetalhe(t)}
+                            onClick={() => abrirDetalhe(t)}
                             className={cn(
                               'block w-full text-left text-[9px] font-semibold px-1 py-0.5 rounded truncate',
                               t.status_kanban === 'concluido'
@@ -998,39 +1038,94 @@ export default function TarefasKanbanPage() {
             </div>
           </div>
 
-          {/* comentários */}
+          {/* T2: histórico em formato de chat com anexos */}
           <div className="grid gap-1.5">
             <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Comentários
+              Histórico da tarefa (chat)
             </Label>
-            <div className="space-y-1.5 max-h-40 overflow-y-auto">
-              {(() => {
-                const coms = detalhe
-                  ? Array.isArray(detalhe.comentarios)
-                    ? detalhe.comentarios
-                    : JSON.parse(detalhe.comentarios || '[]')
-                  : []
-                return coms.map((c: any, i: number) => (
-                  <div key={i} className="bg-gray-50 rounded-lg p-2.5">
-                    <div className="text-[10px] text-gray-400">
-                      {c.autor} · {c.when}
+            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+              {chatMsgs.map((c: any) => {
+                const meu = c.autor === (user?.email || '')
+                return (
+                  <div
+                    key={c.id}
+                    className={cn('flex', meu ? 'justify-end' : 'justify-start')}
+                  >
+                    <div
+                      className={cn(
+                        'max-w-[85%] rounded-xl px-3 py-2',
+                        meu ? 'bg-[#1B5E20] text-white' : 'bg-gray-100 text-gray-800',
+                      )}
+                    >
+                      {!meu && (
+                        <div className="text-[10px] font-bold opacity-70 mb-0.5">
+                          {c.autor}
+                          {c.autor_tipo === 'parceiro' ? ' · parceiro' : ''}
+                        </div>
+                      )}
+                      {c.texto && <div className="text-[12px] whitespace-pre-wrap">{c.texto}</div>}
+                      {c.anexo && (
+                        <a
+                          href={pb.files.getURL(c, c.anexo)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className={cn(
+                            'mt-1 inline-flex items-center gap-1 text-[11px] underline',
+                            meu ? 'text-emerald-100' : 'text-emerald-700',
+                          )}
+                        >
+                          <Paperclip className="h-3 w-3" /> {String(c.anexo).slice(0, 30)}
+                        </a>
+                      )}
+                      <div className="text-[9px] opacity-60 mt-0.5">
+                        {String(c.created).slice(11, 16)}
+                      </div>
                     </div>
-                    <div className="text-[12px] text-gray-800">{c.texto}</div>
                   </div>
-                ))
-              })()}
+                )
+              })}
+              {chatMsgs.length === 0 && (
+                <p className="text-[12px] text-gray-400 text-center py-3">
+                  Sem mensagens — comece o histórico abaixo.
+                </p>
+              )}
             </div>
-            <div className="flex gap-2">
+            {chatErro && <p className="text-[11px] text-red-600">{chatErro}</p>}
+            <div className="flex items-center gap-2">
               <Input
-                value={novoComentario}
-                onChange={(e) => setNovoComentario(e.target.value)}
-                placeholder="Comentar..."
+                value={novoChat}
+                onChange={(e) => setNovoChat(e.target.value)}
+                placeholder="Mensagem ou atualização..."
                 className="h-9 text-xs bg-gray-50"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') enviarChat()
+                }}
               />
-              <Button variant="outline" size="sm" onClick={addComentario} className="h-9">
+              <label className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md border border-gray-200 bg-white hover:bg-gray-50 cursor-pointer text-gray-500">
+                <Paperclip className="h-3.5 w-3.5" />
+                <input
+                  type="file"
+                  className="hidden"
+                  accept="image/*,application/pdf,.docx,.xlsx,.txt,.csv,audio/*,video/*"
+                  onChange={(e) => setChatAnexo(e.target.files?.[0] || null)}
+                />
+              </label>
+              <Button variant="outline" size="sm" onClick={enviarChat} className="h-9">
                 Enviar
               </Button>
             </div>
+            {chatAnexo && (
+              <p className="text-[10px] text-gray-500 flex items-center gap-1">
+                <Paperclip className="h-3 w-3" /> {chatAnexo.name} (envia junto da mensagem)
+                <button
+                  type="button"
+                  onClick={() => setChatAnexo(null)}
+                  className="text-gray-400 hover:text-gray-600 ml-1"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </p>
+            )}
           </div>
         </DialogContent>
       </Dialog>

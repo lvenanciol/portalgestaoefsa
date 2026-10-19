@@ -537,19 +537,6 @@ export default function DocumentosImportacoesPage() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={fEmpresa} onValueChange={setFEmpresa}>
-          <SelectTrigger className="h-9 w-44 text-xs bg-gray-50">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todas">Todas as empresas</SelectItem>
-            {EMPRESAS.map((e) => (
-              <SelectItem key={e} value={e}>
-                {e}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         <Input
           value={fPeriodo}
           onChange={(e) => setFPeriodo(e.target.value)}

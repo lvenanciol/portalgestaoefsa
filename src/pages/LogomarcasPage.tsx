@@ -78,7 +78,8 @@ export default function LogomarcasPage() {
     }
   }
 
-  const url = (l: any, field: string) => (l[field] ? pb.files.getURL(l, l[field]) : '')
+  // T4 fix: l pode ser null (empresa sem registro) — proteger antes de ler campo
+  const url = (l: any, field: string) => (l && l[field] ? pb.files.getURL(l, l[field]) : '')
 
   if (loading)
     return (

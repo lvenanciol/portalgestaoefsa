@@ -87,7 +87,21 @@ export default function PowerBiPage() {
       }
       setRelatorios(r.itens || [])
     } catch (e: any) {
-      setErro(e?.message || String(e))
+      const msg = String(e?.message || e)
+      // T11: erro comum do MSAL — orientação direta
+      if (msg.includes('redirect_mismatch') || msg.includes('AADSTS50011')) {
+        setErro(
+          'URI de redirecionamento ausente no Entra ID: registre "' +
+            window.location.origin +
+            '" como URI do tipo SPA no app registration (Autenticação) e tente de novo.',
+        )
+      } else if (msg.includes('popup_window_error') || msg.includes('popup closed')) {
+        setErro('Popup bloqueado pelo navegador — permita popups para este site e tente de novo.')
+      } else if (msg.includes('user_cancelled')) {
+        setErro('Login cancelado — clique em "Listar relatórios" e conclua o login Microsoft.')
+      } else {
+        setErro(msg)
+      }
       setRelatorios(null)
     } finally {
       setCarregando(false)

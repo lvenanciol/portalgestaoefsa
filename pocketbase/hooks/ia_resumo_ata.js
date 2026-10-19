@@ -11,6 +11,7 @@ routerAdd(
     if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
     const body = e.requestInfo().body || {}
     const ataId = String(body.ata_id || '')
+    const promptExtra = String(body.prompt_extra || '').trim()
     if (!ataId) return e.badRequestError('ata_id é obrigatório')
 
     let ata
@@ -52,7 +53,9 @@ routerAdd(
           content:
             'Ata:\n' +
             contexto +
-            '\n\nTarefa: resuma em 5 linhas executivas: decisões, responsáveis, prazos e pendências críticas.',
+            '\n\nTarefa: ' +
+            (promptExtra ||
+              'resuma em 5 linhas executivas: decisões, responsáveis, prazos e pendências críticas.'),
         },
       ],
     })

@@ -244,6 +244,15 @@ export default function AtasReunioesPage() {
     }
   }
 
+  // T5c: prompt do parecer editável/restaurável (localStorage)
+  const PROMPT_PARECER_PADRAO =
+    'Resuma em 5 linhas executivas: decisões, responsáveis, prazos e pendências críticas.'
+  const [promptParecer, setPromptParecer] = useState(
+    () => localStorage.getItem('pge_prompt_parecer_ata') || PROMPT_PARECER_PADRAO,
+  )
+  const [dialogPrompt, setDialogPrompt] = useState(false)
+  const [promptEdit, setPromptEdit] = useState('')
+
   const resumirComIA = async () => {
     // usa a ata do detalhe se aberto; senão, a mais recente
     let alvo = detalhe
@@ -260,7 +269,7 @@ export default function AtasReunioesPage() {
     try {
       const r = (await pb.send('/backend/v1/ia/resumo-ata', {
         method: 'POST',
-        body: JSON.stringify({ ata_id: alvo.id }),
+        body: JSON.stringify({ ata_id: alvo.id, prompt_extra: promptParecer }),
       })) as any
       setParecerIA(r.estrutura)
       await carregar()
@@ -293,6 +302,18 @@ export default function AtasReunioesPage() {
           <Button
             size="sm"
             variant="outline"
+            onClick={() => {
+              setPromptEdit(promptParecer)
+              setDialogPrompt(true)
+            }}
+            className="h-9"
+            title="Editar o prompt usado no botão Parecer"
+          >
+            Prompt
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
             onClick={resumirComIA}
             disabled={resumindo}
             className="h-9"
@@ -302,7 +323,7 @@ export default function AtasReunioesPage() {
             ) : (
               <Sparkles className="h-4 w-4 mr-1.5" />
             )}
-            Resumir com IA
+            Parecer
           </Button>
           <Button onClick={abrirNova} className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white">
             <Plus className="h-4 w-4 mr-1" /> Nova ata
@@ -674,6 +695,54 @@ export default function AtasReunioesPage() {
       </Dialog>
 
       {/* Dialog Resumo IA */}
+      {/* T5c: dialog editar prompt do parecer */}
+      <Dialog open={dialogPrompt} onOpenChange={setDialogPrompt}>
+        <DialogContent className="bg-white max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Prompt do parecer (IA)</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            value={promptEdit}
+            onChange={(e) => setPromptEdit(e.target.value)}
+            rows={6}
+            className="text-[13px]"
+          />
+          <div className="flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setPromptEdit(PROMPT_PARECER_PADRAO)
+                localStorage.removeItem('pge_prompt_parecer_ata')
+                setPromptParecer(PROMPT_PARECER_PADRAO)
+              }}
+              className="h-9 text-gray-500"
+            >
+              Restaurar padrão
+            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setDialogPrompt(false)} className="h-9">
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => {
+                  const v = promptEdit.trim() || PROMPT_PARECER_PADRAO
+                  localStorage.setItem('pge_prompt_parecer_ata', v)
+                  setPromptParecer(v)
+                  setDialogPrompt(false)
+                }}
+                className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+              >
+                Salvar prompt
+              </Button>
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-400">
+            Este texto é enviado à IA junto do conteúdo da ata quando você clica em "Parecer".
+          </p>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!parecerIA} onOpenChange={(o) => !o && setParecerIA(null)}>
         <DialogContent className="bg-white max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>

@@ -73,15 +73,16 @@ export default function ConfiguracoesCompletaPage() {
   })
   // T7: identidades reais da coleção logomarcas (upload na tela Logomarcas)
   const [logoMarcas, setLogoMarcas] = useState<any[]>([])
+  const carregarLogos = async () => {
+    try {
+      const r = await pb.collection('logomarcas').getFullList({ sort: 'empresa' })
+      setLogoMarcas(r as any[])
+    } catch (_) {
+      setLogoMarcas([])
+    }
+  }
   useEffect(() => {
-    ;(async () => {
-      try {
-        const r = await pb.collection('logomarcas').getFullList({ sort: 'empresa' })
-        setLogoMarcas(r as any[])
-      } catch (_) {
-        setLogoMarcas([])
-      }
-    })()
+    carregarLogos()
   }, [])
   const [backup, setBackup] = useState('')
   const [backupMsg, setBackupMsg] = useState('')
@@ -576,6 +577,58 @@ export default function ConfiguracoesCompletaPage() {
           Emblema aplicado ao lado da empresa selecionada no Topbar — anexe a imagem na tela
           Logomarcas.
         </div>
+        {/* T7: upload direto de logo/emblema por empresa (sem sair da tela) */}
+        <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {logoMarcas.map((l) => (
+            <div key={l.id} className="grid gap-1.5">
+              <Label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                {l.empresa} — anexar
+              </Label>
+              <div className="flex items-center gap-2">
+                <label className="h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-[11px] font-semibold text-gray-700 cursor-pointer">
+                  <Upload className="h-3 w-3" /> Logo
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (!f) return
+                      const fd = new FormData()
+                      fd.append('logo', f)
+                      pb.collection('logomarcas')
+                        .update(l.id, fd)
+                        .then(() => carregarLogos())
+                    }}
+                  />
+                </label>
+                <label className="h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-[11px] font-semibold text-gray-700 cursor-pointer">
+                  <Upload className="h-3 w-3" /> Emblema
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (!f) return
+                      const fd = new FormData()
+                      fd.append('emblema', f)
+                      pb.collection('logomarcas')
+                        .update(l.id, fd)
+                        .then(() => carregarLogos())
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
+          <strong>Objetivo da tela:</strong> centraliza a identidade visual do grupo — logomarca e
+          emblema por empresa (Extrafruti/Casafruti/FoldBox), sigla e cor da paleta. A logo anexada
+          aqui alimenta a sidebar, o topbar e o seletor de empresa. Perfis e cores avançadas ficam
+          na tela Logomarcas (editar identidade completa).
+        </p>
       </section>
 
       {/* Globalização */}

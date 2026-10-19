@@ -534,7 +534,7 @@ export default function ParceirosPage() {
       <Dialog open={centrosAberto} onOpenChange={setCentrosAberto}>
         <DialogContent className="bg-white max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Centro de resultado — Sankhya (TTRBC)</DialogTitle>
+            <DialogTitle>Centro de resultado — Sankhya (TSICUS)</DialogTitle>
           </DialogHeader>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />

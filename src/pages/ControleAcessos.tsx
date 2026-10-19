@@ -684,45 +684,50 @@ export default function ControleAcessos() {
           <div className="space-y-4">
             {BUTTON_GATES.map((tela) => (
               <div key={tela.key} className="border border-gray-100 rounded-lg p-3">
-                <div className="text-[12px] font-bold text-gray-900 mb-2">{tela.label}</div>
-                <div className="space-y-2">
+                <div className="text-[12px] font-bold text-gray-900 mb-2 flex items-center justify-between">
+                  <span>{tela.label}</span>
+                  <span className="text-[10px] font-semibold text-gray-400">marcar = visível</span>
+                </div>
+                {/* T6b: permissões em colunas com checkbox (marcar/desmarcar por tela) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
                   {tela.buttons.map((b) => {
                     const ocultos = botoesConfig[tela.key] || []
                     const visivel = !ocultos.includes(b.key)
                     return (
-                      <div key={b.key} className="flex items-center justify-between gap-3">
-                        <span className="text-[12px] text-gray-700">{b.label}</span>
-                        <Switch
+                      <label
+                        key={b.key}
+                        className="flex items-center gap-2 text-[12px] text-gray-700 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
                           checked={visivel}
-                          onCheckedChange={() => toggleBotao(tela.key, b.key)}
+                          onChange={() => toggleBotao(tela.key, b.key)}
+                          className="h-3.5 w-3.5 accent-[#1B5E20]"
                         />
-                      </div>
+                        <span className="truncate">{b.label}</span>
+                      </label>
+                    )
+                  })}
+                  {/* T6a: abas/seções da tela no mesmo grid de checkboxes */}
+                  {(ABAS_POR_TELA[tela.key] || []).map((aba: any) => {
+                    const ocultos = botoesConfig[tela.key] || []
+                    const visivel = !ocultos.includes('aba_' + aba.key)
+                    return (
+                      <label
+                        key={'aba_' + aba.key}
+                        className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={visivel}
+                          onChange={() => toggleBotao(tela.key, 'aba_' + aba.key)}
+                          className="h-3.5 w-3.5 accent-[#1B5E20]"
+                        />
+                        <span className="truncate">{aba.label}</span>
+                      </label>
                     )
                   })}
                 </div>
-                {/* T6a: CRUD de abas/seções da tela */}
-                {ABAS_POR_TELA[tela.key]?.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-gray-100">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
-                      Abas da tela
-                    </div>
-                    <div className="space-y-2">
-                      {ABAS_POR_TELA[tela.key].map((aba: any) => {
-                        const ocultos = botoesConfig[tela.key] || []
-                        const visivel = !ocultos.includes('aba_' + aba.key)
-                        return (
-                          <div key={aba.key} className="flex items-center justify-between gap-3">
-                            <span className="text-[11px] text-gray-600">{aba.label}</span>
-                            <Switch
-                              checked={visivel}
-                              onCheckedChange={() => toggleBotao(tela.key, 'aba_' + aba.key)}
-                            />
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
               </div>
             ))}
           </div>
