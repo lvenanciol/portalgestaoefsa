@@ -67,7 +67,20 @@ routerAdd(
         r = rodarSql('SELECT CODCCU, DESCRCCU FROM TTCCU ORDER BY DESCRCCU')
         tipoDim = 'ccu'
       }
-      if (r.erro) return e.json(502, { ok: false, erro: r.erro })
+      if (r.erro) {
+        r = rodarSql('SELECT CODCCU, DESCRCCU FROM SANKHYA.TTCCU ORDER BY DESCRCCU')
+        tipoDim = 'ccu'
+      }
+      if (r.erro) {
+        r = rodarSql('SELECT CODCRR, DESCRICAO FROM SANKHYA.TTRBC ORDER BY DESCRICAO')
+        tipoDim = 'crr'
+      }
+      if (r.erro)
+        return e.json(502, {
+          ok: false,
+          erro:
+            r.erro + ' — usuário Sankhya sem grant nas tabelas de centro; use digitação manual.',
+        })
       itens = r.rows.map(function (row) {
         return { codigo: String(row[0]), descricao: String(row[1]), tipo: tipoDim }
       })

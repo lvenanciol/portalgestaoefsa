@@ -474,8 +474,8 @@ export default function ParceirosPage() {
               <div className="flex items-center gap-2">
                 <Input
                   value={form.centro_resultado || ''}
-                  readOnly
-                  placeholder="nenhum vínculo"
+                  onChange={(e) => setForm({ ...form, centro_resultado: e.target.value })}
+                  placeholder="digite ou busque no Sankhya"
                   className="h-10 bg-gray-50 flex-1"
                 />
                 <Button variant="outline" size="sm" onClick={abrirCentros} className="h-10">
