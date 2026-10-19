@@ -19,6 +19,7 @@ import {
   LogOut,
   X,
   Leaf,
+  ChevronDown,
 } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
@@ -79,11 +80,13 @@ const navSections: NavSection[] = [
 
 export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
   const { user, signOut } = useAuth()
+  const { selectedCompany, setSelectedCompany, empresas } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
   const [permissoes, setPermissoes] = useState<Permissoes | null>(null)
   const [menusDb, setMenusDb] = useState<any[] | null>(null)
   const [idiomaTick, setIdiomaTick] = useState(0)
+  const [seletorEmpresas, setSeletorEmpresas] = useState(false)
 
   useEffect(() => {
     carregarPermissoes().then(setPermissoes)
@@ -154,21 +157,97 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
 
   return (
     <div className="flex flex-col h-full text-white">
-      {/* Brand block: logo Extrafruti versão clara + subtítulo */}
-      <div className="p-5 pb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="h-9 w-9 rounded-lg bg-white/15 border border-white/25 flex items-center justify-center text-white shadow-sm">
-            <Leaf className="h-5 w-5" />
+      {/* Brand block: logo CLICÁVEL — abre seletor de empresas (T1) */}
+      <div className="p-5 pb-3 relative">
+        <button
+          type="button"
+          onClick={() => setSeletorEmpresas((o) => !o)}
+          className="w-full flex items-center gap-2.5 rounded-lg hover:bg-white/10 transition-colors p-1.5 -m-1.5 focus:outline-none"
+          title="Trocar empresa"
+        >
+          <div className="h-9 w-9 rounded-lg bg-white/15 border border-white/25 flex items-center justify-center text-white shadow-sm overflow-hidden">
+            {(() => {
+              const emp = empresas.find((e) => e.id === selectedCompany)
+              if (emp) {
+                return (
+                  <span
+                    className="h-full w-full flex items-center justify-center font-bold text-[11px]"
+                    style={{ backgroundColor: emp.cor }}
+                  >
+                    {emp.nome.slice(0, 2).toUpperCase()}
+                  </span>
+                )
+              }
+              return <Leaf className="h-5 w-5" />
+            })()}
           </div>
-          <div className="flex flex-col min-w-0">
+          <div className="flex flex-col min-w-0 text-left">
             <span className="font-bold text-[15px] leading-tight tracking-tight text-white truncate">
-              extrafruti
+              {(() => {
+                const emp = empresas.find((e) => e.id === selectedCompany)
+                return emp ? emp.nome : 'extrafruti'
+              })()}
             </span>
             <span className="text-[11px] font-medium text-emerald-100/80 tracking-tight truncate">
               Portal de Gestão Executivo
             </span>
           </div>
-        </div>
+          <ChevronDown
+            className={cn(
+              'h-3.5 w-3.5 ml-auto text-emerald-100/60 transition-transform',
+              seletorEmpresas && 'rotate-180',
+            )}
+          />
+        </button>
+
+        {/* Seletor de empresas (popover ancorado ao bloco de marca) */}
+        {seletorEmpresas && (
+          <div className="absolute left-5 right-5 top-[76px] z-50 bg-white rounded-xl shadow-2xl border border-gray-200 p-1.5">
+            <div className="px-2 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+              Empresas do Grupo
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCompany('')
+                setSeletorEmpresas(false)
+                if (onItemClick) onItemClick()
+              }}
+              className={cn(
+                'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer text-[13px] font-medium transition-colors',
+                !selectedCompany
+                  ? 'bg-emerald-50 text-[#1B5E20]'
+                  : 'text-gray-700 hover:bg-gray-100',
+              )}
+            >
+              <span className="h-2.5 w-2.5 rounded-full bg-gray-300 shrink-0" />
+              Consolidado (todas)
+            </button>
+            {empresas.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => {
+                  setSelectedCompany(e.id)
+                  setSeletorEmpresas(false)
+                  if (onItemClick) onItemClick()
+                }}
+                className={cn(
+                  'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer text-[13px] font-medium transition-colors',
+                  selectedCompany === e.id
+                    ? 'bg-emerald-50 text-[#1B5E20]'
+                    : 'text-gray-700 hover:bg-gray-100',
+                )}
+              >
+                <span
+                  className="h-2.5 w-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: e.cor }}
+                />
+                {e.nome}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* v1.0.0 acima da seção GESTÃO */}
         <div className="mt-3 flex items-center justify-between pt-2 border-t border-white/10">

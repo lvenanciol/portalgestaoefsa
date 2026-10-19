@@ -20,6 +20,8 @@ import IaPage from './pages/IaCentroPage'
 import PowerBiPage from './pages/PowerBiPage'
 import MenusPage from './pages/MenusCrudPage'
 import ConfiguracoesPage from './pages/ConfiguracoesCompletaPage'
+import ParceirosPage from './pages/ParceirosPage'
+import LogomarcasPage from './pages/LogomarcasPage'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
@@ -50,6 +52,8 @@ const AppRoutes = () => {
         <Route path="/ia" element={<IaPage />} />
         <Route path="/power-bi" element={<PowerBiPage />} />
         <Route path="/menus" element={<MenusPage />} />
+        <Route path="/parceiros" element={<ParceirosPage />} />
+        <Route path="/logomarcas" element={<LogomarcasPage />} />
         <Route path="/configuracoes" element={<ConfiguracoesPage />} />
         <Route path="/acessos" element={<ControleAcessos />} />
       </Route>

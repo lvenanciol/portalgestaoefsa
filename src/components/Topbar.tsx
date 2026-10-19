@@ -1,9 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Calendar, ChevronDown, Search, Bell, AlertCircle, Clock, User, Menu } from 'lucide-react'
+import {
+  Calendar,
+  ChevronDown,
+  Search,
+  Bell,
+  AlertCircle,
+  Clock,
+  User,
+  Menu,
+  X,
+} from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
-import { CompanyId, COMPANIES } from '@/data/mockData'
 import { marcaAtiva } from '@/pages/ConfiguracoesCompletaPage'
 import {
   DropdownMenu,
@@ -15,17 +24,157 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 
-export function Topbar() {
-  const { selectedCompany, setSelectedCompany, toggleSidebar, criticalAlerts } = useApp()
-  const { user, signOut } = useAuth()
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [avatarOpen, setAvatarOpen] = useState(false)
+// Ajustes PGE — T9: bandeiras SEM legenda (BR/EUA/UE), troca de idioma real.
+// T10: busca inteligente funcional (navega para módulos por texto, Ctrl+K).
+// T1: dropdown de empresas REMOVIDO do topbar — a troca é pela logo na sidebar;
+// o topbar exibe a empresa selecionada (somente leitura).
 
-  const activeCompany = COMPANIES.find((c) => c.id === selectedCompany) || COMPANIES[0]
+const BANDEIRAS: { key: string; label: string; node: React.ReactNode }[] = [
+  {
+    key: 'pt-BR',
+    label: 'Português (BR)',
+    node: (
+      <span
+        className="relative inline-flex items-center justify-center w-[18px] h-[12px] rounded-[1.5px] overflow-hidden bg-[#009B3A] shrink-0 shadow-2xs"
+        aria-hidden="true"
+      >
+        <span
+          className="absolute w-[13px] h-[8px] bg-[#FEDF00]"
+          style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
+        />
+        <span className="absolute w-[4.5px] h-[4.5px] rounded-full bg-[#002776]" />
+      </span>
+    ),
+  },
+  {
+    key: 'en-US',
+    label: 'English (US)',
+    node: (
+      <span
+        className="relative inline-flex items-center justify-center w-[18px] h-[12px] rounded-[1.5px] overflow-hidden bg-[#B22234] shrink-0 shadow-2xs"
+        aria-hidden="true"
+      >
+        <span
+          className="absolute inset-0"
+          style={{ background: 'repeating-linear-gradient(#B22234 0 2px, #fff 2px 4px)' }}
+        />
+        <span className="absolute top-0 left-0 w-[8px] h-[6px] bg-[#3C3B6E]" />
+      </span>
+    ),
+  },
+  {
+    key: 'en-EU',
+    label: 'English (EU)',
+    node: (
+      <span
+        className="relative inline-flex items-center justify-center w-[18px] h-[12px] rounded-[1.5px] overflow-hidden bg-[#003399] shrink-0 shadow-2xs"
+        aria-hidden="true"
+      >
+        <span
+          className="absolute w-[7px] h-[7px] text-[#FFCC00] text-[9px] leading-none"
+          style={{ color: '#FFCC00' }}
+        >
+          ★
+        </span>
+      </span>
+    ),
+  },
+]
+
+const LS_IDIOMA = 'pge_idioma'
+
+// T10 — índice de busca: módulos navegáveis
+const BUSCA_ITENS = [
+  { label: 'Dashboard Executivo', rota: '/', chaves: 'dashboard home início' },
+  {
+    label: 'Financeiro & Contábil',
+    rota: '/financeiro',
+    chaves: 'financeiro contabil dre balancete fluxo',
+  },
+  { label: 'Desempenho por Unidade', rota: '/desempenho', chaves: 'desempenho unidade ranking' },
+  { label: 'Indicadores', rota: '/indicadores', chaves: 'indicadores kpi meta semaforo' },
+  {
+    label: 'Documentos & Importações',
+    rota: '/documentos',
+    chaves: 'documentos importacao balancete arquivo',
+  },
+  { label: 'Tarefas & Agenda', rota: '/tarefas', chaves: 'tarefas agenda kanban chamado' },
+  { label: 'Projetos', rota: '/projetos', chaves: 'projetos marcos riscos raci' },
+  { label: 'Atas & Reuniões', rota: '/atas', chaves: 'atas reunioes pauta' },
+  {
+    label: 'Parceiros & Contatos',
+    rota: '/parceiros',
+    chaves: 'parceiros contatos fornecedor cliente',
+  },
+  { label: 'Logomarcas', rota: '/logomarcas', chaves: 'logomarcas marca identidade logo' },
+  { label: 'E-mails', rota: '/emails', chaves: 'emails mensagem compositor' },
+  { label: 'Contratos', rota: '/contratos', chaves: 'contratos locacao servico' },
+  { label: 'Power BI', rota: '/power-bi', chaves: 'power bi relatorio embed' },
+  { label: 'IA Gemini Flash', rota: '/ia', chaves: 'ia gemini inteligencia parecer' },
+  { label: 'Árvore de Menus', rota: '/menus', chaves: 'menus arvore sidebar' },
+  { label: 'Controle de Acessos', rota: '/acessos', chaves: 'acessos usuarios grupos permissoes' },
+  { label: 'Configurações', rota: '/configuracoes', chaves: 'configuracoes integracoes backup' },
+]
+
+export function Topbar() {
+  const { selectedCompany, empresas, toggleSidebar, criticalAlerts } = useApp()
+  const { user, signOut } = useAuth()
+  const navigate = useNavigate()
+  const [avatarOpen, setAvatarOpen] = useState(false)
+  const [idioma, setIdioma] = useState(() => {
+    try {
+      return localStorage.getItem(LS_IDIOMA) || 'pt-BR'
+    } catch (_) {
+      return 'pt-BR'
+    }
+  })
+  // T10 busca
+  const [buscaAberta, setBuscaAberta] = useState(false)
+  const [busca, setBusca] = useState('')
+  const [buscaIdx, setBuscaIdx] = useState(0)
+
+  const marca = marcaAtiva()
+  const empresaSel = empresas.find((e) => e.id === selectedCompany)
+
+  const trocarIdioma = (k: string) => {
+    setIdioma(k)
+    try {
+      localStorage.setItem(LS_IDIOMA, k)
+    } catch (_) {}
+    window.dispatchEvent(new Event('pge_idioma_change'))
+  }
+
+  // T10 — resultados da busca
+  const resultados = (() => {
+    const q = busca.trim().toLowerCase()
+    if (!q) return []
+    return BUSCA_ITENS.filter((i) => (i.label + ' ' + i.chaves).toLowerCase().includes(q)).slice(
+      0,
+      8,
+    )
+  })()
+
+  const irPara = (rota: string) => {
+    setBuscaAberta(false)
+    setBusca('')
+    navigate(rota)
+  }
+
+  useEffect(() => {
+    const h = (ev: KeyboardEvent) => {
+      if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'k') {
+        ev.preventDefault()
+        setBuscaAberta((o) => !o)
+      }
+      if (ev.key === 'Escape') setBuscaAberta(false)
+    }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [])
 
   return (
     <header className="sticky top-0 z-30 h-16 w-full bg-white border-b border-[#E5E7EB] px-4 md:px-6 flex items-center justify-between shadow-xs">
-      {/* Esquerda: hambúrguer (mobile) + seletor de empresas com mini-logo + período */}
+      {/* Esquerda: hambúrguer (mobile) + empresa selecionada (leitura; troca pela sidebar) + período */}
       <div className="flex items-center gap-3 md:gap-4">
         <button
           type="button"
@@ -36,66 +185,16 @@ export function Topbar() {
           <Menu className="h-5 w-5" />
         </button>
 
-        <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-lg border border-[#E5E7EB] bg-gray-50/70 hover:bg-gray-100 text-[13.5px] font-semibold text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20"
-            >
-              {(() => {
-                const marca = marcaAtiva()
-                return (
-                  <>
-                    <span
-                      className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 text-white font-bold text-[10px]"
-                      style={{ backgroundColor: marca.cor }}
-                    >
-                      {marca.sigla}
-                    </span>
-                    <span className="tracking-tight">{marca.nome}</span>
-                  </>
-                )
-              })()}
-              <span className="tracking-tight text-gray-500">{activeCompany.name}</span>
-              <ChevronDown
-                className={cn(
-                  'h-4 w-4 text-gray-500 transition-transform duration-200',
-                  dropdownOpen && 'rotate-180',
-                )}
-              />
-            </button>
-          </DropdownMenuTrigger>
-
-          <DropdownMenuContent
-            align="start"
-            className="w-52 p-1.5 bg-white rounded-xl shadow-lg border border-gray-200 animate-in fade-in-80 zoom-in-95 duration-150"
+        {/* T1: empresa selecionada — SEM dropdown; troca pela logomarca da sidebar */}
+        <div className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-lg border border-[#E5E7EB] bg-gray-50/70 text-[13.5px] font-semibold text-gray-800">
+          <span
+            className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 text-white font-bold text-[10px]"
+            style={{ backgroundColor: empresaSel?.cor || marca.cor }}
           >
-            <div className="px-2 py-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-              Empresas do Grupo
-            </div>
-            {COMPANIES.map((company) => {
-              const isSelected = company.id === selectedCompany
-              return (
-                <DropdownMenuItem
-                  key={company.id}
-                  onClick={() => setSelectedCompany(company.id as CompanyId)}
-                  className={cn(
-                    'flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer text-[13px] font-medium transition-colors',
-                    isSelected ? 'bg-emerald-50 text-[#1B5E20]' : 'text-gray-700 hover:bg-gray-100',
-                  )}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: company.color }}
-                    />
-                    <span>{company.name}</span>
-                  </div>
-                </DropdownMenuItem>
-              )
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            {empresaSel ? empresaSel.nome.slice(0, 2).toUpperCase() : marca.sigla}
+          </span>
+          <span className="tracking-tight">{empresaSel?.nome || marca.nome}</span>
+        </div>
 
         {/* Filtro de período */}
         <DropdownMenu>
@@ -131,44 +230,43 @@ export function Topbar() {
         </DropdownMenu>
       </div>
 
-      {/* Direita: bandeira BRASIL ▾ + busca Ctrl+K + sino + avatar com logout */}
+      {/* Direita: bandeiras (T9) + busca (T10) + sino + avatar */}
       <div className="flex items-center gap-2.5 sm:gap-4">
+        {/* T9: bandeiras sem legenda */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-[11px] font-bold text-gray-800 tracking-wide select-none transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20"
+              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20"
+              aria-label="Idioma"
             >
-              <span
-                className="relative inline-flex items-center justify-center w-[18px] h-[12px] rounded-[1.5px] overflow-hidden bg-[#009B3A] shrink-0 shadow-2xs"
-                title="Brasil"
-                aria-hidden="true"
-              >
-                <span
-                  className="absolute w-[13px] h-[8px] bg-[#FEDF00]"
-                  style={{ clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)' }}
-                />
-                <span className="absolute w-[4.5px] h-[4.5px] rounded-full bg-[#002776]" />
-              </span>
-              <span>BRASIL</span>
-              <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
+              {BANDEIRAS.find((b) => b.key === idioma)?.node || BANDEIRAS[0].node}
+              <ChevronDown className="h-3 w-3 text-gray-500" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
-            className="w-36 p-1.5 bg-white rounded-xl shadow-lg border border-gray-200"
+            className="w-16 p-1.5 bg-white rounded-xl shadow-lg border border-gray-200"
           >
-            <DropdownMenuItem className="px-2.5 py-2 rounded-lg cursor-pointer text-[13px] font-medium bg-emerald-50 text-[#1B5E20]">
-              Brasil
-            </DropdownMenuItem>
-            <DropdownMenuItem className="px-2.5 py-2 rounded-lg cursor-pointer text-[13px] font-medium text-gray-700">
-              English
-            </DropdownMenuItem>
+            {BANDEIRAS.map((b) => (
+              <DropdownMenuItem
+                key={b.key}
+                onClick={() => trocarIdioma(b.key)}
+                className={cn(
+                  'px-2.5 py-2 rounded-lg cursor-pointer justify-center',
+                  b.key === idioma ? 'bg-emerald-50' : '',
+                )}
+              >
+                {b.node}
+              </DropdownMenuItem>
+            ))}
           </DropdownMenuContent>
         </DropdownMenu>
 
+        {/* T10: busca inteligente */}
         <button
           type="button"
+          onClick={() => setBuscaAberta(true)}
           className="hidden md:flex items-center gap-2 w-48 lg:w-64 h-9 pl-3 pr-2 bg-gray-50 border border-gray-200 rounded-full text-xs text-gray-400 hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20"
         >
           <Search className="h-4 w-4 text-gray-400 shrink-0" />
@@ -278,6 +376,73 @@ export function Topbar() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* T10 — overlay de busca */}
+      {buscaAberta && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center pt-24 px-4"
+          onClick={() => setBuscaAberta(false)}
+        >
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-xs" />
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 px-4 border-b border-gray-100">
+              <Search className="h-4 w-4 text-gray-400" />
+              <input
+                autoFocus
+                value={busca}
+                onChange={(e) => {
+                  setBusca(e.target.value)
+                  setBuscaIdx(0)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown')
+                    setBuscaIdx((i) => Math.min(i + 1, resultados.length - 1))
+                  if (e.key === 'ArrowUp') setBuscaIdx((i) => Math.max(i - 1, 0))
+                  if (e.key === 'Enter' && resultados[buscaIdx]) irPara(resultados[buscaIdx].rota)
+                }}
+                placeholder="Buscar módulos, tarefas, relatórios..."
+                className="flex-1 h-12 text-[14px] outline-none bg-transparent"
+              />
+              <button
+                onClick={() => setBuscaAberta(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="max-h-80 overflow-y-auto py-1.5">
+              {resultados.map((r, i) => (
+                <button
+                  key={r.rota}
+                  type="button"
+                  onClick={() => irPara(r.rota)}
+                  className={cn(
+                    'block w-full text-left px-4 py-2.5 text-[13px] font-medium',
+                    i === buscaIdx
+                      ? 'bg-emerald-50 text-[#1B5E20]'
+                      : 'text-gray-700 hover:bg-gray-50',
+                  )}
+                >
+                  {r.label}
+                </button>
+              ))}
+              {busca.trim() && resultados.length === 0 && (
+                <p className="px-4 py-8 text-center text-[13px] text-gray-400">
+                  Nada encontrado para "{busca}".
+                </p>
+              )}
+              {!busca.trim() && (
+                <p className="px-4 py-6 text-[12px] text-gray-400">
+                  Digite para buscar módulos do portal. Enter abre o resultado destacado.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   )
 }
