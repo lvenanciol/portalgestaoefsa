@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react'
-import { ChartColumnBig, ExternalLink, RefreshCw, Info, Loader2, MonitorPlay } from 'lucide-react'
+import {
+  ChartColumnBig,
+  ExternalLink,
+  RefreshCw,
+  Info,
+  Loader2,
+  MonitorPlay,
+  CheckCircle2,
+} from 'lucide-react'
 // T11: MSAL é carregado dinamicamente via CDN — dependência opcional;
 // se não estiver disponível, a listagem mostra instrução de configuração.
 import pb from '@/lib/pocketbase/client'
@@ -31,6 +39,7 @@ export default function PowerBiPage() {
   const [clientIdInput, setClientIdInput] = useState(
     () => localStorage.getItem('pge_ms_client_id') || '',
   )
+  const [clientIdSalvo, setClientIdSalvo] = useState(false)
 
   const salvar = () => {
     if (url.trim()) {
@@ -146,11 +155,20 @@ export default function PowerBiPage() {
             onClick={() => {
               localStorage.setItem('pge_ms_client_id', clientIdInput.trim())
               setErro('')
+              setClientIdSalvo(true)
+              setTimeout(() => setClientIdSalvo(false), 3000)
             }}
           >
-            Salvar
+            {clientIdSalvo ? <CheckCircle2 className="h-4 w-4 mr-1.5" /> : null}
+            {clientIdSalvo ? 'Salvo' : 'Salvar'}
           </Button>
         </div>
+        {clientIdSalvo && (
+          <p className="flex items-center gap-1.5 text-[12px] text-emerald-700 font-semibold mt-2">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Application (client) ID salvo — agora clique em "Listar relatórios".
+          </p>
+        )}
         <p className="text-[11px] text-gray-400 mt-2">
           Cole aqui o "Application (client) ID" do app registration criado no Entra ID (passo a
           passo no rodapé da tela).
