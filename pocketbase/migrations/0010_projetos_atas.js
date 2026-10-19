@@ -25,17 +25,11 @@ migrate(
     app.save(atas)
 
     // seeds
-    const colP = app.findCollectionByNameOrId('projetos')
     try {
-      app.findFirstRecordByFilter('projetos', 'nome = "Portal de Gestão Executiva"', '', 1, 0)
-    } catch (_) {} // já existe da Fase 10
-    const p = app.findFirstRecordByFilter(
-      'projetos',
-      'nome = "Portal de Gestão Executiva"',
-      '',
-      1,
-      0,
-    )
+      app.findFirstRecordByFilter('projetos', 'nome = "Portal de Gestão Executiva"')
+      // já existe da Fase 10 — apenas enriquece
+    } catch (_) {}
+    const p = app.findFirstRecordByFilter('projetos', 'nome = "Portal de Gestão Executiva"')
     p.set('orcamento', 180000)
     p.set('realizado', 117000)
     p.set(
@@ -76,13 +70,7 @@ migrate(
 
     const colA = app.findCollectionByNameOrId('atas')
     try {
-      const a = app.findFirstRecordByFilter(
-        'atas',
-        'titulo = "Reunião de Resultados — Outubro"',
-        '',
-        1,
-        0,
-      )
+      const a = app.findFirstRecordByFilter('atas', 'titulo = "Reunião de Resultados — Outubro"')
       a.set('modalidade', 'Microsoft Teams')
       a.set('link_reuniao', 'https://teams.microsoft.com/l/meetup-join/exemplo')
       a.set('pauta', '1. Resultados Out/26 por empresa; 2. A/P vencido; 3. Roadmap portal')

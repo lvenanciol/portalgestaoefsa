@@ -97,7 +97,7 @@ migrate(
     ]
     for (const s of seeds) {
       try {
-        app.findFirstRecordByFilter('tarefas', 'titulo = "' + s.titulo + '"', '', 1, 0)
+        app.findFirstRecordByFilter('tarefas', 'titulo = "' + s.titulo + '"')
       } catch (_) {
         const r = new Record(col)
         r.set('titulo', s.titulo)

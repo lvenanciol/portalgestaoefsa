@@ -101,9 +101,6 @@ migrate(
       impBal = app.findFirstRecordByFilter(
         'importacoes',
         'tipo = "balancete" && periodo = "2026-10"',
-        '',
-        1,
-        0,
       )
     } catch (_) {
       const a = new Record(colArq)
@@ -196,13 +193,7 @@ migrate(
 
     // Fluxo de caixa de teste — Out/2026, Casafruti
     try {
-      app.findFirstRecordByFilter(
-        'importacoes',
-        'tipo = "fluxo_caixa" && periodo = "2026-10"',
-        '',
-        1,
-        0,
-      )
+      app.findFirstRecordByFilter('importacoes', 'tipo = "fluxo_caixa" && periodo = "2026-10"')
     } catch (_) {
       const a = new Record(colArq)
       a.set('nome', 'fluxo-caixa-teste-out26.xlsx')
