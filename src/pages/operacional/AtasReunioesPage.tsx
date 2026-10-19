@@ -1,0 +1,480 @@
+import { useEffect, useState } from 'react'
+import { Users, Plus, Loader2, X, CalendarClock, ListTodo } from 'lucide-react'
+import pb from '@/lib/pocketbase/client'
+import { useAuth } from '@/hooks/use-auth'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { cn } from '@/lib/utils'
+
+// Fase 7 (prompt-mestre) — Atas & Reuniões: data/hora, modalidade (Presencial,
+// Teams, Meet + link), participantes, pauta, discussões, decisões e action
+// items com dono/prazo. Botão "Gerar tarefas" cria itens no kanban.
+
+const parse = (v: any) => {
+  if (Array.isArray(v)) return v
+  try {
+    return JSON.parse(v || '[]')
+  } catch (_) {
+    return []
+  }
+}
+
+const MOD_COR: Record<string, string> = {
+  Presencial: 'bg-emerald-50 text-emerald-700',
+  'Microsoft Teams': 'bg-indigo-50 text-indigo-700',
+  'Google Meet': 'bg-sky-50 text-sky-700',
+}
+
+export default function AtasReunioesPage() {
+  const { user } = useAuth()
+  const [itens, setItens] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [erro, setErro] = useState('')
+  const [dialog, setDialog] = useState(false)
+  const [form, setForm] = useState<any>({})
+  const [salvando, setSalvando] = useState(false)
+  const [detalhe, setDetalhe] = useState<any | null>(null)
+  const [novoItem, setNovoItem] = useState({ acao: '', dono: '', prazo: '' })
+  const [gerandoTarefas, setGerandoTarefas] = useState(false)
+
+  const carregar = async () => {
+    setLoading(true)
+    try {
+      const r = await pb.collection('atas').getFullList({ sort: '-data' })
+      setItens(r as any[])
+      setErro('')
+    } catch (e) {
+      setErro(String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    carregar()
+  }, [])
+
+  const abrirNova = () => {
+    setForm({
+      titulo: '',
+      data: '',
+      hora: '',
+      modalidade: 'Presencial',
+      link_reuniao: '',
+      participantes: '',
+      pauta: '',
+      resumo: '',
+      decisoes: '',
+    })
+    setDialog(true)
+  }
+
+  const salvar = async () => {
+    setSalvando(true)
+    try {
+      await pb.collection('atas').create({
+        titulo: form.titulo,
+        data: form.data ? form.data + ' 00:00:00.000Z' : '',
+        modalidade: form.modalidade,
+        link_reuniao: form.link_reuniao,
+        participantes: form.participantes,
+        pauta: form.pauta,
+        resumo: form.resumo,
+        decisoes: form.decisoes,
+        action_items: JSON.stringify([]),
+        criado_por: user?.email || '',
+      })
+      setDialog(false)
+      await carregar()
+    } catch (e) {
+      setErro(String(e))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  const addActionItem = async () => {
+    if (!detalhe || !novoItem.acao.trim()) return
+    const lista = parse(detalhe.action_items)
+    lista.push(novoItem)
+    try {
+      await pb.collection('atas').update(detalhe.id, { action_items: JSON.stringify(lista) })
+      setNovoItem({ acao: '', dono: '', prazo: '' })
+      const upd = await pb.collection('atas').getOne(detalhe.id)
+      setDetalhe(upd)
+    } catch (e) {
+      setErro(String(e))
+    }
+  }
+
+  const gerarTarefas = async () => {
+    if (!detalhe) return
+    setGerandoTarefas(true)
+    try {
+      const items = parse(detalhe.action_items)
+      for (const it of items) {
+        await pb.collection('tarefas').create({
+          titulo: it.acao,
+          responsavel: it.dono || '',
+          prazo: it.prazo ? it.prazo + ' 00:00:00.000Z' : '',
+          prioridade_p: 'P2',
+          prioridade: 'media',
+          status_kanban: 'a_fazer',
+          status: 'pendente',
+          vinculo_tipo: 'ata',
+          vinculo_id: detalhe.id,
+          criado_por: user?.email || '',
+        })
+      }
+      setErro('')
+      alert(items.length + ' tarefa(s) criada(s) no kanban (A Fazer), vinculadas a esta ata.')
+    } catch (e) {
+      setErro(String(e))
+    } finally {
+      setGerandoTarefas(false)
+    }
+  }
+
+  if (loading)
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-[#1B5E20]" />
+      </div>
+    )
+
+  return (
+    <div className="space-y-5 pb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-gray-200/80">
+        <div>
+          <h1 className="text-2xl lg:text-[26px] font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
+            <Users className="h-6 w-6 text-[#1B5E20]" /> Atas & Reuniões
+          </h1>
+          <p className="text-xs sm:text-[13px] text-gray-500 mt-0.5">
+            Pauta, decisões e action items com dono e prazo
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            disabled
+            title="Disponível na Fase 9"
+            className="h-9 bg-gray-300 text-gray-500 cursor-not-allowed"
+          >
+            Resumir com IA
+          </Button>
+          <Button onClick={abrirNova} className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white">
+            <Plus className="h-4 w-4 mr-1" /> Nova ata
+          </Button>
+        </div>
+      </div>
+
+      {erro && (
+        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
+          {erro}
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {itens.map((a) => {
+          const items = parse(a.action_items)
+          return (
+            <div
+              key={a.id}
+              className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => setDetalhe(a)}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[15px] font-bold text-gray-900">{a.titulo}</div>
+                  <div className="flex items-center gap-2 mt-1 text-[11px] text-gray-500">
+                    <CalendarClock className="h-3.5 w-3.5" />
+                    {String(a.data || '')
+                      .slice(0, 10)
+                      .split('-')
+                      .reverse()
+                      .join('/')}
+                    <span
+                      className={cn(
+                        'text-[9px] font-bold px-1.5 py-0.5 rounded',
+                        MOD_COR[a.modalidade] || 'bg-gray-100 text-gray-600',
+                      )}
+                    >
+                      {a.modalidade || '—'}
+                    </span>
+                  </div>
+                  <div className="text-[12px] text-gray-600 mt-1.5 line-clamp-2">
+                    {a.resumo || a.pauta}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="inline-flex items-center gap-1 text-[11px] font-bold text-[#1B5E20] bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-full">
+                    <ListTodo className="h-3 w-3" /> {items.length} action item(s)
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+        {itens.length === 0 && (
+          <p className="text-center text-sm text-gray-400 py-10">Nenhuma ata registrada.</p>
+        )}
+      </div>
+
+      {/* Dialog nova */}
+      <Dialog open={dialog} onOpenChange={setDialog}>
+        <DialogContent className="bg-white max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Nova ata</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Título *
+              </Label>
+              <Input
+                value={form.titulo || ''}
+                onChange={(e) => setForm({ ...form, titulo: e.target.value })}
+                className="h-10 bg-gray-50"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Data
+                </Label>
+                <Input
+                  type="date"
+                  value={form.data || ''}
+                  onChange={(e) => setForm({ ...form, data: e.target.value })}
+                  className="h-10 bg-gray-50"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Modalidade
+                </Label>
+                <Select
+                  value={form.modalidade || 'Presencial'}
+                  onValueChange={(v) => setForm({ ...form, modalidade: v })}
+                >
+                  <SelectTrigger className="h-10 bg-gray-50">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Presencial">Presencial</SelectItem>
+                    <SelectItem value="Microsoft Teams">Microsoft Teams</SelectItem>
+                    <SelectItem value="Google Meet">Google Meet</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Link (se online)
+                </Label>
+                <Input
+                  value={form.link_reuniao || ''}
+                  onChange={(e) => setForm({ ...form, link_reuniao: e.target.value })}
+                  className="h-10 bg-gray-50"
+                  placeholder="https://..."
+                />
+              </div>
+            </div>
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Participantes
+              </Label>
+              <Input
+                value={form.participantes || ''}
+                onChange={(e) => setForm({ ...form, participantes: e.target.value })}
+                className="h-10 bg-gray-50"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Pauta
+              </Label>
+              <Textarea
+                value={form.pauta || ''}
+                onChange={(e) => setForm({ ...form, pauta: e.target.value })}
+                rows={3}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Discussões
+              </Label>
+              <Textarea
+                value={form.resumo || ''}
+                onChange={(e) => setForm({ ...form, resumo: e.target.value })}
+                rows={3}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Decisões
+              </Label>
+              <Textarea
+                value={form.decisoes || ''}
+                onChange={(e) => setForm({ ...form, decisoes: e.target.value })}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialog(false)} className="h-9">
+              Cancelar
+            </Button>
+            <Button
+              onClick={salvar}
+              disabled={salvando || !form.titulo}
+              className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+            >
+              {salvando ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Detalhe */}
+      <Dialog open={!!detalhe} onOpenChange={(o) => !o && setDetalhe(null)}>
+        <DialogContent className="bg-white max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>{detalhe?.titulo}</span>
+              <button
+                onClick={() => setDetalhe(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </DialogTitle>
+          </DialogHeader>
+          {detalhe && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-[12px] text-gray-500">
+                {String(detalhe.data || '')
+                  .slice(0, 10)
+                  .split('-')
+                  .reverse()
+                  .join('/')}{' '}
+                · {detalhe.modalidade}
+                {detalhe.link_reuniao && (
+                  <a
+                    href={detalhe.link_reuniao}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[#1B5E20] font-semibold hover:underline"
+                  >
+                    entrar na reunião
+                  </a>
+                )}
+              </div>
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                  Participantes
+                </div>
+                <p className="text-[13px] text-gray-700">{detalhe.participantes || '—'}</p>
+              </div>
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                  Pauta
+                </div>
+                <p className="text-[13px] text-gray-700 whitespace-pre-wrap">
+                  {detalhe.pauta || '—'}
+                </p>
+              </div>
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                  Discussões
+                </div>
+                <p className="text-[13px] text-gray-700 whitespace-pre-wrap">
+                  {detalhe.resumo || '—'}
+                </p>
+              </div>
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                  Decisões
+                </div>
+                <p className="text-[13px] text-gray-700 whitespace-pre-wrap">
+                  {detalhe.decisoes || '—'}
+                </p>
+              </div>
+              {/* Action items */}
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">
+                  Action items
+                </div>
+                <div className="space-y-2">
+                  {parse(detalhe.action_items).map((it: any, i: number) => (
+                    <div key={i} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2.5">
+                      <span className="text-[13px] text-gray-800 flex-1">{it.acao}</span>
+                      <span className="text-[11px] font-semibold text-gray-600">{it.dono}</span>
+                      <span className="text-[11px] text-gray-400 tabular-nums">{it.prazo}</span>
+                    </div>
+                  ))}
+                  {parse(detalhe.action_items).length === 0 && (
+                    <p className="text-[12px] text-gray-400">Nenhum.</p>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mt-2">
+                  <Input
+                    value={novoItem.acao}
+                    onChange={(e) => setNovoItem({ ...novoItem, acao: e.target.value })}
+                    placeholder="Ação..."
+                    className="h-9 text-xs bg-gray-50 sm:col-span-2"
+                  />
+                  <Input
+                    value={novoItem.dono}
+                    onChange={(e) => setNovoItem({ ...novoItem, dono: e.target.value })}
+                    placeholder="Dono"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                  <Input
+                    type="date"
+                    value={novoItem.prazo}
+                    onChange={(e) => setNovoItem({ ...novoItem, prazo: e.target.value })}
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <Button variant="outline" size="sm" onClick={addActionItem} className="h-9">
+                    + Action item
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={gerarTarefas}
+                    disabled={gerandoTarefas}
+                    className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+                  >
+                    {gerandoTarefas ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <ListTodo className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    Gerar tarefas no kanban
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
