@@ -62,6 +62,7 @@ interface RegistroAuditoria {
 
 export default function ControleAcessos() {
   const { user } = useAuth()
+  const { pode } = useBotoes()
   const [usuarios, setUsuarios] = useState<UsuarioLista[]>([])
   const [grupos, setGrupos] = useState<Grupo[]>([])
   const [empresas, setEmpresas] = useState<Empresa[]>([])
