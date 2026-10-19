@@ -63,8 +63,10 @@ export default function PowerBiPage() {
       }
       // MSAL empacotado no build (dependência @azure/msal-browser)
       const { PublicClientApplication } = await import('@azure/msal-browser')
+      // app single-tenant: authority do próprio tenant (ctid do embed padrão)
+      const TENANT = 'f297b97e-1aa1-423f-81e0-008ad95e11f2'
       const pca = new PublicClientApplication({
-        auth: { clientId, authority: 'https://login.microsoftonline.com/common' },
+        auth: { clientId, authority: 'https://login.microsoftonline.com/' + TENANT },
       })
       await pca.initialize()
       const login = await pca.loginPopup({
