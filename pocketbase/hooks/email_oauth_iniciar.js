@@ -35,14 +35,13 @@ routerAdd(
           'Credenciais não registradas. Crie o secret ' +
           (provedor === 'google' ? 'GMAIL_OAUTH_CLIENT_ID' : 'OUTLOOK_OAUTH_CLIENT_ID') +
           ' (e o *_CLIENT_SECRET) no Skip Cloud.',
-      }
-      )
+      })
     }
 
     // state anti-CSRF de uso único
     const st = $security.randomString(48)
     try {
-      const col = $app.findCollection email_oauth_state
+      const col = $app.findCollectionByNameOrId('email_oauth_state')
       const rec = new Record(col)
       rec.set('state', st)
       rec.set('provedor', provedor)

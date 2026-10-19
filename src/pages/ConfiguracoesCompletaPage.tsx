@@ -107,7 +107,9 @@ export default function ConfiguracoesCompletaPage() {
         google: r.google || { conectado: false },
         microsoft: r.microsoft || { conectado: false },
       })
-    } catch (_) {}
+    } catch (_) {
+      /* status sem tokens ainda */
+    }
   }
 
   const carregarInbox = async () => {
