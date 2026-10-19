@@ -57,7 +57,14 @@ routerAdd(
       if (res.statusCode !== 200) return e.json(502, { ok: false, erro: 'edge ' + res.statusCode })
       const d = res.json || {}
       const rb = (d.data && d.data.responseBody) || {}
-      if (!rb.rows) return e.json(502, { ok: false, erro: 'sem rows (TTRBC)' })
+      if (!rb.rows) {
+        return e.json(502, {
+          ok: false,
+          erro:
+            'edge sem rows: ' +
+            ((d.data && (d.data.statusMessage || d.data.error)) || JSON.stringify(d).slice(0, 200)),
+        })
+      }
       itens = rb.rows.map((r) => ({ codigo: String(r[0]), descricao: String(r[1]) }))
       fonte = 'sankhya'
       // grava cache

@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       registrarAuditoria(motivo === 'inatividade' ? 'logout_inatividade' : 'logout')
       // T8: encerra a integração Sankhya junto com a sessão do portal
       try {
-        pb.send('/backend/v1/sankhya/logout', { method: 'POST', body: '{}' })
+        pb.send('/backend/v1/sankhya/logout-sessao', { method: 'POST', body: '{}' })
       } catch (_) {
         /* best-effort: falha de rede não bloqueia o logout do portal */
       }

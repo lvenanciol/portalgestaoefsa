@@ -7,7 +7,7 @@
 
 routerAdd(
   'POST',
-  '/backend/v1/sankhya/logout',
+  '/backend/v1/sankhya/logout-sessao',
   (e) => {
     const auth = e.auth
     if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
