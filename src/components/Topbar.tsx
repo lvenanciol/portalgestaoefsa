@@ -1,6 +1,16 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Leaf, Calendar, ChevronDown, Search, Bell, AlertCircle, Clock, User } from 'lucide-react'
+import {
+  Leaf,
+  Calendar,
+  ChevronDown,
+  Search,
+  Bell,
+  AlertCircle,
+  Clock,
+  User,
+  Menu,
+} from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
 import { CompanyId, COMPANIES } from '@/data/mockData'
