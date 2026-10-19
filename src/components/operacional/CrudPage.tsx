@@ -141,6 +141,23 @@ export default function CrudPage({ config }: { config: CrudConfig }) {
         dados.criado_por = pb.authStore.record?.email || ''
         await pb.collection(config.colecao).create(dados)
       }
+      // Trilha de auditoria (best-effort) — toda ação manual CRUD
+      try {
+        await pb.send('/backend/v1/auditoria', {
+          method: 'POST',
+          body: JSON.stringify({
+            acao: editando ? 'editar_registro' : 'criar_registro',
+            modulo: config.colecao,
+            detalhe:
+              (editando ? 'Editou' : 'Criou') +
+              ' em ' +
+              config.colecao +
+              (form.titulo ? ': ' + form.titulo : ''),
+          }),
+        })
+      } catch (_) {
+        /* best-effort */
+      }
       setDialogAberto(false)
       await carregar()
     } catch (e) {

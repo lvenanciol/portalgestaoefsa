@@ -1,19 +1,10 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  Leaf,
-  Calendar,
-  ChevronDown,
-  Search,
-  Bell,
-  AlertCircle,
-  Clock,
-  User,
-  Menu,
-} from 'lucide-react'
+import { Calendar, ChevronDown, Search, Bell, AlertCircle, Clock, User, Menu } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
 import { CompanyId, COMPANIES } from '@/data/mockData'
+import { marcaAtiva } from '@/pages/ConfiguracoesCompletaPage'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,10 +42,21 @@ export function Topbar() {
               type="button"
               className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-lg border border-[#E5E7EB] bg-gray-50/70 hover:bg-gray-100 text-[13.5px] font-semibold text-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20"
             >
-              <span className="h-6 w-6 rounded-md bg-[#1B5E20] flex items-center justify-center shrink-0">
-                <Leaf className="h-3.5 w-3.5 text-white" />
-              </span>
-              <span className="tracking-tight">{activeCompany.name}</span>
+              {(() => {
+                const marca = marcaAtiva()
+                return (
+                  <>
+                    <span
+                      className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 text-white font-bold text-[10px]"
+                      style={{ backgroundColor: marca.cor }}
+                    >
+                      {marca.sigla}
+                    </span>
+                    <span className="tracking-tight">{marca.nome}</span>
+                  </>
+                )
+              })()}
+              <span className="tracking-tight text-gray-500">{activeCompany.name}</span>
               <ChevronDown
                 className={cn(
                   'h-4 w-4 text-gray-500 transition-transform duration-200',

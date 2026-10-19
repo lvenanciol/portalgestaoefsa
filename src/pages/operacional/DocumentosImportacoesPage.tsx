@@ -107,13 +107,18 @@ async function extrairLinhas(file: File): Promise<{ linhas: LinhaExtraida[]; tex
     return { linhas }
   }
   if (nome.endsWith('.pdf')) {
-    // PDF: extração server-side (Gemini/edge) na Fase 9; aqui registra o arquivo
-    const texto = await file.text().catch(() => '')
-    return { linhas: [], texto: '[PDF — extração serverless disponível na Fase 9]' }
+    // PDF: conversão server-side no botão "Analisar com IA" ($documents.toMarkdown
+    // preserva tabelas; PDF escaneado sem OCR não é suportado pela plataforma)
+    return {
+      linhas: [],
+      texto: '[PDF — use "Analisar com IA" para extração e análise server-side]',
+    }
   }
   if (nome.endsWith('.docx')) {
-    const texto = await file.text().catch(() => '')
-    return { linhas: [], texto: '[DOCX — extração serverless disponível na Fase 9]' }
+    return {
+      linhas: [],
+      texto: '[DOCX — use "Analisar com IA" para extração e análise server-side]',
+    }
   }
   return { linhas: [] }
 }
@@ -316,6 +321,16 @@ export default function DocumentosImportacoesPage() {
     setProcessando(true)
     setErro('')
     try {
+      // versão automática: N-ésima importação do mesmo tipo/empresa/período
+      let versao = 1
+      try {
+        const mesmas = await pb.collection('importacoes').getFullList({
+          filter: `tipo="${tipo}" && empresa="${empresa}" && periodo="${periodo}"`,
+        })
+        versao = (mesmas.items?.length || 0) + 1
+      } catch (_e) {
+        versao = 1
+      }
       // 1. upload do arquivo
       const fd = new FormData()
       fd.append('nome', file.name)
@@ -323,6 +338,7 @@ export default function DocumentosImportacoesPage() {
       fd.append('tamanho', String(file.size))
       fd.append('status', 'processado')
       fd.append('criado_por', user?.email || '')
+      fd.append('versao', String(versao))
       fd.append('arquivo', file)
       const arq = await pb.collection('arquivos_importados').create(fd)
 

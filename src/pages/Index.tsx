@@ -228,18 +228,36 @@ export default function Index() {
           })
         }
         try {
-          const vencendo = await pb
-            .collection('contratos')
-            .getFullList({ filter: "status='vencendo'" })
-          vencendo.slice(0, 2).forEach((c: any, i: number) => {
-            als.push({
-              id: 'alt-contr' + i,
-              title: 'Contrato vencendo',
-              description: c.parte + ' — ' + (c.titulo || ''),
-              detail: c.fim ? new Date(c.fim).toLocaleDateString('pt-BR') : '',
-              severity: 'warning',
+          const contratos = await pb.collection('contratos').getFullList()
+          const hoje = new Date()
+          const fim = (c: any) => (c.fim ? new Date(c.fim) : null)
+          contratos
+            .filter((c: any) => {
+              const f = fim(c)
+              return f && c.status !== 'encerrado'
             })
-          })
+            .sort((a: any, b: any) => fim(a)!.getTime() - fim(b)!.getTime())
+            .slice(0, 3)
+            .forEach((c: any) => {
+              const f = fim(c)!
+              const dias = Math.ceil((f.getTime() - hoje.getTime()) / 86400000)
+              if (dias <= 90) {
+                als.push({
+                  id: 'alt-contr-' + c.id,
+                  title:
+                    dias <= 0
+                      ? 'Contrato vencido'
+                      : dias <= 30
+                        ? 'Contrato vence em até 30 dias'
+                        : dias <= 60
+                          ? 'Contrato vence em 31-60 dias'
+                          : 'Contrato vence em 61-90 dias',
+                  description: c.parte + ' — ' + (c.titulo || ''),
+                  detail: f.toLocaleDateString('pt-BR'),
+                  severity: dias <= 30 ? 'critical' : 'warning',
+                })
+              }
+            })
         } catch (_e) {
           // contratos sem permissão ou coleção vazia — segue sem alerta
         }

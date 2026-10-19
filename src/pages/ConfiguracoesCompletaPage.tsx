@@ -36,10 +36,22 @@ import { cn } from '@/lib/utils'
 // consolidada; globalização (bandeiras BR/EUA/UE trocando idioma + padrão
 // contábil sem reload).
 
+const MARCA_LS = 'pge_marca_visual'
+
 const LOGOS: Record<string, { nome: string; cor: string; sigla: string }> = {
   Extrafruti: { nome: 'Extrafruti', cor: '#1B5E20', sigla: 'EX' },
   Casafruti: { nome: 'Casafruti', cor: '#F59E0B', sigla: 'CA' },
   FoldBox: { nome: 'FoldBox', cor: '#0F3D13', sigla: 'FB' },
+}
+
+// marca ativa (persistida) — lida pelo Topbar para aplicar a identidade
+export function marcaAtiva(): { nome: string; cor: string; sigla: string } {
+  try {
+    const k = localStorage.getItem(MARCA_LS) || 'Extrafruti'
+    return LOGOS[k] || LOGOS.Extrafruti
+  } catch (_) {
+    return LOGOS.Extrafruti
+  }
 }
 
 export default function ConfiguracoesCompletaPage() {
@@ -49,7 +61,13 @@ export default function ConfiguracoesCompletaPage() {
   >({})
   const [idioma, setIdioma] = useState<Idioma>(idiomaSalvo())
   const [padrao, setPadrao] = useState<PadraoContabil>(padraoSalvo())
-  const [logoSel, setLogoSel] = useState('Extrafruti')
+  const [logoSel, setLogoSel] = useState(() => {
+    try {
+      return localStorage.getItem('pge_marca_visual') || 'Extrafruti'
+    } catch (_) {
+      return 'Extrafruti'
+    }
+  })
   const [backup, setBackup] = useState('')
   const [backupMsg, setBackupMsg] = useState('')
   const [auditoria, setAuditoria] = useState<any[]>([])
@@ -279,7 +297,10 @@ export default function ConfiguracoesCompletaPage() {
             <button
               key={key}
               type="button"
-              onClick={() => setLogoSel(key)}
+              onClick={() => {
+                setLogoSel(key)
+                localStorage.setItem('pge_marca_visual', key)
+              }}
               className={cn(
                 'flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left',
                 logoSel === key
