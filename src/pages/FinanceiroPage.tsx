@@ -7,6 +7,7 @@ import {
   Scale,
   ClipboardCheck,
   Upload,
+  Download,
 } from 'lucide-react'
 import RealPage from './financeiro/RealPage'
 import DrePage from './financeiro/DrePage'
@@ -42,12 +43,13 @@ export default function FinanceiroPage() {
             Financeiro & Contábil
           </h1>
           <p className="text-xs sm:text-[13px] text-gray-500 mt-0.5">
-            DRE, fluxo de caixa, títulos, balancete e fechamento — dados de demonstração
+            DRE, fluxo de caixa, títulos, balancete e fechamento — Real (Sankhya), importado e
+            demonstração
           </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-[11px] font-semibold text-amber-700">
-          <Download className="h-3.5 w-3.5" />
-          Mock — integração Sankhya na Fase 5
+        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[11px] font-semibold text-emerald-700">
+          <Database className="h-3.5 w-3.5" />
+          Real (Sankhya) + Importação
         </span>
         <div className="hidden sm:block" />
       </div>
