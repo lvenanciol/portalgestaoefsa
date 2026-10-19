@@ -6,9 +6,9 @@
 //   2. divide [início, hoje] em janelas de <= 30 dias e processa em
 //      sequência via DbExplorerSP.executeQuery com filtro de data por janela;
 //   3. ao concluir CADA janela: persiste a watermark no fim da janela,
-//      registra no log de execuções (início, fim, linhas, status — coleção
-//      sankhya_cache chave 'sync_janelas_log' + console do pod) e grava no
-//      snapshot os meses já completos;
+//      registra no log (início, fim, linhas, status — sankhya_cache
+//      'sync_janelas_log' + console do pod) e grava no snapshot os meses
+//      já completos;
 //   4. em falha: interrompe e mantém a watermark da última janela OK —
 //      a próxima execução retoma dali (nunca reinicia o intervalo).
 // Sem watermark (1ª rodada): backfill chunked dos últimos 12 meses.
@@ -17,117 +17,113 @@
 // ap_top/ar_top acumulam por parceiro e aplicam TOP 5 no consolidado.
 // Rota de teste admin-only: POST /backend/v1/sankhya/sync-chunked-test
 // body {max_janelas: N} — roda as próximas N janelas e devolve o relatório.
+// Toda a lógica vive DENTRO dos callbacks (VM do PocketBase não compartilha
+// declarações de topo entre callbacks).
 
 const SJ_JANELA_DIAS = 30
 const SJ_RETRO_MAX_MESES = 12
-
-function sjFmtD(d) {
-  return d.toISOString().slice(0, 10)
-}
-
-function sjMesFimMs(mes) {
-  // mes 'YYYY-MM' → último milissegundo do mês (UTC)
-  const y = parseInt(mes.slice(0, 4), 10)
-  const m = parseInt(mes.slice(5, 7), 10)
-  return Date.UTC(y, m, 1) - 1
-}
-
-function sjParseWm(s) {
-  if (!s) return null
-  try {
-    const d = new Date(s.replace(' ', 'T'))
-    if (isNaN(d.getTime())) return null
-    return d
-  } catch (_) {
-    return null
-  }
-}
-
-function sjRodarSql(edgeUrl, edgeSecret, sql) {
-  const res = $http.send({
-    url: edgeUrl,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-PGE-Secret': edgeSecret },
-    body: JSON.stringify({
-      op: 'dbExplorer',
-      payload: {
-        requestBody: { serviceName: 'DbExplorerSP.executeQuery', requestBody: { sql: sql } },
-      },
-    }),
-    timeout: 45,
-  })
-  if (res.statusCode !== 200) return { erro: 'edge ' + res.statusCode }
-  const d = res.json || {}
-  const rb = (d.data && d.data.responseBody) || {}
-  if (!rb.rows) return { erro: (d.data && d.data.statusMessage) || 'sem rows' }
-  return { rows: rb.rows }
-}
-
-function sjPersistirWatermark(fimJanela, janelasOk) {
-  try {
-    let wm = null
-    try {
-      wm = $app.findFirstRecordByFilter('sankhya_cache', "chave = 'financeiro_watermark'")
-    } catch (_) {
-      wm = null
-    }
-    const valor = fimJanela.toISOString().replace('T', ' ')
-    const payload = JSON.stringify({
-      janelas_concluidas: janelasOk,
-      ultima_janela: sjFmtD(fimJanela),
-    })
-    if (wm) {
-      wm.set('gerado_em', valor)
-      wm.set('status', 'incremental_janelas')
-      wm.set('payload', payload)
-      $app.save(wm)
-    } else {
-      const col = $app.findCollectionByNameOrId('sankhya_cache')
-      const novo = new Record(col)
-      novo.set('chave', 'financeiro_watermark')
-      novo.set('gerado_em', valor)
-      novo.set('status', 'incremental_janelas')
-      novo.set('payload', payload)
-      $app.save(novo)
-    }
-  } catch (err) {
-    console.log('sankhya_sync: falha ao persistir watermark ' + String(err))
-  }
-}
-
-function sjRegistrarLog(janelas) {
-  try {
-    let rec = null
-    try {
-      rec = $app.findFirstRecordByFilter('sankhya_cache', "chave = 'sync_janelas_log'")
-    } catch (_) {
-      rec = null
-    }
-    const valor = JSON.stringify(janelas.slice(-100))
-    if (rec) {
-      rec.set('payload', valor)
-      rec.set('status', 'log')
-      rec.set('gerado_em', new DateTime().string())
-      $app.save(rec)
-    } else {
-      const col = $app.findCollectionByNameOrId('sankhya_cache')
-      const novo = new Record(col)
-      novo.set('chave', 'sync_janelas_log')
-      novo.set('payload', valor)
-      novo.set('status', 'log')
-      novo.set('gerado_em', new DateTime().string())
-      $app.save(novo)
-    }
-  } catch (err) {
-    console.log('sankhya_sync: falha ao gravar log de janelas ' + String(err))
-  }
-}
 
 function sjSyncChunkado(opcoes) {
   opcoes = opcoes || {}
   const maxJanelas = opcoes.max_janelas || 0
   const janelas = []
   const falhas = []
+
+  function sjFmtD(d) {
+    return d.toISOString().slice(0, 10)
+  }
+  function sjMesFimMs(mes) {
+    const y = parseInt(mes.slice(0, 4), 10)
+    const m = parseInt(mes.slice(5, 7), 10)
+    return Date.UTC(y, m, 1) - 1
+  }
+  function sjParseWm(s) {
+    if (!s) return null
+    try {
+      const d = new Date(s.replace(' ', 'T'))
+      if (isNaN(d.getTime())) return null
+      return d
+    } catch (_) {
+      return null
+    }
+  }
+  function sjRodarSql(sql) {
+    const res = $http.send({
+      url: edgeUrl,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-PGE-Secret': edgeSecret },
+      body: JSON.stringify({
+        op: 'dbExplorer',
+        payload: {
+          requestBody: { serviceName: 'DbExplorerSP.executeQuery', requestBody: { sql: sql } },
+        },
+      }),
+      timeout: 45,
+    })
+    if (res.statusCode !== 200) return { erro: 'edge ' + res.statusCode }
+    const d = res.json || {}
+    const rb = (d.data && d.data.responseBody) || {}
+    if (!rb.rows) return { erro: (d.data && d.data.statusMessage) || 'sem rows' }
+    return { rows: rb.rows }
+  }
+  function sjPersistirWatermark(fimJanela, janelasOk) {
+    try {
+      let wm = null
+      try {
+        wm = $app.findFirstRecordByFilter('sankhya_cache', "chave = 'financeiro_watermark'")
+      } catch (_) {
+        wm = null
+      }
+      const valor = fimJanela.toISOString().replace('T', ' ')
+      const payload = JSON.stringify({
+        janelas_concluidas: janelasOk,
+        ultima_janela: sjFmtD(fimJanela),
+      })
+      if (wm) {
+        wm.set('gerado_em', valor)
+        wm.set('status', 'incremental_janelas')
+        wm.set('payload', payload)
+        $app.save(wm)
+      } else {
+        const col = $app.findCollectionByNameOrId('sankhya_cache')
+        const novo = new Record(col)
+        novo.set('chave', 'financeiro_watermark')
+        novo.set('gerado_em', valor)
+        novo.set('status', 'incremental_janelas')
+        novo.set('payload', payload)
+        $app.save(novo)
+      }
+    } catch (err) {
+      console.log('sankhya_sync: falha ao persistir watermark ' + String(err))
+    }
+  }
+  function sjRegistrarLog() {
+    try {
+      let rec = null
+      try {
+        rec = $app.findFirstRecordByFilter('sankhya_cache', "chave = 'sync_janelas_log'")
+      } catch (_) {
+        rec = null
+      }
+      const valor = JSON.stringify(janelas.slice(-100))
+      if (rec) {
+        rec.set('payload', valor)
+        rec.set('status', 'log')
+        rec.set('gerado_em', new DateTime().string())
+        $app.save(rec)
+      } else {
+        const col = $app.findCollectionByNameOrId('sankhya_cache')
+        const novo = new Record(col)
+        novo.set('chave', 'sync_janelas_log')
+        novo.set('payload', valor)
+        novo.set('status', 'log')
+        novo.set('gerado_em', new DateTime().string())
+        $app.save(novo)
+      }
+    } catch (err) {
+      console.log('sankhya_sync: falha ao gravar log de janelas ' + String(err))
+    }
+  }
 
   const edgeUrl = $secrets.get('PGE_EDGE_URL') || ''
   const edgeSecret = $secrets.get('PGE_PROXY_SECRET') || ''
@@ -156,7 +152,6 @@ function sjSyncChunkado(opcoes) {
   if (wmRec) {
     const ult = sjParseWm(wmRec.getString('gerado_em'))
     if (ult) {
-      // retomada: dia 1 do mês da watermark (nunca antes do piso de 12 meses)
       inicio = new Date(Date.UTC(ult.getUTCFullYear(), ult.getUTCMonth(), 1))
       if (inicio.getTime() < piso.getTime()) inicio = new Date(piso.getTime())
     }
@@ -307,7 +302,6 @@ function sjSyncChunkado(opcoes) {
   }
 
   function finalizarTudo() {
-    // consolida TODOS os meses (passado completo + mês corrente até hoje)
     mergeMesesAte(new Date(hoje.getTime() + 2 * 86399999))
     snap.dados.ap_aging = Object.keys(acc.ap_aging).map(function (k) {
       return [k, acc.ap_aging[k].t, acc.ap_aging[k].n]
@@ -458,11 +452,7 @@ function sjSyncChunkado(opcoes) {
     const fimS = sjFmtD(wFim)
     const t0 = Date.now()
     if (!empresasOk) {
-      const re = sjRodarSql(
-        edgeUrl,
-        edgeSecret,
-        'SELECT CODEMP, RAZAOABREV FROM SANKHYA.TSIEMP ORDER BY CODEMP',
-      )
+      const re = sjRodarSql('SELECT CODEMP, RAZAOABREV FROM SANKHYA.TSIEMP ORDER BY CODEMP')
       if (re.erro) {
         falhas.push('empresas: ' + re.erro)
         break
@@ -475,7 +465,7 @@ function sjSyncChunkado(opcoes) {
     let wErro = ''
     for (let ci = 0; ci < ordem.length; ci++) {
       const chave = ordem[ci]
-      const r = sjRodarSql(edgeUrl, edgeSecret, SQLS[chave])
+      const r = sjRodarSql(SQLS[chave])
       if (r.erro) {
         wErro = chave + ': ' + r.erro
         break
@@ -499,9 +489,8 @@ function sjSyncChunkado(opcoes) {
       falhas.push(wErro)
       break
     }
-    // janela concluída: watermark avança, log persiste, meses completos vão ao snapshot
     sjPersistirWatermark(wFim, concluidas + 1)
-    sjRegistrarLog(janelas)
+    sjRegistrarLog()
     mergeMesesAte(wFim)
     salvarSnapshot()
     concluidas++
@@ -511,7 +500,7 @@ function sjSyncChunkado(opcoes) {
   if (completa) {
     finalizarTudo()
     salvarSnapshot()
-    sjRegistrarLog(janelas)
+    sjRegistrarLog()
   }
 
   return {
