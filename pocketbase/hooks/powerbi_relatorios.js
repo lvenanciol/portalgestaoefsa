@@ -36,13 +36,15 @@ routerAdd(
         })
       }
       const d = res.json || {}
-      const itens = (d.value || []).map((r: any) => ({
-        id: r.id,
-        nome: r.name,
-        embed_url: r.embedUrl,
-        web_url: r.webUrl,
-        workspace: r.workspaceId,
-      }))
+      const itens = (d.value || []).map(function (r: any) {
+        return {
+          id: r.id,
+          nome: r.name,
+          embed_url: r.embedUrl,
+          web_url: r.webUrl,
+          workspace: r.workspaceId,
+        }
+      })
       return e.json(200, { ok: true, total: itens.length, itens: itens })
     } catch (err) {
       return e.json(502, { ok: false, erro: 'Falha ao consultar Power BI: ' + String(err).slice(0, 200) })

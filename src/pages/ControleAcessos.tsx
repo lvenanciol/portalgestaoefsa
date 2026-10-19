@@ -698,7 +698,38 @@ export default function ControleAcessos() {
                         />
                       </div>
                     )
-                  })}\n                </div>\n                {/* T6a: CRUD de abas/seções da tela */}\n                {ABAS_POR_TELA[tela.key]?.length > 0 && (\n                  <div className="mt-2 pt-2 border-t border-gray-100">\n                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Abas da tela</div>\n                    <div className="space-y-2">\n                      {ABAS_POR_TELA[tela.key].map((aba: any) => {\n                        const ocultos = botoesConfig[tela.key] || []\n                        const visivel = !ocultos.includes('aba_' + aba.key)\n                        return (\n                          <div key={aba.key} className="flex items-center justify-between gap-3">\n                            <span className="text-[11px] text-gray-600">{aba.label}</span>\n                            <Switch checked={visivel} onCheckedChange={() => toggleBotao(tela.key, 'aba_' + aba.key)} />\n                          </div>\n                        )\n                      })}\n                    </div>\n                  </div>\n                )}\n              </div>\n            ))}\n          </div>\n          <DialogFooter>\n            <Button variant="outline" onClick={() => setDialogBotoes(null)} className="h-9">\n              Cancelar\n            </Button>
+                  })}
+                </div>
+                {/* T6a: CRUD de abas/seções da tela */}
+                {ABAS_POR_TELA[tela.key]?.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">
+                      Abas da tela
+                    </div>
+                    <div className="space-y-2">
+                      {ABAS_POR_TELA[tela.key].map((aba: any) => {
+                        const ocultos = botoesConfig[tela.key] || []
+                        const visivel = !ocultos.includes('aba_' + aba.key)
+                        return (
+                          <div key={aba.key} className="flex items-center justify-between gap-3">
+                            <span className="text-[11px] text-gray-600">{aba.label}</span>
+                            <Switch
+                              checked={visivel}
+                              onCheckedChange={() => toggleBotao(tela.key, 'aba_' + aba.key)}
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogBotoes(null)} className="h-9">
+              Cancelar
+            </Button>
             <Button
               onClick={salvarBotoes}
               disabled={salvandoBotoes}
