@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ListTree, Loader2, RefreshCw, GripVertical } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { useBotoes } from '@/services/botoes-service'
 import { MENU_MODULOS } from '@/services/permissoes-service'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -47,7 +48,10 @@ export default function MenusPage() {
 
   const toggleAtivo = async (item: MenuItem) => {
     try {
-      await pb.collection('menus').update(item.id, { ativo: !item.ativo })
+      await pb.send('/backend/v1/menus/toggle', {
+        method: 'PATCH',
+        body: JSON.stringify({ id: item.id, ativo: !item.ativo }),
+      })
       await carregar()
     } catch (e) {
       setErro(String(e))
@@ -111,7 +115,10 @@ export default function MenusPage() {
                           {MENU_MODULOS[i.rota] ? ' · módulo: ' + MENU_MODULOS[i.rota] : ''}
                         </div>
                       </div>
-                      <Switch checked={i.ativo} onCheckedChange={() => toggleAtivo(i)} />
+                      <Switch
+                        checked={i.ativo}
+                        onCheckedChange={() => pode('menus', 'toggle_ativo') && toggleAtivo(i)}
+                      />
                     </div>
                   ))}
               </div>
