@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-18T23:12:20.533Z",
+  "generatedAt": "2026-10-19T00:18:28.398Z",
   "collections": [
     {
       "name": "users",
@@ -29,14 +29,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         },
         {
           "name": "cargo",
@@ -129,17 +134,24 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
-      "indexes": ["CREATE UNIQUE INDEX idx_empresas_nome ON empresas (nome)"]
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_empresas_nome ON empresas (nome)"
+      ]
     },
     {
       "name": "unidades",
@@ -170,7 +182,12 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["loja", "cd", "matriz", "administrativo"]
+          "selectValues": [
+            "loja",
+            "cd",
+            "matriz",
+            "administrativo"
+          ]
         },
         {
           "name": "gestor_id",
@@ -196,17 +213,24 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
-      "indexes": ["CREATE UNIQUE INDEX idx_unidades_nome_empresa ON unidades (empresa_id, nome)"]
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_unidades_nome_empresa ON unidades (empresa_id, nome)"
+      ]
     },
     {
       "name": "grupos_permissao",
@@ -242,7 +266,11 @@
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": ["grupo", "empresa", "unidade"]
+          "selectValues": [
+            "grupo",
+            "empresa",
+            "unidade"
+          ]
         },
         {
           "name": "empresa_id",
@@ -263,17 +291,24 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
-      "indexes": ["CREATE UNIQUE INDEX idx_grupos_nome ON grupos_permissao (nome)"]
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_grupos_nome ON grupos_permissao (nome)"
+      ]
     },
     {
       "name": "menus",
@@ -327,17 +362,24 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
-      "indexes": ["CREATE INDEX idx_menus_secao_ordem ON menus (secao, ordem)"]
+      "indexes": [
+        "CREATE INDEX idx_menus_secao_ordem ON menus (secao, ordem)"
+      ]
     },
     {
       "name": "auditoria",
@@ -406,14 +448,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -503,14 +550,19 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
@@ -564,7 +616,11 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["grupo", "subtotal", "linha"]
+          "selectValues": [
+            "grupo",
+            "subtotal",
+            "linha"
+          ]
         },
         {
           "name": "valor",
@@ -583,19 +639,507 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate"]
+          "autodateTriggers": [
+            "onCreate"
+          ]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": ["onCreate", "onUpdate"]
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
         }
       ],
       "indexes": [
         "CREATE INDEX idx_dre_periodo ON dre_linhas (periodo)",
         "CREATE INDEX idx_dre_periodo_ordem ON dre_linhas (periodo, ordem)"
+      ]
+    },
+    {
+      "name": "documentos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "categoria",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "balancete",
+            "dre",
+            "contrato",
+            "ata",
+            "relatorio",
+            "outro"
+          ]
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "arquivo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_documentos_categoria ON documentos (categoria)"
+      ]
+    },
+    {
+      "name": "tarefas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "titulo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "pendente",
+            "em_andamento",
+            "concluida"
+          ]
+        },
+        {
+          "name": "prioridade",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "baixa",
+            "media",
+            "alta"
+          ]
+        },
+        {
+          "name": "responsavel",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "prazo",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_tarefas_status ON tarefas (status)"
+      ]
+    },
+    {
+      "name": "projetos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "empresa",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "planejamento",
+            "em_andamento",
+            "pausado",
+            "concluido"
+          ]
+        },
+        {
+          "name": "progresso",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "responsavel",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "prazo",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_projetos_status ON projetos (status)"
+      ]
+    },
+    {
+      "name": "atas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "titulo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "participantes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "resumo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "decisoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_atas_data ON atas (data)"
+      ]
+    },
+    {
+      "name": "emails",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "para",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "assunto",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "enviado",
+            "erro"
+          ]
+        },
+        {
+          "name": "erro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_emails_created ON emails (created DESC)"
+      ]
+    },
+    {
+      "name": "contratos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "titulo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "parte",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "locacao",
+            "servico",
+            "fornecimento",
+            "outro"
+          ]
+        },
+        {
+          "name": "empresa",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_mensal",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "inicio",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fim",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "ativo",
+            "vencendo",
+            "encerrado"
+          ]
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_contratos_status ON contratos (status)"
       ]
     }
   ]

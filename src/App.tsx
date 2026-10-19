@@ -9,6 +9,12 @@ import Login from './pages/Login'
 import ControleAcessos from './pages/ControleAcessos'
 import FinanceiroPage from './pages/FinanceiroPage'
 import DesempenhoPage from './pages/DesempenhoPage'
+import DocumentosPage from './pages/operacional/DocumentosPage'
+import TarefasPage from './pages/operacional/TarefasPage'
+import ProjetosPage from './pages/operacional/ProjetosPage'
+import AtasPage from './pages/operacional/AtasPage'
+import EmailsPage from './pages/operacional/EmailsPage'
+import ContratosPage from './pages/operacional/ContratosPage'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
@@ -29,6 +35,12 @@ const AppRoutes = () => {
         <Route path="/" element={<Index />} />
         <Route path="/financeiro" element={<FinanceiroPage />} />
         <Route path="/desempenho" element={<DesempenhoPage />} />
+        <Route path="/documentos" element={<DocumentosPage />} />
+        <Route path="/tarefas" element={<TarefasPage />} />
+        <Route path="/projetos" element={<ProjetosPage />} />
+        <Route path="/atas" element={<AtasPage />} />
+        <Route path="/emails" element={<EmailsPage />} />
+        <Route path="/contratos" element={<ContratosPage />} />
         <Route path="/acessos" element={<ControleAcessos />} />
       </Route>
       <Route path="*" element={<NotFound />} />

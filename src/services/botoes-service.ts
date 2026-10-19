@@ -44,6 +44,61 @@ export const BUTTON_GATES: TelaBotoes[] = [
       { key: 'auditoria', label: 'Trilha de Auditoria' },
     ],
   },
+  {
+    key: 'documentos',
+    label: 'Documentos & Importações',
+    buttons: [
+      { key: 'novo', label: 'Novo documento' },
+      { key: 'editar', label: 'Editar (linha)' },
+      { key: 'excluir', label: 'Excluir (linha)' },
+      { key: 'exportar_csv', label: 'Exportar CSV' },
+    ],
+  },
+  {
+    key: 'tarefas',
+    label: 'Tarefas & Agenda',
+    buttons: [
+      { key: 'novo', label: 'Nova tarefa' },
+      { key: 'editar', label: 'Editar (linha)' },
+      { key: 'excluir', label: 'Excluir (linha)' },
+      { key: 'exportar_csv', label: 'Exportar CSV' },
+    ],
+  },
+  {
+    key: 'projetos',
+    label: 'Projetos',
+    buttons: [
+      { key: 'novo', label: 'Novo projeto' },
+      { key: 'editar', label: 'Editar (linha)' },
+      { key: 'excluir', label: 'Excluir (linha)' },
+      { key: 'exportar_csv', label: 'Exportar CSV' },
+    ],
+  },
+  {
+    key: 'atas',
+    label: 'Atas & Reuniões',
+    buttons: [
+      { key: 'novo', label: 'Nova ata' },
+      { key: 'editar', label: 'Editar (linha)' },
+      { key: 'excluir', label: 'Excluir (linha)' },
+      { key: 'exportar_csv', label: 'Exportar CSV' },
+    ],
+  },
+  {
+    key: 'emails',
+    label: 'E-mails',
+    buttons: [{ key: 'exportar_csv', label: 'Exportar CSV' }],
+  },
+  {
+    key: 'contratos',
+    label: 'Contratos',
+    buttons: [
+      { key: 'novo', label: 'Novo contrato' },
+      { key: 'editar', label: 'Editar (linha)' },
+      { key: 'excluir', label: 'Excluir (linha)' },
+      { key: 'exportar_csv', label: 'Exportar CSV' },
+    ],
+  },
 ]
 
 // botoesOcultos(p) → Record<screen, string[]>
