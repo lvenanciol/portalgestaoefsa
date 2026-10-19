@@ -240,7 +240,9 @@ export default function Index() {
               severity: 'warning',
             })
           })
-        } catch (_) {}
+        } catch (_e) {
+          // contratos sem permissão ou coleção vazia — segue sem alerta
+        }
         try {
           const hoje = new Date().toISOString().slice(0, 10)
           const ts = await pb.collection('tarefas').getFullList({ filter: "status!='concluida'" })
@@ -272,7 +274,9 @@ export default function Index() {
               }
             }),
           )
-        } catch (_) {}
+        } catch (_e2) {
+          // tarefas indisponíveis — segue sem compromissos
+        }
         setAlertas(als)
 
         setContextoIa(
