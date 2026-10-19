@@ -92,6 +92,11 @@ async function extrairLinhas(file: File): Promise<{ linhas: LinhaExtraida[]; tex
       return isNaN(n) ? 0 : n
     }
     const linhas: LinhaExtraida[] = []
+    // COR-3 F6: texto bruto (cabeçalho + primeiras linhas) p/ classificação por conteúdo
+    const texto = rows
+      .slice(0, 30)
+      .map((r) => (r || []).join(' '))
+      .join('\n')
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i]
       if (!r || !r[1]) continue
@@ -104,7 +109,7 @@ async function extrairLinhas(file: File): Promise<{ linhas: LinhaExtraida[]; tex
         centro_custo: String(r[5] ?? ''),
       })
     }
-    return { linhas }
+    return { linhas, texto }
   }
   if (nome.endsWith('.pdf')) {
     // PDF: conversão server-side no botão "Analisar com IA" ($documents.toMarkdown
@@ -123,13 +128,32 @@ async function extrairLinhas(file: File): Promise<{ linhas: LinhaExtraida[]; tex
   return { linhas: [] }
 }
 
-function classificar(nome: string): string {
+// COR-3 F6 — classificação sugerida: conteúdo extraído primeiro (palavras-chave),
+// depois nome do arquivo, depois extensão. Sempre editável no wizard (passo 1).
+function classificar(nome: string, texto?: string): string {
+  const t = (texto || '').toLowerCase()
+  if (t) {
+    // palavras-chave por tipo — primeira ocorrência decide (ordem de especificidade)
+    if (t.includes('balancete') || (t.includes('saldo anterior') && t.includes('débitos')))
+      return 'balancete'
+    if (t.includes('fluxo de caixa') || (t.includes('entradas') && t.includes('saídas')))
+      return 'fluxo_caixa'
+    if (/\bdre\b/.test(t) || t.includes('resultado do exerc') || t.includes('lucro líquido'))
+      return 'planilha_gerencial'
+    if (t.includes('contratante') || t.includes('cláusula') || t.includes('contratada'))
+      return 'contrato'
+    if (t.includes('pauta') || t.includes('participantes') || t.includes('action items'))
+      return 'ata'
+  }
   const n = nome.toLowerCase()
   if (n.includes('balancete')) return 'balancete'
   if (n.includes('fluxo')) return 'fluxo_caixa'
   if (n.includes('dre') || n.includes('gerencial')) return 'planilha_gerencial'
   if (n.includes('contrato')) return 'contrato'
   if (n.includes('ata')) return 'ata'
+  // fallback por extensão/conteúdo genérico
+  if (nome.toLowerCase().match(/\.(xlsx|xls|csv)$/)) return 'planilha_gerencial'
+  if (nome.toLowerCase().match(/\.(pdf|docx)$/)) return 'contrato'
   return 'outro'
 }
 
@@ -258,12 +282,23 @@ export default function DocumentosImportacoesPage() {
 
   const handleFile = async (f: File) => {
     setFile(f)
-    setTipo(classificar(f.name))
     setExtraido(false)
     setLinhas([])
     setErro('')
     try {
-      const { linhas: ls } = await extrairLinhas(f)
+      const { linhas: ls, texto } = await extrairLinhas(f)
+      // COR-3 F6: classificação sugerida usa CONTEÚDO extraído (palavras-chave)
+      // + nome do arquivo como fallback — sempre editável no wizard
+      setTipo(
+        classificar(
+          f.name,
+          texto ||
+            ls
+              .map((l) => l.descricao)
+              .join(' ')
+              .slice(0, 4000),
+        ),
+      )
       if (ls.length) {
         setLinhas(ls)
         setExtraido(true)

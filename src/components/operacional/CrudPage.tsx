@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Loader2, Search, Pencil, Trash2, Download, X } from 'lucide-react'
+import { Plus, Loader2, Search, Pencil, Trash2, Download, X, FileText } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
+import AditivosDialog from '@/components/operacional/AditivosDialog'
+import { fmtDataBR } from '@/components/operacional/aditivos-utils'
 import { useBotoes } from '@/services/botoes-service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,6 +47,7 @@ export interface CrudConfig {
   colunas: { name: string; label: string; fmt?: (v: any) => string; badge?: boolean }[]
   buscaCampos: string[]
   seedVazio?: string
+  acaoAditivos?: boolean // COR-3 F8: habilita botão de aditivos por contrato
 }
 
 const fmtData = (iso?: string) => {
@@ -77,6 +80,29 @@ export default function CrudPage({ config }: { config: CrudConfig }) {
   const [form, setForm] = useState<Record<string, any>>({})
   const [salvando, setSalvando] = useState(false)
   const [excluindo, setExcluindo] = useState<any | null>(null)
+  // COR-3 F8: aditivos por contrato
+  const [aditivoDe, setAditivoDe] = useState<any | null>(null)
+  // vigência efetiva por contrato (último aditivo ou fim) — cache local
+  const [vigEfetiva, setVigEfetiva] = useState<Record<string, string>>({})
+
+  const carregarVigencias = async (ids: string[]) => {
+    if (!config.acaoAditivos || !ids.length) return
+    try {
+      const r = await pb.collection('contratos_aditivos').getFullList({ sort: '-data' })
+      const mapa: Record<string, string> = {}
+      for (const a of r as any[]) {
+        const cid = a.contrato_id
+        if (cid && a.nova_vigencia && !mapa[cid]) mapa[cid] = a.nova_vigencia
+      }
+      setVigEfetiva(mapa)
+    } catch (_) {
+      /* coleção ainda sem migração aplicada — segue com fim do contrato */
+    }
+  }
+
+  useEffect(() => {
+    carregarVigencias(itens.map((i) => i.id))
+  }, [itens, config.acaoAditivos])
 
   const carregar = async () => {
     setLoading(true)
@@ -290,6 +316,19 @@ export default function CrudPage({ config }: { config: CrudConfig }) {
                           >
                             {String(i[c.name] || '—').replace('_', ' ')}
                           </span>
+                        ) : c.name === 'fim' && config.acaoAditivos ? (
+                          // COR-3 F8: mostra a vigência EFETIVA (último aditivo) quando houver
+                          <span className="flex items-center gap-1.5">
+                            {fmtDataBR(vigEfetiva[i.id] || i.fim)}
+                            {vigEfetiva[i.id] && (
+                              <span
+                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                title="Vigência do último aditivo"
+                              >
+                                ADT
+                              </span>
+                            )}
+                          </span>
                         ) : (
                           fmtValor(c.name, i[c.name])
                         )}
@@ -306,6 +345,17 @@ export default function CrudPage({ config }: { config: CrudConfig }) {
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
+                          {config.acaoAditivos && (
+                            <button
+                              type="button"
+                              onClick={() => setAditivoDe(i)}
+                              className="p-1.5 rounded-md text-gray-400 hover:text-emerald-700 hover:bg-emerald-50"
+                              aria-label="Aditivos"
+                              title="Aditivos"
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                           {pode(config.gate, 'excluir') && (
                             <button
                               type="button"
@@ -412,6 +462,16 @@ export default function CrudPage({ config }: { config: CrudConfig }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* COR-3 F8: dialog de aditivos por contrato */}
+      {config.acaoAditivos && (
+        <AditivosDialog
+          contrato={aditivoDe || { id: '', titulo: '', parte: '' }}
+          open={!!aditivoDe}
+          onClose={() => setAditivoDe(null)}
+          onChange={carregar}
+        />
+      )}
 
       {/* Confirmar exclusão */}
       <Dialog open={!!excluindo} onOpenChange={(o) => !o && setExcluindo(null)}>

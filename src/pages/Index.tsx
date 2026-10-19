@@ -229,8 +229,17 @@ export default function Index() {
         }
         try {
           const contratos = await pb.collection('contratos').getFullList()
+          // COR-3 F8: vigência efetiva = nova_vigencia do ÚLTIMO aditivo (mais
+          // recente por data), senão fim do contrato. Aditivo desloca o alerta.
+          const aditivos = await pb.collection('contratos_aditivos').getFullList({ sort: '-data' })
+          const vigAdt: Record<string, string> = {}
+          for (const a of aditivos as any[]) {
+            const cid = a.contrato_id
+            if (cid && a.nova_vigencia && !vigAdt[cid]) vigAdt[cid] = a.nova_vigencia
+          }
           const hoje = new Date()
-          const fim = (c: any) => (c.fim ? new Date(c.fim) : null)
+          const fim = (c: any) =>
+            new Date(vigAdt[c.id] || c.fim || 0).getTime() ? new Date(vigAdt[c.id] || c.fim) : null
           contratos
             .filter((c: any) => {
               const f = fim(c)
@@ -252,14 +261,15 @@ export default function Index() {
                         : dias <= 60
                           ? 'Contrato vence em 31-60 dias'
                           : 'Contrato vence em 61-90 dias',
-                  description: c.parte + ' — ' + (c.titulo || ''),
+                  description:
+                    c.parte + ' — ' + (c.titulo || '') + (vigAdt[c.id] ? ' (aditivo)' : ''),
                   detail: f.toLocaleDateString('pt-BR'),
                   severity: dias <= 30 ? 'critical' : 'warning',
                 })
               }
             })
         } catch (_e) {
-          // contratos sem permissão ou coleção vazia — segue sem alerta
+          // contratos/aditivos sem permissão ou coleção vazia — segue sem alerta
         }
         try {
           const hoje = new Date().toISOString().slice(0, 10)

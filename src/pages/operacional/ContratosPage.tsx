@@ -6,6 +6,7 @@ import CrudPage, { CrudConfig } from '@/components/operacional/CrudPage'
 export const CONFIG_CONTRATOS: CrudConfig = {
   colecao: 'contratos',
   gate: 'contratos',
+  acaoAditivos: true, // COR-3 F8: botão de aditivos por linha
   titulo: 'Contratos',
   subtitulo: 'Contratos do grupo — locação, serviços e fornecimento',
   buscaCampos: ['titulo', 'parte', 'empresa', 'observacao'],
