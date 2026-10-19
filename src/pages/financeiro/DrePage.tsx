@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Table2, Download, TrendingUp, TrendingDown } from 'lucide-react'
 import { DRE_LINHAS, MESES_12 } from '@/data/financeiroData'
+import { csvHeader, idiomaSalvo } from '@/lib/i18n'
 import { ParecerIaCard } from '@/components/ParecerIaCard'
 import { useBotoes } from '@/services/botoes-service'
 import { Button } from '@/components/ui/button'
@@ -42,8 +43,7 @@ export default function DrePage() {
 
   const exportCsv = () => {
     const header = [
-      'Conta',
-      'Descrição',
+      ...csvHeader(idiomaSalvo(), ['csv_conta', 'csv_descricao']),
       ...MESES_12.map((m) => m.short + '/' + String(m.ano).slice(2)),
       'YTD',
     ]

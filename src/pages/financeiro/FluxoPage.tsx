@@ -12,6 +12,7 @@ import {
 } from 'recharts'
 import { Waves, Download } from 'lucide-react'
 import { FLUXO_12 } from '@/data/financeiroData'
+import { csvHeader, idiomaSalvo } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
 
 // Fase 4 — Fluxo de Caixa: entradas/saídas (barras) + saldo final (linha),
@@ -67,7 +68,13 @@ export default function FluxoPage() {
   )
 
   const exportCsv = () => {
-    const header = ['Mês', 'Saldo inicial', 'Entradas', 'Saídas', 'Saldo final']
+    const header = csvHeader(idiomaSalvo(), [
+      'csv_mes',
+      'csv_saldo_inicial',
+      'csv_entradas',
+      'csv_saidas',
+      'csv_saldo_final',
+    ])
     const rows = dados.map((m) => [m.label, m.saldoInicial, m.entradas, m.saidas, m.saldoFinal])
     const csv = [header, ...rows].map((r) => r.join(';')).join('\n')
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' })

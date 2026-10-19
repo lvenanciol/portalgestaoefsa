@@ -9,6 +9,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { BALANCETE_OUT26 } from '@/data/financeiroData'
+import { csvHeader, idiomaSalvo } from '@/lib/i18n'
 import { useBotoes } from '@/services/botoes-service'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -77,7 +78,14 @@ export default function BalancetePage() {
   }, [linhasFinal])
 
   const exportCsv = () => {
-    const header = ['Conta', 'Nome', 'Saldo anterior', 'Débitos', 'Créditos', 'Saldo atual']
+    const header = csvHeader(idiomaSalvo(), [
+      'csv_conta',
+      'csv_nome',
+      'csv_saldo_anterior',
+      'csv_debitos',
+      'csv_creditos',
+      'csv_saldo_atual',
+    ])
     const rows = linhasFinal.map((l: any) => [
       l.conta,
       l.nome,

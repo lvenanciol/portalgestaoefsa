@@ -498,6 +498,12 @@ export function traduzir(idioma: Idioma, chave: string): string {
   return DICTS[idioma][chave] || DICTS['pt-BR'][chave] || chave
 }
 
+// COR-2b: headers de exportação CSV/XLSX pelo dicionário — as páginas passam
+// CHAVES csv_* e recebem os rótulos no idioma ativo (pt-BR devolve o rótulo PT).
+export function csvHeader(idioma: Idioma, chaves: string[]): string[] {
+  return chaves.map((k) => DICTS[idioma][k] || DICTS['pt-BR'][k] || k)
+}
+
 // ---------- COR-2: tradutor de DOM em runtime ----------
 // Traduz nós de texto/placeholder/title/aria-label usando o dicionário
 // INVERSO (PT → idioma alvo). Roda ao trocar a bandeira e em novos nós

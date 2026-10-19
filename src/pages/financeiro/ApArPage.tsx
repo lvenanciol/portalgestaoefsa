@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { ArrowDownToLine, ArrowUpFromLine, Download, Clock, AlertTriangle } from 'lucide-react'
 import { TITULOS_AP, TITULOS_AR, TituloAP, TituloAR } from '@/data/financeiroData'
+import { csvHeader, idiomaSalvo } from '@/lib/i18n'
 import { ParecerIaCard } from '@/components/ParecerIaCard'
 import { useBotoes } from '@/services/botoes-service'
 import { Button } from '@/components/ui/button'
@@ -134,7 +135,15 @@ function TabelaTitulos({ titulos, tipo }: { titulos: TituloComum[]; tipo: 'ap' |
     .reduce((a, t) => a + t.valor, 0)
 
   const exportCsv = () => {
-    const header = ['Nome', 'Documento', 'Empresa', 'Emissão', 'Vencimento', 'Valor', 'Status']
+    const header = csvHeader(idiomaSalvo(), [
+      'csv_nome',
+      'csv_documento',
+      'csv_empresa',
+      'csv_emissao',
+      'csv_vencimento',
+      'csv_valor',
+      'csv_status',
+    ])
     const rows = filtrados.map((t) => [
       t.nome,
       t.documento,
