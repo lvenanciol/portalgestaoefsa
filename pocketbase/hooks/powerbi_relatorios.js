@@ -17,8 +17,7 @@ routerAdd(
     if (!token) {
       return e.json(400, {
         ok: false,
-        erro:
-          'access_token obrigatório — configure o app registration no Entra ID (Configurações) para o portal obter o token automaticamente.',
+        erro: 'access_token obrigatório — configure o app registration no Entra ID (Configurações) para o portal obter o token automaticamente.',
       })
     }
 
@@ -36,7 +35,7 @@ routerAdd(
         })
       }
       const d = res.json || {}
-      const itens = (d.value || []).map(function (r: any) {
+      const itens = (d.value || []).map(function (r) {
         return {
           id: r.id,
           nome: r.name,
@@ -47,7 +46,10 @@ routerAdd(
       })
       return e.json(200, { ok: true, total: itens.length, itens: itens })
     } catch (err) {
-      return e.json(502, { ok: false, erro: 'Falha ao consultar Power BI: ' + String(err).slice(0, 200) })
+      return e.json(502, {
+        ok: false,
+        erro: 'Falha ao consultar Power BI: ' + String(err).slice(0, 200),
+      })
     }
   },
   $apis.requireAuth(),

@@ -47,18 +47,26 @@ export default function PowerBiPage() {
         )
         return
       }
-      const { PublicClientApplication } = await import('@azure/msal-browser')
-      const pca = new PublicClientApplication({
+      // MSAL via CDN (sem dependência de build)
+      const w = window as any
+      if (!w.msal) {
+        await new Promise<void>((resolve, reject) => {
+          const s = document.createElement('script')
+          s.src = 'https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js'
+          s.onload = () => resolve()
+          s.onerror = () => reject(new Error('Falha ao carregar MSAL (CDN).'))
+          document.head.appendChild(s)
+        })
+      }
+      const pca = new w.msal.PublicClientApplication({
         auth: { clientId, authority: 'https://login.microsoftonline.com/common' },
       })
-      await pca.initialize()
       const login = await pca.loginPopup({
         scopes: ['https://analysis.windows.net/powerbi/api/Report.Read.All'],
       })
-      const account = login.account
       const tokenRes = await pca.acquireTokenSilent({
         scopes: ['https://analysis.windows.net/powerbi/api/Report.Read.All'],
-        account,
+        account: login.account,
       })
       const r = (await pb.send('/backend/v1/powerbi/relatorios', {
         method: 'POST',
