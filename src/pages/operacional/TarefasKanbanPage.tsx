@@ -342,7 +342,6 @@ export default function TarefasKanbanPage() {
       setChatErro('Falha ao enviar: ' + String(e).slice(0, 80))
     }
   }
-  }
 
   const addSub = async () => {
     if (!detalhe || !novaSub.trim()) return
@@ -1047,10 +1046,7 @@ export default function TarefasKanbanPage() {
               {chatMsgs.map((c: any) => {
                 const meu = c.autor === (user?.email || '')
                 return (
-                  <div
-                    key={c.id}
-                    className={cn('flex', meu ? 'justify-end' : 'justify-start')}
-                  >
+                  <div key={c.id} className={cn('flex', meu ? 'justify-end' : 'justify-start')}>
                     <div
                       className={cn(
                         'max-w-[85%] rounded-xl px-3 py-2',
