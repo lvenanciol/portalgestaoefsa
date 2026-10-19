@@ -248,6 +248,26 @@ const PT: Dict = {
   fornecedor: 'Fornecedor',
   documento: 'Documento',
   vencimento: 'Vencimento',
+  // headers de exportação (COR-2b) — espelho PT
+  csv_nome: 'Nome',
+  csv_documento: 'Documento',
+  csv_empresa: 'Empresa',
+  csv_emissao: 'Emissão',
+  csv_vencimento: 'Vencimento',
+  csv_valor: 'Valor',
+  csv_status: 'Status',
+  csv_conta: 'Conta',
+  csv_descricao: 'Descrição',
+  csv_saldo_anterior: 'Saldo anterior',
+  csv_debitos: 'Débitos',
+  csv_creditos: 'Créditos',
+  csv_saldo_atual: 'Saldo atual',
+  csv_mes: 'Mês',
+  csv_saldo_inicial: 'Saldo inicial',
+  csv_entradas: 'Entradas',
+  csv_saidas: 'Saídas',
+  csv_saldo_final: 'Saldo final',
+  csv_ytd: 'YTD',
 }
 
 const EN: Dict = {
@@ -472,6 +492,26 @@ const EN: Dict = {
   fornecedor: 'Vendor',
   documento: 'Document',
   vencimento: 'Due date',
+  // headers de exportação (COR-2b)
+  csv_nome: 'Name',
+  csv_documento: 'Document',
+  csv_empresa: 'Company',
+  csv_emissao: 'Issue date',
+  csv_vencimento: 'Due date',
+  csv_valor: 'Amount',
+  csv_status: 'Status',
+  csv_conta: 'Account',
+  csv_descricao: 'Description',
+  csv_saldo_anterior: 'Opening balance',
+  csv_debitos: 'Debits',
+  csv_creditos: 'Credits',
+  csv_saldo_atual: 'Closing balance',
+  csv_mes: 'Month',
+  csv_saldo_inicial: 'Opening balance',
+  csv_entradas: 'Inflows',
+  csv_saidas: 'Outflows',
+  csv_saldo_final: 'Ending balance',
+  csv_ytd: 'YTD',
 }
 
 // EN-EU: variações britânicas/UE + nomenclatura IFRS
