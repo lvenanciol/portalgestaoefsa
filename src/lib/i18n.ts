@@ -601,7 +601,7 @@ function traduzirArvore(raiz: Element | Document, idioma: Idioma) {
   let n: Node | null
   while ((n = walker.nextNode())) {
     const t = (n as Text).wholeText || ''
-    if (t.trim().length > 1 && t.trim().length < 80) nos.push(n as Text)
+    if (t.trim().length > 1 && t.trim().length < 400) nos.push(n as Text)
   }
   for (const no of nos) {
     const novo = traduzirTexto(no.textContent || '', idioma)
