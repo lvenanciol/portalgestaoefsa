@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-19T01:08:17.115Z",
+  "generatedAt": "2026-10-19T01:12:33.660Z",
   "collections": [
     {
       "name": "users",
@@ -1242,6 +1242,60 @@
             "onCreate",
             "onUpdate"
           ]
+        },
+        {
+          "name": "objeto",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "indexador",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "forma_pagamento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "unidade",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "multa_pct",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "rescisao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sla",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "anexo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "aditivos",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -1502,6 +1556,253 @@
       ],
       "indexes": [
         "CREATE INDEX idx_finlin_imp ON financeiro_linhas (importacao_id, ordem)"
+      ]
+    },
+    {
+      "name": "ia_pareceres",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "modulo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ref",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "prompt",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contexto",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "resultado",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "rascunho",
+            "revisado",
+            "aprovado"
+          ]
+        },
+        {
+          "name": "observacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_iap_mod ON ia_pareceres (modulo, created DESC)"
+      ]
+    },
+    {
+      "name": "ia_prompts",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "chave",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "titulo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "instrucoes",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "ordem",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_iaprom_chave ON ia_prompts (chave)"
+      ]
+    },
+    {
+      "name": "indicadores",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "categoria",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "Negócio",
+            "Pessoas",
+            "Operações"
+          ]
+        },
+        {
+          "name": "empresa",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "unidade_medida",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "realizado",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "anterior",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dono",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "serie_12m",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate"
+          ]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": [
+            "onCreate",
+            "onUpdate"
+          ]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_ind_cat ON indicadores (categoria, empresa)"
       ]
     }
   ]
