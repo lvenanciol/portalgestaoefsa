@@ -56,6 +56,8 @@ export default function ProjetosBoardPage() {
   const [dialog, setDialog] = useState(false)
   const [form, setForm] = useState<any>({})
   const [salvando, setSalvando] = useState(false)
+  const [analisandoRisco, setAnalisandoRisco] = useState(false)
+  const [parecerRisco, setParecerRisco] = useState<any | null>(null)
   const [novoRisco, setNovoRisco] = useState({
     risco: '',
     prob: 'media',
@@ -129,6 +131,46 @@ export default function ProjetosBoardPage() {
       await carregar()
     } catch (e) {
       setErro(String(e))
+    }
+  }
+
+  const analisarRiscoIA = async () => {
+    if (!detalhe) return
+    setAnalisandoRisco(true)
+    try {
+      const contexto =
+        'Projeto: ' +
+        detalhe.titulo +
+        ' | Dono: ' +
+        (detalhe.dono || '—') +
+        ' | Status: ' +
+        (detalhe.status || '—') +
+        ' | Orçamento: ' +
+        (detalhe.orcamento ?? '—') +
+        ' | Realizado: ' +
+        (detalhe.realizado ?? '—') +
+        ' | Progresso: ' +
+        (detalhe.progresso ?? 0) +
+        '%' +
+        ' | Marcos: ' +
+        JSON.stringify(parse(detalhe.marcos)) +
+        ' | Riscos: ' +
+        JSON.stringify(parse(detalhe.riscos))
+      const r = (await pb.send('/backend/v1/ia/estruturado', {
+        method: 'POST',
+        body: JSON.stringify({
+          modulo: 'projetos',
+          ref: detalhe.titulo,
+          contexto,
+          prompt:
+            'Analise os riscos deste projeto: probabilidade x impacto, causas prováveis, exposição orçamentária e 3 mitigações priorizadas.',
+        }),
+      })) as any
+      setParecerRisco(r.estrutura)
+    } catch (e) {
+      setErro(String(e))
+    } finally {
+      setAnalisandoRisco(false)
     }
   }
 
@@ -519,15 +561,105 @@ export default function ProjetosBoardPage() {
 
                   <Button
                     size="sm"
-                    disabled
-                    title="Disponível na Fase 9"
-                    className="bg-gray-300 text-gray-500 cursor-not-allowed"
+                    variant="outline"
+                    onClick={analisarRiscoIA}
+                    disabled={analisandoRisco}
+                    className="h-8"
                   >
-                    <Flag className="h-3.5 w-3.5 mr-1" /> Analisar risco com IA
+                    {analisandoRisco ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <Flag className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    Analisar risco com IA
                   </Button>
                 </div>
               )
             })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Parecer IA — riscos do projeto */}
+      <Dialog open={!!parecerRisco} onOpenChange={(o) => !o && setParecerRisco(null)}>
+        <DialogContent className="bg-white max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Flag className="h-4 w-4 text-[#1B5E20]" /> Análise de riscos — {detalhe?.titulo}
+              </span>
+              <button
+                onClick={() => setParecerRisco(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </DialogTitle>
+          </DialogHeader>
+          {parecerRisco && (
+            <div className="space-y-3">
+              {typeof parecerRisco.score_saude === 'number' && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                  <div
+                    className={cn(
+                      'h-12 w-12 rounded-full flex items-center justify-center text-white font-bold text-lg',
+                      parecerRisco.score_saude >= 7
+                        ? 'bg-emerald-600'
+                        : parecerRisco.score_saude >= 5
+                          ? 'bg-amber-500'
+                          : 'bg-red-600',
+                    )}
+                  >
+                    {parecerRisco.score_saude}
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                      Score de saúde do projeto
+                    </div>
+                    <div className="text-[13px] text-gray-700">0-10</div>
+                  </div>
+                </div>
+              )}
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                  Sumário executivo
+                </div>
+                <p className="text-[13px] text-gray-800 leading-relaxed whitespace-pre-wrap">
+                  {parecerRisco.sumario_executivo}
+                </p>
+              </div>
+              {parecerRisco.riscos_alertas?.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    Riscos e alertas
+                  </div>
+                  <ul className="space-y-1">
+                    {parecerRisco.riscos_alertas.map((a: string, i: number) => (
+                      <li key={i} className="text-[12px] text-red-700">
+                        • {a}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {parecerRisco.recomendacoes?.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    Mitigações priorizadas
+                  </div>
+                  <ol className="space-y-1">
+                    {parecerRisco.recomendacoes.map((a: string, i: number) => (
+                      <li key={i} className="text-[12px] text-gray-700">
+                        {i + 1}. {a}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              <p className="text-[10px] text-gray-400 border-t border-gray-100 pt-2">
+                {parecerRisco.disclaimer || 'Análise assistida — não substitui contador/auditor.'}
+              </p>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
