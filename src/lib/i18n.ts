@@ -600,6 +600,10 @@ const FRASES_SUBST: [string, string][] = [
   ['carregando', 'Loading'],
   ['débito', 'Debit'],
   ['crédito', 'Credit'],
+  // dialogs (resíduos do e2e COR-2b)
+  ['parceiros/contatos responsáveis', 'Responsible partners/contacts'],
+  ['parceiros/contatos', 'Partners/contacts'],
+  ['título', 'Title'],
 ]
 
 let SUBST: { re: RegExp; alvo: string }[] | null = null
