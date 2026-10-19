@@ -109,7 +109,9 @@ export default function AditivosDialog({
             detalhe: 'Aditivo ' + form.numero + ' — ' + contrato.titulo,
           }),
         })
-      } catch (_) {}
+      } catch (_) {
+        /* best-effort */
+      }
       setForm({ ...vazio })
       setAnexo(null)
       await carregar()
