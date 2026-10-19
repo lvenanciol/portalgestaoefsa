@@ -158,9 +158,9 @@ export default function MenusCrudPage() {
         ativo: !!form.ativo,
       }
       if (editando)
-        await pb.send('/backend/v1/menus/' + editando.id, {
+        await pb.send('/backend/v1/menus/editar', {
           method: 'PATCH',
-          body: JSON.stringify(dados),
+          body: JSON.stringify({ ...dados, id: editando.id }),
         })
       else await pb.send('/backend/v1/menus', { method: 'POST', body: JSON.stringify(dados) })
       setDialog(false)
@@ -174,7 +174,7 @@ export default function MenusCrudPage() {
 
   const excluir = async (m: any) => {
     try {
-      await pb.send('/backend/v1/menus/' + m.id, { method: 'DELETE' })
+      await pb.send('/backend/v1/menus/excluir?id=' + m.id, { method: 'DELETE' })
       await carregar()
     } catch (e) {
       setErro(String(e))
@@ -203,7 +203,8 @@ export default function MenusCrudPage() {
     try {
       // remove todos e recria o padrão (via hooks admin-only)
       const todos = await pb.collection('menus').getFullList()
-      for (const m of todos) await pb.send('/backend/v1/menus/' + m.id, { method: 'DELETE' })
+      for (const m of todos)
+        await pb.send('/backend/v1/menus/excluir?id=' + m.id, { method: 'DELETE' })
       for (const m of PADRAO)
         await pb.send('/backend/v1/menus', {
           method: 'POST',

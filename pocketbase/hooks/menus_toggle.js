@@ -93,7 +93,7 @@ routerAdd(
 
 routerAdd(
   'PATCH',
-  '/backend/v1/menus/{id}',
+  '/backend/v1/menus/editar',
   (e) => {
     const auth = e.auth
     if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
@@ -105,8 +105,9 @@ routerAdd(
     if (!isAdmin && !e.hasSuperuserAuth())
       throw new ForbiddenError('Acesso restrito a administradores.')
 
-    const id = e.requestInfo().pathParams?.id || ''
     const body = e.requestInfo().body || {}
+    const id = String(body.id || '')
+    if (!id) return e.badRequestError('id obrigatório')
     let rec
     try {
       rec = $app.findRecordById('menus', id)
@@ -127,7 +128,7 @@ routerAdd(
 
 routerAdd(
   'DELETE',
-  '/backend/v1/menus/{id}',
+  '/backend/v1/menus/excluir',
   (e) => {
     const auth = e.auth
     if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
@@ -139,7 +140,9 @@ routerAdd(
     if (!isAdmin && !e.hasSuperuserAuth())
       throw new ForbiddenError('Acesso restrito a administradores.')
 
-    const id = e.requestInfo().pathParams?.id || ''
+    const q = e.requestInfo().query || {}
+    const id = String(q.id || '')
+    if (!id) return e.badRequestError('id obrigatório (query ?id=)')
     try {
       $app.delete($app.findRecordById('menus', id))
       return e.json(200, { ok: true })
