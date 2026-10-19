@@ -161,6 +161,40 @@ export default function DocumentosImportacoesPage() {
   const [processando, setProcessando] = useState(false)
   const [erro, setErro] = useState('')
   const [concluido, setConcluido] = useState<any | null>(null)
+  const [analisando, setAnalisando] = useState(false)
+  const [parecerIA, setParecerIA] = useState<any | null>(null)
+
+  const analisarComIA = async (imp: any) => {
+    if (!imp?.arquivo_id) {
+      setErro('Importação sem arquivo origem para analisar.')
+      return
+    }
+    setAnalisando(true)
+    try {
+      const r = (await pb.send('/backend/v1/ia/analisar-arquivo', {
+        method: 'POST',
+        body: JSON.stringify({
+          arquivo_id: imp.arquivo_id,
+          modulo: 'documentos',
+          ref: imp.tipo + ' ' + imp.periodo,
+          prompt:
+            'Analise este documento financeiro (' +
+            imp.tipo +
+            ' — ' +
+            imp.empresa +
+            ', período ' +
+            imp.periodo +
+            '): pontos principais, números relevantes, inconsistências e riscos.',
+        }),
+      })) as any
+      setParecerIA(r.estrutura)
+    } catch (e: any) {
+      const msg = e?.response?.data?.erro || e?.message || String(e)
+      setErro(msg)
+    } finally {
+      setAnalisando(false)
+    }
+  }
 
   const carregar = async () => {
     setLoading(true)
@@ -967,11 +1001,16 @@ export default function DocumentosImportacoesPage() {
             </Button>
             <Button
               size="sm"
-              disabled
-              title="Disponível na Fase 9"
-              className="h-8 bg-gray-300 text-gray-500 cursor-not-allowed"
+              onClick={() => analisarComIA(detalhe)}
+              disabled={analisando}
+              className="h-8"
             >
-              <Sparkles className="h-3.5 w-3.5 mr-1" /> Analisar com IA
+              {analisando ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5 mr-1" />
+              )}
+              Analisar com IA
             </Button>
           </div>
           <div className="border border-gray-100 rounded-lg overflow-hidden max-h-[420px] overflow-y-auto">
@@ -1010,6 +1049,104 @@ export default function DocumentosImportacoesPage() {
               </tbody>
             </table>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Parecer IA (análise do arquivo) */}
+      <Dialog open={!!parecerIA} onOpenChange={(o) => !o && setParecerIA(null)}>
+        <DialogContent className="bg-white max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-[#1B5E20]" /> Análise IA do documento
+              </span>
+              <button
+                onClick={() => setParecerIA(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </DialogTitle>
+          </DialogHeader>
+          {parecerIA && (
+            <div className="space-y-3">
+              {typeof parecerIA.score_saude === 'number' && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                  <div
+                    className={cn(
+                      'h-12 w-12 rounded-full flex items-center justify-center text-white font-bold text-lg',
+                      parecerIA.score_saude >= 7
+                        ? 'bg-emerald-600'
+                        : parecerIA.score_saude >= 5
+                          ? 'bg-amber-500'
+                          : 'bg-red-600',
+                    )}
+                  >
+                    {parecerIA.score_saude}
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                      Score de saúde
+                    </div>
+                    <div className="text-[13px] text-gray-700">0-10</div>
+                  </div>
+                </div>
+              )}
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                  Sumário executivo
+                </div>
+                <p className="text-[13px] text-gray-800 leading-relaxed whitespace-pre-wrap">
+                  {parecerIA.sumario_executivo}
+                </p>
+              </div>
+              {parecerIA.principais_achados?.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    Principais achados
+                  </div>
+                  <ul className="space-y-1">
+                    {parecerIA.principais_achados.map((a: string, i: number) => (
+                      <li key={i} className="text-[12px] text-gray-700">
+                        • {a}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {parecerIA.riscos_alertas?.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    Riscos e alertas
+                  </div>
+                  <ul className="space-y-1">
+                    {parecerIA.riscos_alertas.map((a: string, i: number) => (
+                      <li key={i} className="text-[12px] text-red-700">
+                        • {a}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {parecerIA.recomendacoes?.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    Recomendações priorizadas
+                  </div>
+                  <ol className="space-y-1">
+                    {parecerIA.recomendacoes.map((a: string, i: number) => (
+                      <li key={i} className="text-[12px] text-gray-700">
+                        {i + 1}. {a}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              <p className="text-[10px] text-gray-400 border-t border-gray-100 pt-2">
+                {parecerIA.disclaimer || 'Análise assistida — não substitui contador/auditor.'}
+              </p>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

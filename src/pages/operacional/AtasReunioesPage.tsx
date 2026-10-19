@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Users, Plus, Loader2, X, CalendarClock, ListTodo } from 'lucide-react'
+import { Users, Plus, Loader2, X, CalendarClock, ListTodo, Sparkles } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
@@ -52,6 +52,8 @@ export default function AtasReunioesPage() {
   const [detalhe, setDetalhe] = useState<any | null>(null)
   const [novoItem, setNovoItem] = useState({ acao: '', dono: '', prazo: '' })
   const [gerandoTarefas, setGerandoTarefas] = useState(false)
+  const [resumindo, setResumindo] = useState(false)
+  const [parecerIA, setParecerIA] = useState<any | null>(null)
 
   const carregar = async () => {
     setLoading(true)
@@ -151,6 +153,33 @@ export default function AtasReunioesPage() {
     }
   }
 
+  const resumirComIA = async () => {
+    // usa a ata do detalhe se aberto; senão, a mais recente
+    let alvo = detalhe
+    if (!alvo) {
+      try {
+        const lista = await pb.collection('atas').getList(1, 1, { sort: '-created' })
+        alvo = lista.items[0] as any
+      } catch (_) {
+        return
+      }
+    }
+    if (!alvo) return
+    setResumindo(true)
+    try {
+      const r = (await pb.send('/backend/v1/ia/resumo-ata', {
+        method: 'POST',
+        body: JSON.stringify({ ata_id: alvo.id }),
+      })) as any
+      setParecerIA(r.estrutura)
+      await carregar()
+    } catch (e) {
+      setErro(String(e))
+    } finally {
+      setResumindo(false)
+    }
+  }
+
   if (loading)
     return (
       <div className="flex items-center justify-center py-16">
@@ -172,10 +201,16 @@ export default function AtasReunioesPage() {
         <div className="flex items-center gap-2">
           <Button
             size="sm"
-            disabled
-            title="Disponível na Fase 9"
-            className="h-9 bg-gray-300 text-gray-500 cursor-not-allowed"
+            variant="outline"
+            onClick={resumirComIA}
+            disabled={resumindo}
+            className="h-9"
           >
+            {resumindo ? (
+              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-1.5" />
+            )}
             Resumir com IA
           </Button>
           <Button onClick={abrirNova} className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white">
@@ -471,6 +506,104 @@ export default function AtasReunioesPage() {
                   </Button>
                 </div>
               </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Resumo IA */}
+      <Dialog open={!!parecerIA} onOpenChange={(o) => !o && setParecerIA(null)}>
+        <DialogContent className="bg-white max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-[#1B5E20]" /> Resumo IA da ata
+              </span>
+              <button
+                onClick={() => setParecerIA(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </DialogTitle>
+          </DialogHeader>
+          {parecerIA && (
+            <div className="space-y-3">
+              {typeof parecerIA.score_saude === 'number' && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100">
+                  <div
+                    className={cn(
+                      'h-12 w-12 rounded-full flex items-center justify-center text-white font-bold text-lg',
+                      parecerIA.score_saude >= 7
+                        ? 'bg-emerald-600'
+                        : parecerIA.score_saude >= 5
+                          ? 'bg-amber-500'
+                          : 'bg-red-600',
+                    )}
+                  >
+                    {parecerIA.score_saude}
+                  </div>
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                      Score
+                    </div>
+                    <div className="text-[13px] text-gray-700">0-10</div>
+                  </div>
+                </div>
+              )}
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                  Sumário executivo
+                </div>
+                <p className="text-[13px] text-gray-800 leading-relaxed whitespace-pre-wrap">
+                  {parecerIA.sumario_executivo}
+                </p>
+              </div>
+              {parecerIA.principais_achados?.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    Principais achados
+                  </div>
+                  <ul className="space-y-1">
+                    {parecerIA.principais_achados.map((a: string, i: number) => (
+                      <li key={i} className="text-[12px] text-gray-700">
+                        • {a}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {parecerIA.riscos_alertas?.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    Riscos e alertas
+                  </div>
+                  <ul className="space-y-1">
+                    {parecerIA.riscos_alertas.map((a: string, i: number) => (
+                      <li key={i} className="text-[12px] text-red-700">
+                        • {a}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {parecerIA.recomendacoes?.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                    Recomendações
+                  </div>
+                  <ol className="space-y-1">
+                    {parecerIA.recomendacoes.map((a: string, i: number) => (
+                      <li key={i} className="text-[12px] text-gray-700">
+                        {i + 1}. {a}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+              <p className="text-[10px] text-gray-400 border-t border-gray-100 pt-2">
+                {parecerIA.disclaimer || 'Análise assistida — não substitui contador/auditor.'}
+              </p>
             </div>
           )}
         </DialogContent>

@@ -23,6 +23,8 @@ import {
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
 import { carregarPermissoes, menuVisivel, Permissoes } from '@/services/permissoes-service'
+import pb from '@/lib/pocketbase/client'
+import { useRealtime } from '@/hooks/use-realtime'
 import { cn } from '@/lib/utils'
 
 interface NavSection {
@@ -79,10 +81,67 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [permissoes, setPermissoes] = useState<Permissoes | null>(null)
+  const [menusDb, setMenusDb] = useState<any[] | null>(null)
 
   useEffect(() => {
     carregarPermissoes().then(setPermissoes)
   }, [user])
+
+  // Fase 10 — sidebar DINÂMICA: lê a árvore de menus do banco (CRUD reflete
+  // em tempo real via realtime) e mescla com o fallback estático por rota.
+  const carregarMenus = async () => {
+    try {
+      const r = await pb.collection('menus').getFullList({ sort: 'secao,ordem' })
+      setMenusDb(r as any[])
+    } catch (_) {
+      setMenusDb(null)
+    }
+  }
+
+  useEffect(() => {
+    carregarMenus()
+  }, [])
+
+  useRealtime('menus', () => {
+    carregarMenus()
+  })
+
+  // seções: do banco (se houver) mescladas com o estático (ícone/rota)
+  const secoesDinamicas: NavSection[] = (() => {
+    if (!menusDb || menusDb.length === 0) return navSections
+    const ICONES: Record<string, React.ComponentType<{ className?: string }>> = {
+      dashboard: LayoutDashboard,
+      briefcase: Briefcase,
+      'bar-chart': BarChart3,
+      'line-chart': LineChart,
+      'file-text': FileText,
+      calendar: CalendarDays,
+      folder: FolderKanban,
+      users: Users,
+      mail: Mail,
+      'file-check': FileCheck2,
+      chart: ChartColumnBig,
+      sparkles: Sparkles,
+      'list-tree': ListTree,
+      shield: ShieldCheck,
+      settings: Settings,
+    }
+    const ordemSecoes = ['GESTÃO', 'OPERAÇÃO', 'RELACIONAMENTO', 'PLATAFORMA']
+    const out: NavSection[] = []
+    for (const sec of ordemSecoes) {
+      const itens = menusDb
+        .filter((m) => m.secao === sec && m.ativo)
+        .sort((a, b) => (a.ordem || 99) - (b.ordem || 99))
+        .map((m) => ({
+          label: m.titulo,
+          rota: m.rota || '',
+          icon: ICONES[m.icone] || FolderKanban,
+        }))
+        .filter((i) => i.rota)
+      if (itens.length) out.push({ title: sec, items: itens })
+    }
+    return out.length ? out : navSections
+  })()
 
   return (
     <div className="flex flex-col h-full text-white">
@@ -113,7 +172,7 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
 
       {/* Navegação — item SEM permissão fica OCULTO (Fase 3) */}
       <nav className="flex-1 px-3 py-2 space-y-4 overflow-y-auto scrollbar-none">
-        {navSections.map((section) => {
+        {secoesDinamicas.map((section) => {
           const visiveis = section.items.filter((item) => menuVisivel(permissoes, item.rota))
           if (visiveis.length === 0) return null
           return (
