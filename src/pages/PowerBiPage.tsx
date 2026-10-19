@@ -2,11 +2,17 @@ import { useState } from 'react'
 import { ChartColumnBig, ExternalLink } from 'lucide-react'
 
 // Fase 11 — Power BI: integração do portal com relatórios existentes.
-// O card fica pronto para receber a URL do workspace/relatório do grupo;
-// enquanto não há link configurado, mostra instruções de ativação.
+// Relatório "Acompanhamento Varejo" (Extrafruti) — embed PARA ORGANIZAÇÃO,
+// gerado da URL de visualização (groups/me/reports/2cccfc31…, tenant f297b97e).
+// Usuários autenticam com a conta Microsoft (licença Pro) dentro do iframe.
+// URL pública (publish to web, app.powerbi.com/view?r=…) NÃO recomendada
+// para dados financeiros.
+
+const URL_PADRAO =
+  'https://app.powerbi.com/reportEmbed?reportId=2cccfc31-3dc0-4e13-9fd5-4ba67a0ea6d5&ctid=f297b97e-1aa1-423f-81e0-008ad95e11f2'
 
 export default function PowerBiPage() {
-  const urlSalva = localStorage.getItem('pge_powerbi_url') || ''
+  const urlSalva = localStorage.getItem('pge_powerbi_url') || URL_PADRAO
   const [url, setUrl] = useState(urlSalva)
   const [salvo, setSalvo] = useState(false)
 
