@@ -1,5 +1,15 @@
-import { useEffect, useState } from 'react'
-import { Users, Plus, Loader2, X, CalendarClock, ListTodo, Sparkles } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import {
+  Users,
+  Plus,
+  Loader2,
+  X,
+  CalendarClock,
+  ListTodo,
+  Sparkles,
+  Mic,
+  Upload,
+} from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
@@ -84,7 +94,88 @@ export default function AtasReunioesPage() {
       resumo: '',
       decisoes: '',
     })
+    setTranscricao('')
+    setInterpretacao('')
     setDialog(true)
+  }
+
+  // T5: áudio da reunião — gravação ("Ouvir") via SpeechRecognition + upload de arquivo
+  const [ouvindo, setOuvindo] = useState(false)
+  const [transcricao, setTranscricao] = useState('')
+  const [interpretacao, setInterpretacao] = useState('')
+  const [organizando, setOrganizando] = useState(false)
+  const [arquivoAudio, setArquivoAudio] = useState<File | null>(null)
+  const recRef = useRef<any>(null)
+
+  const toggleOuvir = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) {
+      setErro('Reconhecimento de voz não suportado neste navegador (use Chrome ou Safari).')
+      return
+    }
+    if (ouvindo) {
+      recRef.current?.stop()
+      setOuvindo(false)
+      return
+    }
+    const rec = new SR()
+    rec.lang = 'pt-BR'
+    rec.continuous = true
+    rec.interimResults = false
+    rec.onresult = (ev: any) => {
+      let t = ''
+      for (let i = ev.resultIndex; i < ev.results.length; i++)
+        t += ev.results[i][0].transcript + ' '
+      setTranscricao((prev: string) => (prev + ' ' + t).trim())
+    }
+    rec.onerror = () => setOuvindo(false)
+    rec.onend = () => setOuvindo(false)
+    recRef.current = rec
+    rec.start()
+    setOuvindo(true)
+  }
+
+  const organizarComIA = async () => {
+    const texto = transcricao.trim()
+    if (!texto) {
+      setErro('Grave ou transcreva o áudio da reunião primeiro.')
+      return
+    }
+    setOrganizando(true)
+    try {
+      const r = (await pb.send('/backend/v1/ia/estruturar-voz', {
+        method: 'POST',
+        body: JSON.stringify({ alvo: 'ata', texto }),
+      })) as any
+      const e = r.estrutura || {}
+      setForm((f: any) => ({
+        ...f,
+        titulo: e.titulo || f.titulo,
+        data: e.data || f.data,
+        modalidade: e.modalidade || f.modalidade,
+        participantes: Array.isArray(e.participantes)
+          ? e.participantes.join(', ')
+          : f.participantes,
+        pauta: e.pauta || f.pauta,
+        decisoes: e.decisoes || f.decisoes,
+        resumo: e.resumo || f.resumo,
+      }))
+      setInterpretacao(
+        'Resumo IA: ' +
+          (e.resumo || '') +
+          (Array.isArray(e.action_items) && e.action_items.length
+            ? '\nAction items: ' +
+              e.action_items
+                .map((a: any) => a.acao + (a.dono ? ' (' + a.dono + ')' : ''))
+                .join('; ')
+            : ''),
+      )
+      setErro('')
+    } catch (e) {
+      setErro(String(e))
+    } finally {
+      setOrganizando(false)
+    }
   }
 
   const salvar = async () => {
@@ -278,6 +369,77 @@ export default function AtasReunioesPage() {
             <DialogTitle>Nova ata</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            {/* T5: áudio da reunião — gravação + upload + IA organiza */}
+            <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/50 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                  <Mic className="h-3.5 w-3.5" /> Áudio da reunião
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleOuvir}
+                    className={cn('h-8', ouvindo && 'bg-red-50 text-red-700 border-red-200')}
+                  >
+                    {ouvindo ? (
+                      <X className="h-3.5 w-3.5 mr-1" />
+                    ) : (
+                      <Mic className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    {ouvindo ? 'Parar' : 'Ouvir'}
+                  </Button>
+                  <label className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-[12px] font-semibold text-gray-800 cursor-pointer">
+                    <Upload className="h-3.5 w-3.5" /> Upload
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      className="hidden"
+                      onChange={(e) => setArquivoAudio(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={organizarComIA}
+                    disabled={organizando || !transcricao.trim()}
+                    className="h-8 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+                  >
+                    {organizando ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    Organizar com IA
+                  </Button>
+                </div>
+              </div>
+              {transcricao && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">
+                    Transcrição literal
+                  </div>
+                  <p className="text-[11px] text-gray-600 italic max-h-20 overflow-y-auto">
+                    {transcricao}
+                  </p>
+                </div>
+              )}
+              {interpretacao && (
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">
+                    Interpretação (IA)
+                  </div>
+                  <p className="text-[11px] text-gray-700 whitespace-pre-wrap">{interpretacao}</p>
+                </div>
+              )}
+              {arquivoAudio && (
+                <p className="text-[11px] text-gray-500">
+                  Arquivo: {arquivoAudio.name} — a transcrição usa o reconhecimento do navegador;
+                  grave ao vivo para preencher automático.
+                </p>
+              )}
+            </div>
             <div className="grid gap-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Título *

@@ -60,6 +60,24 @@ interface RegistroAuditoria {
   ip: string
 }
 
+// T6a: abas/seções gerenciáveis por tela (CRUD via switches — estado em
+// grupos_permissao.permissoes.botoes como 'aba_<key>')
+const ABAS_POR_TELA: Record<string, { key: string; label: string }[]> = {
+  financeiro: [
+    { key: 'real', label: 'Aba Real (Sankhya)' },
+    { key: 'dre', label: 'Aba DRE' },
+    { key: 'fluxo', label: 'Aba Fluxo de Caixa' },
+    { key: 'apar', label: 'Aba A/P & A/R' },
+    { key: 'balancete', label: 'Aba Balancete' },
+    { key: 'fechamento', label: 'Aba Fechamento' },
+    { key: 'importar', label: 'Aba Importar' },
+  ],
+  ia: [
+    { key: 'biblioteca', label: 'Biblioteca de prompts' },
+    { key: 'historico', label: 'Histórico de pareceres' },
+  ],
+}
+
 export default function ControleAcessos() {
   const { user } = useAuth()
   const { pode } = useBotoes()
@@ -292,19 +310,19 @@ export default function ControleAcessos() {
       {/* Grupos de permissão */}
       <section>
         <h2 className="text-sm font-bold text-gray-900 mb-3">Grupos de Permissão</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
           {grupos.map((g) => (
             <div
               key={g.id}
-              className="bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs hover:shadow-md transition-all"
+              className="bg-white rounded-lg border border-[#E5E7EB] p-2.5 shadow-xs hover:shadow-md transition-all"
             >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-gray-900">{g.nome}</span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-[#1B5E20] border border-emerald-200/60 uppercase">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[12px] font-bold text-gray-900 truncate">{g.nome}</span>
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-[#1B5E20] border border-emerald-200/60 uppercase shrink-0">
                   {g.escopo}
                 </span>
               </div>
-              <p className="text-[11px] text-gray-500 mt-1">
+              <p className="text-[10px] text-gray-500 mt-1">
                 {usuarios.filter((u) => u.grupo === g.nome).length} usuário(s)
               </p>
               {isAdmin && (
@@ -680,15 +698,7 @@ export default function ControleAcessos() {
                         />
                       </div>
                     )
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogBotoes(null)} className="h-9">
-              Cancelar
-            </Button>
+                  })}\n                </div>\n                {/* T6a: CRUD de abas/seções da tela */}\n                {ABAS_POR_TELA[tela.key]?.length > 0 && (\n                  <div className="mt-2 pt-2 border-t border-gray-100">\n                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Abas da tela</div>\n                    <div className="space-y-2">\n                      {ABAS_POR_TELA[tela.key].map((aba: any) => {\n                        const ocultos = botoesConfig[tela.key] || []\n                        const visivel = !ocultos.includes('aba_' + aba.key)\n                        return (\n                          <div key={aba.key} className="flex items-center justify-between gap-3">\n                            <span className="text-[11px] text-gray-600">{aba.label}</span>\n                            <Switch checked={visivel} onCheckedChange={() => toggleBotao(tela.key, 'aba_' + aba.key)} />\n                          </div>\n                        )\n                      })}\n                    </div>\n                  </div>\n                )}\n              </div>\n            ))}\n          </div>\n          <DialogFooter>\n            <Button variant="outline" onClick={() => setDialogBotoes(null)} className="h-9">\n              Cancelar\n            </Button>
             <Button
               onClick={salvarBotoes}
               disabled={salvandoBotoes}

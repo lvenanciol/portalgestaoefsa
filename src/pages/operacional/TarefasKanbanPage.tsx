@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Kanban,
   Plus,
@@ -8,6 +8,9 @@ import {
   X,
   MessageSquare,
   ListChecks,
+  Mic,
+  Share2,
+  Mail,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -121,12 +124,133 @@ export default function TarefasKanbanPage() {
       vinculo_tipo: '',
       vinculo_id: '',
       empresa: '',
+      parceiro_ids: [],
     })
     setEditando(null)
     setDialog(true)
   }
 
+  // T2a: abertura de chamado por ÁUDIO — Web Speech API (nativo do navegador)
+  const [parceiros, setParceiros] = useState<any[]>([])
+  const [ouvindo, setOuvindo] = useState(false)
+  const [transcricao, setTranscricao] = useState('')
+  const [estruturando, setEstruturando] = useState(false)
+  const recRef = useRef<any>(null)
+
+  const carregarParceiros = async () => {
+    try {
+      const r = await pb
+        .collection('parceiros')
+        .getFullList({ sort: 'nome', filter: 'ativo = true' })
+      setParceiros(r as any[])
+    } catch (_) {
+      setParceiros([])
+    }
+  }
+
+  useEffect(() => {
+    carregarParceiros()
+  }, [])
+
+  const toggleOuvir = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) {
+      setErro('Reconhecimento de voz não suportado neste navegador (use Chrome ou Safari).')
+      return
+    }
+    if (ouvindo) {
+      recRef.current?.stop()
+      setOuvindo(false)
+      return
+    }
+    const rec = new SR()
+    rec.lang = 'pt-BR'
+    rec.continuous = true
+    rec.interimResults = false
+    rec.onresult = (ev: any) => {
+      let t = ''
+      for (let i = ev.resultIndex; i < ev.results.length; i++)
+        t += ev.results[i][0].transcript + ' '
+      setTranscricao((prev) => (prev + ' ' + t).trim())
+    }
+    rec.onerror = () => setOuvindo(false)
+    rec.onend = () => setOuvindo(false)
+    recRef.current = rec
+    setTranscricao('')
+    rec.start()
+    setOuvindo(true)
+  }
+
+  const estruturarVoz = async () => {
+    if (!transcricao.trim()) return
+    setEstruturando(true)
+    try {
+      const r = (await pb.send('/backend/v1/ia/estruturar-voz', {
+        method: 'POST',
+        body: JSON.stringify({ alvo: 'tarefa', texto: transcricao }),
+      })) as any
+      const e = r.estrutura || {}
+      setForm((f: any) => ({
+        ...f,
+        titulo: e.titulo || f.titulo,
+        descricao: e.descricao || f.descricao,
+        responsavel: e.responsavel || f.responsavel,
+        prazo: e.prazo || f.prazo,
+        prioridade_p: e.prioridade_p || f.prioridade_p,
+        empresa: e.empresa || f.empresa,
+      }))
+      setErro('')
+    } catch (e) {
+      setErro(String(e))
+    } finally {
+      setEstruturando(false)
+    }
+  }
+
+  // T2c: compartilhar tarefa com parceiro
+  const [compartilhar, setCompartilhar] = useState<any | null>(null) // {tarefa, parceiros[]}
+  const compartilharTarefa = async (tarefa: any, canal: string) => {
+    const pid = compartilhar?.parceiroId
+    if (!pid) return
+    try {
+      const r = (await pb.send('/backend/v1/tarefas/compartilhar', {
+        method: 'POST',
+        body: JSON.stringify({ canal, parceiro_id: pid, tarefa_id: tarefa.id }),
+      })) as any
+      if (r.canal === 'whatsapp' && r.link) {
+        window.open(r.link, '_blank')
+      } else if (r.ok) {
+        setErro('')
+        alert('Tarefa enviada por e-mail ao parceiro.')
+      }
+      setCompartilhar(null)
+    } catch (e) {
+      setErro(String(e))
+    }
+  }
+
+  const abrirCompartilhar = (t: any) => {
+    // parceiros vinculados à tarefa (ids em t.parceiros JSONB)
+    let ids: string[] = []
+    try {
+      ids = Array.isArray(t.parceiros) ? t.parceiros : JSON.parse(t.parceiros || '[]')
+    } catch (_) {
+      ids = []
+    }
+    const vinc = parceiros.filter((p) => ids.includes(p.id))
+    if (vinc.length === 0) {
+      setErro('Tarefa sem parceiro vinculado — edite a tarefa e vincule um parceiro/contato.')
+      return
+    }
+    setCompartilhar({ tarefa: t, parceiros: vinc, parceiroId: vinc[0]?.id })
+  }
+
   const salvar = async () => {
+    // T2b: parceiro(s) responsável(is) OBRIGATÓRIO(S)
+    if (!form.parceiro_ids || form.parceiro_ids.length === 0) {
+      setErro('Vincule pelo menos um parceiro/contato responsável antes de salvar.')
+      return
+    }
     setSalvando(true)
     try {
       const dados: any = {
@@ -139,6 +263,7 @@ export default function TarefasKanbanPage() {
         vinculo_tipo: form.vinculo_tipo || '',
         vinculo_id: form.vinculo_id || '',
         empresa: form.empresa || '',
+        parceiros: JSON.stringify(form.parceiro_ids || []),
         prioridade:
           form.prioridade_p === 'P1' ? 'alta' : form.prioridade_p === 'P2' ? 'media' : 'baixa',
         status:
@@ -536,6 +661,47 @@ export default function TarefasKanbanPage() {
             <DialogTitle>{editando ? 'Editar' : 'Nova'} tarefa</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            {/* T2a: abertura por áudio */}
+            <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/50 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                  <Mic className="h-3.5 w-3.5" /> Abrir por áudio
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={toggleOuvir}
+                    className={cn('h-8', ouvindo && 'bg-red-50 text-red-700 border-red-200')}
+                  >
+                    {ouvindo ? (
+                      <X className="h-3.5 w-3.5 mr-1" />
+                    ) : (
+                      <Mic className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    {ouvindo ? 'Parar' : 'Ouvir'}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={estruturarVoz}
+                    disabled={estruturando || !transcricao.trim()}
+                    className="h-8 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+                  >
+                    {estruturando ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : null}
+                    Preencher com IA
+                  </Button>
+                </div>
+              </div>
+              {(transcricao || ouvindo) && (
+                <p className="text-[11px] text-gray-600 italic">
+                  {ouvindo && <span className="text-red-600 font-bold mr-1">● REC</span>}
+                  {transcricao ||
+                    'ouvindo... fale o chamado (ex.: "preciso que o João resolva a entrega da semana que vem, é urgente")'}
+                </p>
+              )}
+            </div>
             <div className="grid gap-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Título *
@@ -619,6 +785,50 @@ export default function TarefasKanbanPage() {
                 rows={2}
               />
             </div>
+            {/* T2b: parceiros/contatos responsáveis — OBRIGATÓRIO */}
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Parceiros/contatos responsáveis * (obrigatório)
+              </Label>
+              <div className="p-2.5 rounded-lg border border-gray-200 bg-gray-50 max-h-36 overflow-y-auto space-y-1">
+                {parceiros.map((p) => {
+                  const sel = (form.parceiro_ids || []).includes(p.id)
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() =>
+                        setForm((f: any) => {
+                          const cur = f.parceiro_ids || []
+                          return {
+                            ...f,
+                            parceiro_ids: sel
+                              ? cur.filter((x: string) => x !== p.id)
+                              : [...cur, p.id],
+                          }
+                        })
+                      }
+                      className={cn(
+                        'w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-[12px] transition-colors',
+                        sel
+                          ? 'bg-emerald-100 text-[#1B5E20] font-semibold'
+                          : 'text-gray-700 hover:bg-gray-100',
+                      )}
+                    >
+                      <span className="truncate">
+                        {p.nome} <span className="text-gray-400">· {p.tipo}</span>
+                      </span>
+                      {sel && <span className="text-[10px] font-bold">✓</span>}
+                    </button>
+                  )
+                })}
+                {parceiros.length === 0 && (
+                  <p className="text-[11px] text-gray-400 py-2 text-center">
+                    Nenhum parceiro ativo cadastrado — cadastre na tela Parceiros & Contatos.
+                  </p>
+                )}
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
@@ -688,12 +898,22 @@ export default function TarefasKanbanPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>{detalhe?.titulo}</span>
-              <button
-                onClick={() => setDetalhe(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => abrirCompartilhar(detalhe)}
+                  className="h-8"
+                >
+                  <Share2 className="h-3.5 w-3.5 mr-1" /> Compartilhar
+                </Button>
+                <button
+                  onClick={() => setDetalhe(null)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </DialogTitle>
           </DialogHeader>
           <div className="flex items-center gap-2 text-[12px] text-gray-500">
@@ -812,6 +1032,70 @@ export default function TarefasKanbanPage() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* T2c: Compartilhar tarefa com parceiro (WhatsApp / e-mail) */}
+      <Dialog open={!!compartilhar} onOpenChange={(o) => !o && setCompartilhar(null)}>
+        <DialogContent className="bg-white max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Share2 className="h-4 w-4 text-[#1B5E20]" /> Compartilhar tarefa
+              </span>
+              <button
+                onClick={() => setCompartilhar(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </DialogTitle>
+          </DialogHeader>
+          {compartilhar && (
+            <div className="space-y-3">
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Parceiro/contato vinculado
+                </Label>
+                <Select
+                  value={compartilhar.parceiroId}
+                  onValueChange={(v) => setCompartilhar({ ...compartilhar, parceiroId: v })}
+                >
+                  <SelectTrigger className="h-10 bg-gray-50">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {compartilhar.parceiros.map((p: any) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.nome} {p.whatsapp ? '(WA)' : ''} {p.email ? '(e-mail)' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  variant="outline"
+                  className="h-11"
+                  onClick={() => compartilharTarefa(compartilhar.tarefa, 'whatsapp')}
+                  disabled={!compartilhar.parceiroId}
+                >
+                  <MessageSquare className="h-4 w-4 mr-1.5" /> WhatsApp
+                </Button>
+                <Button
+                  className="h-11 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+                  onClick={() => compartilharTarefa(compartilhar.tarefa, 'email')}
+                  disabled={!compartilhar.parceiroId}
+                >
+                  <Mail className="h-4 w-4 mr-1.5" /> E-mail
+                </Button>
+              </div>
+              <p className="text-[11px] text-gray-400">
+                WhatsApp abre o app com a tarefa preenchida; e-mail envia direto pelo relay do
+                portal.
+              </p>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

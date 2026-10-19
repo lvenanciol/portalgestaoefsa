@@ -68,6 +68,18 @@ export default function ConfiguracoesCompletaPage() {
       return 'Extrafruti'
     }
   })
+  // T7: identidades reais da coleção logomarcas (upload na tela Logomarcas)
+  const [logoMarcas, setLogoMarcas] = useState<any[]>([])
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const r = await pb.collection('logomarcas').getFullList({ sort: 'empresa' })
+        setLogoMarcas(r as any[])
+      } catch (_) {
+        setLogoMarcas([])
+      }
+    })()
+  }, [])
   const [backup, setBackup] = useState('')
   const [backupMsg, setBackupMsg] = useState('')
   const [auditoria, setAuditoria] = useState<any[]>([])
@@ -295,41 +307,45 @@ export default function ConfiguracoesCompletaPage() {
           <Palette className="h-4 w-4 text-[#1B5E20]" /> Identidade Visual
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {Object.entries(LOGOS).map(([key, l]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => {
-                setLogoSel(key)
-                localStorage.setItem('pge_marca_visual', key)
-              }}
-              className={cn(
-                'flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left',
-                logoSel === key
-                  ? 'border-[#1B5E20] bg-emerald-50/40'
-                  : 'border-gray-100 hover:border-gray-300',
-              )}
+          {logoMarcas.map((l) => (
+            <div
+              key={l.id}
+              className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50/50"
             >
               <span
-                className="h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold text-[12px] shrink-0"
-                style={{ backgroundColor: l.cor }}
+                className="h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold text-[12px] shrink-0 overflow-hidden"
+                style={{ backgroundColor: l.cor || '#1B5E20' }}
               >
-                {l.sigla}
+                {l.logo ? (
+                  <img
+                    src={pb.files.getURL(l, l.logo)}
+                    alt={l.empresa}
+                    className="h-full w-full object-contain p-1"
+                  />
+                ) : (
+                  l.sigla || 'EX'
+                )}
               </span>
-              <span>
-                <span className="block text-[13px] font-bold text-gray-900">{l.nome}</span>
+              <span className="min-w-0">
+                <span className="block text-[13px] font-bold text-gray-900 truncate">
+                  {l.empresa}
+                </span>
                 <span className="block text-[10px] text-gray-500">
-                  {logoSel === key ? 'aplicada no portal' : 'clicar para aplicar'}
+                  {l.logo ? 'logo anexada' : 'sem logo — sigla'} · {l.cor}
                 </span>
               </span>
-            </button>
+            </div>
           ))}
+          {logoMarcas.length === 0 && (
+            <p className="text-[12px] text-gray-400">Carregando identidades…</p>
+          )}
         </div>
         <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-500">
           <span className="h-6 w-6 rounded-full bg-[#1B5E20] text-white inline-flex items-center justify-center font-bold text-[9px]">
             EC
           </span>
-          Emblema "EC" (Extrafruti-Casafruti) aplicado ao lado da empresa selecionada no Topbar.
+          Emblema aplicado ao lado da empresa selecionada no Topbar — anexe a imagem na tela
+          Logomarcas.
         </div>
       </section>
 
