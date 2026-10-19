@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Upload,
   Download,
+  RefreshCw,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -53,6 +54,29 @@ export default function ConfiguracoesCompletaPage() {
   const [backupMsg, setBackupMsg] = useState('')
   const [auditoria, setAuditoria] = useState<any[]>([])
   const [tSalvo, setTSalvo] = useState(false)
+  const [syncando, setSyncando] = useState(false)
+  const [syncMsg, setSyncMsg] = useState('')
+
+  const sincronizarAgora = async () => {
+    setSyncando(true)
+    setSyncMsg('')
+    try {
+      const r = (await pb.send('/backend/v1/sankhya/sync', { method: 'POST', body: '{}' })) as any
+      if (r.ok) setSyncMsg('Sync OK — ' + (r.gerado_em || '').slice(0, 16).replace('T', ' '))
+      else
+        setSyncMsg(
+          'Sync parcial — ' +
+            (r.falhas || []).length +
+            ' falha(s): ' +
+            (r.falhas || []).join('; ').slice(0, 120),
+        )
+    } catch (e) {
+      setSyncMsg('Erro no sync: ' + String(e))
+    } finally {
+      setSyncando(false)
+      setTimeout(() => setSyncMsg(''), 8000)
+    }
+  }
 
   const testar = async (alvo: string) => {
     setTestes((t) => ({ ...t, [alvo]: { loading: true } }))
@@ -205,11 +229,30 @@ export default function ConfiguracoesCompletaPage() {
                   {t?.ok === false && (
                     <div className="text-[11px] text-red-600">Falha: {t.erro}</div>
                   )}
+                  {i.key === 'sankhya' && syncMsg && (
+                    <div className="text-[11px] text-emerald-700">{syncMsg}</div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {t?.ok === true && <CheckCircle2 className="h-4 w-4 text-emerald-600" />}
                   {t?.ok === false && <XCircle className="h-4 w-4 text-red-600" />}
                   {t?.loading && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
+                  {i.key === 'sankhya' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      onClick={sincronizarAgora}
+                      disabled={syncando}
+                    >
+                      {syncando ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4 mr-1" />
+                      )}
+                      Sincronizar agora
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
