@@ -19,7 +19,7 @@ routerAdd(
     }
     const body = e.requestInfo().body || {}
     const alvo = String(body.alvo || '')
-    const out: any = { alvo: alvo }
+    const out = { alvo: alvo }
 
     if (alvo === 'sankhya') {
       const edgeUrl = $secrets.get('PGE_EDGE_URL') || ''
@@ -35,7 +35,12 @@ routerAdd(
             headers: { 'Content-Type': 'application/json', 'X-PGE-Secret': edgeSecret },
             body: JSON.stringify({
               op: 'dbExplorer',
-              payload: { requestBody: { serviceName: 'DbExplorerSP.executeQuery', requestBody: { sql: 'SELECT 1 FROM DUAL' } } },
+              payload: {
+                requestBody: {
+                  serviceName: 'DbExplorerSP.executeQuery',
+                  requestBody: { sql: 'SELECT 1 FROM DUAL' },
+                },
+              },
             }),
             timeout: 30,
           })
@@ -52,7 +57,8 @@ routerAdd(
           model: 'fast',
           messages: [{ role: 'user', content: 'Responda apenas: OK' }],
         })
-        const txt = r && r.choices && r.choices[0] && r.choices[0].message ? r.choices[0].message.content : ''
+        const txt =
+          r && r.choices && r.choices[0] && r.choices[0].message ? r.choices[0].message.content : ''
         out.ok = !!txt
         out.erro = out.ok ? '' : 'sem resposta do gateway $ai'
       } catch (err) {
