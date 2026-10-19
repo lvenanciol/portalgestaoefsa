@@ -134,9 +134,13 @@ function classificar(nome: string, texto?: string): string {
   const t = (texto || '').toLowerCase()
   if (t) {
     // palavras-chave por tipo — primeira ocorrência decide (ordem de especificidade)
-    if (t.includes('balancete') || (t.includes('saldo anterior') && t.includes('débitos')))
+    const tn = t.normalize('NFD').replace(/[\u0300-\u036f]/g, '') // sem acentos p/ casar DEBITOS/DÉBITOS
+    if (
+      t.includes('balancete') ||
+      (tn.includes('saldo anterior') && (tn.includes('debitos') || tn.includes('creditos')))
+    )
       return 'balancete'
-    if (t.includes('fluxo de caixa') || (t.includes('entradas') && t.includes('saídas')))
+    if (t.includes('fluxo de caixa') || (tn.includes('entradas') && tn.includes('saidas')))
       return 'fluxo_caixa'
     if (/\bdre\b/.test(t) || t.includes('resultado do exerc') || t.includes('lucro líquido'))
       return 'planilha_gerencial'
