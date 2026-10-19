@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Users, Plus, Loader2, Search, X, Pencil, Trash2, Download, Building2 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { idiomaSalvo, traduzir } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -164,17 +165,19 @@ export default function ParceirosPage() {
   }
 
   const exportCsv = () => {
+    // COR-2: export respeita o idioma ativo
+    const L = idiomaSalvo()
     const header = [
-      'Nome',
-      'Tipo',
-      'Empresa',
-      'Documento',
+      traduzir(L, 'responsavel'),
+      traduzir(L, 'status'),
+      traduzir(L, 'empresa'),
+      'CPF/CNPJ',
       'E-mail',
       'WhatsApp',
       'Telefone',
-      'Cargo',
-      'Centro de resultado',
-      'Ativo',
+      traduzir(L, 'cargo') || 'Cargo',
+      traduzir(L, 'padrao_contabil'),
+      traduzir(L, 'ativo'),
     ]
     const rows = filtrados.map((i) => [
       i.nome,
