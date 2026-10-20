@@ -121,6 +121,22 @@ export function Topbar() {
   const { selectedCompany, empresas, toggleSidebar, criticalAlerts } = useApp()
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  // T2: alertas ocultados pelo usuário (persistido em localStorage)
+  const [ocultados, setOcultados] = useState<string[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('pge_alertas_ocultados') || '[]')
+    } catch (_) {
+      return []
+    }
+  })
+  const ocultarAlerta = (id: string) => {
+    const nova = [...new Set([...ocultados, id])]
+    setOcultados(nova)
+    try {
+      localStorage.setItem('pge_alertas_ocultados', JSON.stringify(nova))
+    } catch (_) {}
+  }
+  const alertasVisiveis = criticalAlerts.filter((a) => !ocultados.includes(a.id))
   const [avatarOpen, setAvatarOpen] = useState(false)
   const [idioma, setIdioma] = useState(() => {
     try {
@@ -305,13 +321,12 @@ export function Topbar() {
               <div className="flex items-center gap-2">
                 <AlertCircle className="h-4 w-4 text-red-600" />
                 <span className="font-semibold text-xs text-gray-900">
-                  Alertas Críticos ({criticalAlerts.length})
+                  Alertas Críticos ({alertasVisiveis.length})
                 </span>
               </div>
             </div>
-
             <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
-              {criticalAlerts.map((alert) => (
+              {alertasVisiveis.map((alert) => (
                 <div key={alert.id} className="p-3 hover:bg-gray-50 transition-colors text-left">
                   <div className="flex items-start gap-2.5">
                     <span
@@ -335,11 +350,37 @@ export function Topbar() {
                       <p className="text-[11px] text-gray-600 line-clamp-2 mt-0.5">
                         {alert.description}
                       </p>
+                      {/* T2: Acessar (abre a tela de origem) + Ocultar (remove do sino) */}
+                      <div className="flex items-center gap-3 mt-1.5">
+                        {alert.rota && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigate(alert.rota!)
+                            }}
+                            className="text-[11px] font-semibold text-[#1B5E20] hover:underline"
+                          >
+                            Acessar
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => ocultarAlerta(alert.id)}
+                          className="text-[11px] text-gray-400 hover:text-gray-600 hover:underline"
+                        >
+                          Ocultar
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               ))}
-            </div>
+              {alertasVisiveis.length === 0 && (
+                <p className="text-center text-[12px] text-gray-400 py-8">
+                  Nenhum alerta ativo — os ocultados podem voltar ao serem reavaliados.
+                </p>
+              )}
+            </div>{' '}
           </PopoverContent>
         </Popover>
 

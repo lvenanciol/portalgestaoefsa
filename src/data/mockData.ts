@@ -47,6 +47,8 @@ export interface CriticalAlert {
   description: string
   detail: string
   severity: 'critical' | 'warning'
+  // T2: rota da tela de origem do alerta + flag de ocultado (persistido)
+  rota?: string
 }
 
 export interface Commitment {
@@ -185,6 +187,7 @@ export const MOCK_DATA: MockDataset = {
       description: 'Fornecedor: Logística Norte',
       detail: '18/11/2026',
       severity: 'critical',
+      rota: '/contratos',
     },
     {
       id: 'alt-2',
@@ -192,6 +195,7 @@ export const MOCK_DATA: MockDataset = {
       description: 'Margem Bruta (unidade SP)',
       detail: '-2,4 p.p.',
       severity: 'warning',
+      rota: '/indicadores',
     },
     {
       id: 'alt-3',
@@ -199,6 +203,7 @@ export const MOCK_DATA: MockDataset = {
       description: 'Projetos em andamento',
       detail: '',
       severity: 'critical',
+      rota: '/tarefas',
     },
   ],
   commitments: [

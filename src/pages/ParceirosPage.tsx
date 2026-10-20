@@ -50,7 +50,8 @@ export default function ParceirosPage() {
   // centros de resultado (Sankhya)
   const [centros, setCentros] = useState<any[]>([])
   const [centroBusca, setCentroBusca] = useState('')
-  const [centrosAberto, setCentrosAberto] = useState(false)
+  // T3: erro real do endpoint (ex.: grant Oracle pendente) — exibido no dialog
+  const [centrosErro, setCentrosErro] = useState('')  const [centrosAberto, setCentrosAberto] = useState(false)
 
   const carregar = async () => {
     setLoading(true)
@@ -70,14 +71,28 @@ export default function ParceirosPage() {
   }, [])
 
   const buscarCentros = async (q: string) => {
+    setCentrosErro('')
     try {
       const r = (await pb.send(
         '/backend/v1/sankhya/centros-resultado?busca=' + encodeURIComponent(q),
         { method: 'GET' },
       )) as any
       setCentros(r.itens || [])
-    } catch (_) {
+      // T3: endpoint ok mas sem itens → mostra o motivo (fonte/erro)
+      if (!(r.itens || []).length) {
+        setCentrosErro(
+          r.erro ||
+            (r.fonte === 'cache'
+              ? 'Cache vazio — tente novamente em instantes.'
+              : ''),
+        )
+      }
+    } catch (e: any) {
       setCentros([])
+      setCentrosErro(
+        String(e?.response?.message || e?.message || e).slice(0, 200) ||
+          'Falha ao consultar o Sankhya.',
+      )
     }
   }
 
@@ -567,7 +582,12 @@ export default function ParceirosPage() {
                 <span className="ml-2 text-gray-400 tabular-nums">{c.codigo}</span>
               </button>
             ))}
-            {centros.length === 0 && (
+            {centrosErro && (
+              <p className="text-center text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                {centrosErro}
+              </p>
+            )}
+            {centros.length === 0 && !centrosErro && (
               <p className="text-center text-[12px] text-gray-400 py-6">
                 Nenhum centro encontrado.
               </p>

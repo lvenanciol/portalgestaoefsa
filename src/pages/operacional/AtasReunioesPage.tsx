@@ -106,6 +106,8 @@ export default function AtasReunioesPage() {
   const [organizando, setOrganizando] = useState(false)
   const [arquivoAudio, setArquivoAudio] = useState<File | null>(null)
   const recRef = useRef<any>(null)
+  // T5a: ref espelho do estado ouvindo (onend/onerror não veem o state fresco)
+  const ouvindoRef = useRef(false)
 
   const toggleOuvir = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -114,7 +116,10 @@ export default function AtasReunioesPage() {
       return
     }
     if (ouvindo) {
-      recRef.current?.stop()
+      // T5a: para SOMENTE no clique do botão (reinicia se o serviço cair)
+      try {
+        recRef.current?.stop()
+      } catch (_) {}
       setOuvindo(false)
       return
     }
@@ -128,9 +133,28 @@ export default function AtasReunioesPage() {
         t += ev.results[i][0].transcript + ' '
       setTranscricao((prev: string) => (prev + ' ' + t).trim())
     }
-    rec.onerror = () => setOuvindo(false)
-    rec.onend = () => setOuvindo(false)
+    rec.onerror = (ev: any) => {
+      // 'no-speech'/'aborted' não encerra: gravação continua até o usuário parar
+      if (ev?.error === 'no-speech' || ev?.error === 'aborted') {
+        try {
+          rec.start()
+        } catch (_) {}
+        return
+      }
+      setOuvindo(false)
+    }
+    rec.onend = () => {
+      // T5a: enquanto o usuário não clicou em Parar, reinicia a sessão
+      if (recRef.current === rec && ouvindoRef.current) {
+        try {
+          rec.start()
+        } catch (_) {}
+      } else {
+        setOuvindo(false)
+      }
+    }
     recRef.current = rec
+    ouvindoRef.current = true
     rec.start()
     setOuvindo(true)
   }
@@ -156,7 +180,8 @@ export default function AtasReunioesPage() {
         participantes: Array.isArray(e.participantes)
           ? e.participantes.join(', ')
           : f.participantes,
-        pauta: e.pauta || f.pauta,
+        // T5b: pauta = transcrição LITERAL (visão principal); IA complementa em decisões/resumo
+        pauta: f.pauta ? f.pauta : texto,
         decisoes: e.decisoes || f.decisoes,
         resumo: e.resumo || f.resumo,
       }))
@@ -181,18 +206,35 @@ export default function AtasReunioesPage() {
   const salvar = async () => {
     setSalvando(true)
     try {
-      await pb.collection('atas').create({
-        titulo: form.titulo,
-        data: form.data ? form.data + ' 00:00:00.000Z' : '',
-        modalidade: form.modalidade,
-        link_reuniao: form.link_reuniao,
-        participantes: form.participantes,
-        pauta: form.pauta,
-        resumo: form.resumo,
-        decisoes: form.decisoes,
-        action_items: JSON.stringify([]),
-        criado_por: user?.email || '',
-      })
+      // T5b: com arquivo de áudio, salva via FormData (anexa o áudio à ata)
+      if (arquivoAudio && /\.(mp3|m4a|wav|webm|ogg|mp4)$/i.test(arquivoAudio.name)) {
+        const fd = new FormData()
+        fd.append('titulo', form.titulo || '')
+        fd.append('data', form.data ? form.data + ' 00:00:00.000Z' : '')
+        fd.append('modalidade', form.modalidade || '')
+        fd.append('link_reuniao', form.link_reuniao || '')
+        fd.append('participantes', form.participantes || '')
+        fd.append('pauta', form.pauta || '') // transcrição literal
+        fd.append('resumo', form.resumo || '')
+        fd.append('decisoes', form.decisoes || '')
+        fd.append('action_items', JSON.stringify([]))
+        fd.append('criado_por', user?.email || '')
+        fd.append('audio', arquivoAudio)
+        await pb.collection('atas').create(fd)
+      } else {
+        await pb.collection('atas').create({
+          titulo: form.titulo,
+          data: form.data ? form.data + ' 00:00:00.000Z' : '',
+          modalidade: form.modalidade,
+          link_reuniao: form.link_reuniao,
+          participantes: form.participantes,
+          pauta: form.pauta,
+          resumo: form.resumo,
+          decisoes: form.decisoes,
+          action_items: JSON.stringify([]),
+          criado_por: user?.email || '',
+        })
+      }
       setDialog(false)
       await carregar()
     } catch (e) {
@@ -415,11 +457,21 @@ export default function AtasReunioesPage() {
                     <Upload className="h-3.5 w-3.5" /> Upload
                     <input
                       type="file"
-                      accept="audio/*"
+                      accept="audio/*,.txt,.md"
                       className="hidden"
-                      onChange={(e) => setArquivoAudio(e.target.files?.[0] || null)}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        if (!f) return
+                        setArquivoAudio(f)
+                        // T5b: .txt/.md → transcrição literal direto (visão principal da ata)
+                        if (/\.(txt|md)$/i.test(f.name)) {
+                          const rd = new FileReader()
+                          rd.onload = () => setTranscricao(String(rd.result || '').trim())
+                          rd.readAsText(f)
+                        }
+                      }}
                     />
-                  </label>
+                  </label>{' '}
                   <Button
                     type="button"
                     size="sm"
