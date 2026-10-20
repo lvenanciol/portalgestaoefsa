@@ -54,13 +54,15 @@ export default function PowerBiPage() {
     setCarregando(true)
     setErro('')
     try {
-      const clientId = MS_CLIENT_ID()
+      // usa o valor do campo (pré-preenchido) OU o salvo — sem exigir "Salvar" antes
+      const clientId = clientIdInput.trim() || MS_CLIENT_ID()
       if (!clientId) {
         setErro(
           'Configure o app registration (Entra ID) nas Configurações — campo "Power BI (Entra ID)".',
         )
         return
       }
+      localStorage.setItem('pge_ms_client_id', clientId)
       // MSAL empacotado no build (dependência @azure/msal-browser)
       const { PublicClientApplication } = await import('@azure/msal-browser')
       // app single-tenant: authority do próprio tenant (ctid do embed padrão)
