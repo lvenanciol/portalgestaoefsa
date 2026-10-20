@@ -66,7 +66,12 @@ export default function PowerBiPage() {
       // app single-tenant: authority do próprio tenant (ctid do embed padrão)
       const TENANT = 'f297b97e-1aa1-423f-81e0-008ad95e11f2'
       const pca = new PublicClientApplication({
-        auth: { clientId, authority: 'https://login.microsoftonline.com/' + TENANT },
+        auth: {
+          clientId,
+          authority: 'https://login.microsoftonline.com/' + TENANT,
+          // URI registrada como SPA no Entra ID (validada 19/10 — authorize sem AADSTS50011)
+          redirectUri: window.location.origin + '/power-bi',
+        },
       })
       await pca.initialize()
       const login = await pca.loginPopup({
