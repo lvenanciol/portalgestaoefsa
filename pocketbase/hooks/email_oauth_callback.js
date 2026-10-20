@@ -4,12 +4,13 @@
 
 // COR-4 fix (20/10): redirect final SEMPRE para o SITE PUBLICADO (SPA) —
 // o domínio do backend interno não serve a interface (404 "File not found").
-const SITE = String(
-  $secrets.get('SITE_URL') || 'https://portal-de-gestao-executivo-b4d94.goskip.app',
-).replace(/\/$/, '')
-const irPara = (path) => SITE + path
+// NOTA scoping: helpers inline no callback (top-level não sobrevive no JSVM).
 
 routerAdd('GET', '/backend/v1/email/oauth/callback', (e) => {
+  const SITE = String(
+    $secrets.get('SITE_URL') || 'https://portal-de-gestao-executivo-b4d94.goskip.app',
+  ).replace(/\/$/, '')
+  const irPara = (path) => SITE + path
   const q = e.requestInfo().query || {}
   const code = String(q.code || '')
   const st = String(q.state || '')
