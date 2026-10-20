@@ -2,6 +2,13 @@
 // de uso único, troca o code por tokens (access+refresh) e grava em
 // email_oauth_tokens. Depois redireciona para o portal (tela Configurações).
 
+// COR-4 fix (20/10): redirect final SEMPRE para o SITE PUBLICADO (SPA) —
+// o domínio do backend interno não serve a interface (404 "File not found").
+const SITE = String(
+  $secrets.get('SITE_URL') || 'https://portal-de-gestao-executivo-b4d94.goskip.app',
+).replace(/\/$/, '')
+const irPara = (path) => SITE + path
+
 routerAdd('GET', '/backend/v1/email/oauth/callback', (e) => {
   const q = e.requestInfo().query || {}
   const code = String(q.code || '')
@@ -9,10 +16,10 @@ routerAdd('GET', '/backend/v1/email/oauth/callback', (e) => {
   const erro = String(q.error || '')
 
   if (erro) {
-    return e.redirect(302, '/configuracoes?oauth=erro&det=' + encodeURIComponent(erro))
+    return e.redirect(302, irPara('/configuracoes?oauth=erro&det=' + encodeURIComponent(erro)))
   }
   if (!code || !st) {
-    return e.redirect(302, '/configuracoes?oauth=erro&det=sem_code_ou_state')
+    return e.redirect(302, irPara('/configuracoes?oauth=erro&det=sem_code_ou_state'))
   }
 
   // valida e consome o state (uso único)
@@ -25,10 +32,10 @@ routerAdd('GET', '/backend/v1/email/oauth/callback', (e) => {
     provedor = rec.getString('provedor')
     $app.delete(rec)
   } catch (_) {
-    return e.redirect(302, '/configuracoes?oauth=erro&det=state_invalido_ou_expirado')
+    return e.redirect(302, irPara('/configuracoes?oauth=erro&det=state_invalido_ou_expirado'))
   }
   if (provedor !== 'google' && provedor !== 'microsoft') {
-    return e.redirect(302, '/configuracoes?oauth=erro&det=provedor_invalido')
+    return e.redirect(302, irPara('/configuracoes?oauth=erro&det=provedor_invalido'))
   }
 
   // credenciais
@@ -39,7 +46,7 @@ routerAdd('GET', '/backend/v1/email/oauth/callback', (e) => {
     provedor === 'google' ? 'GMAIL_OAUTH_CLIENT_SECRET' : 'OUTLOOK_OAUTH_CLIENT_SECRET',
   )
   if (!cid || !csec) {
-    return e.redirect(302, '/configuracoes?oauth=erro&det=credenciais_ausentes')
+    return e.redirect(302, irPara('/configuracoes?oauth=erro&det=credenciais_ausentes'))
   }
 
   // COR-4 (20/10): mesma base do iniciar (OAUTH_REDIRECT_BASE > PB_INSTANCE_URL)
@@ -80,24 +87,27 @@ routerAdd('GET', '/backend/v1/email/oauth/callback', (e) => {
       timeout: 30,
     })
   } catch (err) {
-    return e.redirect(302, '/configuracoes?oauth=erro&det=transporte_token')
+    return e.redirect(302, irPara('/configuracoes?oauth=erro&det=transporte_token'))
   }
   if (res.statusCode !== 200) {
     const det = encodeURIComponent(String(res.body || '').slice(0, 180))
-    return e.redirect(302, '/configuracoes?oauth=erro&det=token_' + res.statusCode + '_' + det)
+    return e.redirect(
+      302,
+      irPara('/configuracoes?oauth=erro&det=token_' + res.statusCode + '_' + det),
+    )
   }
 
   let tok
   try {
     tok = JSON.parse(res.body)
   } catch (_) {
-    return e.redirect(302, '/configuracoes?oauth=oauth=erro&det=json_invalido')
+    return e.redirect(302, irPara('/configuracoes?oauth=erro&det=json_invalido'))
   }
   const at = String(tok.access_token || '')
   const rt = String(tok.refresh_token || '')
   const expiresIn = Number(tok.expires_in || 3600)
   if (!at) {
-    return e.redirect(302, '/configuracoes?oauth=erro&det=sem_access_token')
+    return e.redirect(302, irPara('/configuracoes?oauth=erro&det=sem_access_token'))
   }
   const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString()
 
@@ -127,9 +137,9 @@ routerAdd('GET', '/backend/v1/email/oauth/callback', (e) => {
   } catch (err) {
     return e.redirect(
       302,
-      '/configuracoes?oauth=erro&det=gravar_tokens_' + String(err).slice(0, 80),
+      irPara('/configuracoes?oauth=erro&det=gravar_tokens_' + String(err).slice(0, 80)),
     )
   }
 
-  return e.redirect(302, '/configuracoes?oauth=ok&provedor=' + provedor)
+  return e.redirect(302, irPara('/configuracoes?oauth=ok&provedor=' + provedor))
 })
