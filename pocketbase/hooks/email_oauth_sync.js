@@ -44,7 +44,10 @@ routerAdd(
     } else {
       cid = $secrets.get('OUTLOOK_OAUTH_CLIENT_ID')
       csec = $secrets.get('OUTLOOK_OAUTH_CLIENT_SECRET')
-      tokenUrl = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
+      // app single-tenant: token endpoint do TENANT (não /common — dá invalid_client)
+      const tenantMs =
+        String($secrets.get('OUTLOOK_TENANT_ID') || '') || 'f297b97e-1aa1-423f-81e0-008ad95e11f2'
+      tokenUrl = 'https://login.microsoftonline.com/' + tenantMs + '/oauth2/v2.0/token'
     }
     if (expMs - 60000 < Date.now() && rt && cid && csec) {
       let backend = String($secrets.get('PB_INSTANCE_URL') || '')
@@ -68,8 +71,15 @@ routerAdd(
           body: form,
           timeout: 30,
         })
+        // PB pode devolver body como array de bytes
+        const bodyStr =
+          typeof r.body === 'string'
+            ? r.body
+            : Array.isArray(r.body)
+              ? String.fromCharCode.apply(null, r.body)
+              : String(r.body || '')
         if (r.statusCode === 200) {
-          const t = JSON.parse(r.body)
+          const t = JSON.parse(bodyStr)
           at = String(t.access_token || at)
           const expiresIn = Number(t.expires_in || 3600)
           rec.set('access_token', at)

@@ -11,6 +11,19 @@ routerAdd('GET', '/backend/v1/email/oauth/callback', (e) => {
     $secrets.get('SITE_URL') || 'https://portal-de-gestao-executivo-b4d94.goskip.app',
   ).replace(/\/$/, '')
   const irPara = (path) => SITE + path
+  // $http.send do PB pode devolver body como ARRAY DE BYTES — decodificar
+  const decodeBody = (res) => {
+    const b = res && res.body
+    if (typeof b === 'string') return b
+    if (Array.isArray(b)) {
+      let s = ''
+      for (let i = 0; i < b.length; i += 4096) {
+        s += String.fromCharCode.apply(null, b.slice(i, i + 4096))
+      }
+      return s
+    }
+    return String(b || '')
+  }
   const q = e.requestInfo().query || {}
   const code = String(q.code || '')
   const st = String(q.state || '')
@@ -100,7 +113,7 @@ routerAdd('GET', '/backend/v1/email/oauth/callback', (e) => {
 
   let tok
   try {
-    tok = JSON.parse(res.body)
+    tok = JSON.parse(decodeBody(res))
   } catch (_) {
     return e.redirect(302, irPara('/configuracoes?oauth=erro&det=json_invalido'))
   }
