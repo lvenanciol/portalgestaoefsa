@@ -166,7 +166,8 @@ routerAdd(
       let r
       try {
         r = $http.send({
-          url: 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=15&$select=id,subject,from,bodyPreview,receivedDateTime&$orderby=receivedDateTime desc',
+          // espaço em $orderby DEVE ser %20 (URL crua com espaço → 400 HTML)
+          url: 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=15&$select=id,subject,from,bodyPreview,receivedDateTime&$orderby=receivedDateTime%20desc',
           method: 'GET',
           headers: { Authorization: 'Bearer ' + at },
           timeout: 30,
