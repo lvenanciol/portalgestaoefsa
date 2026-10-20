@@ -114,7 +114,13 @@ routerAdd(
       }
       let lista
       try {
-        lista = JSON.parse(r.body)
+        const listaStr =
+          typeof r.body === 'string'
+            ? r.body
+            : Array.isArray(r.body)
+              ? String.fromCharCode.apply(null, r.body)
+              : String(r.body || '')
+        lista = JSON.parse(listaStr)
       } catch (_) {
         return e.json(200, { ok: false, erro: 'json gmail' })
       }
@@ -131,7 +137,13 @@ routerAdd(
             timeout: 30,
           })
           if (d.statusCode !== 200) continue
-          const det = JSON.parse(d.body)
+          const detStr =
+            typeof d.body === 'string'
+              ? d.body
+              : Array.isArray(d.body)
+                ? String.fromCharCode.apply(null, d.body)
+                : String(d.body || '')
+          const det = JSON.parse(detStr)
           const hdrs = (det.payload && det.payload.headers) || []
           const h = (nome) => {
             const x = hdrs.find((x) => x.name === nome)
@@ -170,7 +182,13 @@ routerAdd(
       }
       let data
       try {
-        data = JSON.parse(r.body)
+        const dataStr =
+          typeof r.body === 'string'
+            ? r.body
+            : Array.isArray(r.body)
+              ? String.fromCharCode.apply(null, r.body)
+              : String(r.body || '')
+        data = JSON.parse(dataStr)
       } catch (_) {
         return e.json(200, { ok: false, erro: 'json graph' })
       }
