@@ -308,10 +308,11 @@ export function Topbar() {
             >
               <Bell className="h-5 w-5" />
               {alertasVisiveis.length > 0 && (
-                <span className="absolute top-1 right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red
+                <span className="absolute top-1 right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
                   {alertasVisiveis.length}
                 </span>
-              )}            </button>
+              )}
+            </button>
           </PopoverTrigger>
 
           <PopoverContent
