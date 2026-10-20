@@ -421,6 +421,15 @@ export default function ConfiguracoesCompletaPage() {
           OAuth 2.0 com escopos de leitura e envio. Após conectar: sincronize a caixa de entrada e
           envie e-mails pela sua conta real.
         </p>
+        {/* COR-4: URI de redirecionamento exata (copiar para Google Cloud / Azure) */}
+        <div className="mb-3 p-2.5 rounded-lg bg-sky-50 border border-sky-200">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-sky-700 mb-1">
+            URI de redirecionamento autorizado — registrar no Google Cloud e no Azure Entra
+          </div>
+          <code className="text-[11px] text-sky-900 break-all select-all">
+            https://portal-de-gestao-executivo-b4d94.shrd01.internal.goskip.dev/backend/v1/email/oauth/callback
+          </code>
+        </div>
         {oauthMsg && (
           <div
             className={cn(
