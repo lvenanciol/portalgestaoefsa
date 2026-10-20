@@ -52,7 +52,12 @@ routerAdd(
     }
 
     // backend base: PB_INSTANCE_URL (sem sufixo /_/ do admin)
-    let backend = String($secrets.get('PB_INSTANCE_URL') || '')
+    // COR-4 (20/10): OAUTH_REDIRECT_BASE (opcional) permite usar o domínio
+    // PÚBLICO do portal como redirect (ex.: https://portal-de-gestao-executivo-b4d94.goskip.app)
+    // — o callback do PB responde igual no domínio público. Sem o secret,
+    // mantém o comportamento antigo (URL interna da instância).
+    let backend = String($secrets.get('OAUTH_REDIRECT_BASE') || '')
+    if (!backend) backend = String($secrets.get('PB_INSTANCE_URL') || '')
     backend = backend.replace(/\/_\/?$/, '').replace(/\/$/, '')
     if (!backend) {
       return e.json(500, { ok: false, erro: 'PB_INSTANCE_URL não configurada.' })

@@ -9,6 +9,7 @@ import {
   Eye,
   EyeOff,
   Plug,
+  Download,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { Button } from '@/components/ui/button'
@@ -133,6 +134,34 @@ export default function WhatsAppPage() {
     }
   }
 
+  // Importa credenciais do Foldbox (edge pge-whatsapp-export)
+  const [importando, setImportando] = useState(false)
+  const importarDoFoldbox = async () => {
+    setImportando(true)
+    setMsg('')
+    setErro('')
+    try {
+      const r = (await pb.send('/backend/v1/integracoes/whatsapp/importar', {
+        method: 'POST',
+        body: '{}',
+      })) as any
+      if (r.ok) {
+        setMsg(
+          'Credenciais importadas do Foldbox com sucesso' +
+            (r.phone_display ? ' — ' + r.phone_display : '') +
+            '.',
+        )
+        await carregar()
+      } else {
+        setErro('Falha ao importar: ' + (r.erro || 'sem detalhe'))
+      }
+    } catch (e: any) {
+      setErro('Erro ao importar: ' + String(e?.message || e))
+    } finally {
+      setImportando(false)
+    }
+  }
+
   const campo = (
     key: keyof WaConfig,
     label: string,
@@ -197,18 +226,34 @@ export default function WhatsAppPage() {
             )}
           </p>
         </div>
-        <Button
-          onClick={testar}
-          disabled={testando}
-          className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
-        >
-          {testando ? (
-            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-          ) : (
-            <Plug className="h-4 w-4 mr-1.5" />
-          )}
-          Testar conexão
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={importarDoFoldbox}
+            disabled={importando}
+            variant="outline"
+            className="h-9"
+            title="Importa Phone Number ID, token e WABA ID já configurados no site Foldbox"
+          >
+            {importando ? (
+              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-1.5" />
+            )}
+            Importar do Foldbox
+          </Button>
+          <Button
+            onClick={testar}
+            disabled={testando}
+            className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+          >
+            {testando ? (
+              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            ) : (
+              <Plug className="h-4 w-4 mr-1.5" />
+            )}
+            Testar conexão
+          </Button>
+        </div>
       </div>
 
       {msg && (

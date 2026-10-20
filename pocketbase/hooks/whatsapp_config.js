@@ -120,6 +120,111 @@ routerAdd(
   $apis.requireAuth(),
 )
 
+// POST /backend/v1/integracoes/whatsapp/importar → importa credenciais do Foldbox
+// (edge pge-whatsapp-export, autenticada por X-PGE-Secret) e grava local.
+routerAdd(
+  'POST',
+  '/backend/v1/integracoes/whatsapp/importar',
+  (e) => {
+    const auth = e.auth
+    if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
+    let isAdmin = false
+    try {
+      const g = $app.findRecordById('grupos_permissao', auth.getString('grupo_id'))
+      isAdmin = g.getString('nome') === 'Admin'
+    } catch (_) {}
+    if (!isAdmin && !e.hasSuperuserAuth()) {
+      throw new ForbiddenError('Acesso restrito a administradores.')
+    }
+
+    const edgeUrl = $secrets.get('PGE_EDGE_URL') || ''
+    const edgeSecret = $secrets.get('PGE_PROXY_SECRET') || ''
+    if (!edgeUrl || !edgeSecret) {
+      return e.json(502, {
+        ok: false,
+        erro: 'Proxy não configurado (PGE_EDGE_URL/PGE_PROXY_SECRET).',
+      })
+    }
+
+    // edge do foldbox: substitui o nome da função pela export do whatsapp
+    const exportUrl = edgeUrl.replace(
+      /\/functions\/v1\/[^/]+$/,
+      '/functions/v1/pge-whatsapp-export',
+    )
+    let resp
+    try {
+      resp = $http.send({
+        url: exportUrl,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-PGE-Secret': edgeSecret },
+        body: '{}',
+        timeout: 20,
+      })
+    } catch (err) {
+      return e.json(502, { ok: false, erro: 'Falha na edge: ' + String(err).slice(0, 120) })
+    }
+    if (resp.statusCode !== 200) {
+      return e.json(200, { ok: false, erro: 'edge ' + resp.statusCode })
+    }
+    const d = resp.json || {}
+    if (!d.ok) {
+      return e.json(200, { ok: false, erro: d.erro || 'sem credenciais no Foldbox' })
+    }
+
+    // grava em integracoes_config (integração 'whatsapp')
+    let cfg = null
+    try {
+      cfg = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'whatsapp'")
+    } catch (_) {}
+    const config = {
+      phone_number_id: d.phone_number_id || '',
+      phone_number_display: d.phone_display || '',
+      waba_id: d.waba_id || '',
+      verify_token: d.verify_token || '',
+      access_token: d.access_token || '',
+      app_secret: '',
+      is_active: true,
+      welcome_message: 'Olá! Bem-vindo ao atendimento via WhatsApp.',
+      importado_de: 'foldbox',
+      importado_em: new DateTime().string(),
+    }
+    if (cfg) {
+      cfg.set('config', config)
+      cfg.set('atualizado_por', auth.getString('email'))
+      $app.save(cfg)
+    } else {
+      const col = $app.findCollectionByNameOrId('integracoes_config')
+      const r = new Record(col)
+      r.set('integracao', 'whatsapp')
+      r.set('config', config)
+      r.set('atualizado_por', auth.getString('email'))
+      $app.save(r)
+    }
+    // auditoria
+    try {
+      const aid = $security.randomString(15)
+      $app
+        .db()
+        .newQuery(
+          "INSERT INTO auditoria (id, usuario_id, usuario_email, acao, modulo, detalhe, created, updated) VALUES ({:id}, {:uid}, {:uemail}, 'whatsapp_importar', 'integracoes', 'Credenciais importadas do Foldbox', {:now}, {:now})",
+        )
+        .bind({
+          id: aid,
+          uid: auth.id,
+          uemail: auth.getString('email'),
+          now: new DateTime().string(),
+        })
+        .execute()
+    } catch (_) {}
+    return e.json(200, {
+      ok: true,
+      phone_display: d.phone_display || '',
+      waba_id: d.waba_id || '',
+    })
+  },
+  $apis.requireAuth(),
+)
+
 // POST /backend/v1/integracoes/whatsapp/testar → testa token contra a Graph API
 routerAdd(
   'POST',

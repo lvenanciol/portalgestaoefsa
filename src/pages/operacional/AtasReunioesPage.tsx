@@ -136,8 +136,17 @@ export default function AtasReunioesPage() {
       setTranscricao((prev: string) => (prev + ' ' + t).trim())
     }
     rec.onerror = (ev: any) => {
-      // 'no-speech'/'aborted' não encerra: gravação continua até o usuário parar
-      if (ev?.error === 'no-speech' || ev?.error === 'aborted') {
+      const cod = ev?.error || 'desconhecido'
+      // T5a: informa o motivo — sem permissão o usuário ficava sem saber
+      if (cod === 'not-allowed' || cod === 'service-not-allowed') {
+        ouvindoRef.current = false
+        setOuvindo(false)
+        setErro(
+          'Microfone bloqueado: clique no ícone de cadeado/microfone na barra de endereço e permita o microfone para este site, depois clique em Ouvir novamente.',
+        )
+        return
+      }
+      if (cod === 'no-speech' || cod === 'aborted') {
         try {
           rec.start()
         } catch (_e2) {
@@ -145,6 +154,21 @@ export default function AtasReunioesPage() {
         }
         return
       }
+      if (cod === 'network') {
+        ouvindoRef.current = false
+        setOuvindo(false)
+        setErro(
+          'Falha de rede no serviço de voz — verifique a conexão e clique em Ouvir novamente.',
+        )
+        return
+      }
+      if (cod === 'audio-capture') {
+        ouvindoRef.current = false
+        setOuvindo(false)
+        setErro('Nenhum microfone encontrado — conecte um microfone e tente novamente.')
+        return
+      }
+      setErro('Erro no reconhecimento de voz: ' + cod + '.')
       setOuvindo(false)
     }
     rec.onend = () => {
@@ -163,6 +187,7 @@ export default function AtasReunioesPage() {
     ouvindoRef.current = true
     rec.start()
     setOuvindo(true)
+    setErro('')
   }
 
   const organizarComIA = async () => {
