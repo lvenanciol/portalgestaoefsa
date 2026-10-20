@@ -185,7 +185,19 @@ export default function AtasReunioesPage() {
     }
     recRef.current = rec
     ouvindoRef.current = true
-    rec.start()
+    try {
+      rec.start()
+    } catch (_e4) {
+      // T5a: erro síncrono (ex.: sessão já ativa/mic ocupado) — informar sempre
+      ouvindoRef.current = false
+      setOuvindo(false)
+      setErro(
+        'Não foi possível iniciar a gravação (' +
+          String(_e4?.message || _e4) +
+          '). Feche outros apps usando o microfone, permita o microfone no navegador e clique em Ouvir novamente.',
+      )
+      return
+    }
     setOuvindo(true)
     setErro('')
   }

@@ -96,8 +96,14 @@ routerAdd(
         'https://graph.microsoft.com/Mail.Send',
         'https://graph.microsoft.com/User.Read',
       ].join(' ')
+      // COR-4 (20/10): app single-tenant — /common retorna AADSTS50194;
+      // usar o endpoint do tenant (secret OUTLOOK_TENANT_ID, fallback Extrafruti)
+      const tenant =
+        String($secrets.get('OUTLOOK_TENANT_ID') || '') || 'f297b97e-1aa1-423f-81e0-008ad95e11f2'
       url =
-        'https://login.microsoftonline.com/common/oauth2/v2.0/authorize' +
+        'https://login.microsoftonline.com/' +
+        tenant +
+        '/oauth2/v2.0/authorize' +
         '?client_id=' +
         encodeURIComponent(cid) +
         '&redirect_uri=' +

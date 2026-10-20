@@ -42,15 +42,22 @@ routerAdd('GET', '/backend/v1/email/oauth/callback', (e) => {
     return e.redirect(302, '/configuracoes?oauth=erro&det=credenciais_ausentes')
   }
 
-  let backend = String($secrets.get('PB_INSTANCE_URL') || '')
+  // COR-4 (20/10): mesma base do iniciar (OAUTH_REDIRECT_BASE > PB_INSTANCE_URL)
+  // — redirect_uri DEVE ser idêntico ao usado na autorização, senão o token
+  // exchange falha (redirect_uri_mismatch).
+  let backend = String($secrets.get('OAUTH_REDIRECT_BASE') || '')
+  if (!backend) backend = String($secrets.get('PB_INSTANCE_URL') || '')
   backend = backend.replace(/\/_\/?$/, '').replace(/\/$/, '')
   const redirectUri = backend + '/backend/v1/email/oauth/callback'
 
   // endpoints de token por provedor
+  // COR-4 (20/10): token endpoint do tenant (mesma base do authorize)
+  const tenantMs =
+    String($secrets.get('OUTLOOK_TENANT_ID') || '') || 'f297b97e-1aa1-423f-81e0-008ad95e11f2'
   const tokenUrl =
     provedor === 'google'
       ? 'https://oauth2.googleapis.com/token'
-      : 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
+      : 'https://login.microsoftonline.com/' + tenantMs + '/oauth2/v2.0/token'
 
   const form =
     'client_id=' +
