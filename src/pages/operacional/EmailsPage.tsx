@@ -49,6 +49,8 @@ export default function EmailsPage() {
   const [corpo, setCorpo] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [msg, setMsg] = useState('')
+  // T0c: assinatura da conta usada (upload na tela E-mail de Integrações)
+  const [assinaturaUrl, setAssinaturaUrl] = useState('')
 
   const carregar = async () => {
     setLoading(true)
@@ -106,6 +108,15 @@ export default function EmailsPage() {
         const st = (await pb.send('/backend/v1/email/oauth/status', { method: 'GET' })) as any
         if (st.google?.conectado) oauthProvider = 'google'
         else if (st.microsoft?.conectado) oauthProvider = 'microsoft'
+        // T0c: assinatura da conta selecionada (se houver)
+        if (oauthProvider) {
+          const ass = (await pb
+            .collection('email_assinaturas')
+            .getFullList({ filter: 'provedor="' + oauthProvider + '"' })) as any[]
+          if (ass.length && ass[0].arquivo)
+            setAssinaturaUrl(pb.files.getURL(ass[0], ass[0].arquivo))
+          else setAssinaturaUrl('')
+        }
       } catch (_) {
         /* sem conexão — usa relay */
       }
@@ -320,8 +331,21 @@ export default function EmailsPage() {
                 placeholder="Escreva a mensagem..."
               />
             </div>
+            {assinaturaUrl && (
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Assinatura (conta conectada)
+                </Label>
+                <img
+                  src={assinaturaUrl}
+                  alt="assinatura"
+                  className="h-16 object-contain border border-gray-100 rounded-lg p-1 bg-white"
+                />
+              </div>
+            )}
             <p className="text-[11px] text-gray-400">
-              Enviado pelo relay do portal com a marca "Portal de Gestão Executivo — Extrafruti".
+              Enviado pela conta conectada (OAuth) ou pelo relay do portal com a marca "Portal de
+              Gestão Executivo — Extrafruti". Assinaturas: tela E-mail em Integrações.
             </p>
           </div>
           <DialogFooter>

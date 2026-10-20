@@ -78,11 +78,22 @@ export default function PowerBiPage() {
         },
       })
       await pca.initialize()
-      const login = await pca.loginPopup({
-        scopes: ['https://analysis.windows.net/powerbi/api/Report.Read.All'],
-      })
+      // T11 fix (20/10): loginPopup falha com block_nested_popups quando o
+      // portal já roda em iframe/popup — usar REDIRECT (volta p/ esta tela).
+      const SCOPES = ['https://analysis.windows.net/powerbi/api/Report.Read.All']
+      let login: any = null
+      try {
+        login = await pca.loginPopup({ scopes: SCOPES })
+      } catch (ePopup: any) {
+        const m = String(ePopup?.message || ePopup)
+        if (m.includes('block_nested_popups') || m.includes('popup')) {
+          await pca.acquireTokenRedirect({ scopes: SCOPES })
+          return // navega para o Entra; volta pelo redirect
+        }
+        throw ePopup
+      }
       const tokenRes = await pca.acquireTokenSilent({
-        scopes: ['https://analysis.windows.net/powerbi/api/Report.Read.All'],
+        scopes: SCOPES,
         account: login.account,
       })
       const r = (await pb.send('/backend/v1/powerbi/relatorios', {

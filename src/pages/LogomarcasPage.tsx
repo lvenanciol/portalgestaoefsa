@@ -210,16 +210,27 @@ export default function LogomarcasPage() {
               <div className="flex items-center gap-2">
                 <label className="inline-flex items-center gap-1.5 h-10 px-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-[13px] font-semibold text-gray-800 cursor-pointer">
                   <Upload className="h-4 w-4" /> Escolher arquivo
+                  {/* T4b: aceita PDF além de imagens */}
                   <input
                     id="logo-file"
                     type="file"
-                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                    accept="image/png,image/jpeg,image/svg+xml,image/webp,application/pdf"
                     className="hidden"
                   />
                 </label>
-                {url(editando, 'logo') && (
-                  <img src={url(editando, 'logo')} alt="atual" className="h-8 object-contain" />
-                )}
+                {url(editando, 'logo') &&
+                  (String(url(editando, 'logo')).toLowerCase().endsWith('.pdf') ? (
+                    <a
+                      href={url(editando, 'logo')}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[12px] font-semibold text-[#1B5E20] hover:underline"
+                    >
+                      Abrir PDF atual
+                    </a>
+                  ) : (
+                    <img src={url(editando, 'logo')} alt="atual" className="h-8 object-contain" />
+                  ))}
               </div>
             </div>
             <div className="grid gap-1.5">

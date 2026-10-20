@@ -450,25 +450,16 @@ export default function ParceirosPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  WhatsApp
+                  {/* T3b: WhatsApp e Telefone UNIFICADOS (grava nos 2 campos) */}
+                  WhatsApp / Telefone
                 </Label>
                 <Input
-                  value={form.whatsapp || ''}
-                  onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
+                  value={form.whatsapp || form.telefone || ''}
+                  onChange={(e) =>
+                    setForm({ ...form, whatsapp: e.target.value, telefone: e.target.value })
+                  }
                   className="h-10 bg-gray-50"
                   placeholder="27999999999"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Telefone
-                </Label>
-                <Input
-                  value={form.telefone || ''}
-                  onChange={(e) => setForm({ ...form, telefone: e.target.value })}
-                  className="h-10 bg-gray-50"
                 />
               </div>
               <div className="grid gap-1.5">
@@ -491,7 +482,15 @@ export default function ParceirosPage() {
                 <Input
                   value={form.centro_resultado || ''}
                   onChange={(e) => setForm({ ...form, centro_resultado: e.target.value })}
-                  placeholder="digite ou busque no Sankhya"
+                  onKeyDown={(e) => {
+                    // T3a: Enter dispara a busca no Sankhya
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      setCentroBusca(form.centro_resultado || '')
+                      abrirCentros()
+                    }
+                  }}
+                  placeholder="digite e tecle Enter ou busque no Sankhya"
                   className="h-10 bg-gray-50 flex-1"
                 />
                 <Button variant="outline" size="sm" onClick={abrirCentros} className="h-10">

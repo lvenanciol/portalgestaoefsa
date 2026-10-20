@@ -208,16 +208,7 @@ export function Topbar() {
           <Menu className="h-5 w-5" />
         </button>
 
-        {/* T1: empresa selecionada — SEM dropdown; troca pela logomarca da sidebar */}
-        <div className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-lg border border-[#E5E7EB] bg-gray-50/70 text-[13.5px] font-semibold text-gray-800">
-          <span
-            className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 text-white font-bold text-[10px]"
-            style={{ backgroundColor: empresaSel?.cor || marca.cor }}
-          >
-            {empresaSel ? empresaSel.nome.slice(0, 2).toUpperCase() : marca.sigla}
-          </span>
-          <span className="tracking-tight">{empresaSel?.nome || marca.nome}</span>
-        </div>
+        {/* T1 (20/10): caixa "empresa" REMOVIDA — identidade segue na logo da sidebar */}
 
         {/* Filtro de período */}
         <DropdownMenu>

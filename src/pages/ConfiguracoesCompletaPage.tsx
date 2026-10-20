@@ -412,25 +412,16 @@ export default function ConfiguracoesCompletaPage() {
         </div>
       </section>
 
-      {/* COR-4 F8 — Conexão real Gmail/Outlook (OAuth) */}
-      <section className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs">
-        <h2 className="text-sm font-bold text-gray-900 mb-1 flex items-center gap-2">
-          <Mail className="h-4 w-4 text-[#1B5E20]" /> E-mail — conexão real (Gmail / Outlook)
-        </h2>
-        <p className="text-[11px] text-gray-500 mb-3">
-          OAuth 2.0 com escopos de leitura e envio. Após conectar: sincronize a caixa de entrada e
-          envie e-mails pela sua conta real.
+      {/* TAREFA MAIL (20/10): caixa OAuth movida p/ tela E-mail (/integracoes/email) */}
+      <section hidden></section>
+      {/* FIM bloco movido */}
+      <section hidden className="hidden">
+        <h2 className="hidden">movido p/ /integracoes/email</h2>
+        <p className="hidden">
+          OAuth 2.0 movido — TAREFA MAIL 20/10.
         </p>
-        {/* COR-4: URI de redirecionamento exata (copiar para Google Cloud / Azure) */}
-        <div className="mb-3 p-2.5 rounded-lg bg-sky-50 border border-sky-200">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-sky-700 mb-1">
-            URI de redirecionamento autorizado — registrar no Google Cloud e no Azure Entra
-          </div>
-          <code className="text-[11px] text-sky-900 break-all select-all">
-            https://portal-de-gestao-executivo-b4d94.shrd01.internal.goskip.dev/backend/v1/email/oauth/callback
-          </code>
-        </div>
-        {oauthMsg && (
+        {/* corpo movido */}
+        {false && oauthMsg && (
           <div
             className={cn(
               'p-2.5 rounded-lg text-[12px] font-semibold mb-3',
@@ -442,8 +433,8 @@ export default function ConfiguracoesCompletaPage() {
             {oauthMsg}
           </div>
         )}
-        <div className="space-y-2">
-          {(['google', 'microsoft'] as const).map((prov) => {
+        <div className="hidden">
+          {false && (['google', 'microsoft'] as const).map((prov) => {
             const st = oauth[prov] || { conectado: false }
             const nome = prov === 'google' ? 'Gmail (Google)' : 'Outlook (Microsoft 365)'
             return (
@@ -520,7 +511,7 @@ export default function ConfiguracoesCompletaPage() {
             )
           })}
         </div>
-        {inboxOpen && inbox.length > 0 && (
+        {false && inboxOpen && inbox.length > 0 && (
           <div className="mt-3 border border-gray-100 rounded-lg overflow-hidden">
             <div className="px-3 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-500">
               Caixa de entrada sincronizada ({inbox.length})
@@ -541,105 +532,10 @@ export default function ConfiguracoesCompletaPage() {
         )}
       </section>
 
-      {/* Identidade visual */}
-      <section className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs">
-        <h2 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
-          <Palette className="h-4 w-4 text-[#1B5E20]" /> Identidade Visual
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {logoMarcas.map((l) => (
-            <div
-              key={l.id}
-              className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50/50"
-            >
-              <span
-                className="h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold text-[12px] shrink-0 overflow-hidden"
-                style={{ backgroundColor: l.cor || '#1B5E20' }}
-              >
-                {l.logo ? (
-                  <img
-                    src={pb.files.getURL(l, l.logo)}
-                    alt={l.empresa}
-                    className="h-full w-full object-contain p-1"
-                  />
-                ) : (
-                  l.sigla || 'EX'
-                )}
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[13px] font-bold text-gray-900 truncate">
-                  {l.empresa}
-                </span>
-                <span className="block text-[10px] text-gray-500">
-                  {l.logo ? 'logo anexada' : 'sem logo — sigla'} · {l.cor}
-                </span>
-              </span>
-            </div>
-          ))}
-          {logoMarcas.length === 0 && (
-            <p className="text-[12px] text-gray-400">Carregando identidades…</p>
-          )}
-        </div>
-        <div className="mt-3 flex items-center gap-2 text-[11px] text-gray-500">
-          <span className="h-6 w-6 rounded-full bg-[#1B5E20] text-white inline-flex items-center justify-center font-bold text-[9px]">
-            EC
-          </span>
-          Emblema aplicado ao lado da empresa selecionada no Topbar — anexe a imagem na tela
-          Logomarcas.
-        </div>
-        {/* T7: upload direto de logo/emblema por empresa (sem sair da tela) */}
-        <div className="mt-3 pt-3 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {logoMarcas.map((l) => (
-            <div key={l.id} className="grid gap-1.5">
-              <Label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                {l.empresa} — anexar
-              </Label>
-              <div className="flex items-center gap-2">
-                <label className="h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-[11px] font-semibold text-gray-700 cursor-pointer">
-                  <Upload className="h-3 w-3" /> Logo
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0]
-                      if (!f) return
-                      const fd = new FormData()
-                      fd.append('logo', f)
-                      pb.collection('logomarcas')
-                        .update(l.id, fd)
-                        .then(() => carregarLogos())
-                    }}
-                  />
-                </label>
-                <label className="h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-[11px] font-semibold text-gray-700 cursor-pointer">
-                  <Upload className="h-3 w-3" /> Emblema
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0]
-                      if (!f) return
-                      const fd = new FormData()
-                      fd.append('emblema', f)
-                      pb.collection('logomarcas')
-                        .update(l.id, fd)
-                        .then(() => carregarLogos())
-                    }}
-                  />
-                </label>
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
-          <strong>Objetivo da tela:</strong> centraliza a identidade visual do grupo — logomarca e
-          emblema por empresa (Extrafruti/Casafruti/FoldBox), sigla e cor da paleta. A logo anexada
-          aqui alimenta a sidebar, o topbar e o seletor de empresa. Perfis e cores avançadas ficam
-          na tela Logomarcas (editar identidade completa).
-        </p>
-      </section>
+      {/* T7c (20/10): caixa "Identidade Visual" REMOVIDA — papel agregado à
+          tela Logomarcas (upload direto lá, com PDF/PNG/JPG/SVG). */}
+      <section hidden className="hidden">
+              {/* T7c: caixa Identidade Visual removida — papel na tela Logomarcas */}
 
       {/* Globalização */}
       <section className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs">

@@ -25,6 +25,7 @@ import LogomarcasPage from './pages/LogomarcasPage'
 import StatusIntegracoesPage from './pages/integracoes/StatusIntegracoesPage'
 import SankhyaIntegracaoPage from './pages/integracoes/SankhyaPage'
 import WhatsAppIntegracaoPage from './pages/integracoes/WhatsAppPage'
+import EmailIntegracaoPage from './pages/integracoes/EmailIntegracaoPage'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
@@ -60,6 +61,7 @@ const AppRoutes = () => {
         <Route path="/integracoes" element={<StatusIntegracoesPage />} />
         <Route path="/integracoes/sankhya" element={<SankhyaIntegracaoPage />} />
         <Route path="/integracoes/whatsapp" element={<WhatsAppIntegracaoPage />} />
+        <Route path="/integracoes/email" element={<EmailIntegracaoPage />} />
         <Route path="/configuracoes" element={<ConfiguracoesPage />} />
         <Route path="/acessos" element={<ControleAcessos />} />
       </Route>

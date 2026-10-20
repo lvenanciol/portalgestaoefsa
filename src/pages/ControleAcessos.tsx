@@ -344,7 +344,7 @@ export default function ControleAcessos() {
                   onClick={() => abrirBotoes(g)}
                   className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#1B5E20] hover:text-[#0F3D13] transition-colors"
                 >
-                  <MousePointerClick className="h-3.5 w-3.5" /> Botões
+                  <MousePointerClick className="h-3.5 w-3.5" /> Permissões
                 </button>
               )}
             </div>
@@ -417,10 +417,7 @@ export default function ControleAcessos() {
                       </td>
                       <td className="px-4 py-3 text-[12px] text-gray-500 tabular-nums">
                         {u.ultimo_login && u.ultimo_login !== '0001-01-01 00:00:00.000Z'
-                          ? new Date(u.ultimo_login).toLocaleString('pt-BR', {
-                              dateStyle: 'short',
-                              timeStyle: 'short',
-                            })
+                          ? fmtDataBRT(u.ultimo_login)
                           : 'Nunca'}
                       </td>
                       <td className="px-4 py-3">
@@ -576,6 +573,8 @@ export default function ControleAcessos() {
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* T6d: opção "Todas" explícita no dropdown empresa */}
+                    <SelectItem value="todas">Todas</SelectItem>
                     {empresas.map((e) => (
                       <SelectItem key={e.id} value={e.id}>
                         {e.nome}
@@ -660,10 +659,7 @@ export default function ControleAcessos() {
                 </div>
                 <div className="text-right shrink-0">
                   <div className="text-[11px] text-gray-500 tabular-nums">
-                    {new Date(r.created).toLocaleString('pt-BR', {
-                      dateStyle: 'short',
-                      timeStyle: 'short',
-                    })}
+                    {fmtDataBRT(r.created)}
                   </div>
                   <div className="text-[10px] text-gray-400">{r.ip}</div>
                 </div>
@@ -680,14 +676,9 @@ export default function ControleAcessos() {
             <DialogTitle className="flex items-center justify-between">
               <span className="flex items-center gap-2">
                 <MousePointerClick className="h-4 w-4 text-[#1B5E20]" />
-                Botões — {dialogBotoes?.nome}
+                Permissões — {dialogBotoes?.nome}
               </span>
-              <button
-                onClick={() => setDialogBotoes(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              {/* T6f: X manual REMOVIDO — o DialogContent já tem fecho próprio (duplicado) */}
             </DialogTitle>
           </DialogHeader>
           <p className="text-[12px] text-gray-500 -mt-2">
@@ -722,6 +713,29 @@ export default function ControleAcessos() {
                       </td>
                       {COLUNAS_CRUD.map((c) => {
                         const marcado = !ocultos.includes(CHAVE_CRUD(tela.key, c.key) + ':off')
+                        // T6c: coluna TODAS marca/desmarca TODAS as permissões da linha
+                        if (c.key === 'todas') {
+                          const chaves = ['ver', 'criar', 'editar', 'excluir'].map(
+                            (k) => CHAVE_CRUD(tela.key, k) + ':off',
+                          )
+                          const todasMarcadas = chaves.every((k) => !ocultos.includes(k))
+                          return (
+                            <td key={c.key} className="text-center py-2 px-1.5">
+                              <input
+                                type="checkbox"
+                                checked={todasMarcadas}
+                                onChange={() => {
+                                  for (const k of chaves) {
+                                    const esta = ocultos.includes(k)
+                                    if (todasMarcadas && !esta) toggleBotao(tela.key, k)
+                                    else if (!todasMarcadas && esta) toggleBotao(tela.key, k)
+                                  }
+                                }}
+                                className="h-3.5 w-3.5 accent-[#1B5E20] font-bold"
+                              />
+                            </td>
+                          )
+                        }
                         return (
                           <td key={c.key} className="text-center py-2 px-1.5">
                             <input
