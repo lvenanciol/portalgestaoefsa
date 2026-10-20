@@ -275,7 +275,10 @@ export default function ControleAcessos() {
       u.grupo.toLowerCase().includes(busca.toLowerCase()),
   )
 
-  const unidadesDaEmpresa = unidades.filter((u) => !fEmpresa || u.empresa_id === fEmpresa)
+  // T6d: "todas" = sem filtro (valor explícito do dropdown)
+  const unidadesDaEmpresa = unidades.filter(
+    (u) => !fEmpresa || fEmpresa === 'todas' || u.empresa_id === fEmpresa,
+  )
 
   return (
     <div className="space-y-6 pb-8">
