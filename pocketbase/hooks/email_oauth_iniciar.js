@@ -67,11 +67,12 @@ routerAdd(
     // URL de autorização por provedor
     let url = ''
     if (provedor === 'google') {
+      // COR-4 fix: escopos gmail exigem URL completa (gmail.send curto = 400 invalid_scope)
       const escopos = [
         'https://mail.google.com/',
-        'gmail.send',
-        'gmail.readonly',
-        'gmail.modify',
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/gmail.modify',
         'openid',
         'email',
         'profile',
