@@ -502,7 +502,7 @@ export default function AtasReunioesPage() {
                       type="file"
                       accept="audio/*,.txt,.md"
                       className="hidden"
-                      onChange={(e) => {
+                      onChange={async (e) => {
                         const f = e.target.files?.[0]
                         if (!f) return
                         setArquivoAudio(f)
@@ -511,6 +511,36 @@ export default function AtasReunioesPage() {
                           const rd = new FileReader()
                           rd.onload = () => setTranscricao(String(rd.result || '').trim())
                           rd.readAsText(f)
+                          return
+                        }
+                        // T5d: áudio (mp3/m4a/wav/webm/ogg) → transcreve via Gemini
+                        if (/\.(mp3|m4a|wav|webm|ogg|mp4)$/i.test(f.name)) {
+                          setErro('')
+                          try {
+                            const rd = new FileReader()
+                            rd.onload = async () => {
+                              try {
+                                const b64 = String(rd.result || '').split(',')[1] || ''
+                                const r = (await pb.send('/backend/v1/ia/transcrever', {
+                                  method: 'POST',
+                                  body: JSON.stringify({
+                                    audio_base64: b64,
+                                    mime: f.type || 'audio/webm',
+                                  }),
+                                })) as any
+                                if (!r.ok) throw new Error(r.erro || 'falha na transcrição')
+                                setTranscricao(String(r.texto || '').trim())
+                              } catch (er: any) {
+                                setErro(
+                                  'Transcrição: ' +
+                                    (er?.response?.data?.erro || er?.message || String(er)),
+                                )
+                              }
+                            }
+                            rd.readAsDataURL(f)
+                          } catch (er) {
+                            setErro('Transcrição: ' + String(er))
+                          }
                         }
                       }}
                     />

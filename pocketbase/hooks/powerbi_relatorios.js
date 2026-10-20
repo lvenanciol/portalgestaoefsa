@@ -44,6 +44,50 @@ routerAdd(
           workspace: r.workspaceId,
         }
       })
+      // T11 fix (20/10): myorg/reports NÃO inclui relatórios de workspaces
+      // compartilhados com o usuário — agregar /groups + /groups/{id}/reports.
+      // Sem o escopo (401/403), segue só a lista base (comportamento anterior).
+      const vistos = {}
+      itens.forEach(function (i) {
+        vistos[i.id] = true
+      })
+      try {
+        const gw = $http.send({
+          url: 'https://api.powerbi.com/v1.0/myorg/groups',
+          method: 'GET',
+          headers: { Authorization: 'Bearer ' + token },
+          timeout: 20,
+        })
+        if (gw.statusCode === 200) {
+          const grupos = ((gw.json || {}).value || []).slice(0, 50)
+          for (const g of grupos) {
+            try {
+              const gr = $http.send({
+                url: 'https://api.powerbi.com/v1.0/myorg/groups/' + g.id + '/reports',
+                method: 'GET',
+                headers: { Authorization: 'Bearer ' + token },
+                timeout: 20,
+              })
+              if (gr.statusCode !== 200) continue
+              for (const r of (gr.json || {}).value || []) {
+                if (vistos[r.id]) continue
+                vistos[r.id] = true
+                itens.push({
+                  id: r.id,
+                  nome: r.name,
+                  embed_url: r.embedUrl,
+                  web_url: r.webUrl,
+                  workspace: r.workspaceId || g.id,
+                })
+              }
+            } catch (_e2) {
+              continue
+            }
+          }
+        }
+      } catch (_e3) {
+        // sem acesso a /groups — mantém a lista base
+      }
       return e.json(200, { ok: true, total: itens.length, itens: itens })
     } catch (err) {
       return e.json(502, {
