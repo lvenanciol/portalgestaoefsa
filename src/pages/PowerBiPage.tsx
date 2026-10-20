@@ -71,8 +71,10 @@ export default function PowerBiPage() {
         auth: {
           clientId,
           authority: 'https://login.microsoftonline.com/' + TENANT,
-          // URI registrada como SPA no Entra ID (validada 19/10 — authorize sem AADSTS50011)
-          redirectUri: window.location.origin + '/power-bi',
+          // T11: URI registrada como SPA no Entra ID é a do SITE PUBLICADO
+          // (produção). Fixada — se usar origin, o preview gera URI do preview
+          // (não registrada → AADSTS50011, erro do print 20/10).
+          redirectUri: 'https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi',
         },
       })
       await pca.initialize()
