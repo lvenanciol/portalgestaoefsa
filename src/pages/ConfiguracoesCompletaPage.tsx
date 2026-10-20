@@ -419,7 +419,7 @@ export default function ConfiguracoesCompletaPage() {
         <h2 className="hidden">movido p/ /integracoes/email</h2>
         <p className="hidden">OAuth 2.0 movido — TAREFA MAIL 20/10.</p>
         {/* corpo movido */}
-        {false && oauthMsg && (
+        {oauthMsg && (
           <div
             className={cn(
               'p-2.5 rounded-lg text-[12px] font-semibold mb-3',
@@ -432,85 +432,84 @@ export default function ConfiguracoesCompletaPage() {
           </div>
         )}
         <div className="hidden">
-          {false &&
-            (['google', 'microsoft'] as const).map((prov) => {
-              const st = oauth[prov] || { conectado: false }
-              const nome = prov === 'google' ? 'Gmail (Google)' : 'Outlook (Microsoft 365)'
-              return (
-                <div
-                  key={prov}
-                  className="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50"
-                >
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-bold text-gray-900 flex items-center gap-2">
-                      {nome}
-                      {st.conectado ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          Conectado
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
-                          Desconectado
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-gray-500">
-                      {st.conectado ? st.conta || 'conta conectada' : 'OAuth 2.0 — leitura + envio'}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
+          {(['google', 'microsoft'] as const).map((prov) => {
+            const st = oauth[prov] || { conectado: false }
+            const nome = prov === 'google' ? 'Gmail (Google)' : 'Outlook (Microsoft 365)'
+            return (
+              <div
+                key={prov}
+                className="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50"
+              >
+                <div className="min-w-0">
+                  <div className="text-[13px] font-bold text-gray-900 flex items-center gap-2">
+                    {nome}
                     {st.conectado ? (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8"
-                          onClick={() => sincronizarInbox(prov)}
-                          disabled={oauthLoading === 'sync-' + prov}
-                        >
-                          {oauthLoading === 'sync-' + prov ? (
-                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                          ) : (
-                            <Inbox className="h-4 w-4 mr-1" />
-                          )}
-                          Sincronizar caixa
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8"
-                          onClick={() => desconectarOauth(prov)}
-                          disabled={oauthLoading === 'desc-' + prov}
-                        >
-                          {oauthLoading === 'desc-' + prov ? (
-                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                          ) : (
-                            <LogOut className="h-4 w-4 mr-1" />
-                          )}
-                          Desconectar
-                        </Button>
-                      </>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Conectado
+                      </span>
                     ) : (
-                      <Button
-                        size="sm"
-                        className="h-8 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
-                        onClick={() => conectarOauth(prov)}
-                        disabled={oauthLoading === prov}
-                      >
-                        {oauthLoading === prov ? (
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                        ) : (
-                          <Plug className="h-4 w-4 mr-1" />
-                        )}
-                        Conectar {prov === 'google' ? 'Gmail' : 'Outlook'}
-                      </Button>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
+                        Desconectado
+                      </span>
                     )}
                   </div>
+                  <div className="text-[11px] text-gray-500">
+                    {st.conectado ? st.conta || 'conta conectada' : 'OAuth 2.0 — leitura + envio'}
+                  </div>
                 </div>
-              )
-            })}
+                <div className="flex items-center gap-2 shrink-0">
+                  {st.conectado ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8"
+                        onClick={() => sincronizarInbox(prov)}
+                        disabled={oauthLoading === 'sync-' + prov}
+                      >
+                        {oauthLoading === 'sync-' + prov ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Inbox className="h-4 w-4 mr-1" />
+                        )}
+                        Sincronizar caixa
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8"
+                        onClick={() => desconectarOauth(prov)}
+                        disabled={oauthLoading === 'desc-' + prov}
+                      >
+                        {oauthLoading === 'desc-' + prov ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <LogOut className="h-4 w-4 mr-1" />
+                        )}
+                        Desconectar
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="h-8 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+                      onClick={() => conectarOauth(prov)}
+                      disabled={oauthLoading === prov}
+                    >
+                      {oauthLoading === prov ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Plug className="h-4 w-4 mr-1" />
+                      )}
+                      Conectar {prov === 'google' ? 'Gmail' : 'Outlook'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
-        {false && inboxOpen && inbox.length > 0 && (
+        {inboxOpen && inbox.length > 0 && (
           <div className="mt-3 border border-gray-100 rounded-lg overflow-hidden">
             <div className="px-3 py-2 bg-gray-50 border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-500">
               Caixa de entrada sincronizada ({inbox.length})

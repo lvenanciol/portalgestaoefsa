@@ -46,7 +46,9 @@ export default function EmailIntegracaoPage() {
         google: r.google || { conectado: false },
         microsoft: r.microsoft || { conectado: false },
       })
-    } catch (_) {}
+    } catch (_e) {
+      /* sem tokens ainda — segue desconectado */
+    }
   }
 
   const carregarInbox = async () => {
@@ -66,7 +68,9 @@ export default function EmailIntegracaoPage() {
         if (a.provedor && a.arquivo) m[a.provedor] = pb.files.getURL(a, a.arquivo)
       }
       setAssinaturas(m)
-    } catch (_) {}
+    } catch (_e) {
+      /* coleção ainda sem registros — segue vazio */
+    }
   }
 
   useEffect(() => {
