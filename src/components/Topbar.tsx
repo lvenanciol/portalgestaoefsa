@@ -307,12 +307,11 @@ export function Topbar() {
               aria-label="Ver alertas"
             >
               <Bell className="h-5 w-5" />
-              {criticalAlerts.length > 0 && (
-                <span className="absolute top-1 right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white leading-none shadow-xs">
-                  {criticalAlerts.length}
+              {alertasVisiveis.length > 0 && (
+                <span className="absolute top-1 right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red
+                  {alertasVisiveis.length}
                 </span>
-              )}
-            </button>
+              )}            </button>
           </PopoverTrigger>
 
           <PopoverContent
