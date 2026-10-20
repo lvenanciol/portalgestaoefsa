@@ -51,7 +51,8 @@ export default function ParceirosPage() {
   const [centros, setCentros] = useState<any[]>([])
   const [centroBusca, setCentroBusca] = useState('')
   // T3: erro real do endpoint (ex.: grant Oracle pendente) — exibido no dialog
-  const [centrosErro, setCentrosErro] = useState('')  const [centrosAberto, setCentrosAberto] = useState(false)
+  const [centrosErro, setCentrosErro] = useState('')
+  const [centrosAberto, setCentrosAberto] = useState(false)
 
   const carregar = async () => {
     setLoading(true)
@@ -81,10 +82,7 @@ export default function ParceirosPage() {
       // T3: endpoint ok mas sem itens → mostra o motivo (fonte/erro)
       if (!(r.itens || []).length) {
         setCentrosErro(
-          r.erro ||
-            (r.fonte === 'cache'
-              ? 'Cache vazio — tente novamente em instantes.'
-              : ''),
+          r.erro || (r.fonte === 'cache' ? 'Cache vazio — tente novamente em instantes.' : ''),
         )
       }
     } catch (e: any) {

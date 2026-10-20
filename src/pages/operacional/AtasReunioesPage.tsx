@@ -119,7 +119,9 @@ export default function AtasReunioesPage() {
       // T5a: para SOMENTE no clique do botão (reinicia se o serviço cair)
       try {
         recRef.current?.stop()
-      } catch (_) {}
+      } catch (_e) {
+        /* sessão já encerrada */
+      }
       setOuvindo(false)
       return
     }
@@ -138,7 +140,9 @@ export default function AtasReunioesPage() {
       if (ev?.error === 'no-speech' || ev?.error === 'aborted') {
         try {
           rec.start()
-        } catch (_) {}
+        } catch (_e2) {
+          /* reinício imediato falhou — onend cuidará */
+        }
         return
       }
       setOuvindo(false)
@@ -148,7 +152,9 @@ export default function AtasReunioesPage() {
       if (recRef.current === rec && ouvindoRef.current) {
         try {
           rec.start()
-        } catch (_) {}
+        } catch (_e3) {
+          /* reinício falhou — encerra a gravação */
+        }
       } else {
         setOuvindo(false)
       }

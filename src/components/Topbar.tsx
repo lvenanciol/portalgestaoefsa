@@ -134,7 +134,9 @@ export function Topbar() {
     setOcultados(nova)
     try {
       localStorage.setItem('pge_alertas_ocultados', JSON.stringify(nova))
-    } catch (_) {}
+    } catch (_e) {
+      /* localStorage indisponível — oculto só nesta sessão */
+    }
   }
   const alertasVisiveis = criticalAlerts.filter((a) => !ocultados.includes(a.id))
   const [avatarOpen, setAvatarOpen] = useState(false)
