@@ -34,6 +34,39 @@ const EMPRESAS = ['Extrafruti', 'Casafruti', 'FoldBox']
 
 const fmtBRL = (v: any) => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
+// T3h (21/10): MÁSCARAS de documento e telefone (Parceiros).
+// Documento: detecta CPF (11 dígitos) vs CNPJ (14) pela QUANTIDADE digitada —
+// máscara progressiva enquanto digita. Telefone: (27) 99999-9999 (cel) ou
+// (27) 3333-3334 (fixo, 8 dígitos). Guarda COM máscara (padrão dos e-mails/PDF).
+const soDigitos = (v: string) => String(v || '').replace(/\D/g, '')
+
+const mascaraDocumento = (v: string): string => {
+  const d = soDigitos(v).slice(0, 14)
+  if (d.length <= 11) {
+    // CPF: 000.000.000-00
+    return d
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d)/, '$1.$2')
+      .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+  }
+  // CNPJ: 00.000.000/0000-00
+  return d
+    .replace(/(\d{2})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})(\d)/, '$1/$2')
+    .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
+}
+
+const mascaraTelefone = (v: string): string => {
+  const d = soDigitos(v).slice(0, 11)
+  if (d.length <= 10) {
+    // fixo ou cel antigo: (27) 3333-3334 / (27) 9999-9999
+    return d.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{4})(\d{1,4})$/, '$1-$2')
+  }
+  // celular 9 dígitos: (27) 99999-9999
+  return d.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d{1,4})$/, '$1-$2')
+}
+
 export default function ParceirosPage() {
   const { user } = useAuth()
   const [itens, setItens] = useState<any[]>([])
@@ -444,8 +477,12 @@ export default function ParceirosPage() {
                 </Label>
                 <Input
                   value={form.documento || ''}
-                  onChange={(e) => setForm({ ...form, documento: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, documento: mascaraDocumento(e.target.value) })
+                  }
                   className="h-10 bg-gray-50"
+                  placeholder="000.000.000-00 ou 00.000.000/0000-00"
+                  inputMode="numeric"
                 />
               </div>
             </div>
@@ -467,11 +504,13 @@ export default function ParceirosPage() {
                 </Label>
                 <Input
                   value={form.whatsapp || form.telefone || ''}
-                  onChange={(e) =>
-                    setForm({ ...form, whatsapp: e.target.value, telefone: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const m = mascaraTelefone(e.target.value)
+                    setForm({ ...form, whatsapp: m, telefone: m })
+                  }}
                   className="h-10 bg-gray-50"
-                  placeholder="27999999999"
+                  placeholder="(27) 99999-9999"
+                  inputMode="tel"
                 />
               </div>
               <div className="grid gap-1.5">
