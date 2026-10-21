@@ -67,16 +67,28 @@ routerAdd(
       // dono (SELECT * direto): CODCENCUS / DESCRCENCUS (16 centros). As tentativas
       // antigas (CODCCU/DESCUS) davam erro de coluna, e o ORA-00942 final vinha das
       // tabelas INEXISTENTES TTRBC/TTCCU — nunca foi grant.
+      // T3e (21/10): diagnóstico — log da resposta crua da edge p/ enxergar o
+      // que o Sankhya devolve (rows pode vir em formato inesperado).
       let tipoDim = 'ccu'
       let r = rodarSql('SELECT CODCENCUS, DESCRCENCUS FROM TSICUS ORDER BY DESCRCENCUS')
       if (r.erro) {
+        console.log('centros: 1a tentativa falhou: ' + r.erro)
         r = rodarSql('SELECT CODCENCUS, DESCRCENCUS FROM SANKHYA.TSICUS ORDER BY DESCRCENCUS')
+        if (!r.erro) tipoDim = 'ccu_owner'
       }
       if (r.erro)
         return e.json(502, {
           ok: false,
           erro: r.erro + ' — falha ao consultar TSICUS (centros de custo); use digitação manual.',
         })
+      console.log(
+        'centros: rows tipo=' +
+          (Array.isArray(r.rows) ? 'array' : typeof r.rows) +
+          ' n=' +
+          (r.rows ? r.rows.length : 0) +
+          ' primeira=' +
+          JSON.stringify(r.rows && r.rows[0]).slice(0, 200),
+      )
       itens = r.rows.map(function (row) {
         return { codigo: String(row[0]), descricao: String(row[1]), tipo: tipoDim }
       })
