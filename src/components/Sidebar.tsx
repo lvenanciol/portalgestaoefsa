@@ -23,7 +23,6 @@ import {
   Plug,
   Database,
   MessageCircle,
-  FileText,
 } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
