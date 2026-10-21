@@ -30,7 +30,8 @@ import { carregarPermissoes, menuVisivel, Permissoes } from '@/services/permisso
 // Versão real do app — o Skip bumpa o package.json a cada apply_changes
 import pkg from '../package.json'
 
-const pkgVersion: string = (pkg as { version?: string }).version || '?'import pb from '@/lib/pocketbase/client'
+const pkgVersion: string = (pkg as { version?: string }).version || '?'
+import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
 import { idiomaSalvo, traduzir } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
