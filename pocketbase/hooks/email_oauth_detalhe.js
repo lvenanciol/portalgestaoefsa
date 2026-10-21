@@ -249,6 +249,43 @@ routerAdd(
       out.corpo_html = String((d.body && d.body.content) || '')
       if ((d.body || {}).contentType === 'text') out.corpo_texto = out.corpo_html
       const anexos = d.attachments || []
+      // T0e fix (21/10): imagens INLINE (cid:) não abrem — baixar cada uma e
+      // embutir como data URL no HTML (contentBytes já vem na listagem de
+      // attachments com $expand). Sem expand, busca individual <100KB.
+      try {
+        const cids = out.corpo_html.match(/cid:[a-zA-Z0-9._@-]+/g) || []
+        if (cids.length) {
+          const ri = $http.send({
+            url:
+              'https://graph.microsoft.com/v1.0/me/messages/' +
+              encodeURIComponent(mid) +
+              '/attachments?$select=name,contentType,contentBytes,size,isInline,contentId',
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + at },
+            timeout: 60,
+          })
+          if (ri.statusCode === 200) {
+            const listaAnexos = (JSON.parse(bodyOf(ri)).value || []).filter(
+              (a) => a.isInline && a.contentId && a.contentBytes,
+            )
+            for (const cid of cids.slice(0, 10)) {
+              const cidLimpo = cid.replace('cid:', '')
+              const a = listaAnexos.find(
+                (x) =>
+                  String(x.contentId).replace(/[<>]/g, '') === cidLimpo ||
+                  String(x.name || '') === cidLimpo,
+              )
+              if (a) {
+                out.corpo_html = out.corpo_html
+                  .split('src="cid:' + cidLimpo + '"')
+                  .join('src="data:' + a.contentType + ';base64,' + a.contentBytes + '"')
+              }
+            }
+          }
+        }
+      } catch (_eCid) {
+        /* sem imagens inline — segue */
+      }
       for (const a of anexos.slice(0, 5)) {
         out.anexos.push({
           nome: String(a.name || 'anexo'),

@@ -49,8 +49,9 @@ export default function PowerBiPage() {
     }
   }
 
-  // T11a v2 (21/10): exibir via EMBED TOKEN (hook powerbi_embed) —
-  // embed_url/web_url cruas são bloqueadas por X-Frame-Options no iframe.
+  // T11a v3 (21/10): MSAL redirect NÃO funciona dentro de iframe
+  // (redirect_in_iframe) e popup é bloqueado — token silencioso quando há
+  // sessão; sem sessão, navegação TOP-LEVEL (target=_top) para o authorize.
   const [embedToken, setEmbedToken] = useState('')
   const [embedUrl, setEmbedUrl] = useState('')
 
@@ -62,31 +63,52 @@ export default function PowerBiPage() {
         setErro('Configure o app registration (Entra ID) — campo acima.')
         return
       }
-      const { PublicClientApplication } = await import('@azure/msal-browser')
-      const TENANT = 'f297b97e-1aa1-423f-81e0-008ad95e11f2'
-      const pca = new PublicClientApplication({
-        auth: {
-          clientId,
-          authority: 'https://login.microsoftonline.com/' + TENANT,
-          redirectUri: 'https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi',
-        },
-      })
-      await pca.initialize()
-      await pca.handleRedirectPromise()
-      const SCOPES = ['https://analysis.windows.net/powerbi/api/Report.Read.All']
       let msToken = ''
-      const contas = pca.getAllAccounts()
-      if (contas.length) {
-        try {
-          const sil = await pca.acquireTokenSilent({ scopes: SCOPES, account: contas[0] })
+      try {
+        const { PublicClientApplication } = await import('@azure/msal-browser')
+        const pca = new PublicClientApplication({
+          auth: {
+            clientId,
+            authority:
+              'https://login.microsoftonline.com/f297b97e-1aa1-423f-81e0-008ad95e11f2/oauth2/v2.0',
+            redirectUri: 'https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi',
+          },
+        })
+        await pca.initialize()
+        await pca.handleRedirectPromise()
+        const contas = pca.getAllAccounts()
+        if (contas.length) {
+          const sil = await pca.acquireTokenSilent({
+            scopes: ['https://analysis.windows.net/powerbi/api/Report.Read.All'],
+            account: contas[0],
+          })
           msToken = sil.accessToken
-        } catch (_e) {
-          /* segue para redirect */
         }
+      } catch (_eSil) {
+        /* sem sessão — fluxo top-level abaixo */
       }
       if (!msToken) {
-        await pca.acquireTokenRedirect({ scopes: SCOPES })
-        return // volta pelo redirect; clicar de novo conclui
+        sessionStorage.setItem('pge_pb_pending_report', r.id)
+        const urlAuth =
+          'https://login.microsoftonline.com/f297b97e-1aa1-423f-81e0-008ad95e11f2/oauth2/v2.0/authorize' +
+          '?client_id=' +
+          encodeURIComponent(clientId) +
+          '&response_type=code' +
+          '&redirect_uri=' +
+          encodeURIComponent('https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi') +
+          '&response_mode=fragment' +
+          '&scope=' +
+          encodeURIComponent(
+            'https://analysis.windows.net/powerbi/api/Report.Read.All openid profile offline_access',
+          ) +
+          '&state=pge_pb'
+        const a = document.createElement('a')
+        a.href = urlAuth
+        a.target = '_top' // sai do iframe — redirect permitido
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        return
       }
       const er = (await pb.send('/backend/v1/powerbi/embed', {
         method: 'POST',
@@ -193,6 +215,48 @@ export default function PowerBiPage() {
         }
       } catch (_e) {
         /* sem retorno de redirect — nada a fazer */
+      }
+    })()
+  }, [])
+
+  // T11a v3: retorno do authorize TOP-LEVEL (response_mode=fragment) —
+  // sessão SSO fica ativa; completa com ssoSilent/acquireTokenSilent.
+  useEffect(() => {
+    const frag = window.location.hash || ''
+    if (!frag.includes('code=')) return
+    ;(async () => {
+      history.replaceState(null, '', '/power-bi')
+      const clientId = clientIdInput.trim() || MS_CLIENT_ID()
+      if (!clientId) return
+      try {
+        const { PublicClientApplication } = await import('@azure/msal-browser')
+        const pca = new PublicClientApplication({
+          auth: {
+            clientId,
+            authority:
+              'https://login.microsoftonline.com/f297b97e-1aa1-423f-81e0-008ad95e11f2/oauth2/v2.0',
+            redirectUri: 'https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi',
+          },
+        })
+        await pca.initialize()
+        await pca.handleRedirectPromise()
+        const contas = pca.getAllAccounts()
+        const SCOPES = ['https://analysis.windows.net/powerbi/api/Report.Read.All']
+        let tok = ''
+        if (contas.length) {
+          const sil = await pca.acquireTokenSilent({ scopes: SCOPES, account: contas[0] })
+          tok = sil.accessToken
+        } else {
+          const sso = await pca.ssoSilent({ scopes: SCOPES })
+          tok = sso.accessToken
+        }
+        if (tok) {
+          setCarregando(true)
+          await listarComToken(tok)
+          setCarregando(false)
+        }
+      } catch (_e) {
+        setErro('Retorne do login Microsoft e clique em "Listar relatórios".')
       }
     })()
   }, [])
