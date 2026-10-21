@@ -232,7 +232,21 @@ export default function PowerBiPage() {
             {relatorios.map((r) => (
               <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
                 <div className="min-w-0">
-                  <div className="text-[13px] font-semibold text-gray-900 truncate">{r.nome}</div>
+                  {/* T11b: nome do relatório = LINK de clique simples */}
+                  <button
+                    type="button"
+                    className="text-[13px] font-semibold text-gray-900 hover:text-[#1B5E20] hover:underline text-left truncate"
+                    title="Clique para exibir o relatório nesta tela"
+                    onClick={() => {
+                      // T11a: embed_url correta (web_url em iframe é bloqueada por
+                      // X-Frame-Options) — o SSO do navegador autentica no iframe
+                      localStorage.setItem('pge_powerbi_url', r.embed_url)
+                      setUrl(r.embed_url)
+                      setEmbedKey((k) => k + 1)
+                    }}
+                  >
+                    {r.nome}
+                  </button>
                   <div className="text-[10px] text-gray-400 truncate">{r.workspace}</div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -241,10 +255,8 @@ export default function PowerBiPage() {
                     size="sm"
                     className="h-8"
                     onClick={() => {
-                      // T11a: embed "para organização" sem token fica eterno no
-                      // spinner — usar web_url (SSO do navegador) no iframe
-                      localStorage.setItem('pge_powerbi_url', r.web_url || r.embed_url)
-                      setUrl(r.web_url || r.embed_url)
+                      localStorage.setItem('pge_powerbi_url', r.embed_url)
+                      setUrl(r.embed_url)
                       setEmbedKey((k) => k + 1)
                     }}
                   >

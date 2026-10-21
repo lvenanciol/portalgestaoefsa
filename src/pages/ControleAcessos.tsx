@@ -37,6 +37,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { fmtDataBRT } from '@/lib/brt'
+import { cn } from '@/lib/utils'
 
 interface Grupo {
   id: string

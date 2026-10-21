@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react'
-import { Mail, Plus, Loader2, X, Send, FileText, RefreshCw, Inbox, Paperclip } from 'lucide-react'
+import {
+  Mail,
+  Plus,
+  Loader2,
+  X,
+  Send,
+  FileText,
+  RefreshCw,
+  Inbox,
+  Paperclip,
+  Reply,
+  Share2,
+} from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
@@ -468,8 +480,63 @@ export default function EmailsPage() {
           )}
           {detalhe && detalhe.ok && (
             <>
-              <div className="text-[12px] text-gray-500 border-b border-gray-100 pb-2">
-                De: <strong>{detalhe.de}</strong> · {fmtDataBRT(detalhe.data)}
+              <div className="text-[12px] text-gray-500 border-b border-gray-100 pb-2 flex items-center justify-between gap-2">
+                <span>
+                  De: <strong>{detalhe.de}</strong> · {fmtDataBRT(detalhe.data)}
+                </span>
+                <span className="flex items-center gap-1.5 shrink-0">
+                  {/* T0d: responder / encaminhar — abre o compositor preenchido */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    onClick={() => {
+                      const extra = String(detalhe.corpo_texto || '').slice(0, 2000)
+                      setPara(
+                        String(detalhe.de || '')
+                          .replace(/^[^<]*<|>.*$/g, '')
+                          .trim() ||
+                          detalhe.de ||
+                          '',
+                      )
+                      setAssunto('Re: ' + (detalhe.assunto || ''))
+                      setCorpo(
+                        '\n\n---------- Mensagem original ----------\nDe: ' +
+                          detalhe.de +
+                          '\nData: ' +
+                          fmtDataBRT(detalhe.data) +
+                          '\n\n' +
+                          extra,
+                      )
+                      setDetalheId('')
+                      setDialog(true)
+                    }}
+                  >
+                    <Reply className="h-3 w-3 mr-1" /> Responder
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    onClick={() => {
+                      const extra = String(detalhe.corpo_texto || '').slice(0, 2000)
+                      setPara('')
+                      setAssunto('Enc: ' + (detalhe.assunto || ''))
+                      setCorpo(
+                        '\n\n---------- Mensagem encaminhada ----------\nDe: ' +
+                          detalhe.de +
+                          '\nData: ' +
+                          fmtDataBRT(detalhe.data) +
+                          '\n\n' +
+                          extra,
+                      )
+                      setDetalheId('')
+                      setDialog(true)
+                    }}
+                  >
+                    <Share2 className="h-3 w-3 mr-1" /> Encaminhar
+                  </Button>
+                </span>
               </div>
               {/* corpo: HTML sanitizado pelo navegador em iframe sandbox */}
               {detalhe.corpo_html ? (

@@ -123,15 +123,22 @@ export default function LogomarcasPage() {
                   style={{ backgroundColor: l?.cor || '#1B5E20' }}
                 >
                   {url(l, 'logo') && String(url(l, 'logo')).toLowerCase().endsWith('.pdf') ? (
-                    /* T4c: PDF anexado — link em vez de <img> (quebra) */
-                    <a
-                      href={url(l, 'logo')}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11px] font-semibold text-white hover:underline inline-flex items-center gap-1"
+                    /* T4c: PDF EXIBIDO inline via <object> (fallback = link) */
+                    <object
+                      data={url(l, 'logo') + '#toolbar=0&view=FitH'}
+                      type="application/pdf"
+                      className="h-full w-full"
+                      aria-label={emp + ' — PDF'}
                     >
-                      <FileText className="h-3.5 w-3.5" /> PDF
-                    </a>
+                      <a
+                        href={url(l, 'logo')}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] font-semibold text-white hover:underline"
+                      >
+                        Abrir PDF
+                      </a>
+                    </object>
                   ) : url(l, 'logo') ? (
                     <img
                       src={url(l, 'logo')}
