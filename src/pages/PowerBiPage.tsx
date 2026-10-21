@@ -49,12 +49,43 @@ export default function PowerBiPage() {
     }
   }
 
-  // T11: obter token MSAL e listar relatórios
+  // T11 (21/10): fluxo REDIRECT — handleRedirectPromise completa o retorno do
+  // Entra; se há resposta, usa o token e lista; senão inicia o redirect.
+  const concluirOuIniciarRedirect = async (clientId: string) => {
+    const { PublicClientApplication } = await import('@azure/msal-browser')
+    const TENANT = 'f297b97e-1aa1-423f-81e0-008ad95e11f2'
+    const pca = new PublicClientApplication({
+      auth: {
+        clientId,
+        authority: 'https://login.microsoftonline.com/' + TENANT,
+        redirectUri: 'https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi',
+      },
+    })
+    await pca.initialize()
+    const SCOPES = ['https://analysis.windows.net/powerbi/api/Report.Read.All']
+    const resp = await pca.handleRedirectPromise()
+    if (resp && resp.accessToken) return resp.accessToken
+    await pca.acquireTokenRedirect({ scopes: SCOPES })
+    return ''
+  }
+
+  const listarComToken = async (token: string) => {
+    const r = (await pb.send('/backend/v1/powerbi/relatorios', {
+      method: 'POST',
+      body: JSON.stringify({ access_token: token }),
+    })) as any
+    if (!r.ok) {
+      setErro(r.erro || 'Falha ao listar relatórios.')
+      setRelatorios(null)
+      return
+    }
+    setRelatorios(r.itens || [])
+  }
+
   const listarRelatorios = async () => {
     setCarregando(true)
     setErro('')
     try {
-      // usa o valor do campo (pré-preenchido) OU o salvo — sem exigir "Salvar" antes
       const clientId = clientIdInput.trim() || MS_CLIENT_ID()
       if (!clientId) {
         setErro(
@@ -63,60 +94,15 @@ export default function PowerBiPage() {
         return
       }
       localStorage.setItem('pge_ms_client_id', clientId)
-      // MSAL empacotado no build (dependência @azure/msal-browser)
-      const { PublicClientApplication } = await import('@azure/msal-browser')
-      // app single-tenant: authority do próprio tenant (ctid do embed padrão)
-      const TENANT = 'f297b97e-1aa1-423f-81e0-008ad95e11f2'
-      const pca = new PublicClientApplication({
-        auth: {
-          clientId,
-          authority: 'https://login.microsoftonline.com/' + TENANT,
-          // T11: URI registrada como SPA no Entra ID é a do SITE PUBLICADO
-          // (produção). Fixada — se usar origin, o preview gera URI do preview
-          // (não registrada → AADSTS50011, erro do print 20/10).
-          redirectUri: 'https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi',
-        },
-      })
-      await pca.initialize()
-      // T11 fix (20/10): loginPopup falha com block_nested_popups quando o
-      // portal já roda em iframe/popup — usar REDIRECT (volta p/ esta tela).
-      const SCOPES = ['https://analysis.windows.net/powerbi/api/Report.Read.All']
-      let login: any = null
-      try {
-        login = await pca.loginPopup({ scopes: SCOPES })
-      } catch (ePopup: any) {
-        const m = String(ePopup?.message || ePopup)
-        if (m.includes('block_nested_popups') || m.includes('popup')) {
-          await pca.acquireTokenRedirect({ scopes: SCOPES })
-          return // navega para o Entra; volta pelo redirect
-        }
-        throw ePopup
-      }
-      const tokenRes = await pca.acquireTokenSilent({
-        scopes: SCOPES,
-        account: login.account,
-      })
-      const r = (await pb.send('/backend/v1/powerbi/relatorios', {
-        method: 'POST',
-        body: JSON.stringify({ access_token: tokenRes.accessToken }),
-      })) as any
-      if (!r.ok) {
-        setErro(r.erro || 'Falha ao listar relatórios.')
-        setRelatorios(null)
-        return
-      }
-      setRelatorios(r.itens || [])
+      const token = await concluirOuIniciarRedirect(clientId)
+      if (!token) return // foi para o Entra; ao voltar, o useEffect completa
+      await listarComToken(token)
     } catch (e: any) {
       const msg = String(e?.message || e)
-      // T11: erro comum do MSAL — orientação direta
       if (msg.includes('redirect_mismatch') || msg.includes('AADSTS50011')) {
         setErro(
-          'URI de redirecionamento ausente no Entra ID: registre "' +
-            window.location.origin +
-            '" como URI do tipo SPA no app registration (Autenticação) e tente de novo.',
+          'URI de redirecionamento ausente no Entra ID: registre "https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi" como URI do tipo SPA no app registration (Autenticação) e tente de novo.',
         )
-      } else if (msg.includes('popup_window_error') || msg.includes('popup closed')) {
-        setErro('Popup bloqueado pelo navegador — permita popups para este site e tente de novo.')
       } else if (msg.includes('user_cancelled')) {
         setErro('Login cancelado — clique em "Listar relatórios" e conclua o login Microsoft.')
       } else {
@@ -129,8 +115,31 @@ export default function PowerBiPage() {
   }
 
   useEffect(() => {
-    // tenta listar automaticamente se client_id configurado
-    if (MS_CLIENT_ID()) listarRelatorios()
+    // T11: ao voltar do redirect do Entra, completa a listagem
+    ;(async () => {
+      const clientId = clientIdInput.trim() || MS_CLIENT_ID()
+      if (!clientId) return
+      try {
+        const { PublicClientApplication } = await import('@azure/msal-browser')
+        const TENANT = 'f297b97e-1aa1-423f-81e0-008ad95e11f2'
+        const pca = new PublicClientApplication({
+          auth: {
+            clientId,
+            authority: 'https://login.microsoftonline.com/' + TENANT,
+            redirectUri: 'https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi',
+          },
+        })
+        await pca.initialize()
+        const resp = await pca.handleRedirectPromise()
+        if (resp && resp.accessToken) {
+          setCarregando(true)
+          await listarComToken(resp.accessToken)
+          setCarregando(false)
+        }
+      } catch (_e) {
+        /* sem retorno de redirect — nada a fazer */
+      }
+    })()
   }, [])
 
   return (

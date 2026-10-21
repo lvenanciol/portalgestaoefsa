@@ -12,16 +12,38 @@ routerAdd('GET', '/backend/v1/email/oauth/callback', (e) => {
   ).replace(/\/$/, '')
   const irPara = (path) => SITE + path
   // $http.send do PB pode devolver body como ARRAY DE BYTES — decodificar
+  // T0a fix (21/10): bytes → UTF-8 REAL (fromCharCode corrompe acentos)
+  const utf8Decode = (bytes) => {
+    let out = ''
+    let i = 0
+    while (i < bytes.length) {
+      const b = bytes[i]
+      let cp
+      if (b < 0x80) {
+        cp = b
+        i += 1
+      } else if (b < 0xe0) {
+        cp = ((b & 31) << 6) | (bytes[i + 1] & 63)
+        i += 2
+      } else if (b < 0xf0) {
+        cp = ((b & 15) << 12) | ((bytes[i + 1] & 63) << 6) | (bytes[i + 2] & 63)
+        i += 3
+      } else {
+        cp =
+          ((b & 7) << 18) |
+          ((bytes[i + 1] & 63) << 12) |
+          ((bytes[i + 2] & 63) << 6) |
+          (bytes[i + 3] & 63)
+        i += 4
+      }
+      out += String.fromCodePoint(cp)
+    }
+    return out
+  }
   const decodeBody = (res) => {
     const b = res && res.body
     if (typeof b === 'string') return b
-    if (Array.isArray(b)) {
-      let s = ''
-      for (let i = 0; i < b.length; i += 4096) {
-        s += String.fromCharCode.apply(null, b.slice(i, i + 4096))
-      }
-      return s
-    }
+    if (Array.isArray(b)) return utf8Decode(b)
     return String(b || '')
   }
   const q = e.requestInfo().query || {}

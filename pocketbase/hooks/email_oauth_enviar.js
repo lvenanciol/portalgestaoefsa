@@ -72,12 +72,39 @@ routerAdd(
           body: form,
           timeout: 30,
         })
-        // PB pode devolver body como array de bytes
+        // PB pode devolver body como array de bytes — UTF-8 real (T0a)
+        const utf8Decode = (bytes) => {
+          let out = ''
+          let i = 0
+          while (i < bytes.length) {
+            const b = bytes[i]
+            let cp
+            if (b < 0x80) {
+              cp = b
+              i += 1
+            } else if (b < 0xe0) {
+              cp = ((b & 31) << 6) | (bytes[i + 1] & 63)
+              i += 2
+            } else if (b < 0xf0) {
+              cp = ((b & 15) << 12) | ((bytes[i + 1] & 63) << 6) | (bytes[i + 2] & 63)
+              i += 3
+            } else {
+              cp =
+                ((b & 7) << 18) |
+                ((bytes[i + 1] & 63) << 12) |
+                ((bytes[i + 2] & 63) << 6) |
+                (bytes[i + 3] & 63)
+              i += 4
+            }
+            out += String.fromCodePoint(cp)
+          }
+          return out
+        }
         const bodyStr =
           typeof r.body === 'string'
             ? r.body
             : Array.isArray(r.body)
-              ? String.fromCharCode.apply(null, r.body)
+              ? utf8Decode(r.body)
               : String(r.body || '')
         if (r.statusCode === 200) {
           const t = JSON.parse(bodyStr)

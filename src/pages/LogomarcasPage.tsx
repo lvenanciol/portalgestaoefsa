@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Palette, Loader2, Upload, Trash2, Check, X } from 'lucide-react'
+import { Palette, Loader2, Upload, Trash2, Check, X, FileText } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { Button } from '@/components/ui/button'
@@ -122,7 +122,17 @@ export default function LogomarcasPage() {
                   className="h-14 w-14 rounded-xl flex items-center justify-center text-white font-bold text-lg shrink-0 overflow-hidden"
                   style={{ backgroundColor: l?.cor || '#1B5E20' }}
                 >
-                  {url(l, 'logo') ? (
+                  {url(l, 'logo') && String(url(l, 'logo')).toLowerCase().endsWith('.pdf') ? (
+                    /* T4c: PDF anexado — link em vez de <img> (quebra) */
+                    <a
+                      href={url(l, 'logo')}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] font-semibold text-white hover:underline inline-flex items-center gap-1"
+                    >
+                      <FileText className="h-3.5 w-3.5" /> PDF
+                    </a>
+                  ) : url(l, 'logo') ? (
                     <img
                       src={url(l, 'logo')}
                       alt={emp}

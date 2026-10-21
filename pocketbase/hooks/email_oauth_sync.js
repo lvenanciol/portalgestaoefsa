@@ -19,6 +19,35 @@ routerAdd(
 
     const body = e.requestInfo().body || {}
     const provedor = String(body.provedor || '')
+    // T0a fix (21/10): bytes → UTF-8 REAL — fromCharCode trata byte=char
+    // latin-1 e corrompe acentos (mojibake "Ã©"). Decodifica UTF-8 de verdade.
+    const utf8Decode = (bytes) => {
+      let out = ''
+      let i = 0
+      while (i < bytes.length) {
+        const b = bytes[i]
+        let cp
+        if (b < 0x80) {
+          cp = b
+          i += 1
+        } else if (b < 0xe0) {
+          cp = ((b & 31) << 6) | (bytes[i + 1] & 63)
+          i += 2
+        } else if (b < 0xf0) {
+          cp = ((b & 15) << 12) | ((bytes[i + 1] & 63) << 6) | (bytes[i + 2] & 63)
+          i += 3
+        } else {
+          cp =
+            ((b & 7) << 18) |
+            ((bytes[i + 1] & 63) << 12) |
+            ((bytes[i + 2] & 63) << 6) |
+            (bytes[i + 3] & 63)
+          i += 4
+        }
+        out += String.fromCodePoint(cp)
+      }
+      return out
+    }
     if (provedor !== 'google' && provedor !== 'microsoft') {
       return e.badRequestError('provedor inválido (google|microsoft)')
     }
@@ -76,7 +105,7 @@ routerAdd(
           typeof r.body === 'string'
             ? r.body
             : Array.isArray(r.body)
-              ? String.fromCharCode.apply(null, r.body)
+              ? utf8Decode(r.body)
               : String(r.body || '')
         if (r.statusCode === 200) {
           const t = JSON.parse(bodyStr)
@@ -118,7 +147,7 @@ routerAdd(
           typeof r.body === 'string'
             ? r.body
             : Array.isArray(r.body)
-              ? String.fromCharCode.apply(null, r.body)
+              ? utf8Decode(r.body)
               : String(r.body || '')
         lista = JSON.parse(listaStr)
       } catch (_) {
@@ -141,7 +170,7 @@ routerAdd(
             typeof d.body === 'string'
               ? d.body
               : Array.isArray(d.body)
-                ? String.fromCharCode.apply(null, d.body)
+                ? utf8Decode(d.body)
                 : String(d.body || '')
           const det = JSON.parse(detStr)
           const hdrs = (det.payload && det.payload.headers) || []
@@ -187,7 +216,7 @@ routerAdd(
           typeof r.body === 'string'
             ? r.body
             : Array.isArray(r.body)
-              ? String.fromCharCode.apply(null, r.body)
+              ? utf8Decode(r.body)
               : String(r.body || '')
         data = JSON.parse(dataStr)
       } catch (_) {
