@@ -278,9 +278,19 @@ export default function PowerBiPage() {
           setCarregando(true)
           await listarComToken(tok)
           setCarregando(false)
+        } else {
+          setErro(
+            'Login Microsoft concluído, mas o token não foi obtido — clique em "Listar relatórios" novamente.',
+          )
         }
-      } catch (_e) {
-        setErro('Retorne do login Microsoft e clique em "Listar relatórios".')
+      } catch (e: any) {
+        // T11a-5 (21/10): erro REAL do retorno — antes era engolido (catch vazio)
+        // e o dono não sabia por que a lista não vinha.
+        setErro(
+          'Retorno do login Microsoft falhou: ' +
+            String(e?.message || e).slice(0, 200) +
+            ' — clique em "Listar relatórios" e conclua o login novamente.',
+        )
       }
     })()
   }, [])

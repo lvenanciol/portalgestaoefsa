@@ -103,17 +103,24 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
   // T4d (21/10): logos REAIS da coleção logomarcas (upload na tela Logomarcas)
   const [logos, setLogos] = useState<any[]>([])
 
+  const carregarLogos = async () => {
+    try {
+      const r = await pb.collection('logomarcas').getFullList()
+      setLogos(r as any[])
+    } catch (_e) {
+      setLogos([])
+    }
+  }
+
   useEffect(() => {
     carregarPermissoes().then(setPermissoes)
-    ;(async () => {
-      try {
-        const r = await pb.collection('logomarcas').getFullList()
-        setLogos(r as any[])
-      } catch (_e) {
-        setLogos([])
-      }
-    })()
+    carregarLogos()
   }, [user])
+
+  // T4d-2 (21/10): upload na tela Logomarcas reflete na sidebar NA HORA (realtime)
+  useRealtime('logomarcas', () => {
+    carregarLogos()
+  })
 
   // i18n: re-renderiza quando o idioma muda (evento global disparado pelas Configurações)
   useEffect(() => {
@@ -207,15 +214,29 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
                 )
               }
               if (logoUrl && logoUrl.toLowerCase().endsWith('.pdf')) {
-                // T4d: PDF exibido inline no bloco de marca (não só ícone)
-                return (
-                  <object
-                    data={logoUrl + '#toolbar=0&view=FitH'}
-                    type="application/pdf"
-                    className="h-full w-full"
-                    aria-label="logo PDF"
-                  />
-                )
+                // T4d-2 (21/10): PDF NÃO renderiza como <img> nem em <object> de
+                // 32px — exibe o EMBLEMA (imagem) quando existir; senão sigla.
+                const emb =
+                  logoRec && logoRec.emblema ? pb.files.getURL(logoRec, logoRec.emblema) : ''
+                if (emb) {
+                  return (
+                    <img
+                      src={emb}
+                      alt={emp?.nome || 'emblema'}
+                      className="h-full w-full object-contain p-1"
+                    />
+                  )
+                }
+                if (emp) {
+                  return (
+                    <span
+                      className="h-full w-full flex items-center justify-center font-bold text-[11px]"
+                      style={{ backgroundColor: emp.cor }}
+                    >
+                      {emp.nome.slice(0, 2).toUpperCase()}
+                    </span>
+                  )
+                }
               }
               if (emp) {
                 return (

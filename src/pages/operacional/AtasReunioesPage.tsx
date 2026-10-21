@@ -105,6 +105,9 @@ export default function AtasReunioesPage() {
   const [interpretacao, setInterpretacao] = useState('')
   const [organizando, setOrganizando] = useState(false)
   const [arquivoAudio, setArquivoAudio] = useState<File | null>(null)
+  // T-Xb (21/10): MÚLTIPLOS arquivos de áudio/txt — todos anexados à ata; o 1º
+  // .txt/.md alimenta a transcrição; áudios vão para a coleção (upload em lote).
+  const [arquivosAudio, setArquivosAudio] = useState<File[]>([])
   const recRef = useRef<any>(null)
   // T5a: ref espelho do estado ouvindo (onend/onerror não veem o state fresco)
   const ouvindoRef = useRef(false)
@@ -249,8 +252,10 @@ export default function AtasReunioesPage() {
   const salvar = async () => {
     setSalvando(true)
     try {
-      // T5b: com arquivo de áudio, salva via FormData (anexa o áudio à ata)
-      if (arquivoAudio && /\.(mp3|m4a|wav|webm|ogg|mp4)$/i.test(arquivoAudio.name)) {
+      // T5b/Xb: salva via FormData quando há áudios — TODOS os arquivos da lista
+      // são anexados (campo audio multi, migr 0026); o 1º áudio já foi transcrito.
+      const audios = arquivosAudio.filter((f) => /\.(mp3|m4a|wav|webm|ogg|mp4)$/i.test(f.name))
+      if (audios.length > 0) {
         const fd = new FormData()
         fd.append('titulo', form.titulo || '')
         fd.append('data', form.data ? form.data + ' 00:00:00.000Z' : '')
@@ -262,7 +267,7 @@ export default function AtasReunioesPage() {
         fd.append('decisoes', form.decisoes || '')
         fd.append('action_items', JSON.stringify([]))
         fd.append('criado_por', user?.email || '')
-        fd.append('audio', arquivoAudio)
+        for (const a of audios) fd.append('audio', a)
         await pb.collection('atas').create(fd)
       } else {
         await pb.collection('atas').create({
@@ -500,12 +505,15 @@ export default function AtasReunioesPage() {
                     <Upload className="h-3.5 w-3.5" /> Upload
                     <input
                       type="file"
+                      multiple
                       accept="audio/*,.txt,.md"
                       className="hidden"
                       onChange={async (e) => {
-                        const f = e.target.files?.[0]
-                        if (!f) return
-                        setArquivoAudio(f)
+                        // T-Xb: MÚLTIPLOS arquivos — todos ficam na lista p/ anexar
+                        const fs = Array.from(e.target.files || [])
+                        if (fs.length === 0) return
+                        setArquivosAudio((prev) => [...prev, ...fs])
+                        const f = fs[0]
                         // T5b: .txt/.md → transcrição literal direto (visão principal da ata)
                         if (/\.(txt|md)$/i.test(f.name)) {
                           const rd = new FileReader()
@@ -642,10 +650,11 @@ export default function AtasReunioesPage() {
               <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Participantes
               </Label>
-              <Input
+              {/* T-Xc (21/10): dropdown MULTI — lista parceiros/contatos COM centro de
+                  resultado preenchido; seleção grava nomes separados por vírgula. */}
+              <ParticipantesSelector
                 value={form.participantes || ''}
-                onChange={(e) => setForm({ ...form, participantes: e.target.value })}
-                className="h-10 bg-gray-50"
+                onChange={(v: string) => setForm((f: any) => ({ ...f, participantes: v }))}
               />
             </div>
             <div className="grid gap-1.5">
@@ -964,6 +973,112 @@ export default function AtasReunioesPage() {
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+// T-Xc (2026-10-21) — seletor MULTI de participantes: dropdown com checkbox
+// listando parceiros/contatos COM centro de resultado preenchido (tela
+// Parceiros & Contatos). Grava nomes separados por vírgula (compatível com o
+// campo texto existente).
+function ParticipantesSelector({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (v: string) => void
+}) {
+  const [aberto, setAberto] = useState(false)
+  const [parceiros, setParceiros] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!aberto || parceiros.length > 0) return
+    setLoading(true)
+    pb.collection('parceiros')
+      .getFullList({ sort: 'nome' })
+      .then((r: any[]) => {
+        // SOMENTE parceiros/contatos com centro de resultado preenchido
+        setParceiros(r.filter((p) => (p.centro_resultado || '').trim() !== ''))
+      })
+      .catch(() => setParceiros([]))
+      .finally(() => setLoading(false))
+  }, [aberto])
+
+  useEffect(() => {
+    const fora = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false)
+    }
+    document.addEventListener('mousedown', fora)
+    return () => document.removeEventListener('mousedown', fora)
+  }, [])
+
+  const nomes = (value || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const toggle = (nome: string) => {
+    if (nomes.includes(nome)) onChange(nomes.filter((n) => n !== nome).join(', '))
+    else onChange([...nomes, nome].join(', '))
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <div
+        className="min-h-10 h-auto py-2 px-3 rounded-lg border border-gray-200 bg-gray-50 cursor-pointer flex flex-wrap items-center gap-1.5"
+        onClick={() => setAberto((v) => !v)}
+      >
+        {nomes.length === 0 && (
+          <span className="text-[13px] text-gray-400">selecione um ou mais participantes…</span>
+        )}
+        {nomes.map((n) => (
+          <span
+            key={n}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-900 text-[11px] font-semibold"
+          >
+            {n}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                toggle(n)
+              }}
+              className="text-emerald-700 hover:text-emerald-900"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+      </div>
+      {aberto && (
+        <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+          {loading && <p className="text-center text-[12px] text-gray-400 py-4">Carregando…</p>}
+          {!loading && parceiros.length === 0 && (
+            <p className="text-center text-[12px] text-gray-400 py-4">
+              Nenhum parceiro/contato com centro de resultado preenchido.
+            </p>
+          )}
+          {!loading &&
+            parceiros.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => toggle(p.nome)}
+                className="flex items-center gap-2 w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-50 text-[12px]"
+              >
+                <input
+                  type="checkbox"
+                  checked={nomes.includes(p.nome)}
+                  readOnly
+                  className="h-3.5 w-3.5"
+                />
+                <span className="font-semibold text-gray-800">{p.nome}</span>
+                <span className="text-gray-400">{p.empresa || ''}</span>
+              </button>
+            ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -248,6 +248,11 @@ routerAdd(
       const d = JSON.parse(bodyOf(r))
       out.corpo_html = String((d.body && d.body.content) || '')
       if ((d.body || {}).contentType === 'text') out.corpo_texto = out.corpo_html
+      // T0b-2 (21/10): charset UTF-8 explícito no HTML (caracteres mal formatados
+      // em e-mails sem <meta charset> — o browser assume windows-1252)
+      if (out.corpo_html && !/charset=/i.test(out.corpo_html)) {
+        out.corpo_html = '<meta charset="utf-8">' + out.corpo_html
+      }
       const anexos = d.attachments || []
       // T0e fix (21/10): imagens INLINE (cid:) não abrem — baixar cada uma e
       // embutir como data URL no HTML (contentBytes já vem na listagem de
@@ -305,6 +310,16 @@ routerAdd(
                   .split("src='cid:" + cidLimpo + "'")
                   .join("src='" + dataUrl + "'")
                 out.corpo_html = out.corpo_html.split('src=CID:' + cidLimpo).join('src=' + dataUrl)
+              } else if (a && a.isInline) {
+                // T0e-2 (21/10): anexo INLINE cujo cid não casou no HTML — injeta
+                // <img> no topo (o Outlook referencia por contentId que nem sempre
+                // aparece no corpo). Não perde a imagem.
+                const dataUrl2 = 'data:' + a.contentType + ';base64,' + a.contentBytes
+                out.corpo_html =
+                  '<div><img src="' +
+                  dataUrl2 +
+                  '" style="max-width:100%;" /></div>' +
+                  out.corpo_html
               }
             }
           }
