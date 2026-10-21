@@ -16,7 +16,7 @@ routerAdd(
 
     const rec = $app.findRecordById('emails_inbox', id)
     const provedor = rec.getString('provedor')
-    const mid = rec.getString('message_id')
+    let mid = rec.getString('message_id') // T0b: pode ser re-vinculado (Graph volátil)
     let at = rec.getString('access_token') // não existe — usa tokens do provedor
     let tok
     try {
@@ -196,19 +196,54 @@ routerAdd(
       if (d.payload) pegaPartes(d.payload)
       if (!out.corpo_html && !out.corpo_texto && d.snippet) out.corpo_texto = String(d.snippet)
     } else {
-      const r = $http.send({
-        url:
-          'https://graph.microsoft.com/v1.0/me/messages/' +
-          encodeURIComponent(mid) +
-          '?$select=subject,from,toRecipients,body,bodyPreview,attachments,receivedDateTime',
-        method: 'GET',
-        headers: { Authorization: 'Bearer ' + at },
-        timeout: 30,
-      })
+      // T0b fix (21/10): IDs do Graph são VOLÁTEIS (mudam entre sessões) —
+      // 404 ErrorItemNotFound mesmo com id completo. Re-lista e casa por
+      // assunto/remetente; atualiza o vínculo no registro.
+      const buscar = (idMid) =>
+        $http.send({
+          url:
+            'https://graph.microsoft.com/v1.0/me/messages/' +
+            encodeURIComponent(idMid) +
+            '?$select=subject,from,toRecipients,body,bodyPreview,attachments,receivedDateTime',
+          method: 'GET',
+          headers: { Authorization: 'Bearer ' + at },
+          timeout: 30,
+        })
+      let r = buscar(mid)
+      if (r.statusCode === 404) {
+        const rl = $http.send({
+          url: 'https://graph.microsoft.com/v1.0/me/messages?$top=50&$select=id,subject,from,receivedDateTime&$orderby=receivedDateTime%20desc',
+          method: 'GET',
+          headers: { Authorization: 'Bearer ' + at },
+          timeout: 30,
+        })
+        if (rl.statusCode === 200) {
+          const lista = JSON.parse(bodyOf(rl))
+          const alvoAssunto = String(rec.getString('assunto') || '').toLowerCase()
+          const alvoDe = String(rec.getString('de') || '').toLowerCase()
+          const achou = (lista.value || []).find(
+            (x) =>
+              String(x.subject || '').toLowerCase() === alvoAssunto ||
+              (alvoDe &&
+                x.from &&
+                x.from.emailAddress &&
+                String(x.from.emailAddress.address || '').toLowerCase() === alvoDe),
+          )
+          if (achou) {
+            mid = String(achou.id)
+            try {
+              rec.set('message_id', mid)
+              $app.save(rec)
+            } catch (_) {}
+            r = buscar(mid)
+          }
+        }
+      }
       if (r.statusCode !== 200)
         return e.json(502, {
           ok: false,
-          erro: 'graph ' + r.statusCode + ': ' + bodyOf(r).slice(0, 120),
+          erro:
+            'graph ' + r.statusCode + ': e-mail não encontrado na caixa atual (movido/excluído?).',
         })
       const d = JSON.parse(bodyOf(r))
       out.corpo_html = String((d.body && d.body.content) || '')
