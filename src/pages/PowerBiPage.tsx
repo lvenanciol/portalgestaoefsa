@@ -241,8 +241,10 @@ export default function PowerBiPage() {
                     size="sm"
                     className="h-8"
                     onClick={() => {
-                      localStorage.setItem('pge_powerbi_url', r.embed_url)
-                      setUrl(r.embed_url)
+                      // T11a: embed "para organização" sem token fica eterno no
+                      // spinner — usar web_url (SSO do navegador) no iframe
+                      localStorage.setItem('pge_powerbi_url', r.web_url || r.embed_url)
+                      setUrl(r.web_url || r.embed_url)
                       setEmbedKey((k) => k + 1)
                     }}
                   >

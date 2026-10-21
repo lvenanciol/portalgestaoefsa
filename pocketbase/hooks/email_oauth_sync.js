@@ -224,7 +224,7 @@ routerAdd(
       }
       for (const m of data.value || []) {
         msgs.push({
-          message_id: String(m.id || '').slice(0, 190),
+          message_id: String(m.id || ''), // T0b fix: ID COMPLETO do Graph (truncar → 404 no detalhe)
           de: m.from && m.from.emailAddress ? m.from.emailAddress.address : '',
           assunto: m.subject || '(sem assunto)',
           preview: String(m.bodyPreview || '').slice(0, 500),

@@ -690,159 +690,173 @@ export default function ControleAcessos() {
             ABAS/BOTÕES controlam a visibilidade das seções e botões da tela (fail-open: sem
             marcação = tudo visível).
           </p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[12px]">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left font-bold text-gray-700 py-2 pr-2">Módulo</th>
-                  {COLUNAS_CRUD.map((c) => (
-                    <th key={c.key} className="text-center font-bold text-gray-700 py-2 px-1.5">
-                      {c.label}
-                    </th>
-                  ))}
-                  <th className="text-center font-bold text-gray-700 py-2 px-1.5">ABAS</th>
-                  <th className="text-center font-bold text-gray-700 py-2 px-1.5">BOTÕES</th>
-                </tr>
-              </thead>
-              <tbody>
-                {BUTTON_GATES.map((tela) => {
-                  const ocultos = botoesConfig[tela.key] || []
-                  const temAbas = (ABAS_POR_TELA[tela.key] || []).length > 0
-                  const temBotoes = tela.buttons.length > 0
-                  return (
-                    <tr key={tela.key} className="border-b border-gray-50 hover:bg-gray-50/60">
-                      <td className="py-2 pr-2">
-                        <div className="font-semibold text-gray-900">{tela.label}</div>
-                        <div className="text-[10px] text-gray-400">{tela.key}</div>
-                      </td>
-                      {COLUNAS_CRUD.map((c) => {
-                        const marcado = !ocultos.includes(CHAVE_CRUD(tela.key, c.key) + ':off')
-                        // T6c: coluna TODAS marca/desmarca TODAS as permissões da linha
-                        if (c.key === 'todas') {
-                          const chaves = ['ver', 'criar', 'editar', 'excluir'].map(
-                            (k) => CHAVE_CRUD(tela.key, k) + ':off',
-                          )
-                          const todasMarcadas = chaves.every((k) => !ocultos.includes(k))
+          {/* T6d: grade à esquerda + painel CRUD à direita quando linha expandida */}
+          <div className={expandida ? 'grid grid-cols-1 lg:grid-cols-2 gap-4' : ''}>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left font-bold text-gray-700 py-2 pr-2">Módulo</th>
+                    {COLUNAS_CRUD.map((c) => (
+                      <th key={c.key} className="text-center font-bold text-gray-700 py-2 px-1.5">
+                        {c.label}
+                      </th>
+                    ))}
+                    <th className="text-center font-bold text-gray-700 py-2 px-1.5">ABAS</th>
+                    <th className="text-center font-bold text-gray-700 py-2 px-1.5">BOTÕES</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {BUTTON_GATES.map((tela) => {
+                    const ocultos = botoesConfig[tela.key] || []
+                    const temAbas = (ABAS_POR_TELA[tela.key] || []).length > 0
+                    const temBotoes = tela.buttons.length > 0
+                    return (
+                      <tr key={tela.key} className="border-b border-gray-50 hover:bg-gray-50/60">
+                        <td className="py-2 pr-2">
+                          <div className="font-semibold text-gray-900">{tela.label}</div>
+                          <div className="text-[10px] text-gray-400">{tela.key}</div>
+                        </td>
+                        {COLUNAS_CRUD.map((c) => {
+                          const marcado = !ocultos.includes(CHAVE_CRUD(tela.key, c.key) + ':off')
+                          // T6c: coluna TODAS marca/desmarca TODAS as permissões da linha
+                          if (c.key === 'todas') {
+                            const chaves = ['ver', 'criar', 'editar', 'excluir'].map(
+                              (k) => CHAVE_CRUD(tela.key, k) + ':off',
+                            )
+                            const todasMarcadas = chaves.every((k) => !ocultos.includes(k))
+                            return (
+                              <td key={c.key} className="text-center py-2 px-1.5">
+                                <input
+                                  type="checkbox"
+                                  checked={todasMarcadas}
+                                  onChange={() => {
+                                    for (const k of chaves) {
+                                      const esta = ocultos.includes(k)
+                                      if (todasMarcadas && !esta) toggleBotao(tela.key, k)
+                                      else if (!todasMarcadas && esta) toggleBotao(tela.key, k)
+                                    }
+                                  }}
+                                  className="h-3.5 w-3.5 accent-[#1B5E20] font-bold"
+                                />
+                              </td>
+                            )
+                          }
                           return (
                             <td key={c.key} className="text-center py-2 px-1.5">
                               <input
                                 type="checkbox"
-                                checked={todasMarcadas}
-                                onChange={() => {
-                                  for (const k of chaves) {
-                                    const esta = ocultos.includes(k)
-                                    if (todasMarcadas && !esta) toggleBotao(tela.key, k)
-                                    else if (!todasMarcadas && esta) toggleBotao(tela.key, k)
-                                  }
-                                }}
-                                className="h-3.5 w-3.5 accent-[#1B5E20] font-bold"
+                                checked={marcado}
+                                onChange={() =>
+                                  toggleBotao(tela.key, CHAVE_CRUD(tela.key, c.key) + ':off')
+                                }
+                                className="h-3.5 w-3.5 accent-[#1B5E20]"
                               />
                             </td>
                           )
-                        }
-                        return (
-                          <td key={c.key} className="text-center py-2 px-1.5">
-                            <input
-                              type="checkbox"
-                              checked={marcado}
-                              onChange={() =>
-                                toggleBotao(tela.key, CHAVE_CRUD(tela.key, c.key) + ':off')
-                              }
-                              className="h-3.5 w-3.5 accent-[#1B5E20]"
-                            />
-                          </td>
-                        )
-                      })}
-                      {/* ABAS: marca/desmarca todas as abas da tela de uma vez */}
-                      <td className="text-center py-2 px-1.5">
-                        {temAbas ? (
+                        })}
+                        {/* T6d: ABAS vira BOTÃO que abre o painel à direita */}
+                        <td className="text-center py-2 px-1.5">
+                          {temAbas ? (
+                            <button
+                              type="button"
+                              onClick={() => setExpandida(expandida === tela.key ? '' : tela.key)}
+                              className={cn(
+                                'text-[11px] font-semibold hover:underline',
+                                expandida === tela.key ? 'text-gray-900' : 'text-[#1B5E20]',
+                              )}
+                            >
+                              Abas
+                            </button>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
+                        {/* T6d: BOTÕES também abre o painel à direita */}
+                        <td className="text-center py-2 px-1.5">
+                          {temBotoes ? (
+                            <button
+                              type="button"
+                              onClick={() => setExpandida(expandida === tela.key ? '' : tela.key)}
+                              className={cn(
+                                'text-[11px] font-semibold hover:underline',
+                                expandida === tela.key ? 'text-gray-900' : 'text-[#1B5E20]',
+                              )}
+                            >
+                              Botões
+                            </button>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {/* T6d: expansão — painel À DIREITA da grade (mesma linha do grid) */}
+            {expandida &&
+              (() => {
+                const tela = BUTTON_GATES.find((t) => t.key === expandida)
+                if (!tela) return null
+                const ocultos = botoesConfig[tela.key] || []
+                return (
+                  <div className="p-3 rounded-lg border border-emerald-100 bg-emerald-50/40 self-start">
+                    <div className="text-[12px] font-bold text-gray-900 mb-2 flex items-center justify-between">
+                      <span>{tela.label} — abas e botões</span>
+                      <button
+                        type="button"
+                        onClick={() => setExpandida('')}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-x-4 gap-y-1.5">
+                      {(ABAS_POR_TELA[tela.key] || []).length > 0 && (
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mt-1">
+                          Abas
+                        </div>
+                      )}
+                      {(ABAS_POR_TELA[tela.key] || []).map((aba: any) => (
+                        <label
+                          key={'aba_' + aba.key}
+                          className="flex items-center gap-2 text-[12px] text-gray-700 cursor-pointer"
+                        >
                           <input
                             type="checkbox"
-                            checked={(ABAS_POR_TELA[tela.key] || []).every(
-                              (aba: any) => !ocultos.includes('aba_' + aba.key),
-                            )}
-                            onChange={() => {
-                              const abas = ABAS_POR_TELA[tela.key] || []
-                              const todasVisiveis = abas.every(
-                                (aba: any) => !ocultos.includes('aba_' + aba.key),
-                              )
-                              for (const aba of abas) {
-                                const k = 'aba_' + aba.key
-                                const esta = ocultos.includes(k)
-                                if (todasVisiveis && !esta) toggleBotao(tela.key, k)
-                                else if (!todasVisiveis && esta) toggleBotao(tela.key, k)
-                              }
-                            }}
+                            checked={!ocultos.includes('aba_' + aba.key)}
+                            onChange={() => toggleBotao(tela.key, 'aba_' + aba.key)}
                             className="h-3.5 w-3.5 accent-[#1B5E20]"
                           />
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
-                      </td>
-                      {/* BOTÕES: expande a linha para os botões da tela */}
-                      <td className="text-center py-2 px-1.5">
-                        {temBotoes ? (
-                          <button
-                            type="button"
-                            onClick={() => setExpandida(expandida === tela.key ? '' : tela.key)}
-                            className="text-[11px] font-semibold text-[#1B5E20] hover:underline"
-                          >
-                            {expandida === tela.key ? 'fechar' : 'Botões'}
-                          </button>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                          <span className="truncate">{aba.label}</span>
+                        </label>
+                      ))}
+                      {tela.buttons.length > 0 && (
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mt-2">
+                          Botões
+                        </div>
+                      )}
+                      {tela.buttons.map((b) => (
+                        <label
+                          key={b.key}
+                          className="flex items-center gap-2 text-[12px] text-gray-700 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!ocultos.includes(b.key)}
+                            onChange={() => toggleBotao(tela.key, b.key)}
+                            className="h-3.5 w-3.5 accent-[#1B5E20]"
+                          />
+                          <span className="truncate">{b.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
           </div>
-          {/* T6b: expansão — botões + abas individuais da tela selecionada */}
-          {expandida &&
-            (() => {
-              const tela = BUTTON_GATES.find((t) => t.key === expandida)
-              if (!tela) return null
-              const ocultos = botoesConfig[tela.key] || []
-              return (
-                <div className="mt-3 p-3 rounded-lg border border-emerald-100 bg-emerald-50/40">
-                  <div className="text-[12px] font-bold text-gray-900 mb-2">
-                    {tela.label} — botões e abas
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
-                    {tela.buttons.map((b) => (
-                      <label
-                        key={b.key}
-                        className="flex items-center gap-2 text-[12px] text-gray-700 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!ocultos.includes(b.key)}
-                          onChange={() => toggleBotao(tela.key, b.key)}
-                          className="h-3.5 w-3.5 accent-[#1B5E20]"
-                        />
-                        <span className="truncate">{b.label}</span>
-                      </label>
-                    ))}
-                    {(ABAS_POR_TELA[tela.key] || []).map((aba: any) => (
-                      <label
-                        key={'aba_' + aba.key}
-                        className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!ocultos.includes('aba_' + aba.key)}
-                          onChange={() => toggleBotao(tela.key, 'aba_' + aba.key)}
-                          className="h-3.5 w-3.5 accent-[#1B5E20]"
-                        />
-                        <span className="truncate">{aba.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )
-            })()}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogBotoes(null)} className="h-9">
               Cancelar
