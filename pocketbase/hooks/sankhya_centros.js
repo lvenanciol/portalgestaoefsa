@@ -61,26 +61,19 @@ routerAdd(
         if (!rb.rows) return { erro: (d.data && d.data.statusMessage) || 'sem rows' }
         return { rows: rb.rows }
       }
-      let r = rodarSql('SELECT CODCRR, DESCRICAO FROM TTRBC ORDER BY DESCRICAO')
-      let tipoDim = 'crr'
+      // T3 RESOLVIDO (21/10): colunas REAIS da TSICUS confirmadas no Oracle pelo
+      // dono (SELECT * direto): CODCENCUS / DESCRCENCUS (16 centros). As tentativas
+      // antigas (CODCCU/DESCUS) davam erro de coluna, e o ORA-00942 final vinha das
+      // tabelas INEXISTENTES TTRBC/TTCCU — nunca foi grant.
+      let tipoDim = 'ccu'
+      let r = rodarSql('SELECT CODCENCUS, DESCRCENCUS FROM TSICUS ORDER BY DESCRCENCUS')
       if (r.erro) {
-        // TSICUS = Centros de Custo/Resultado (tabela correta, indicada pelo dono)
-        r = rodarSql('SELECT CODCCU, DESCUS FROM TSICUS ORDER BY DESCUS')
-        tipoDim = 'ccu'
-      }
-      if (r.erro) {
-        r = rodarSql('SELECT CODCCU, DESCUS FROM SANKHYA.TSICUS ORDER BY DESCUS')
-        tipoDim = 'ccu'
-      }
-      if (r.erro) {
-        r = rodarSql('SELECT CODCCU, DESCRCCU FROM TTCCU ORDER BY DESCRCCU')
-        tipoDim = 'ccu'
+        r = rodarSql('SELECT CODCENCUS, DESCRCENCUS FROM SANKHYA.TSICUS ORDER BY DESCRCENCUS')
       }
       if (r.erro)
         return e.json(502, {
           ok: false,
-          erro:
-            r.erro + ' — usuário Sankhya sem grant nas tabelas de centro; use digitação manual.',
+          erro: r.erro + ' — falha ao consultar TSICUS (centros de custo); use digitação manual.',
         })
       itens = r.rows.map(function (row) {
         return { codigo: String(row[0]), descricao: String(row[1]), tipo: tipoDim }
