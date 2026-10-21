@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { fmtDataBRT } from '@/lib/brt'
 
 // Fase 10 — CRUD genérico das telas operacionais (Documentos, Tarefas,
 // Projetos, Atas, E-mails, Contratos): lista + busca + criar/editar/excluir,
@@ -64,7 +65,8 @@ const fmtBRL = (v: any) =>
 export function fmtValor(col: string, v: any): string {
   if (col.includes('valor') || col === 'valor_mensal') return fmtBRL(v)
   if (col === 'data' || col === 'prazo' || col === 'inicio' || col === 'fim') return fmtData(v)
-  if (col === 'created' || col === 'updated') return fmtData(v)
+  // TAREFA TIME: created/updated são timestamps UTC — exibir em BRT (com hora)
+  if (col === 'created' || col === 'updated') return fmtDataBRT(v)
   if (v === null || v === undefined || v === '') return '—'
   return String(v)
 }
