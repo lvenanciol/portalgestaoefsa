@@ -205,7 +205,15 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
                 )
               }
               if (logoUrl && logoUrl.toLowerCase().endsWith('.pdf')) {
-                return <FileText className="h-5 w-5 text-white" />
+                // T4d: PDF exibido inline no bloco de marca (não só ícone)
+                return (
+                  <object
+                    data={logoUrl + '#toolbar=0&view=FitH'}
+                    type="application/pdf"
+                    className="h-full w-full"
+                    aria-label="logo PDF"
+                  />
+                )
               }
               if (emp) {
                 return (

@@ -265,20 +265,46 @@ routerAdd(
             timeout: 60,
           })
           if (ri.statusCode === 200) {
-            const listaAnexos = (JSON.parse(bodyOf(ri)).value || []).filter(
-              (a) => a.isInline && a.contentId && a.contentBytes,
-            )
+            const listaAnexos = JSON.parse(bodyOf(ri)).value || []
             for (const cid of cids.slice(0, 10)) {
               const cidLimpo = cid.replace('cid:', '')
-              const a = listaAnexos.find(
+              // casa por contentId (com/sem <>) ou nome
+              let a = listaAnexos.find(
                 (x) =>
-                  String(x.contentId).replace(/[<>]/g, '') === cidLimpo ||
+                  String(x.contentId || '').replace(/[<>]/g, '') === cidLimpo ||
                   String(x.name || '') === cidLimpo,
               )
-              if (a) {
+              // anexo grande: listagem NÃO traz contentBytes — buscar individual
+              if (a && !a.contentBytes && a.id) {
+                try {
+                  const ra = $http.send({
+                    url:
+                      'https://graph.microsoft.com/v1.0/me/messages/' +
+                      encodeURIComponent(mid) +
+                      '/attachments/' +
+                      encodeURIComponent(a.id) +
+                      '?$select=contentType,contentBytes',
+                    method: 'GET',
+                    headers: { Authorization: 'Bearer ' + at },
+                    timeout: 60,
+                  })
+                  if (ra.statusCode === 200) {
+                    const aa = JSON.parse(bodyOf(ra))
+                    a.contentBytes = aa.contentBytes
+                    a.contentType = aa.contentType || a.contentType
+                  }
+                } catch (_eA) {}
+              }
+              if (a && a.contentBytes) {
+                // substitui TODAS as variantes (aspas duplas/simples, case)
+                const dataUrl = 'data:' + a.contentType + ';base64,' + a.contentBytes
                 out.corpo_html = out.corpo_html
                   .split('src="cid:' + cidLimpo + '"')
-                  .join('src="data:' + a.contentType + ';base64,' + a.contentBytes + '"')
+                  .join('src="' + dataUrl + '"')
+                out.corpo_html = out.corpo_html
+                  .split("src='cid:" + cidLimpo + "'")
+                  .join("src='" + dataUrl + "'")
+                out.corpo_html = out.corpo_html.split('src=CID:' + cidLimpo).join('src=' + dataUrl)
               }
             }
           }

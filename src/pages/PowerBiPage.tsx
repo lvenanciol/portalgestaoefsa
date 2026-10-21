@@ -142,7 +142,9 @@ export default function PowerBiPage() {
     const SCOPES = ['https://analysis.windows.net/powerbi/api/Report.Read.All']
     const resp = await pca.handleRedirectPromise()
     if (resp && resp.accessToken) return resp.accessToken
-    await pca.acquireTokenRedirect({ scopes: SCOPES })
+    // T11a v4 (21/10): acquireTokenRedirect REMOVIDO — em iframe dá
+    // redirect_in_iframe. Sem sessão: devolve '' e o chamador usa o
+    // fluxo TOP-LEVEL (a.target='_top' → authorize → retorno ssoSilent).
     return ''
   }
 
@@ -172,7 +174,29 @@ export default function PowerBiPage() {
       }
       localStorage.setItem('pge_ms_client_id', clientId)
       const token = await concluirOuIniciarRedirect(clientId)
-      if (!token) return // foi para o Entra; ao voltar, o useEffect completa
+      if (!token) {
+        // T11a v4: sem sessão — TOP-LEVEL authorize (funciona em iframe)
+        const urlAuth =
+          'https://login.microsoftonline.com/f297b97e-1aa1-423f-81e0-008ad95e11f2/oauth2/v2.0/authorize' +
+          '?client_id=' +
+          encodeURIComponent(clientId) +
+          '&response_type=code' +
+          '&redirect_uri=' +
+          encodeURIComponent('https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi') +
+          '&response_mode=fragment' +
+          '&scope=' +
+          encodeURIComponent(
+            'https://analysis.windows.net/powerbi/api/Report.Read.All openid profile offline_access',
+          ) +
+          '&state=pge_pb_listar'
+        const a = document.createElement('a')
+        a.href = urlAuth
+        a.target = '_top'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        return
+      }
       await listarComToken(token)
     } catch (e: any) {
       const msg = String(e?.message || e)
