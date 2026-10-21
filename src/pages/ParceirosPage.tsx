@@ -52,7 +52,20 @@ export default function ParceirosPage() {
   const [centroBusca, setCentroBusca] = useState('')
   // T3: erro real do endpoint (ex.: grant Oracle pendente) — exibido no dialog
   const [centrosErro, setCentrosErro] = useState('')
-  const [centrosAberto, setCentrosAberto] = useState(false)
+  // T3c: autocomplete inline — lista carregada 1x (cache 24h no hook) e filtro
+  // LOCAL enquanto digita; dropdown aberto = lista carregada + campo focado
+  const [centrosCarregados, setCentrosCarregados] = useState(false)
+  const centrosFiltrados = useMemo(() => {
+    const q = (form.centro_resultado || '').trim().toLowerCase()
+    if (!q) return centros
+    return centros.filter(
+      (c) =>
+        (c.descricao || '').toLowerCase().includes(q) ||
+        String(c.codigo || '')
+          .toLowerCase()
+          .includes(q),
+    )
+  }, [centros, form.centro_resultado])
 
   const carregar = async () => {
     setLoading(true)
@@ -79,6 +92,7 @@ export default function ParceirosPage() {
         { method: 'GET' },
       )) as any
       setCentros(r.itens || [])
+      setCentrosCarregados(true)
       // T3: endpoint ok mas sem itens → mostra o motivo (fonte/erro)
       if (!(r.itens || []).length) {
         setCentrosErro(
@@ -87,16 +101,12 @@ export default function ParceirosPage() {
       }
     } catch (e: any) {
       setCentros([])
+      setCentrosCarregados(true)
       setCentrosErro(
         String(e?.response?.message || e?.message || e).slice(0, 200) ||
           'Falha ao consultar o Sankhya.',
       )
     }
-  }
-
-  const abrirCentros = () => {
-    setCentrosAberto(true)
-    buscarCentros(centroBusca)
   }
 
   const filtrados = itens.filter((i) => {
@@ -473,29 +483,31 @@ export default function ParceirosPage() {
                 />
               </div>
             </div>
-            {/* Centro de resultado — dropdown busca/filtro Sankhya */}
-            <div className="grid gap-1.5">
+            {/* T3c (21/10): AUTOCOMPLETE INLINE — filtra enquanto digita (cache 24h
+                do hook, sem bater no ERP a cada tecla) e seleciona no clique, SEM
+                2º dialog (ele derrubava o dialog de edição ao fechar — Radix). */}
+            <div className="grid gap-1.5 relative">
               <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Centro de resultado (Sankhya)
               </Label>
               <div className="flex items-center gap-2">
                 <Input
                   value={form.centro_resultado || ''}
-                  onChange={(e) => setForm({ ...form, centro_resultado: e.target.value })}
-                  onKeyDown={(e) => {
-                    // T3a: Enter dispara a busca no Sankhya
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      setCentroBusca(form.centro_resultado || '')
-                      abrirCentros()
-                    }
+                  onChange={(e) => {
+                    setForm({
+                      ...form,
+                      centro_resultado: e.target.value,
+                      centro_resultado_codigo: '',
+                    })
+                    setCentroBusca(e.target.value)
+                    if (!centrosCarregados) buscarCentros('')
                   }}
-                  placeholder="digite e tecle Enter ou busque no Sankhya"
+                  onFocus={() => {
+                    if (!centrosCarregados) buscarCentros('')
+                  }}
+                  placeholder="digite para filtrar os centros..."
                   className="h-10 bg-gray-50 flex-1"
                 />
-                <Button variant="outline" size="sm" onClick={abrirCentros} className="h-10">
-                  Buscar…
-                </Button>
                 {form.centro_resultado && (
                   <button
                     type="button"
@@ -508,6 +520,33 @@ export default function ParceirosPage() {
                   </button>
                 )}
               </div>
+              {centrosCarregados && (
+                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                  {centrosFiltrados.length > 0 ? (
+                    centrosFiltrados.map((c) => (
+                      <button
+                        key={c.codigo}
+                        type="button"
+                        onClick={() => {
+                          setForm({
+                            ...form,
+                            centro_resultado: c.descricao,
+                            centro_resultado_codigo: c.codigo,
+                          })
+                        }}
+                        className="block w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-50 text-[12px]"
+                      >
+                        <span className="font-semibold text-gray-800">{c.descricao}</span>
+                        <span className="ml-2 text-gray-400 tabular-nums">{c.codigo}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="text-center text-[12px] text-gray-400 py-4">
+                      {centrosErro || 'Nenhum centro encontrado.'}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
             <div className="grid gap-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
@@ -539,57 +578,6 @@ export default function ParceirosPage() {
               {salvando ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Salvar
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog busca centro de resultado */}
-      <Dialog open={centrosAberto} onOpenChange={setCentrosAberto}>
-        <DialogContent className="bg-white max-w-lg max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Centro de resultado — Sankhya (TSICUS)</DialogTitle>
-          </DialogHeader>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-            <Input
-              value={centroBusca}
-              onChange={(e) => {
-                setCentroBusca(e.target.value)
-                buscarCentros(e.target.value)
-              }}
-              placeholder="Filtrar por descrição ou código..."
-              className="h-10 pl-9 bg-gray-50"
-            />
-          </div>
-          <div className="space-y-1 max-h-80 overflow-y-auto">
-            {centros.map((c) => (
-              <button
-                key={c.codigo}
-                type="button"
-                onClick={() => {
-                  setForm({
-                    ...form,
-                    centro_resultado: c.descricao,
-                    centro_resultado_codigo: c.codigo,
-                  })
-                  setCentrosAberto(false)
-                }}
-                className="block w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-50 text-[12px]"
-              >
-                <span className="font-semibold text-gray-800">{c.descricao}</span>
-                <span className="ml-2 text-gray-400 tabular-nums">{c.codigo}</span>
-              </button>
-            ))}
-            {centrosErro && (
-              <p className="text-center text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                {centrosErro}
-              </p>
-            )}
-            {centros.length === 0 && !centrosErro && (
-              <p className="text-center text-[12px] text-gray-400 py-6">
-                Nenhum centro encontrado.
-              </p>
-            )}
-          </div>
         </DialogContent>
       </Dialog>
 
