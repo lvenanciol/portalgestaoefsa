@@ -23,6 +23,7 @@ import {
   Plug,
   Database,
   MessageCircle,
+  FileText,
 } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
@@ -98,9 +99,19 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
   const [menusDb, setMenusDb] = useState<any[] | null>(null)
   const [idiomaTick, setIdiomaTick] = useState(0)
   const [seletorEmpresas, setSeletorEmpresas] = useState(false)
+  // T4d (21/10): logos REAIS da coleção logomarcas (upload na tela Logomarcas)
+  const [logos, setLogos] = useState<any[]>([])
 
   useEffect(() => {
     carregarPermissoes().then(setPermissoes)
+    ;(async () => {
+      try {
+        const r = await pb.collection('logomarcas').getFullList()
+        setLogos(r as any[])
+      } catch (_e) {
+        setLogos([])
+      }
+    })()
   }, [user])
 
   // i18n: re-renderiza quando o idioma muda (evento global disparado pelas Configurações)
@@ -182,6 +193,21 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
           <div className="h-9 w-9 rounded-lg bg-white/15 border border-white/25 flex items-center justify-center text-white shadow-sm overflow-hidden">
             {(() => {
               const emp = empresas.find((e) => e.id === selectedCompany)
+              // T4d: logo REAL da coleção logomarcas (por nome da empresa)
+              const logoRec = emp ? logos.find((l) => l.empresa === emp.nome) : null
+              const logoUrl = logoRec && logoRec.logo ? pb.files.getURL(logoRec, logoRec.logo) : ''
+              if (logoUrl && !logoUrl.toLowerCase().endsWith('.pdf')) {
+                return (
+                  <img
+                    src={logoUrl}
+                    alt={emp?.nome || 'logo'}
+                    className="h-full w-full object-contain p-1"
+                  />
+                )
+              }
+              if (logoUrl && logoUrl.toLowerCase().endsWith('.pdf')) {
+                return <FileText className="h-5 w-5 text-white" />
+              }
               if (emp) {
                 return (
                   <span
@@ -190,6 +216,13 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
                   >
                     {emp.nome.slice(0, 2).toUpperCase()}
                   </span>
+                )
+              }
+              const logoEx = logos.find((l) => l.empresa === 'Extrafruti')
+              const urlEx = logoEx && logoEx.logo ? pb.files.getURL(logoEx, logoEx.logo) : ''
+              if (urlEx && !urlEx.toLowerCase().endsWith('.pdf')) {
+                return (
+                  <img src={urlEx} alt="Extrafruti" className="h-full w-full object-contain p-1" />
                 )
               }
               return <Leaf className="h-5 w-5" />

@@ -183,7 +183,14 @@ export default function EmailsPage() {
       })) as any
       setDetalhe(r)
     } catch (e: any) {
-      setDetalhe({ ok: false, erro: e?.response?.data?.erro || String(e) })
+      // T0e: erro REAL do hook (não "ClientResponseError 502" cru)
+      const det =
+        e?.response?.data?.erro ||
+        e?.response?.data?.message ||
+        (String(e?.message || e).includes('502')
+          ? 'Não foi possível carregar este e-mail — pode ter sido movido/excluído da caixa. Sincronize a caixa e tente de novo.'
+          : e?.message || String(e))
+      setDetalhe({ ok: false, erro: det })
     }
   }
 

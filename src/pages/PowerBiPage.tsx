@@ -49,6 +49,61 @@ export default function PowerBiPage() {
     }
   }
 
+  // T11a v2 (21/10): exibir via EMBED TOKEN (hook powerbi_embed) —
+  // embed_url/web_url cruas são bloqueadas por X-Frame-Options no iframe.
+  const [embedToken, setEmbedToken] = useState('')
+  const [embedUrl, setEmbedUrl] = useState('')
+
+  const exibirRelatorio = async (r: any) => {
+    setErro('')
+    try {
+      const clientId = clientIdInput.trim() || MS_CLIENT_ID()
+      if (!clientId) {
+        setErro('Configure o app registration (Entra ID) — campo acima.')
+        return
+      }
+      const { PublicClientApplication } = await import('@azure/msal-browser')
+      const TENANT = 'f297b97e-1aa1-423f-81e0-008ad95e11f2'
+      const pca = new PublicClientApplication({
+        auth: {
+          clientId,
+          authority: 'https://login.microsoftonline.com/' + TENANT,
+          redirectUri: 'https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi',
+        },
+      })
+      await pca.initialize()
+      await pca.handleRedirectPromise()
+      const SCOPES = ['https://analysis.windows.net/powerbi/api/Report.Read.All']
+      let msToken = ''
+      const contas = pca.getAllAccounts()
+      if (contas.length) {
+        try {
+          const sil = await pca.acquireTokenSilent({ scopes: SCOPES, account: contas[0] })
+          msToken = sil.accessToken
+        } catch (_e) {
+          /* segue para redirect */
+        }
+      }
+      if (!msToken) {
+        await pca.acquireTokenRedirect({ scopes: SCOPES })
+        return // volta pelo redirect; clicar de novo conclui
+      }
+      const er = (await pb.send('/backend/v1/powerbi/embed', {
+        method: 'POST',
+        body: JSON.stringify({ access_token: msToken, report_id: r.id }),
+      })) as any
+      if (!er.ok) {
+        setErro(er.erro || 'Falha ao gerar embed.')
+        return
+      }
+      setEmbedToken(er.embed_token)
+      setEmbedUrl(er.embed_url)
+      setEmbedKey((k) => k + 1)
+    } catch (e: any) {
+      setErro(String(e?.message || e))
+    }
+  }
+
   // T11 (21/10): fluxo REDIRECT — handleRedirectPromise completa o retorno do
   // Entra; se há resposta, usa o token e lista; senão inicia o redirect.
   const concluirOuIniciarRedirect = async (clientId: string) => {
@@ -237,13 +292,7 @@ export default function PowerBiPage() {
                     type="button"
                     className="text-[13px] font-semibold text-gray-900 hover:text-[#1B5E20] hover:underline text-left truncate"
                     title="Clique para exibir o relatório nesta tela"
-                    onClick={() => {
-                      // T11a: embed_url correta (web_url em iframe é bloqueada por
-                      // X-Frame-Options) — o SSO do navegador autentica no iframe
-                      localStorage.setItem('pge_powerbi_url', r.embed_url)
-                      setUrl(r.embed_url)
-                      setEmbedKey((k) => k + 1)
-                    }}
+                    onClick={() => exibirRelatorio(r)}
                   >
                     {r.nome}
                   </button>
@@ -254,11 +303,7 @@ export default function PowerBiPage() {
                     variant="outline"
                     size="sm"
                     className="h-8"
-                    onClick={() => {
-                      localStorage.setItem('pge_powerbi_url', r.embed_url)
-                      setUrl(r.embed_url)
-                      setEmbedKey((k) => k + 1)
-                    }}
+                    onClick={() => exibirRelatorio(r)}
                   >
                     Exibir aqui
                   </Button>
@@ -301,9 +346,10 @@ export default function PowerBiPage() {
                 </a>
               </div>
             </div>
+            {/* T11a v2: com embed token usa a embedUrl efêmera (funciona no iframe) */}
             <iframe
-              key={embedKey}
-              src={urlSalva}
+              key={embedKey + (embedToken || '')}
+              src={embedToken && embedUrl ? embedUrl : urlSalva}
               title="Power BI"
               className="w-full h-[640px] border-0"
               allowFullScreen
