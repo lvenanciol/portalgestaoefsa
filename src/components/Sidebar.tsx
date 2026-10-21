@@ -27,7 +27,10 @@ import {
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
 import { carregarPermissoes, menuVisivel, Permissoes } from '@/services/permissoes-service'
-import pb from '@/lib/pocketbase/client'
+// Versão real do app — o Skip bumpa o package.json a cada apply_changes
+import pkg from '../package.json'
+
+const pkgVersion: string = (pkg as { version?: string }).version || '?'import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
 import { idiomaSalvo, traduzir } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
@@ -303,10 +306,10 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
           </div>
         )}
 
-        {/* v1.0.0 acima da seção GESTÃO */}
+        {/* Versão REAL do app (package.json — o Skip bumpa a cada apply) */}
         <div className="mt-3 flex items-center justify-between pt-2 border-t border-white/10">
           <span className="text-[10px] font-semibold tracking-wider text-emerald-100/60 uppercase">
-            v1.0.0
+            v{pkgVersion}
           </span>
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-300" />
         </div>

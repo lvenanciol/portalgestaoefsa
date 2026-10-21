@@ -55,6 +55,8 @@ export default function ParceirosPage() {
   // T3c: autocomplete inline — lista carregada 1x (cache 24h no hook) e filtro
   // LOCAL enquanto digita; dropdown aberto = lista carregada + campo focado
   const [centrosCarregados, setCentrosCarregados] = useState(false)
+  // T3g: dropdown recolhe ao selecionar / clicar fora
+  const [dropAberto, setDropAberto] = useState(false)
   const centrosFiltrados = useMemo(() => {
     const q = (form.centro_resultado || '').trim().toLowerCase()
     if (!q) return centros
@@ -485,8 +487,15 @@ export default function ParceirosPage() {
             </div>
             {/* T3c (21/10): AUTOCOMPLETE INLINE — filtra enquanto digita (cache 24h
                 do hook, sem bater no ERP a cada tecla) e seleciona no clique, SEM
-                2º dialog (ele derrubava o dialog de edição ao fechar — Radix). */}
-            <div className="grid gap-1.5 relative">
+                2º dialog (ele derrubava o dialog de edição ao fechar — Radix).
+                T3g: dropdown RECOLHE ao selecionar (estado dropAberto) e ao
+                clicar fora (onBlur com relção ao container). */}
+            <div
+              className="grid gap-1.5 relative"
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropAberto(false)
+              }}
+            >
               <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Centro de resultado (Sankhya)
               </Label>
@@ -500,9 +509,11 @@ export default function ParceirosPage() {
                       centro_resultado_codigo: '',
                     })
                     setCentroBusca(e.target.value)
+                    setDropAberto(true)
                     if (!centrosCarregados) buscarCentros('')
                   }}
                   onFocus={() => {
+                    setDropAberto(true)
                     if (!centrosCarregados) buscarCentros('')
                   }}
                   placeholder="digite para filtrar os centros..."
@@ -520,7 +531,7 @@ export default function ParceirosPage() {
                   </button>
                 )}
               </div>
-              {centrosCarregados && (
+              {centrosCarregados && dropAberto && (
                 <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
                   {centrosFiltrados.length > 0 ? (
                     centrosFiltrados.map((c) => (
@@ -533,6 +544,7 @@ export default function ParceirosPage() {
                             centro_resultado: c.descricao,
                             centro_resultado_codigo: c.codigo,
                           })
+                          setDropAberto(false)
                         }}
                         className="block w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-50 text-[12px]"
                       >
