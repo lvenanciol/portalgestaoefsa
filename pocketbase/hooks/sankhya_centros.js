@@ -113,7 +113,8 @@ routerAdd(
       } catch (_) {}
     }
 
-    // filtro busca (descrição ou código)
+    // T3f (21/10): SEM corte em 50 — o corte escondia DIRETORIA fora dos 50
+    // primeiros (ordem alfabética: A's primeiro). O front filtra local ao digitar.
     let out = itens
     if (busca) {
       out = itens.filter(
@@ -122,7 +123,7 @@ routerAdd(
           String(i.codigo).toLowerCase().includes(busca),
       )
     }
-    return e.json(200, { ok: true, fonte: fonte, total: out.length, itens: out.slice(0, 50) })
+    return e.json(200, { ok: true, fonte: fonte, total: out.length, itens: out })
   },
   $apis.requireAuth(),
 )
