@@ -20,7 +20,9 @@ routerAdd(
     let fonte = 'cache'
     let rec = null
     try {
-      rec = $app.findFirstRecordByFilter('sankhya_cache', "chave = 'centros_resultado'")
+      // T3d (21/10): chave v2 — o cache v1 guardou lista da era TTRBC (tabela
+      // errada); v2 ignora o registro antigo e recarrega da TSICUS corrigida.
+      rec = $app.findFirstRecordByFilter('sankhya_cache', "chave = 'centros_resultado_v2'")
       if (rec) {
         const gerado = new Date(rec.getString('gerado_em').replace(' ', 'T') + 'Z').getTime()
         if (Date.now() - gerado < 24 * 3600 * 1000) {
@@ -90,7 +92,7 @@ routerAdd(
         } else {
           const col = $app.findCollectionByNameOrId('sankhya_cache')
           const novo = new Record(col)
-          novo.set('chave', 'centros_resultado')
+          novo.set('chave', 'centros_resultado_v2')
           novo.set('payload', JSON.stringify(itens))
           novo.set('gerado_em', agora)
           novo.set('status', 'ok')
