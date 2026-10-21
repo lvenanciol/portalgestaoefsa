@@ -233,12 +233,13 @@ routerAdd(
       }
     }
 
-    // grava com dedupe
+    // grava com dedupe — existente é ATUALIZADO (corrige mojibake de syncs antigos)
     let novos = 0
     const col = $app.findCollectionByNameOrId('emails_inbox')
     for (const m of msgs) {
+      let existente = null
       try {
-        $app.findFirstRecordByFilter(
+        existente = $app.findFirstRecordByFilter(
           'emails_inbox',
           'provedor = "' +
             provedor +
@@ -246,9 +247,18 @@ routerAdd(
             String(m.message_id).replace(/"/g, '') +
             '"',
         )
-        continue // já existe
       } catch (_) {
-        // não existe — cria
+        existente = null
+      }
+      if (existente) {
+        try {
+          existente.set('assunto', m.assunto)
+          existente.set('preview', m.preview)
+          existente.set('de', m.de)
+          existente.set('recebido_em', m.recebido_em)
+          $app.save(existente)
+        } catch (_) {}
+        continue
       }
       try {
         const novo = new Record(col)
