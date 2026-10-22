@@ -305,24 +305,25 @@ routerAdd(
       try {
         const cids = out.corpo_html.match(/cid:[a-zA-Z0-9._@-]+/g) || []
         if (cids.length) {
+          // v8: listagem SEM $select — o Graph devolve contentId + contentBytes
+          // de TODOS os anexos numa chamada (~0.3s); $select com contentId/
+          // contentBytes dá 400 OData. Match por contentId REAL, bytes direto.
           const ri = $http.send({
             url:
               'https://graph.microsoft.com/v1.0/me/messages/' +
               encodeURIComponent(mid) +
-              // T0e fix (22/10 v2): contentBytes NAO e aceito em $select de LISTAGEM
-              // (Graph devolve 400) — listar metadados e buscar bytes individualmente
-              '/attachments?$select=id,name,contentType,size,isInline',
+              '/attachments',
             method: 'GET',
             headers: { Authorization: 'Bearer ' + at },
             timeout: 60,
           })
           if (ri.statusCode === 200) {
             const listaAnexos = JSON.parse(bodyOf(ri)).value || []
-            const bytesCache = {} // T0e fix (22/10 v4): dedupe — 1 busca por anexo único
+            const bytesCache = {} // dedupe — 1 busca individual por anexo único (fallback)
             for (const cid of cids.slice(0, 10)) {
               const cidLimpo = cid.replace('cid:', '')
-              // T0e fix (22/10): casa por PREFIXO antes do '@' e case-insensitive
-              // (HTML usa "image001" mas Graph devolve "image001@dominio")
+              // T0e fix (22/10): casa por contentId REAL (listagem v8 traz),
+              // depois por PREFIXO antes do '@' e case-insensitive
               const prefixo = cidLimpo.split('@')[0].toLowerCase()
               let a = listaAnexos.find((x) => {
                 const cidAnexo = String(x.contentId || '')
