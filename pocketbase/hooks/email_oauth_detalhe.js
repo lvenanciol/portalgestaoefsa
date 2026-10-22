@@ -5,6 +5,8 @@
 // - google: Gmail API messages/{id}?format=full (base64url → partes)
 // - microsoft: Graph messages/{id}?$select=... (body + attachments)
 // Devolve { ok, assunto, de, para, data, corpo_html, corpo_texto, anexos:[{nome, mime, tamanho, base64?}] }
+// v10 (22/10): imagens inline vão em out.cids_inline [{cid, dataUrl}] — o FRONT
+// resolve cid→dataUrl no iframe (JSVM é lento com strings de MB; browser não).
 
 routerAdd(
   'GET',
@@ -321,8 +323,7 @@ routerAdd(
           })
           if (ri.statusCode === 200) {
             const listaAnexos = JSON.parse(bodyOf(ri)).value || []
-            const bytesCache = {} // dedupe — 1 busca individual por anexo único (fallback)
-            const mapaCid = {} // v9: prefixo→dataUrl (substituição única no fim)
+            const mapaCid = {} // v10: prefixo→{cid,dataUrl} p/ o front
             for (const cid of cids.slice(0, 10)) {
               const cidLimpo = cid.replace('cid:', '')
               // T0e fix (22/10): casa por contentId REAL (listagem v8 traz),
@@ -340,53 +341,16 @@ routerAdd(
                   nomeAnexo === cidLimpo.toLowerCase()
                 )
               })
-              // anexo grande: listagem NÃO traz contentBytes — buscar individual
-              // (v4: UMA busca por attachment id; cids repetidos reusam o cache)
-              if (a && a.id && bytesCache[a.id]) {
-                a.contentBytes = bytesCache[a.id]
-              } else if (a && !a.contentBytes && a.id) {
-                try {
-                  // v7: SEM $select — contentBytes não é selecionável no tipo base
-                  // attachment (Graph 400 OData); sem select o Graph devolve tudo
-                  const ra = $http.send({
-                    url:
-                      'https://graph.microsoft.com/v1.0/me/messages/' +
-                      encodeURIComponent(mid) +
-                      '/attachments/' +
-                      encodeURIComponent(a.id),
-                    method: 'GET',
-                    headers: { Authorization: 'Bearer ' + at },
-                    timeout: 60,
-                  })
-                  if (ra.statusCode === 200) {
-                    const aa = JSON.parse(bodyOf(ra))
-                    a.contentBytes = aa.contentBytes
-                    a.contentType = aa.contentType || a.contentType
-                    if (a.contentBytes) bytesCache[a.id] = a.contentBytes
-                  }
-                } catch (_eA) {}
-              }
               if (a && a.contentBytes) {
-                // v9: registra no mapa (substituição ÚNICA no fim — split/join
-                // por cid com dataUrl de ~1MB × 18 cids travava o JSVM)
-                mapaCid[prefixo] = 'data:' + a.contentType + ';base64,' + a.contentBytes
-              } else if (a && a.isInline) {
-                // T0e-2 (21/10): anexo INLINE cujo cid não casou no HTML — injeta
-                // <img> no topo (o Outlook referencia por contentId que nem sempre
-                // aparece no corpo). Não perde a imagem.
-                const dataUrl2 = 'data:' + a.contentType + ';base64,' + a.contentBytes
-                out.corpo_html =
-                  '<div><img src="' +
-                  dataUrl2 +
-                  '" style="max-width:100%;" /></div>' +
-                  out.corpo_html
+                // v10: anexo inline vai p/ o front (base64 + contentId)
+                mapaCid[prefixo] = {
+                  cid: cidLimpo,
+                  dataUrl: 'data:' + a.contentType + ';base64,' + a.contentBytes,
+                }
               }
             }
-            // v9: substituição ÚNICA — cada src="cid:PREFIXO..." vira o dataUrl
-            for (const pref in mapaCid) {
-              const re = new RegExp('src=(["\'])cid:' + pref + '[^"\']*\\1', 'gi')
-              out.corpo_html = out.corpo_html.replace(re, 'src="' + mapaCid[pref] + '"')
-            }
+            // v10: lista de imagens inline p/ o front resolver cid→dataUrl
+            out.cids_inline = Object.values(mapaCid)
           }
         }
       } catch (_eCid) {
