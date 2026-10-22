@@ -309,7 +309,9 @@ routerAdd(
             url:
               'https://graph.microsoft.com/v1.0/me/messages/' +
               encodeURIComponent(mid) +
-              '/attachments?$select=name,contentType,contentBytes,size,isInline,contentId',
+              // T0e fix (22/10 v2): contentBytes NAO e aceito em $select de LISTAGEM
+              // (Graph devolve 400) — listar metadados e buscar bytes individualmente
+              '/attachments?$select=id,name,contentType,size,isInline,contentId',
             method: 'GET',
             headers: { Authorization: 'Bearer ' + at },
             timeout: 60,
@@ -318,13 +320,6 @@ routerAdd(
           if (ri.statusCode === 200) {
             const listaAnexos = JSON.parse(bodyOf(ri)).value || []
             out._diag.listaAnexos = listaAnexos.length
-            out._diag.amostra = listaAnexos.slice(0, 3).map((x) => ({
-              name: x.name,
-              cid: String(x.contentId || '').slice(0, 40),
-              isInline: !!x.isInline,
-              hasBytes: !!x.contentBytes,
-              size: x.size,
-            }))
             for (const cid of cids.slice(0, 10)) {
               const cidLimpo = cid.replace('cid:', '')
               // T0e fix (22/10): casa por PREFIXO antes do '@' e case-insensitive
