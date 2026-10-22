@@ -132,14 +132,16 @@ export default function EmailsPage() {
     try {
       const v = Number(localStorage.getItem('pge_emails_altura_caixa'))
       return v >= 160 && v <= 900 ? v : 420
-    } catch (_) {
+    } catch (_e) {
       return 420
     }
   })
   useEffect(() => {
     try {
       localStorage.setItem('pge_emails_altura_caixa', String(alturaCaixa))
-    } catch (_) {}
+    } catch (_e) {
+      /* storage indisponível — segue sem memorizar */
+    }
   }, [alturaCaixa])
 
   const carregar = async () => {

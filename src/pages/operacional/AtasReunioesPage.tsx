@@ -12,7 +12,6 @@ import {
   Square,
   Pencil,
   Trash2,
-  FileAudio,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -46,7 +45,7 @@ const parse = (v: any) => {
   if (Array.isArray(v)) return v
   try {
     return JSON.parse(v || '[]')
-  } catch (_) {
+  } catch (_e) {
     return []
   }
 }
@@ -165,7 +164,9 @@ export default function AtasReunioesPage() {
   const pararGravacao = () => {
     try {
       mediaRef.current?.stop()
-    } catch (_) {}
+    } catch (_e) {
+      /* recorder já parado — segue */
+    }
     setGravando(false)
   }
 
@@ -269,14 +270,8 @@ export default function AtasReunioesPage() {
           decisoes: form.decisoes,
         }),
       })) as any
-      if (r.resumo) {
-        setForm((p) => ({ ...p, resumo: r.resumo }))
-      }
+      if (r.resumo) setForm((p) => ({ ...p, resumo: r.resumo }))
       if (r.decisoes) setForm((p) => ({ ...p, decisoes: r.decisoes }))
-      if (r.action_items) {
-        // action_items vêm como JSON string
-        setForm((p) => ({ ...p }))
-      }
     } catch (e) {
       setErro('Falha na IA: ' + String(e).slice(0, 150))
     } finally {
