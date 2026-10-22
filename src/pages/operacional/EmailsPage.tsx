@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import {
   Mail,
   Plus,
   Loader2,
-  X,
   Send,
   FileText,
   RefreshCw,
@@ -11,6 +10,10 @@ import {
   Paperclip,
   Reply,
   Share2,
+  Trash2,
+  FilePlus2,
+  ArrowUpDown,
+  ChevronDown,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -33,9 +36,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { fmtDataBRT } from '@/lib/brt'
 import { cn } from '@/lib/utils'
-
 // TAREFA MAIL b + T0 (21/10) — E-mails: abas Gmail / Outlook com
 // "Sincronizar caixa" POR ABA (espelho das conexões da tela E-mail em
 // Integrações), lista sincronizada por provedor, clique abre DETALHE
@@ -103,6 +111,15 @@ export default function EmailsPage() {
   const [corpo, setCorpo] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [assinaturaUrl, setAssinaturaUrl] = useState('')
+  // T0f (22/10): pasta selecionada por aba (caixa|sent|trash|drafts)
+  const [pastaPorAba, setPastaPorAba] = useState<Record<string, string>>({
+    google: 'caixa',
+    microsoft: 'caixa',
+  })
+  // T0h (22/10): ordenação por data (desc = mais recentes) — persiste na sessão
+  const [ordemRecentes, setOrdemRecentes] = useState(true)
+  // T0c (22/10): altura da caixa redimensionável (resize-y)
+  const [alturaCaixa, setAlturaCaixa] = useState(420)
 
   const carregar = async () => {
     setLoading(true)
@@ -152,13 +169,16 @@ export default function EmailsPage() {
     })()
   }, [])
 
-  const sincronizar = async (provedor: string) => {
+  const sincronizar = async (provedor: string, pastaForcar?: string) => {
     setSyncando(provedor)
     setMsg('')
     try {
+      // T0f (22/10): sync respeita a pasta selecionada (pastaForcar evita
+      // closure velho quando o dropdown muda a pasta e sincroniza em seguida)
+      const pastaSel = pastaForcar || pastaPorAba[provedor] || 'caixa'
       const r = (await pb.send('/backend/v1/email/oauth/sync', {
         method: 'POST',
-        body: JSON.stringify({ provedor }),
+        body: JSON.stringify({ provedor, pasta: pastaSel }),
       })) as any
       if (r.ok) {
         setMsg('Caixa sincronizada — ' + r.novos + ' novo(s) e-mail(s).')
@@ -271,16 +291,114 @@ export default function EmailsPage() {
     erro: 'bg-red-50 text-red-700 border-red-200',
   }
 
+  const TITULO_PASTA: Record<string, string> = {
+    caixa: 'Caixa sincronizada',
+    sent: 'E-mails enviados',
+    trash: 'Excluídos',
+    drafts: 'Rascunhos',
+  }
+  const ICONE_PASTA: Record<string, any> = {
+    caixa: <Inbox className="h-3.5 w-3.5" />,
+    sent: <Send className="h-3.5 w-3.5" />,
+    trash: <Trash2 className="h-3.5 w-3.5" />,
+    drafts: <FilePlus2 className="h-3.5 w-3.5" />,
+  }
+  // T0c (22/10): drag no rodapé da caixa (resize manual)
+  const dragRef = { atual: false }
+  const iniciarDrag = (ev: ReactMouseEvent) => {
+    ev.preventDefault()
+    dragRef.atual = true
+    const yInicial = ev.clientY
+    const hInicial = alturaCaixa
+    const mover = (mv: MouseEvent) => {
+      if (!dragRef.atual) return
+      const delta = mv.clientY - yInicial
+      setAlturaCaixa(Math.max(160, Math.min(900, hInicial + delta)))
+    }
+    const soltar = () => {
+      dragRef.atual = false
+      window.removeEventListener('mousemove', mover)
+      window.removeEventListener('mouseup', soltar)
+    }
+    window.addEventListener('mousemove', mover)
+    window.addEventListener('mouseup', soltar)
+  }
   const abaCaixa = (prov: 'google' | 'microsoft', nome: string) => {
     const st = oauth[prov] || { conectado: false }
-    const lista = inbox.filter((m) => m.provedor === prov)
+    // T0f (22/10): lista respeita a pasta selecionada da aba
+    const pastaSel = pastaPorAba[prov] || 'caixa'
+    const lista = inbox
+      .filter((m) => m.provedor === prov && (m as any).pasta === pastaSel)
+      .sort((a, b) => {
+        const da = new Date(a.recebido_em).getTime() || 0
+        const db = new Date(b.recebido_em).getTime() || 0
+        return ordemRecentes ? db - da : da - db
+      })
     return (
       <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl border border-gray-100 bg-gray-50/50">
-          <div className="text-[12px] text-gray-600">
+        {/* T0d (22/10): botões ACIMA da caixa, alinhados à ESQUERDA */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* T0g (22/10): "Novo e-mail" = dropdown (novo/enviados/excluídos/rascunhos) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white">
+                <Plus className="h-4 w-4 mr-1" /> Novo e-mail
+                <ChevronDown className="h-3.5 w-3.5 ml-1 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem
+                onClick={() => {
+                  setPastaPorAba((p) => ({ ...p, [prov]: 'caixa' }))
+                  sincronizar(prov, 'caixa')
+                }}
+              >
+                <Inbox className="h-4 w-4 mr-2" /> Novo e-mail
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  setPastaPorAba((p) => ({ ...p, [prov]: 'sent' }))
+                  sincronizar(prov, 'sent')
+                }}
+              >
+                <Send className="h-4 w-4 mr-2" /> E-mails enviados
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  setPastaPorAba((p) => ({ ...p, [prov]: 'trash' }))
+                  sincronizar(prov, 'trash')
+                }}
+              >
+                <Trash2 className="h-4 w-4 mr-2" /> Excluídos
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  setPastaPorAba((p) => ({ ...p, [prov]: 'drafts' }))
+                  sincronizar(prov, 'drafts')
+                }}
+              >
+                <FilePlus2 className="h-4 w-4 mr-2" /> Rascunhos
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={() => sincronizar(prov)}
+            disabled={!st.conectado || syncando === prov}
+          >
+            {syncando === prov ? (
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-1" />
+            )}
+            Sincronizar caixa
+          </Button>
+          <div className="text-[12px] text-gray-600 ml-1">
             {st.conectado ? (
               <>
-                <strong>{nome}</strong> conectado — {lista.length} e-mail(s) sincronizado(s)
+                <strong>{nome}</strong> — {lista.length} e-mail(s) nesta pasta
               </>
             ) : (
               <>
@@ -294,26 +412,31 @@ export default function EmailsPage() {
               </>
             )}
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8"
-            onClick={() => sincronizar(prov)}
-            disabled={!st.conectado || syncando === prov}
-          >
-            {syncando === prov ? (
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-1" />
-            )}
-            Sincronizar caixa
-          </Button>
         </div>
         <div className="bg-white rounded-xl border border-[#E5E7EB] shadow-xs overflow-hidden">
           <div className="px-4 py-2.5 border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-2">
-            <Inbox className="h-3.5 w-3.5" /> Caixa sincronizada ({lista.length})
+            {ICONE_PASTA[pastaSel] || <Inbox className="h-3.5 w-3.5" />}{' '}
+            {TITULO_PASTA[pastaSel] || 'Caixa sincronizada'} ({lista.length})
+            {/* T0h (22/10): alterna ordenação por data (recentes ↔ antigos) */}
+            <button
+              type="button"
+              onClick={() => setOrdemRecentes((o) => !o)}
+              title={
+                ordemRecentes
+                  ? 'Mais recentes primeiro (clique p/ inverter)'
+                  : 'Mais antigos primeiro (clique p/ inverter)'
+              }
+              className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold text-gray-400 hover:text-gray-600"
+            >
+              <ArrowUpDown className="h-3 w-3" />
+              {ordemRecentes ? 'Recentes' : 'Antigos'}
+            </button>
           </div>
-          <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
+          {/* T0c (22/10): caixa REDIMENSIONÁVEL (drag no rodapé + resize-y) */}
+          <div
+            className="divide-y divide-gray-50 overflow-y-auto resize-y"
+            style={{ height: alturaCaixa, minHeight: 160, maxHeight: 900 }}
+          >
             {lista.map((m) => (
               <button
                 key={m.id}
@@ -331,10 +454,20 @@ export default function EmailsPage() {
             {lista.length === 0 && (
               <p className="text-center text-[12px] text-gray-400 py-8">
                 {st.conectado
-                  ? 'Nenhum e-mail sincronizado — clique em "Sincronizar caixa".'
+                  ? pastaSel === 'caixa'
+                    ? 'Nenhum e-mail sincronizado — clique em "Sincronizar caixa".'
+                    : 'Nenhum e-mail nesta pasta — clique em "Sincronizar caixa".'
                   : 'Conta não conectada.'}
               </p>
             )}
+          </div>
+          {/* rodapé do drag (T0c) */}
+          <div
+            onMouseDown={iniciarDrag}
+            className="h-2.5 cursor-ns-resize bg-gray-50 hover:bg-[#1B5E20]/20 border-t border-gray-100 flex items-center justify-center"
+            title="Arraste para redimensionar"
+          >
+            <div className="w-10 h-0.5 rounded-full bg-gray-300" />
           </div>
         </div>
       </div>
@@ -359,12 +492,6 @@ export default function EmailsPage() {
             Caixas Gmail/Outlook sincronizadas + compositor com modelos e assinatura
           </p>
         </div>
-        <Button
-          onClick={abrirCompositor}
-          className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
-        >
-          <Plus className="h-4 w-4 mr-1" /> Novo e-mail
-        </Button>
       </div>
 
       {erro && (
@@ -405,6 +532,39 @@ export default function EmailsPage() {
           {abaCaixa('microsoft', 'Outlook (Microsoft 365)')}
         </TabsContent>
       </Tabs>
+
+      {/* T0d (22/10): botões de ação ACIMA da caixa sincronizada — à esquerda */}
+      <div className="flex items-center gap-2">
+        <Button
+          onClick={abrirCompositor}
+          className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+        >
+          <Plus className="h-4 w-4 mr-1" /> Novo e-mail
+        </Button>
+        <Button
+          variant="outline"
+          className="h-9"
+          onClick={() => {
+            const prov =
+              pastaPorAba.google === 'caixa' && oauth.google?.conectado
+                ? 'google'
+                : oauth.microsoft?.conectado
+                  ? 'microsoft'
+                  : oauth.google?.conectado
+                    ? 'google'
+                    : 'google'
+            sincronizar(prov)
+          }}
+          disabled={!(oauth.google?.conectado || oauth.microsoft?.conectado) || !!syncando}
+        >
+          {syncando ? (
+            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-1" />
+          )}
+          Sincronizar caixa
+        </Button>
+      </div>
 
       {/* Histórico de envios do portal */}
       <div className="bg-white rounded-xl border border-[#E5E7EB] shadow-xs overflow-hidden">
@@ -465,14 +625,9 @@ export default function EmailsPage() {
       <Dialog open={!!detalheId} onOpenChange={(o) => !o && setDetalheId('')}>
         <DialogContent className="bg-white max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-start justify-between gap-3">
-              <span className="text-[15px]">{detalhe?.assunto || 'Carregando…'}</span>
-              <button
-                onClick={() => setDetalheId('')}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
+            {/* T0a (22/10): X custom REMOVIDO — só o nativo do DialogContent */}
+            <DialogTitle className="text-[15px] pr-6">
+              {detalhe?.assunto || 'Carregando…'}
             </DialogTitle>
           </DialogHeader>
           {!detalhe && (
@@ -598,16 +753,9 @@ export default function EmailsPage() {
       <Dialog open={dialog} onOpenChange={setDialog}>
         <DialogContent className="bg-white max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <Send className="h-4 w-4 text-[#1B5E20]" /> Novo e-mail
-              </span>
-              <button
-                onClick={() => setDialog(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
+            {/* T0a (22/10): X custom REMOVIDO — só o nativo do DialogContent */}
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-4 w-4 text-[#1B5E20]" /> Novo e-mail
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ChartColumnBig,
   ExternalLink,
@@ -8,25 +8,52 @@ import {
   MonitorPlay,
   CheckCircle2,
 } from 'lucide-react'
-// T11: MSAL é carregado dinamicamente via CDN — dependência opcional;
-// se não estiver disponível, a listagem mostra instrução de configuração.
+// T11a (22/10): embed REAL via powerbi-client (SDK) — o iframe com embed_url
+// crua é bloqueado (X-Frame-Options); o SDK usa embed token efêmero + postMessage.
+// NÃO existe CSS a importar no powerbi-client 2.x (powerbi.css era do pacote
+// antigo powerbi-report-component — importá-lo quebraria o build).
+import { models, service, factories } from 'powerbi-client'
 import pb from '@/lib/pocketbase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { cn } from '@/lib/utils'
 
 // Ajustes PGE — T11: Power BI lista os relatórios disponíveis para o usuário.
-// O embed "para organização" exige access token Microsoft (Entra ID/MSAL):
-// o front pede o token (popup MSAL) e o hook /backend/v1/powerbi/relatorios
-// consulta a API do Power BI. Sem app registration configurado, a tela exibe
-// o embed padrão + instruções de configuração (não é limitação do portal —
-// é requisito da plataforma Microsoft).
+// Token Microsoft via MSAL (app registration do tenant — campo abaixo).
+// T11a (22/10): fluxo com PKCE REAL — acquireTokenRedirect do MSAL (a URL
+// artesanal de authorize sem code_verifier era a causa das falhas intermitentes).
 
 const URL_PADRAO =
   'https://app.powerbi.com/reportEmbed?reportId=2cccfc31-3dc0-4e13-9fd5-4ba67a0ea6d5&ctid=f297b97e-1aa1-423f-81e0-008ad95e11f2'
 
+const TENANT = 'f297b97e-1aa1-423f-81e0-008ad95e11f2'
+const AUTHORITY = 'https://login.microsoftonline.com/' + TENANT
+const REDIRECT_URI = 'https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi'
+const SCOPES = ['https://analysis.windows.net/powerbi/api/Report.Read.All']
+
 const MS_CLIENT_ID = () => localStorage.getItem('pge_ms_client_id') || ''
+
+// MSAL: cria + inicializa a instância (sem consumir o redirect ainda)
+async function abrirPca(clientId: string) {
+  const { PublicClientApplication } = await import('@azure/msal-browser')
+  const pca = new PublicClientApplication({
+    auth: { clientId, authority: AUTHORITY, redirectUri: REDIRECT_URI },
+  })
+  await pca.initialize()
+  return pca
+}
+
+// Token silencioso — '' quando não há sessão/consentimento
+async function tokenSilencioso(pca: any): Promise<string> {
+  const contas = pca.getAllAccounts()
+  if (!contas.length) return ''
+  try {
+    const sil = await pca.acquireTokenSilent({ scopes: SCOPES, account: contas[0] })
+    return sil.accessToken
+  } catch (_e) {
+    return ''
+  }
+}
 
 export default function PowerBiPage() {
   const urlSalva = localStorage.getItem('pge_powerbi_url') || URL_PADRAO
@@ -41,111 +68,19 @@ export default function PowerBiPage() {
   )
   const [clientIdSalvo, setClientIdSalvo] = useState(false)
 
+  // T11a (22/10): embed via SDK — config { type, id, embedUrl, accessToken }
+  const [embedConfig, setEmbedConfig] = useState<any | null>(null)
+  const [embedErro, setEmbedErro] = useState('')
+  const [embedCarregando, setEmbedCarregando] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const serviceRef = useRef<service.Service | null>(null)
+
   const salvar = () => {
     if (url.trim()) {
       localStorage.setItem('pge_powerbi_url', url.trim())
       setSalvo(true)
       setTimeout(() => setSalvo(false), 2500)
     }
-  }
-
-  // T11a v3 (21/10): MSAL redirect NÃO funciona dentro de iframe
-  // (redirect_in_iframe) e popup é bloqueado — token silencioso quando há
-  // sessão; sem sessão, navegação TOP-LEVEL (target=_top) para o authorize.
-  const [embedToken, setEmbedToken] = useState('')
-  const [embedUrl, setEmbedUrl] = useState('')
-
-  const exibirRelatorio = async (r: any) => {
-    setErro('')
-    try {
-      const clientId = clientIdInput.trim() || MS_CLIENT_ID()
-      if (!clientId) {
-        setErro('Configure o app registration (Entra ID) — campo acima.')
-        return
-      }
-      let msToken = ''
-      try {
-        const { PublicClientApplication } = await import('@azure/msal-browser')
-        const pca = new PublicClientApplication({
-          auth: {
-            clientId,
-            authority:
-              'https://login.microsoftonline.com/f297b97e-1aa1-423f-81e0-008ad95e11f2/oauth2/v2.0',
-            redirectUri: 'https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi',
-          },
-        })
-        await pca.initialize()
-        await pca.handleRedirectPromise()
-        const contas = pca.getAllAccounts()
-        if (contas.length) {
-          const sil = await pca.acquireTokenSilent({
-            scopes: ['https://analysis.windows.net/powerbi/api/Report.Read.All'],
-            account: contas[0],
-          })
-          msToken = sil.accessToken
-        }
-      } catch (_eSil) {
-        /* sem sessão — fluxo top-level abaixo */
-      }
-      if (!msToken) {
-        sessionStorage.setItem('pge_pb_pending_report', r.id)
-        const urlAuth =
-          'https://login.microsoftonline.com/f297b97e-1aa1-423f-81e0-008ad95e11f2/oauth2/v2.0/authorize' +
-          '?client_id=' +
-          encodeURIComponent(clientId) +
-          '&response_type=code' +
-          '&redirect_uri=' +
-          encodeURIComponent('https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi') +
-          '&response_mode=fragment' +
-          '&scope=' +
-          encodeURIComponent(
-            'https://analysis.windows.net/powerbi/api/Report.Read.All openid profile offline_access',
-          ) +
-          '&state=pge_pb'
-        const a = document.createElement('a')
-        a.href = urlAuth
-        a.target = '_top' // sai do iframe — redirect permitido
-        document.body.appendChild(a)
-        a.click()
-        a.remove()
-        return
-      }
-      const er = (await pb.send('/backend/v1/powerbi/embed', {
-        method: 'POST',
-        body: JSON.stringify({ access_token: msToken, report_id: r.id }),
-      })) as any
-      if (!er.ok) {
-        setErro(er.erro || 'Falha ao gerar embed.')
-        return
-      }
-      setEmbedToken(er.embed_token)
-      setEmbedUrl(er.embed_url)
-      setEmbedKey((k) => k + 1)
-    } catch (e: any) {
-      setErro(String(e?.message || e))
-    }
-  }
-
-  // T11 (21/10): fluxo REDIRECT — handleRedirectPromise completa o retorno do
-  // Entra; se há resposta, usa o token e lista; senão inicia o redirect.
-  const concluirOuIniciarRedirect = async (clientId: string) => {
-    const { PublicClientApplication } = await import('@azure/msal-browser')
-    const TENANT = 'f297b97e-1aa1-423f-81e0-008ad95e11f2'
-    const pca = new PublicClientApplication({
-      auth: {
-        clientId,
-        authority: 'https://login.microsoftonline.com/' + TENANT,
-        redirectUri: 'https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi',
-      },
-    })
-    await pca.initialize()
-    const SCOPES = ['https://analysis.windows.net/powerbi/api/Report.Read.All']
-    const resp = await pca.handleRedirectPromise()
-    if (resp && resp.accessToken) return resp.accessToken
-    // T11a v4 (21/10): acquireTokenRedirect REMOVIDO — em iframe dá
-    // redirect_in_iframe. Sem sessão: devolve '' e o chamador usa o
-    // fluxo TOP-LEVEL (a.target='_top' → authorize → retorno ssoSilent).
-    return ''
   }
 
   const listarComToken = async (token: string) => {
@@ -159,6 +94,59 @@ export default function PowerBiPage() {
       return
     }
     setRelatorios(r.itens || [])
+    setErro('')
+  }
+
+  // T11a (22/10): embed token (hook powerbi/embed) + SDK no container
+  const abrirEmbed = async (reportId: string, token: string) => {
+    setEmbedErro('')
+    setEmbedCarregando(true)
+    try {
+      const er = (await pb.send('/backend/v1/powerbi/embed', {
+        method: 'POST',
+        body: JSON.stringify({ access_token: token, report_id: reportId }),
+      })) as any
+      if (!er.ok) {
+        setEmbedErro(er.erro || 'Falha ao gerar embed token.')
+        return
+      }
+      setEmbedConfig({
+        type: 'report',
+        id: reportId,
+        embedUrl: er.embed_url,
+        accessToken: er.embed_token,
+        tokenType: models.TokenType.Embed,
+      })
+    } catch (e: any) {
+      setEmbedErro('Falha ao gerar embed: ' + String(e?.message || e).slice(0, 200))
+    } finally {
+      setEmbedCarregando(false)
+    }
+  }
+
+  const exibirRelatorio = async (r: any) => {
+    setErro('')
+    setEmbedErro('')
+    setEmbedConfig(null)
+    try {
+      const clientId = clientIdInput.trim() || MS_CLIENT_ID()
+      if (!clientId) {
+        setErro('Configure o Application (client) ID (campo acima) antes de exibir o relatório.')
+        return
+      }
+      const pca = await abrirPca(clientId)
+      await pca.handleRedirectPromise()
+      const token = await tokenSilencioso(pca)
+      if (!token) {
+        // sem sessão: redirect interativo (PKCE) — o retorno cai no useEffect mount
+        sessionStorage.setItem('pge_pb_pending_report', r.id)
+        await pca.acquireTokenRedirect({ scopes: SCOPES })
+        return
+      }
+      await abrirEmbed(r.id, token)
+    } catch (e: any) {
+      setErro('Falha ao exibir relatório: ' + String(e?.message || e).slice(0, 200))
+    }
   }
 
   const listarRelatorios = async () => {
@@ -167,34 +155,17 @@ export default function PowerBiPage() {
     try {
       const clientId = clientIdInput.trim() || MS_CLIENT_ID()
       if (!clientId) {
-        setErro(
-          'Configure o app registration (Entra ID) nas Configurações — campo "Power BI (Entra ID)".',
-        )
+        setErro('Configure o app registration (Entra ID) — campo "Application (client) ID" acima.')
         return
       }
       localStorage.setItem('pge_ms_client_id', clientId)
-      const token = await concluirOuIniciarRedirect(clientId)
+      const pca = await abrirPca(clientId)
+      await pca.handleRedirectPromise()
+      const token = await tokenSilencioso(pca)
       if (!token) {
-        // T11a v4: sem sessão — TOP-LEVEL authorize (funciona em iframe)
-        const urlAuth =
-          'https://login.microsoftonline.com/f297b97e-1aa1-423f-81e0-008ad95e11f2/oauth2/v2.0/authorize' +
-          '?client_id=' +
-          encodeURIComponent(clientId) +
-          '&response_type=code' +
-          '&redirect_uri=' +
-          encodeURIComponent('https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi') +
-          '&response_mode=fragment' +
-          '&scope=' +
-          encodeURIComponent(
-            'https://analysis.windows.net/powerbi/api/Report.Read.All openid profile offline_access',
-          ) +
-          '&state=pge_pb_listar'
-        const a = document.createElement('a')
-        a.href = urlAuth
-        a.target = '_top'
-        document.body.appendChild(a)
-        a.click()
-        a.remove()
+        // T11a (22/10): acquireTokenRedirect = authorize com PKCE + state reais
+        // (full-page redirect; o retorno é tratado no useEffect de mount)
+        await pca.acquireTokenRedirect({ scopes: SCOPES })
         return
       }
       await listarComToken(token)
@@ -202,7 +173,9 @@ export default function PowerBiPage() {
       const msg = String(e?.message || e)
       if (msg.includes('redirect_mismatch') || msg.includes('AADSTS50011')) {
         setErro(
-          'URI de redirecionamento ausente no Entra ID: registre "https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi" como URI do tipo SPA no app registration (Autenticação) e tente de novo.',
+          'URI de redirecionamento ausente no Entra ID: registre "' +
+            REDIRECT_URI +
+            '" como URI do tipo SPA no app registration (Autenticação) e tente de novo.',
         )
       } else if (msg.includes('user_cancelled')) {
         setErro('Login cancelado — clique em "Listar relatórios" e conclua o login Microsoft.')
@@ -215,77 +188,43 @@ export default function PowerBiPage() {
     }
   }
 
+  // T11 (22/10): ao voltar do redirect do Entra, completa a listagem —
+  // ou abre o relatório pendente (fluxo "Exibir aqui" sem sessão).
   useEffect(() => {
-    // T11: ao voltar do redirect do Entra, completa a listagem
     ;(async () => {
       const clientId = clientIdInput.trim() || MS_CLIENT_ID()
       if (!clientId) return
       try {
-        const { PublicClientApplication } = await import('@azure/msal-browser')
-        const TENANT = 'f297b97e-1aa1-423f-81e0-008ad95e11f2'
-        const pca = new PublicClientApplication({
-          auth: {
-            clientId,
-            authority: 'https://login.microsoftonline.com/' + TENANT,
-            redirectUri: 'https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi',
-          },
-        })
-        await pca.initialize()
+        const pca = await abrirPca(clientId)
         const resp = await pca.handleRedirectPromise()
         if (resp && resp.accessToken) {
-          setCarregando(true)
-          await listarComToken(resp.accessToken)
-          setCarregando(false)
+          const pend = sessionStorage.getItem('pge_pb_pending_report')
+          sessionStorage.removeItem('pge_pb_pending_report')
+          if (pend) {
+            await abrirEmbed(pend, resp.accessToken)
+          } else {
+            setCarregando(true)
+            await listarComToken(resp.accessToken)
+            setCarregando(false)
+          }
+          return
         }
-      } catch (_e) {
-        /* sem retorno de redirect — nada a fazer */
-      }
-    })()
-  }, [])
-
-  // T11a v3: retorno do authorize TOP-LEVEL (response_mode=fragment) —
-  // sessão SSO fica ativa; completa com ssoSilent/acquireTokenSilent.
-  useEffect(() => {
-    const frag = window.location.hash || ''
-    if (!frag.includes('code=')) return
-    ;(async () => {
-      history.replaceState(null, '', '/power-bi')
-      const clientId = clientIdInput.trim() || MS_CLIENT_ID()
-      if (!clientId) return
-      try {
-        const { PublicClientApplication } = await import('@azure/msal-browser')
-        const pca = new PublicClientApplication({
-          auth: {
-            clientId,
-            authority:
-              'https://login.microsoftonline.com/f297b97e-1aa1-423f-81e0-008ad95e11f2/oauth2/v2.0',
-            redirectUri: 'https://portal-de-gestao-executivo-b4d94.goskip.app/power-bi',
-          },
-        })
-        await pca.initialize()
-        await pca.handleRedirectPromise()
-        const contas = pca.getAllAccounts()
-        const SCOPES = ['https://analysis.windows.net/powerbi/api/Report.Read.All']
-        let tok = ''
-        if (contas.length) {
-          const sil = await pca.acquireTokenSilent({ scopes: SCOPES, account: contas[0] })
-          tok = sil.accessToken
-        } else {
-          const sso = await pca.ssoSilent({ scopes: SCOPES })
-          tok = sso.accessToken
-        }
-        if (tok) {
-          setCarregando(true)
-          await listarComToken(tok)
-          setCarregando(false)
-        } else {
-          setErro(
-            'Login Microsoft concluído, mas o token não foi obtido — clique em "Listar relatórios" novamente.',
-          )
+        // fallback legado: retorno por fragment (#code=) — completa silencioso
+        if (window.location.hash.includes('code=')) {
+          history.replaceState(null, '', '/power-bi')
+          const tok = await tokenSilencioso(pca)
+          if (tok) {
+            setCarregando(true)
+            await listarComToken(tok)
+            setCarregando(false)
+          } else {
+            setErro(
+              'Login Microsoft concluído, mas o token não foi obtido — clique em "Listar relatórios" novamente.',
+            )
+          }
         }
       } catch (e: any) {
-        // T11a-5 (21/10): erro REAL do retorno — antes era engolido (catch vazio)
-        // e o dono não sabia por que a lista não vinha.
+        // erro REAL do retorno — nunca engolir
         setErro(
           'Retorno do login Microsoft falhou: ' +
             String(e?.message || e).slice(0, 200) +
@@ -293,7 +232,33 @@ export default function PowerBiPage() {
         )
       }
     })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // T11a (22/10): renderiza o embed com o SDK quando há config (token+url)
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el || !embedConfig) return
+    try {
+      if (!serviceRef.current) {
+        serviceRef.current = new service.Service(
+          factories.hpmFactory,
+          factories.wpmpFactory,
+          factories.routerFactory,
+        )
+      }
+      const svc = serviceRef.current
+      svc.reset(el)
+      const embed = svc.embed(el, embedConfig)
+      // erro REAL do embed (licença/permissão/iframe) exibido na tela
+      embed.on('error' as any, (ev: any) => {
+        const d = ev && ev.detail ? ev.detail : ev
+        setEmbedErro('Erro do relatório: ' + String(d && d.message ? d.message : d).slice(0, 200))
+      })
+    } catch (e: any) {
+      setEmbedErro('Falha ao carregar o relatório: ' + String(e?.message || e).slice(0, 200))
+    }
+  }, [embedConfig])
 
   return (
     <div className="space-y-5 pb-8">
@@ -420,6 +385,16 @@ export default function PowerBiPage() {
         </div>
       )}
 
+      {relatorios && relatorios.length === 0 && (
+        <div className="flex items-start gap-2.5 p-3 rounded-lg bg-gray-50 border border-gray-200">
+          <Info className="h-4 w-4 text-gray-500 shrink-0 mt-0.5" />
+          <div className="text-[12px] text-gray-600 leading-relaxed">
+            Nenhum relatório disponível para o seu usuário — verifique permissões e licença Pro no
+            Power BI Service.
+          </div>
+        </div>
+      )}
+
       {urlSalva ? (
         <div className="space-y-3">
           <div className="bg-white rounded-xl border border-[#E5E7EB] shadow-xs overflow-hidden">
@@ -444,24 +419,42 @@ export default function PowerBiPage() {
                 </a>
               </div>
             </div>
-            {/* T11a v2: com embed token usa a embedUrl efêmera (funciona no iframe) */}
-            <iframe
-              key={embedKey + (embedToken || '')}
-              src={embedToken && embedUrl ? embedUrl : urlSalva}
-              title="Power BI"
-              className="w-full h-[640px] border-0"
-              allowFullScreen
-            />
+            {/* T11a v6 (22/10): com embed token usa o SDK (postMessage) — o iframe
+                com embed_url crua é bloqueado por X-Frame-Options */}
+            {embedConfig ? (
+              <div className="px-4 pb-4 pt-2">
+                {embedCarregando && (
+                  <div className="flex items-center gap-2 text-[12px] text-gray-500 mb-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Carregando relatório…
+                  </div>
+                )}
+                {embedErro && (
+                  <div className="flex items-start gap-2.5 p-3 mb-2 rounded-lg bg-amber-50 border border-amber-200">
+                    <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="text-[12px] text-amber-800 leading-relaxed">{embedErro}</div>
+                  </div>
+                )}
+                <div ref={containerRef} className="w-full h-[640px]" />
+              </div>
+            ) : (
+              <iframe
+                key={embedKey}
+                src={urlSalva}
+                title="Power BI"
+                className="w-full h-[640px] border-0"
+                allowFullScreen
+              />
+            )}
           </div>
 
           <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200">
             <Info className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
             <div className="text-[12px] text-amber-800 leading-relaxed">
               <strong>O relatório fica carregando sem abrir?</strong> O embed "para organização"
-              exige sua sessão Microsoft no navegador. Faça assim:{' '}
-              <strong>Abrir em nova aba</strong> → login Microsoft (licença Pro) → volte e clique em{' '}
-              <strong>Recarregar embed</strong>. Para a listagem automática dos relatórios,
-              configure o app registration no Entra ID (Configurações → campo Power BI).
+              exige sua sessão Microsoft no navegador e licença Pro. Clique em{' '}
+              <strong>Listar relatórios</strong> → conclua o login Microsoft → clique no relatório
+              para exibir aqui (embed token efêmero). Sem app registration, use{' '}
+              <strong>Abrir em nova aba</strong>.
             </div>
           </div>
         </div>

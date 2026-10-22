@@ -201,58 +201,63 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
           <div className="h-9 w-9 rounded-lg bg-white/15 border border-white/25 flex items-center justify-center text-white shadow-sm overflow-hidden">
             {(() => {
               const emp = empresas.find((e) => e.id === selectedCompany)
-              // T4d: logo REAL da coleção logomarcas (por nome da empresa)
-              const logoRec = emp ? logos.find((l) => l.empresa === emp.nome) : null
-              const logoUrl = logoRec && logoRec.logo ? pb.files.getURL(logoRec, logoRec.logo) : ''
-              if (logoUrl && !logoUrl.toLowerCase().endsWith('.pdf')) {
+              // SDB-a (22/10): match por nome de empresa CASE-INSENSITIVE — o banco grava
+              // "FoldBox"/"Casafruti" e a comparação exata escondia a logo (fallback errado).
+              // Prioridade: logo (imagem) → emblema (imagem) → sigla/cor → Leaf.
+              // PDF NÃO renderiza como <img> de 32px — pula direto pro emblema/sigla.
+              const norm = (s: any) =>
+                String(s || '')
+                  .trim()
+                  .toLowerCase()
+              const logoRec = emp ? logos.find((l) => norm(l.empresa) === norm(emp.nome)) : null
+              const urlImagem = (rec: any, campo: string) => {
+                if (!rec || !rec[campo]) return ''
+                const u = pb.files.getURL(rec, rec[campo])
+                const ext = String(rec[campo]).split('?')[0].split('.').pop()?.toLowerCase() || ''
+                const ehImagem = ['png', 'jpg', 'jpeg', 'svg', 'webp'].includes(ext)
+                return ehImagem ? u : ''
+              }
+              const urlLogo = urlImagem(logoRec, 'logo')
+              const urlEmb = urlImagem(logoRec, 'emblema')
+              const logoFallback = (() => {
+                const logoEx = logos.find((l) => norm(l.empresa) === 'extrafruti')
+                return urlImagem(logoEx, 'logo')
+              })()
+              if (urlLogo) {
                 return (
                   <img
-                    src={logoUrl}
+                    src={urlLogo}
                     alt={emp?.nome || 'logo'}
                     className="h-full w-full object-contain p-1"
                   />
                 )
               }
-              if (logoUrl && logoUrl.toLowerCase().endsWith('.pdf')) {
-                // T4d-2 (21/10): PDF NÃO renderiza como <img> nem em <object> de
-                // 32px — exibe o EMBLEMA (imagem) quando existir; senão sigla.
-                const emb =
-                  logoRec && logoRec.emblema ? pb.files.getURL(logoRec, logoRec.emblema) : ''
-                if (emb) {
-                  return (
-                    <img
-                      src={emb}
-                      alt={emp?.nome || 'emblema'}
-                      className="h-full w-full object-contain p-1"
-                    />
-                  )
-                }
-                if (emp) {
-                  return (
-                    <span
-                      className="h-full w-full flex items-center justify-center font-bold text-[11px]"
-                      style={{ backgroundColor: emp.cor }}
-                    >
-                      {emp.nome.slice(0, 2).toUpperCase()}
-                    </span>
-                  )
-                }
+              if (urlEmb) {
+                return (
+                  <img
+                    src={urlEmb}
+                    alt={emp?.nome || 'emblema'}
+                    className="h-full w-full object-contain p-1"
+                  />
+                )
               }
               if (emp) {
                 return (
                   <span
                     className="h-full w-full flex items-center justify-center font-bold text-[11px]"
-                    style={{ backgroundColor: emp.cor }}
+                    style={{ backgroundColor: logoRec?.cor || emp.cor }}
                   >
-                    {emp.nome.slice(0, 2).toUpperCase()}
+                    {logoRec?.sigla || emp.nome.slice(0, 2).toUpperCase()}
                   </span>
                 )
               }
-              const logoEx = logos.find((l) => l.empresa === 'Extrafruti')
-              const urlEx = logoEx && logoEx.logo ? pb.files.getURL(logoEx, logoEx.logo) : ''
-              if (urlEx && !urlEx.toLowerCase().endsWith('.pdf')) {
+              if (logoFallback) {
                 return (
-                  <img src={urlEx} alt="Extrafruti" className="h-full w-full object-contain p-1" />
+                  <img
+                    src={logoFallback}
+                    alt="Extrafruti"
+                    className="h-full w-full object-contain p-1"
+                  />
                 )
               }
               return <Leaf className="h-5 w-5" />
@@ -450,13 +455,21 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
 }
 
 export function Sidebar() {
-  const { sidebarOpen, setSidebarOpen } = useApp()
+  const { sidebarOpen, setSidebarOpen, sidebarCollapsed } = useApp()
 
   return (
     <>
-      {/* Desktop Sidebar (fixa, 260px, #1B5E20) */}
-      <aside className="hidden lg:flex flex-col fixed top-0 left-0 bottom-0 w-[260px] bg-[#1B5E20] z-40 border-r border-emerald-950/30 select-none shadow-lg">
-        <SidebarContent />
+      {/* Desktop Sidebar (fixa, 260px, #1B5E20) — SDB-d: colapsa p/ w-0 (animação) */}
+      <aside
+        className={cn(
+          'hidden lg:flex flex-col fixed top-0 left-0 bottom-0 bg-[#1B5E20] z-40 border-r border-emerald-950/30 select-none shadow-lg overflow-hidden transition-[width] duration-300 ease-in-out',
+          sidebarCollapsed ? 'w-0 border-r-0' : 'w-[260px]',
+        )}
+        aria-hidden={sidebarCollapsed}
+      >
+        <div className="w-[260px] h-full shrink-0">
+          <SidebarContent />
+        </div>
       </aside>
 
       {/* Mobile Drawer */}

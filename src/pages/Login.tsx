@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Leaf, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import pb from '@/lib/pocketbase/client'
 
+// LOGIN (22/10): logomarca(s) reais da coleção logomarcas no topo do card.
+// Mais de uma empresa com imagem → ALTERNÂNCIA a cada 2s com fade suave
+// (transition-opacity). Sem imagem (ou só PDF) → fallback emblema/Leaf.
 export default function Login() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
@@ -16,6 +19,41 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [recuperar, setRecuperar] = useState(false)
   const [msgRecuperar, setMsgRecuperar] = useState('')
+
+  // Logos de imagem (png/jpg/svg/webp) — PDF NÃO renderiza em <img>
+  const [logos, setLogos] = useState<string[]>([])
+  const [logoIdx, setLogoIdx] = useState(0)
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      try {
+        const r = await pb.collection('logomarcas').getFullList({ sort: 'empresa' })
+        const urls = (r as any[])
+          .filter((l) => l.ativo !== false && (l.logo || l.emblema))
+          .map((l) => {
+            const campo = l.logo || l.emblema
+            const ext = String(campo).split('?')[0].split('.').pop()?.toLowerCase() || ''
+            const ehImagem = ['png', 'jpg', 'jpeg', 'svg', 'webp'].includes(ext)
+            return ehImagem ? pb.files.getURL(l, campo) : ''
+          })
+          .filter(Boolean)
+        if (vivo) setLogos(urls)
+      } catch (_) {
+        if (vivo) setLogos([])
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
+
+  // Rotação a cada 2s quando há mais de uma logo
+  useEffect(() => {
+    if (logos.length < 2) return
+    const t = setInterval(() => setLogoIdx((i) => (i + 1) % logos.length), 2000)
+    return () => clearInterval(t)
+  }, [logos])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -50,8 +88,17 @@ export default function Login() {
         {/* Card de login */}
         <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-sm p-8">
           <div className="flex flex-col items-center mb-8">
-            <div className="h-14 w-14 rounded-2xl bg-[#1B5E20] flex items-center justify-center mb-4">
-              <Leaf className="h-7 w-7 text-white" />
+            <div className="h-16 w-16 rounded-2xl bg-[#1B5E20] flex items-center justify-center mb-4 overflow-hidden relative">
+              {logos.length > 0 ? (
+                <img
+                  key={logos[logoIdx % logos.length]}
+                  src={logos[logoIdx % logos.length]}
+                  alt="Logomarca"
+                  className="h-full w-full object-contain p-1.5 animate-in fade-in duration-500"
+                />
+              ) : (
+                <Leaf className="h-8 w-8 text-white" />
+              )}
             </div>
             <h1 className="text-xl font-bold text-gray-900 tracking-tight">extrafruti</h1>
             <p className="text-[13px] text-gray-500 mt-0.5">Portal de Gestão Executivo</p>

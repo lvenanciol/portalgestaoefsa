@@ -1,6 +1,8 @@
 // COR-4 F8 — Sincronizar caixa de entrada: Gmail API (google) ou Microsoft
 // Graph (microsoft), com refresh de access token quando expirado. Grava em
 // emails_inbox (dedupe por provedor+message_id).
+// T0c/f (22/10) — pasta (caixa|sent|trash|drafts) + PAGINAÇÃO COMPLETA
+// (traz TODOS os e-mails da pasta, não só os 15 primeiros).
 
 routerAdd(
   'POST',
@@ -19,6 +21,12 @@ routerAdd(
 
     const body = e.requestInfo().body || {}
     const provedor = String(body.provedor || '')
+    // T0f (22/10): pasta selecionada no front (caixa|sent|trash|drafts)
+    const pasta = String(body.pasta || 'caixa')
+    const PASTAS_OK = ['caixa', 'sent', 'trash', 'drafts']
+    if (PASTAS_OK.indexOf(pasta) < 0) {
+      return e.badRequestError('pasta inválida (caixa|sent|trash|drafts)')
+    }
     // T0a fix (21/10): bytes → UTF-8 REAL — fromCharCode trata byte=char
     // latin-1 e corrompe acentos (mojibake "Ã©"). Decodifica UTF-8 de verdade.
     const utf8Decode = (bytes) => {
@@ -124,42 +132,77 @@ routerAdd(
     // listar mensagens
     let msgs = []
     if (provedor === 'google') {
-      let r
-      try {
-        r = $http.send({
-          url: 'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=15',
-          method: 'GET',
-          headers: { Authorization: 'Bearer ' + at },
-          timeout: 30,
-        })
-      } catch (err) {
-        return e.json(200, { ok: false, erro: 'transporte gmail: ' + String(err).slice(0, 100) })
-      }
-      if (r.statusCode !== 200) {
-        return e.json(200, {
-          ok: false,
-          erro: 'gmail ' + r.statusCode + ': ' + String(r.body || '').slice(0, 150),
-        })
-      }
-      let lista
-      try {
-        const listaStr =
-          typeof r.body === 'string'
-            ? r.body
-            : Array.isArray(r.body)
-              ? utf8Decode(r.body)
-              : String(r.body || '')
-        lista = JSON.parse(listaStr)
-      } catch (_) {
-        return e.json(200, { ok: false, erro: 'json gmail' })
+      // T0f (22/10): query por pasta (in:sent / in:trash / in:drafts)
+      const qPasta =
+        pasta === 'sent'
+          ? 'in:sent'
+          : pasta === 'trash'
+            ? 'in:trash'
+            : pasta === 'drafts'
+              ? 'in:drafts'
+              : ''
+      // T0c (22/10): paginação completa — traz TODOS os e-mails da pasta
+      // (limite de segurança 500 p/ não estourar o timeout do hook)
+      const MAX_MSGS = 500
+      let pageToken = ''
+      let ids = []
+      let paginas = 0
+      while (ids.length < MAX_MSGS && paginas < 50) {
+        let r
+        try {
+          r = $http.send({
+            url:
+              'https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100' +
+              (qPasta ? '&q=' + encodeURIComponent(qPasta) : '') +
+              (pageToken ? '&pageToken=' + encodeURIComponent(pageToken) : ''),
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + at },
+            timeout: 30,
+          })
+        } catch (err) {
+          if (ids.length === 0)
+            return e.json(200, {
+              ok: false,
+              erro: 'transporte gmail: ' + String(err).slice(0, 100),
+            })
+          break
+        }
+        if (r.statusCode !== 200) {
+          if (ids.length === 0)
+            return e.json(200, {
+              ok: false,
+              erro: 'gmail ' + r.statusCode + ': ' + String(r.body || '').slice(0, 150),
+            })
+          break
+        }
+        let lista
+        try {
+          const listaStr =
+            typeof r.body === 'string'
+              ? r.body
+              : Array.isArray(r.body)
+                ? utf8Decode(r.body)
+                : String(r.body || '')
+          lista = JSON.parse(listaStr)
+        } catch (_) {
+          if (ids.length === 0) return e.json(200, { ok: false, erro: 'json gmail' })
+          break
+        }
+        for (const m of lista.messages || []) ids.push(m.id)
+        paginas++
+        if (lista.nextPageToken && lista.nextPageToken !== pageToken) {
+          pageToken = String(lista.nextPageToken)
+        } else {
+          break
+        }
       }
       // busca os detalhes de cada mensagem (assunto/de/preview/data)
-      for (const m of (lista.messages || []).slice(0, 15)) {
+      for (const mid of ids.slice(0, MAX_MSGS)) {
         try {
           const d = $http.send({
             url:
               'https://gmail.googleapis.com/gmail/v1/users/me/messages/' +
-              m.id +
+              mid +
               '?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date',
             method: 'GET',
             headers: { Authorization: 'Bearer ' + at },
@@ -179,7 +222,7 @@ routerAdd(
             return x ? x.value : ''
           }
           msgs.push({
-            message_id: String(det.id || m.id),
+            message_id: String(det.id || mid),
             de: h('From'),
             assunto: h('Subject') || '(sem assunto)',
             preview: String(det.snippet || '').slice(0, 500),
@@ -192,48 +235,77 @@ routerAdd(
         }
       }
     } else {
-      let r
-      try {
-        r = $http.send({
-          // espaço em $orderby DEVE ser %20 (URL crua com espaço → 400 HTML)
-          url: 'https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?$top=15&$select=id,subject,from,bodyPreview,receivedDateTime&$orderby=receivedDateTime%20desc',
-          method: 'GET',
-          headers: { Authorization: 'Bearer ' + at },
-          timeout: 30,
-        })
-      } catch (err) {
-        return e.json(200, { ok: false, erro: 'transporte graph: ' + String(err).slice(0, 100) })
-      }
-      if (r.statusCode !== 200) {
-        return e.json(200, {
-          ok: false,
-          erro: 'graph ' + r.statusCode + ': ' + String(r.body || '').slice(0, 150),
-        })
-      }
-      let data
-      try {
-        const dataStr =
-          typeof r.body === 'string'
-            ? r.body
-            : Array.isArray(r.body)
-              ? utf8Decode(r.body)
-              : String(r.body || '')
-        data = JSON.parse(dataStr)
-      } catch (_) {
-        return e.json(200, { ok: false, erro: 'json graph' })
-      }
-      for (const m of data.value || []) {
-        msgs.push({
-          message_id: String(m.id || ''), // T0b fix: ID COMPLETO do Graph (truncar → 404 no detalhe)
-          de: m.from && m.from.emailAddress ? m.from.emailAddress.address : '',
-          assunto: m.subject || '(sem assunto)',
-          preview: String(m.bodyPreview || '').slice(0, 500),
-          recebido_em: m.receivedDateTime || new Date().toISOString(),
-        })
+      // T0f (22/10): pasta Graph = well-known folder (inbox/sentitems/
+      // deleteditems/drafts)
+      const pastaGraph =
+        pasta === 'sent'
+          ? 'sentitems'
+          : pasta === 'trash'
+            ? 'deleteditems'
+            : pasta === 'drafts'
+              ? 'drafts'
+              : 'inbox'
+      // T0c (22/10): paginação completa via @odata.nextLink (limite 500 msgs)
+      const MAX_MSGS = 500
+      let urlAtual =
+        'https://graph.microsoft.com/v1.0/me/mailFolders/' +
+        pastaGraph +
+        '/messages?$top=50&$select=id,subject,from,bodyPreview,receivedDateTime&$orderby=receivedDateTime%20desc'
+      let paginas = 0
+      while (urlAtual && paginas < 12 && msgs.length < MAX_MSGS) {
+        let r
+        try {
+          r = $http.send({
+            url: urlAtual,
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + at },
+            timeout: 30,
+          })
+        } catch (err) {
+          if (msgs.length === 0)
+            return e.json(200, {
+              ok: false,
+              erro: 'transporte graph: ' + String(err).slice(0, 100),
+            })
+          break
+        }
+        if (r.statusCode !== 200) {
+          if (msgs.length === 0)
+            return e.json(200, {
+              ok: false,
+              erro: 'graph ' + r.statusCode + ': ' + String(r.body || '').slice(0, 150),
+            })
+          break
+        }
+        let data
+        try {
+          const dataStr =
+            typeof r.body === 'string'
+              ? r.body
+              : Array.isArray(r.body)
+                ? utf8Decode(r.body)
+                : String(r.body || '')
+          data = JSON.parse(dataStr)
+        } catch (_) {
+          if (msgs.length === 0) return e.json(200, { ok: false, erro: 'json graph' })
+          break
+        }
+        for (const m of data.value || []) {
+          msgs.push({
+            message_id: String(m.id || ''), // T0b fix: ID COMPLETO do Graph (truncar → 404 no detalhe)
+            de: m.from && m.from.emailAddress ? m.from.emailAddress.address : '',
+            assunto: m.subject || '(sem assunto)',
+            preview: String(m.bodyPreview || '').slice(0, 500),
+            recebido_em: m.receivedDateTime || new Date().toISOString(),
+          })
+        }
+        paginas++
+        urlAtual = data['@odata.nextLink'] ? String(data['@odata.nextLink']) : ''
       }
     }
 
     // grava com dedupe — existente é ATUALIZADO (corrige mojibake de syncs antigos)
+    // T0f (22/10): dedupe POR PASTA (mesmo e-mail pode estar em caixa + sent)
     let novos = 0
     const col = $app.findCollectionByNameOrId('emails_inbox')
     for (const m of msgs) {
@@ -245,6 +317,8 @@ routerAdd(
             provedor +
             '" && message_id = "' +
             String(m.message_id).replace(/"/g, '') +
+            '" && pasta = "' +
+            pasta +
             '"',
         )
       } catch (_) {
@@ -256,6 +330,7 @@ routerAdd(
           existente.set('preview', m.preview)
           existente.set('de', m.de)
           existente.set('recebido_em', m.recebido_em)
+          existente.set('pasta', pasta)
           $app.save(existente)
         } catch (_) {}
         continue
@@ -268,6 +343,7 @@ routerAdd(
         novo.set('assunto', m.assunto)
         novo.set('preview', m.preview)
         novo.set('recebido_em', m.recebido_em)
+        novo.set('pasta', pasta)
         novo.set('lido', false)
         $app.save(novo)
         novos++
@@ -288,13 +364,19 @@ routerAdd(
           id: aid,
           uid: auth.id,
           uemail: auth.getString('email'),
-          det: provedor + ': ' + novos + ' novos e-mails',
+          det: provedor + '/' + pasta + ': ' + novos + ' novos e-mails',
           now: new DateTime().string(),
         })
         .execute()
     } catch (_) {}
 
-    return e.json(200, { ok: true, provedor: provedor, total: msgs.length, novos: novos })
+    return e.json(200, {
+      ok: true,
+      provedor: provedor,
+      pasta: pasta,
+      total: msgs.length,
+      novos: novos,
+    })
   },
   $apis.requireAuth(),
 )

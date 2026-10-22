@@ -9,6 +9,10 @@ import {
   Sparkles,
   Mic,
   Upload,
+  Square,
+  Pencil,
+  Trash2,
+  FileAudio,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -83,6 +87,7 @@ export default function AtasReunioesPage() {
   }, [])
 
   const abrirNova = () => {
+    setEditandoAta(null)
     setForm({
       titulo: '',
       data: '',
@@ -96,10 +101,32 @@ export default function AtasReunioesPage() {
     })
     setTranscricao('')
     setInterpretacao('')
+    setArquivosAudio([])
     setDialog(true)
   }
 
-  // T5: áudio da reunião — gravação ("Ouvir") via SpeechRecognition + upload de arquivo
+  // T-Xf: editar ata existente (dialog com todos os campos; áudios novos são
+  // ACRESCENTADOS aos existentes — update via FormData não apaga os antigos)
+  const abrirEditarAta = (a: any) => {
+    setEditandoAta(a)
+    setForm({
+      titulo: a.titulo || '',
+      data: String(a.data || '').slice(0, 10),
+      modalidade: a.modalidade || 'Presencial',
+      link_reuniao: a.link_reuniao || '',
+      participantes: a.participantes || '',
+      pauta: a.pauta || '',
+      resumo: a.resumo || '',
+      decisoes: a.decisoes || '',
+    })
+    setTranscricao('')
+    setInterpretacao('')
+    setArquivosAudio([])
+    setDialog(true)
+  }
+
+  // T-X (22/10): "Ouvir" GRAVA áudio (MediaRecorder) + transcreve ao vivo via
+  // SpeechRecognition; gravação só para no clique de "Parar" (sem timeout).
   const [ouvindo, setOuvindo] = useState(false)
   const [transcricao, setTranscricao] = useState('')
   const [interpretacao, setInterpretacao] = useState('')
@@ -109,100 +136,140 @@ export default function AtasReunioesPage() {
   // .txt/.md alimenta a transcrição; áudios vão para a coleção (upload em lote).
   const [arquivosAudio, setArquivosAudio] = useState<File[]>([])
   const recRef = useRef<any>(null)
+  const mediaRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+  const streamRef = useRef<MediaStream | null>(null)
   // T5a: ref espelho do estado ouvindo (onend/onerror não veem o state fresco)
   const ouvindoRef = useRef(false)
+  // T-Xf: edição e exclusão de atas
+  const [editandoAta, setEditandoAta] = useState<any | null>(null)
+  const [excluindoAta, setExcluindoAta] = useState<any | null>(null)
 
+  // T-Xa/b/c: inicia MediaRecorder (áudio gravável) + SpeechRecognition em
+  // paralelo. Sem timeout: a gravação SÓ para no clique de "Parar" (onsilence
+  // ignorado; onend reinicia enquanto ouvindoRef=true). Ao parar, o áudio vira
+  // um File na lista de gravações (uma ata tem gravações ilimitadas).
   const toggleOuvir = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SR) {
-      setErro('Reconhecimento de voz não suportado neste navegador (use Chrome ou Safari).')
-      return
-    }
     if (ouvindo) {
-      // T5a: para SOMENTE no clique do botão (reinicia se o serviço cair)
+      // para MediaRecorder + SpeechRecognition SOMENTE no clique
+      ouvindoRef.current = false
+      try {
+        mediaRef.current?.stop()
+      } catch (_e) {
+        /* já encerrado */
+      }
       try {
         recRef.current?.stop()
-      } catch (_e) {
+      } catch (_e2) {
         /* sessão já encerrada */
       }
       setOuvindo(false)
       return
     }
-    const rec = new SR()
-    rec.lang = 'pt-BR'
-    rec.continuous = true
-    rec.interimResults = false
-    rec.onresult = (ev: any) => {
-      let t = ''
-      for (let i = ev.resultIndex; i < ev.results.length; i++)
-        t += ev.results[i][0].transcript + ' '
-      setTranscricao((prev: string) => (prev + ' ' + t).trim())
-    }
-    rec.onerror = (ev: any) => {
-      const cod = ev?.error || 'desconhecido'
-      // T5a: informa o motivo — sem permissão o usuário ficava sem saber
-      if (cod === 'not-allowed' || cod === 'service-not-allowed') {
-        ouvindoRef.current = false
-        setOuvindo(false)
-        setErro(
-          'Microfone bloqueado: clique no ícone de cadeado/microfone na barra de endereço e permita o microfone para este site, depois clique em Ouvir novamente.',
-        )
-        return
-      }
-      if (cod === 'no-speech' || cod === 'aborted') {
-        try {
-          rec.start()
-        } catch (_e2) {
-          /* reinício imediato falhou — onend cuidará */
-        }
-        return
-      }
-      if (cod === 'network') {
-        ouvindoRef.current = false
-        setOuvindo(false)
-        setErro(
-          'Falha de rede no serviço de voz — verifique a conexão e clique em Ouvir novamente.',
-        )
-        return
-      }
-      if (cod === 'audio-capture') {
-        ouvindoRef.current = false
-        setOuvindo(false)
-        setErro('Nenhum microfone encontrado — conecte um microfone e tente novamente.')
-        return
-      }
-      setErro('Erro no reconhecimento de voz: ' + cod + '.')
-      setOuvindo(false)
-    }
-    rec.onend = () => {
-      // T5a: enquanto o usuário não clicou em Parar, reinicia a sessão
-      if (recRef.current === rec && ouvindoRef.current) {
-        try {
-          rec.start()
-        } catch (_e3) {
-          /* reinício falhou — encerra a gravação */
-        }
-      } else {
-        setOuvindo(false)
-      }
-    }
-    recRef.current = rec
-    ouvindoRef.current = true
-    try {
-      rec.start()
-    } catch (_e4) {
-      // T5a: erro síncrono (ex.: sessão já ativa/mic ocupado) — informar sempre
-      ouvindoRef.current = false
-      setOuvindo(false)
-      setErro(
-        'Não foi possível iniciar a gravação (' +
-          String(_e4?.message || _e4) +
-          '). Feche outros apps usando o microfone, permita o microfone no navegador e clique em Ouvir novamente.',
-      )
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SR) {
+      setErro('Reconhecimento de voz não suportado neste navegador (use Chrome ou Safari).')
       return
     }
-    setOuvindo(true)
-    setErro('')
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        streamRef.current = stream
+        chunksRef.current = []
+        try {
+          const mr = new MediaRecorder(stream)
+          mediaRef.current = mr
+          mr.ondataavailable = (ev: any) => {
+            if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data)
+          }
+          mr.onstop = () => {
+            try {
+              const blob = new Blob(chunksRef.current, {
+                type: mr.mimeType || 'audio/webm',
+              })
+              if (blob.size > 0) {
+                const ext = (mr.mimeType || 'audio/webm').includes('ogg')
+                  ? 'ogg'
+                  : (mr.mimeType || 'audio/webm').includes('mp4')
+                    ? 'm4a'
+                    : 'webm'
+                const f = new File([blob], 'gravacao-' + Date.now() + '.' + ext, {
+                  type: blob.type,
+                })
+                setArquivosAudio((prev) => [...prev, f])
+              }
+            } catch (_e) {
+              /* blob indisponível — segue só com a transcrição */
+            }
+            streamRef.current?.getTracks().forEach((t) => t.stop())
+            streamRef.current = null
+          }
+          mr.start()
+        } catch (_e3) {
+          streamRef.current?.getTracks().forEach((t) => t.stop())
+          streamRef.current = null
+          setErro('Não foi possível iniciar a gravação de áudio.')
+          return
+        }
+        // transcrição ao vivo em paralelo (não para a gravação)
+        const rec = new SR()
+        rec.lang = 'pt-BR'
+        rec.continuous = true
+        rec.interimResults = false
+        rec.onresult = (ev: any) => {
+          let t = ''
+          for (let i = ev.resultIndex; i < ev.results.length; i++)
+            t += ev.results[i][0].transcript + ' '
+          setTranscricao((prev: string) => (prev + ' ' + t).trim())
+        }
+        rec.onerror = (ev: any) => {
+          const cod = ev?.error || 'desconhecido'
+          if (cod === 'not-allowed' || cod === 'service-not-allowed') {
+            setErro(
+              'Transcrição bloqueada: permita o microfone para este site no navegador (a gravação continua).',
+            )
+            return
+          }
+          if (cod === 'no-speech' || cod === 'aborted') return
+          if (cod === 'network') {
+            setErro('Falha de rede no serviço de voz — a gravação de áudio continua.')
+            return
+          }
+          if (cod === 'audio-capture') {
+            setErro('Nenhum microfone encontrado para a transcrição.')
+            return
+          }
+          setErro('Erro no reconhecimento de voz: ' + cod + '.')
+        }
+        rec.onend = () => {
+          // T-Xc: reinicia enquanto o usuário não clicou em Parar (sem timeout)
+          if (recRef.current === rec && ouvindoRef.current) {
+            try {
+              rec.start()
+            } catch (_e5) {
+              /* reinício falhou — transcrição segue do próximo ciclo */
+            }
+          }
+        }
+        recRef.current = rec
+        ouvindoRef.current = true
+        try {
+          rec.start()
+        } catch (_e6) {
+          setErro(
+            'Não foi possível iniciar a transcrição (' +
+              String((_e6 as any)?.message || _e6) +
+              '). A gravação de áudio continua.',
+          )
+        }
+        setOuvindo(true)
+        setErro('')
+      })
+      .catch(() => {
+        setErro(
+          'Microfone bloqueado: permita o microfone na barra de endereço e clique em Ouvir novamente.',
+        )
+      })
   }
 
   const organizarComIA = async () => {
@@ -255,7 +322,21 @@ export default function AtasReunioesPage() {
       // T5b/Xb: salva via FormData quando há áudios — TODOS os arquivos da lista
       // são anexados (campo audio multi, migr 0026); o 1º áudio já foi transcrito.
       const audios = arquivosAudio.filter((f) => /\.(mp3|m4a|wav|webm|ogg|mp4)$/i.test(f.name))
-      if (audios.length > 0) {
+      if (editandoAta) {
+        // T-Xf: edição — campos + transcrição ACRESCENTADA + novos áudios
+        const fd = new FormData()
+        fd.append('titulo', form.titulo || '')
+        fd.append('data', form.data ? form.data + ' 00:00:00.000Z' : '')
+        fd.append('modalidade', form.modalidade || '')
+        fd.append('link_reuniao', form.link_reuniao || '')
+        fd.append('participantes', form.participantes || '')
+        fd.append('pauta', form.pauta || '')
+        fd.append('resumo', form.resumo || '')
+        fd.append('decisoes', form.decisoes || '')
+        for (const a of audios) fd.append('audio', a)
+        await pb.collection('atas').update(editandoAta.id, fd)
+        setEditandoAta(null)
+      } else if (audios.length > 0) {
         const fd = new FormData()
         fd.append('titulo', form.titulo || '')
         fd.append('data', form.data ? form.data + ' 00:00:00.000Z' : '')
@@ -289,6 +370,19 @@ export default function AtasReunioesPage() {
       setErro(String(e))
     } finally {
       setSalvando(false)
+    }
+  }
+
+  // T-Xf: excluir ata com confirmação (dialog próprio)
+  const excluirAta = async () => {
+    if (!excluindoAta) return
+    try {
+      await pb.collection('atas').delete(excluindoAta.id)
+      setExcluindoAta(null)
+      if (detalhe?.id === excluindoAta.id) setDetalhe(null)
+      await carregar()
+    } catch (e) {
+      setErro(String(e))
     }
   }
 
@@ -458,10 +552,51 @@ export default function AtasReunioesPage() {
                   <div className="text-[12px] text-gray-600 mt-1.5 line-clamp-2">
                     {a.resumo || a.pauta}
                   </div>
+                  {/* T-Xe: gravações da ata — cada áudio tocável individualmente */}
+                  {(a.audio || []).length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      {(a.audio as string[]).map((fn: string) => (
+                        <audio
+                          key={fn}
+                          controls
+                          preload="none"
+                          src={pb.files.getURL(a, fn)}
+                          className="h-8 max-w-[220px]"
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="shrink-0 text-right">
+                <div className="shrink-0 text-right space-y-2">
                   <div className="inline-flex items-center gap-1 text-[11px] font-bold text-[#1B5E20] bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-full">
                     <ListTodo className="h-3 w-3" /> {items.length} action item(s)
+                  </div>
+                  {/* T-Xf: Editar e Excluir (não propagam o clique do card) */}
+                  <div className="flex items-center justify-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        abrirEditarAta(a)
+                      }}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-[#1B5E20] hover:bg-emerald-50"
+                      aria-label="Editar ata"
+                      title="Editar ata"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setExcluindoAta(a)
+                      }}
+                      className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"
+                      aria-label="Excluir ata"
+                      title="Excluir ata"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -477,7 +612,7 @@ export default function AtasReunioesPage() {
       <Dialog open={dialog} onOpenChange={setDialog}>
         <DialogContent className="bg-white max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Nova ata</DialogTitle>
+            <DialogTitle>{editandoAta ? 'Editar ata' : 'Nova ata'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             {/* T5: áudio da reunião — gravação + upload + IA organiza */}
@@ -492,10 +627,13 @@ export default function AtasReunioesPage() {
                     variant="outline"
                     size="sm"
                     onClick={toggleOuvir}
-                    className={cn('h-8', ouvindo && 'bg-red-50 text-red-700 border-red-200')}
+                    className={cn(
+                      'h-8',
+                      ouvindo && 'bg-red-50 text-red-700 border-red-300 animate-pulse',
+                    )}
                   >
                     {ouvindo ? (
-                      <X className="h-3.5 w-3.5 mr-1" />
+                      <Square className="h-3.5 w-3.5 mr-1 fill-red-600 text-red-600" />
                     ) : (
                       <Mic className="h-3.5 w-3.5 mr-1" />
                     )}
@@ -572,11 +710,14 @@ export default function AtasReunioesPage() {
               {transcricao && (
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">
-                    Transcrição literal
+                    Transcrição literal (editável — gravações novas ACRESCENTAM ao texto)
                   </div>
-                  <p className="text-[11px] text-gray-600 italic max-h-20 overflow-y-auto">
-                    {transcricao}
-                  </p>
+                  <Textarea
+                    value={transcricao}
+                    onChange={(e) => setTranscricao(e.target.value)}
+                    rows={4}
+                    className="text-[11px] italic bg-white"
+                  />
                 </div>
               )}
               {interpretacao && (
@@ -658,9 +799,25 @@ export default function AtasReunioesPage() {
               />
             </div>
             <div className="grid gap-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Pauta
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Pauta
+                </Label>
+                {transcricao.trim() && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((f: any) => ({
+                        ...f,
+                        pauta: (f.pauta ? f.pauta + '\n\n' : '') + transcricao.trim(),
+                      }))
+                    }
+                    className="text-[11px] font-semibold text-[#1B5E20] hover:underline"
+                  >
+                    + Acrescentar transcrição
+                  </button>
+                )}
+              </div>
               <Textarea
                 value={form.pauta || ''}
                 onChange={(e) => setForm({ ...form, pauta: e.target.value })}
@@ -707,15 +864,7 @@ export default function AtasReunioesPage() {
       <Dialog open={!!detalhe} onOpenChange={(o) => !o && setDetalhe(null)}>
         <DialogContent className="bg-white max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>{detalhe?.titulo}</span>
-              <button
-                onClick={() => setDetalhe(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </DialogTitle>
+            <DialogTitle>{detalhe?.titulo}</DialogTitle>
           </DialogHeader>
           {detalhe && (
             <div className="space-y-4">
@@ -743,6 +892,26 @@ export default function AtasReunioesPage() {
                 </div>
                 <p className="text-[13px] text-gray-700">{detalhe.participantes || '—'}</p>
               </div>
+              {/* T-Xe: gravações da ata — cada uma tocável individualmente */}
+              {(detalhe.audio || []).length > 0 && (
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5 flex items-center gap-1.5">
+                    <FileAudio className="h-3.5 w-3.5" /> Gravações (
+                    {(detalhe.audio as string[]).length})
+                  </div>
+                  <div className="space-y-2">
+                    {(detalhe.audio as string[]).map((fn: string) => (
+                      <audio
+                        key={fn}
+                        controls
+                        preload="none"
+                        src={pb.files.getURL(detalhe, fn)}
+                        className="w-full h-10"
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
                   Pauta
@@ -880,16 +1049,8 @@ export default function AtasReunioesPage() {
       <Dialog open={!!parecerIA} onOpenChange={(o) => !o && setParecerIA(null)}>
         <DialogContent className="bg-white max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-[#1B5E20]" /> Resumo IA da ata
-              </span>
-              <button
-                onClick={() => setParecerIA(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="h-4 w-4" />
-              </button>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-[#1B5E20]" /> Resumo IA da ata
             </DialogTitle>
           </DialogHeader>
           {parecerIA && (
@@ -971,6 +1132,26 @@ export default function AtasReunioesPage() {
               </p>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+      {/* T-Xf: confirmar exclusão da ata */}
+      <Dialog open={!!excluindoAta} onOpenChange={(o) => !o && setExcluindoAta(null)}>
+        <DialogContent className="bg-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Excluir ata</DialogTitle>
+          </DialogHeader>
+          <p className="text-[13px] text-gray-600">
+            Confirma excluir <strong>{excluindoAta?.titulo || 'esta ata'}</strong>? A ação não pode
+            ser desfeita.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExcluindoAta(null)} className="h-9">
+              Cancelar
+            </Button>
+            <Button onClick={excluirAta} className="h-9 bg-red-600 hover:bg-red-700 text-white">
+              <Trash2 className="h-4 w-4 mr-1" /> Excluir
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -140,6 +140,9 @@ importers:
       pocketbase:
         specifier: ~0.26.9
         version: 0.26.9
+      powerbi-client:
+        specifier: ^2.25.0
+        version: 2.25.0
       react:
         specifier: ^19.2.7
         version: 19.2.7
@@ -1703,6 +1706,9 @@ packages:
   es-toolkit@1.48.1:
     resolution: {integrity: sha512-wfnXlwd5I75eXRtdD2vuEs50xHHESECDsGD7yiQnfFVNoa5522NwXEbmgo98LfiukSQHs+mBM7/YG3qKJB9/mQ==}
 
+  es6-promise@3.3.1:
+    resolution: {integrity: sha512-SOp9Phqvqn7jtEUxPWdWfWoLmyt2VaJ6MpvP9Comy1MceMXqE6bxvaTu4iaxpYYPzhny28Lc+M87/c2cPK6lDg==}
+
   escalade@3.2.0:
     resolution: {integrity: sha512-WUj2qlxaQtO4g6Pq5c29GTcWGDyd8itL8zTlipgECz3JesAiiOKotd8JU6otB3PACgG6xkJUyVhboMS+bje/jA==}
     engines: {node: '>=6'}
@@ -1763,6 +1769,9 @@ packages:
   hasown@2.0.4:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
+
+  http-post-message@0.3.0:
+    resolution: {integrity: sha512-tfn1ca5RcRKdejbFanY2ydN4pXB+youdgtNz1GSKtWvzbaf63sGQWyRjo5bnqlebTjG85wY0GUADDD0tAVpmkQ==}
 
   immediate@3.0.6:
     resolution: {integrity: sha512-XXOFtyqDjNDAQxVfYxuF7g9Il/IbWmmlQg2MYKOH8ExIT1qg6xc4zyS3HaEEATgs1btfzxq15ciUiY7gjSXRGQ==}
@@ -2059,6 +2068,15 @@ packages:
     resolution: {integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A==}
     engines: {node: ^10 || ^12 || >=14}
 
+  powerbi-client@2.25.0:
+    resolution: {integrity: sha512-h6jMorFGRiptWiuJ8O0ZCavLf3d1IaBdxEFP34YTx830yiUPnOJWGJrUbdY0fnyAPFO3GJz1BhqjkN9Q3CB7hg==}
+
+  powerbi-models@2.2.0:
+    resolution: {integrity: sha512-L8HcBLQQP1+y1382jnf6RoC6OtOB25TCdDpEkLTXeg4d2Uku8cUUVG0b8JyZ3j5yATohFBuj8oWstkQoCJJvoA==}
+
+  powerbi-router@0.1.5:
+    resolution: {integrity: sha512-DFJCKxwh/DqMZXtHSo6xZl87mbRviZGn4P7Oi2rT0L4HMI4AjnWIrwg0JCSM7ymBzYnNe5UmrsCaf2Upur5RQA==}
+
   process-nextick-args@2.0.1:
     resolution: {integrity: sha512-3ouUOpQhtgrbOa17J7+uxOTpITYWaGP7/AhoR3+A+/1e9skrzelGi/dXzEYyvbxubEF6Wn2ypscTKiKJFFn1ag==}
 
@@ -2196,6 +2214,9 @@ packages:
     resolution: {integrity: sha512-i00lAJ2ks1BYr7rjNjKC7BcqAS7nVfiT3QX1SI5aY+AFHblCmaUf9OE9dbdzDvW6dJxbi2ZCZiy9v3CcwOiX3g==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
+
+  route-recognizer@0.1.11:
+    resolution: {integrity: sha512-7JNu5mXQVa39zxmUKyk/bfpeF2WyEC5JKVTJO5HATcoUQpcQsI3eLzhwGU69xeOagQxfOQ+yr2sSv0G8xy+vQA==}
 
   run-parallel@1.2.0:
     resolution: {integrity: sha512-5l4VyZR86LZ/lDxZTR6jqL8AFE2S0IFLMP26AbjsLVADxHdhB/c0GUsH+y39UfCi3dzz8OlQuPmnaJOMoDHQBA==}
@@ -2379,6 +2400,9 @@ packages:
         optional: true
       yaml:
         optional: true
+
+  window-post-message-proxy@0.3.0:
+    resolution: {integrity: sha512-dEpItkLX97djHvWzcbVmyelEPoq2Oglx2y5EYt+mCC0bwKvwbtE3ro3Zsg9heHAUir/3dHUBtV2Rr8DQQjwyPg==}
 
   wmf@1.0.2:
     resolution: {integrity: sha512-/p9K7bEh0Dj6WbXg4JG0xvLQmIadrner1bi45VMJTfnbVHsc7yIajZyoSoK60/dtVBs12Fm6WkUI5/3WAVsNMw==}
@@ -3669,6 +3693,8 @@ snapshots:
 
   es-toolkit@1.48.1: {}
 
+  es6-promise@3.3.1: {}
+
   escalade@3.2.0: {}
 
   eventemitter3@5.0.4: {}
@@ -3720,6 +3746,10 @@ snapshots:
   hasown@2.0.4:
     dependencies:
       function-bind: 1.1.2
+
+  http-post-message@0.3.0:
+    dependencies:
+      es6-promise: 3.3.1
 
   immediate@3.0.6: {}
 
@@ -3984,6 +4014,20 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.2
 
+  powerbi-client@2.25.0:
+    dependencies:
+      http-post-message: 0.3.0
+      powerbi-models: 2.2.0
+      powerbi-router: 0.1.5
+      window-post-message-proxy: 0.3.0
+
+  powerbi-models@2.2.0: {}
+
+  powerbi-router@0.1.5:
+    dependencies:
+      es6-promise: 3.3.1
+      route-recognizer: 0.1.11
+
   process-nextick-args@2.0.1: {}
 
   queue-microtask@1.2.3: {}
@@ -4139,6 +4183,8 @@ snapshots:
       '@rolldown/binding-wasm32-wasi': 1.0.3
       '@rolldown/binding-win32-arm64-msvc': 1.0.3
       '@rolldown/binding-win32-x64-msvc': 1.0.3
+
+  route-recognizer@0.1.11: {}
 
   run-parallel@1.2.0:
     dependencies:
@@ -4310,6 +4356,10 @@ snapshots:
       '@types/node': 26.0.0
       fsevents: 2.3.3
       jiti: 1.21.7
+
+  window-post-message-proxy@0.3.0:
+    dependencies:
+      es6-promise: 3.3.1
 
   wmf@1.0.2: {}
 

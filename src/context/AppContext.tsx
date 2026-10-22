@@ -19,12 +19,15 @@ interface AppContextType {
   sidebarOpen: boolean
   setSidebarOpen: (open: boolean) => void
   toggleSidebar: () => void
+  sidebarCollapsed: boolean // SDB-d: sidebar oculta no desktop (persistido)
+  toggleSidebarCollapsed: () => void
   criticalAlerts: CriticalAlert[]
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined)
 
 const LS_EMPRESA = 'pge_empresa_sel'
+const LS_SIDEBAR_COLLAPSED = 'pge_sidebar_collapsed'
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [empresas, setEmpresas] = useState<EmpresaApp[]>([])
@@ -36,6 +39,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   })
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // SDB-d: colapso da sidebar no desktop — persistido em localStorage
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(LS_SIDEBAR_COLLAPSED) === '1'
+    } catch (_) {
+      return false
+    }
+  })
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      const novo = !prev
+      try {
+        localStorage.setItem(LS_SIDEBAR_COLLAPSED, novo ? '1' : '0')
+      } catch (_) {
+        /* localStorage indisponível — segue sem persistir */
+      }
+      return novo
+    })
+  }
 
   useEffect(() => {
     ;(async () => {
@@ -75,6 +97,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         sidebarOpen,
         setSidebarOpen,
         toggleSidebar,
+        sidebarCollapsed,
+        toggleSidebarCollapsed,
         criticalAlerts: MOCK_DATA.criticalAlerts,
       }}
     >

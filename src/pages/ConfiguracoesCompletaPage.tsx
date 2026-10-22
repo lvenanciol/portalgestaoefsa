@@ -220,9 +220,41 @@ export default function ConfiguracoesCompletaPage() {
   const testar = async (alvo: string) => {
     setTestes((t) => ({ ...t, [alvo]: { loading: true } }))
     try {
+      const payload: any = { alvo }
+      if (alvo === 'powerbi') {
+        // T11b (22/10): teste REAL — envia o client_id configurado e o token
+        // Microsoft quando há sessão silenciosa; sem sessão, o hook devolve o
+        // erro real ("sem conta MS conectada / token expirado").
+        payload.client_id = localStorage.getItem('pge_ms_client_id') || ''
+        try {
+          if (payload.client_id) {
+            const { PublicClientApplication } = await import('@azure/msal-browser')
+            const pca = new PublicClientApplication({
+              auth: {
+                clientId: payload.client_id,
+                authority:
+                  'https://login.microsoftonline.com/f297b97e-1aa1-423f-81e0-008ad95e11f2/oauth2/v2.0',
+                redirectUri: window.location.origin + '/power-bi',
+              },
+            })
+            await pca.initialize()
+            await pca.handleRedirectPromise()
+            const contas = pca.getAllAccounts()
+            if (contas.length) {
+              const sil = await pca.acquireTokenSilent({
+                scopes: ['https://analysis.windows.net/powerbi/api/Report.Read.All'],
+                account: contas[0],
+              })
+              payload.access_token = sil.accessToken
+            }
+          }
+        } catch (_e) {
+          /* sem sessão MS — o hook reporta a pendência com o erro real */
+        }
+      }
       const r = (await pb.send('/backend/v1/integracoes/testar', {
         method: 'POST',
-        body: JSON.stringify({ alvo }),
+        body: JSON.stringify(payload),
       })) as any
       setTestes((t) => ({ ...t, [alvo]: { ok: r.ok, erro: r.erro, detalhe: r.detalhe } }))
     } catch (e) {

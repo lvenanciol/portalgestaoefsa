@@ -1,5 +1,7 @@
 // T0b (21/10) — Detalhe do e-mail sincronizado: corpo completo (HTML/texto)
 // + anexos, no layout do Outlook. GET /backend/v1/email/oauth/detalhe?id=<pb_id>
+// T0b/e (22/10) — mojibake windows-1252 re-decodificado (fix1252) + cid
+// case-insensitive por prefixo (antes do '@') + anexo grande individual.
 // - google: Gmail API messages/{id}?format=full (base64url → partes)
 // - microsoft: Graph messages/{id}?$select=... (body + attachments)
 // Devolve { ok, assunto, de, para, data, corpo_html, corpo_texto, anexos:[{nome, mime, tamanho, base64?}] }
@@ -116,6 +118,51 @@ routerAdd(
       if (Array.isArray(b)) return utf8Decode(b)
       return String(b || '')
     }
+    // T0b (22/10): mojibake windows-1252 — texto UTF-8 lido como latin1 vira
+    // "Ã©/Ã£/Ã§". Re-decodifica: cada par de bytes 0xC2-0xC3 + cont. recombina
+    // em 1 codepoint UTF-8 real (JSVM não tem TextDecoder — manual).
+    const fix1252 = (s) => {
+      if (!s || s.length < 2) return s
+      // heurística: só mexe se HÁ sinais de mojibake (evita estragar texto são)
+      let temMojibake = false
+      for (let i = 0; i < s.length - 1; i++) {
+        const c = s.charCodeAt(i)
+        if (
+          (c === 0xc3 || c === 0xc2) &&
+          s.charCodeAt(i + 1) >= 0x80 &&
+          s.charCodeAt(i + 1) <= 0xbf
+        ) {
+          temMojibake = true
+          break
+        }
+      }
+      if (!temMojibake) return s
+      let out = ''
+      let i = 0
+      while (i < s.length) {
+        const c = s.charCodeAt(i)
+        if ((c === 0xc2 || c === 0xc3) && i + 1 < s.length) {
+          const c2 = s.charCodeAt(i + 1)
+          if (c2 >= 0x80 && c2 <= 0xbf) {
+            // byte1 é o lead (C2/C3) e byte2 a continuação — recombina
+            out += String.fromCodePoint(((c & 31) << 6) | (c2 & 63))
+            i += 2
+            continue
+          }
+        }
+        out += s.charAt(i)
+        i += 1
+      }
+      return out
+    }
+    // aplica no HTML e no texto (recursivo em atributos style com font-family)
+    const consertaCharset = (html) => {
+      if (!html) return html
+      let h = fix1252(html)
+      // meta charset ausente → injeta (browser assume windows-1252)
+      if (!/charset=/i.test(h)) h = '<meta charset="utf-8">' + h
+      return h
+    }
 
     const out = {
       ok: true,
@@ -168,10 +215,10 @@ routerAdd(
         const mime = String(part.mimeType || '')
         const body = part.body || {}
         if (mime === 'text/html' && !out.corpo_html && body.data) {
-          out.corpo_html = b64urlDecode(String(body.data))
+          out.corpo_html = fix1252(b64urlDecode(String(body.data)))
         }
         if (mime === 'text/plain' && !out.corpo_texto && body.data) {
-          out.corpo_texto = b64urlDecode(String(body.data))
+          out.corpo_texto = fix1252(b64urlDecode(String(body.data)))
         }
         if (mime === 'application/pdf' && body.attachmentId && out.anexos.length < 5) {
           out.anexos.push({
@@ -248,11 +295,9 @@ routerAdd(
       const d = JSON.parse(bodyOf(r))
       out.corpo_html = String((d.body && d.body.content) || '')
       if ((d.body || {}).contentType === 'text') out.corpo_texto = out.corpo_html
-      // T0b-2 (21/10): charset UTF-8 explícito no HTML (caracteres mal formatados
-      // em e-mails sem <meta charset> — o browser assume windows-1252)
-      if (out.corpo_html && !/charset=/i.test(out.corpo_html)) {
-        out.corpo_html = '<meta charset="utf-8">' + out.corpo_html
-      }
+      // T0b (22/10): mojibake windows-1252 + charset explícito (consertaCharset)
+      out.corpo_html = consertaCharset(out.corpo_html)
+      if (out.corpo_texto) out.corpo_texto = fix1252(out.corpo_texto)
       const anexos = d.attachments || []
       // T0e fix (21/10): imagens INLINE (cid:) não abrem — baixar cada uma e
       // embutir como data URL no HTML (contentBytes já vem na listagem de
@@ -273,12 +318,21 @@ routerAdd(
             const listaAnexos = JSON.parse(bodyOf(ri)).value || []
             for (const cid of cids.slice(0, 10)) {
               const cidLimpo = cid.replace('cid:', '')
-              // casa por contentId (com/sem <>) ou nome
-              let a = listaAnexos.find(
-                (x) =>
-                  String(x.contentId || '').replace(/[<>]/g, '') === cidLimpo ||
-                  String(x.name || '') === cidLimpo,
-              )
+              // T0e fix (22/10): casa por PREFIXO antes do '@' e case-insensitive
+              // (HTML usa "image001" mas Graph devolve "image001@dominio")
+              const prefixo = cidLimpo.split('@')[0].toLowerCase()
+              let a = listaAnexos.find((x) => {
+                const cidAnexo = String(x.contentId || '')
+                  .replace(/[<>]/g, '')
+                  .toLowerCase()
+                const nomeAnexo = String(x.name || '').toLowerCase()
+                return (
+                  cidAnexo === cidLimpo.toLowerCase() ||
+                  (prefixo && cidAnexo.split('@')[0] === prefixo) ||
+                  (prefixo && nomeAnexo.split('@')[0] === prefixo) ||
+                  nomeAnexo === cidLimpo.toLowerCase()
+                )
+              })
               // anexo grande: listagem NÃO traz contentBytes — buscar individual
               if (a && !a.contentBytes && a.id) {
                 try {
@@ -310,6 +364,16 @@ routerAdd(
                   .split("src='cid:" + cidLimpo + "'")
                   .join("src='" + dataUrl + "'")
                 out.corpo_html = out.corpo_html.split('src=CID:' + cidLimpo).join('src=' + dataUrl)
+                // T0e fix (22/10): case-insensitive (src="CID:IMAGE001.gif")
+                out.corpo_html = out.corpo_html
+                  .split('src="CID:' + cidLimpo.toUpperCase() + '"')
+                  .join('src="' + dataUrl + '"')
+                out.corpo_html = out.corpo_html
+                  .split("src='CID:" + cidLimpo.toUpperCase() + "'")
+                  .join("src='" + dataUrl + "'")
+                // regex geral: cid:<prefixo>...@... em qualquer case/aspas
+                const re = new RegExp('src=(["\'])cid:' + prefixo + '[^"\']*\\1', 'gi')
+                out.corpo_html = out.corpo_html.replace(re, 'src="' + dataUrl + '"')
               } else if (a && a.isInline) {
                 // T0e-2 (21/10): anexo INLINE cujo cid não casou no HTML — injeta
                 // <img> no topo (o Outlook referencia por contentId que nem sempre
@@ -320,6 +384,63 @@ routerAdd(
                   dataUrl2 +
                   '" style="max-width:100%;" /></div>' +
                   out.corpo_html
+              } else if (!a && prefixo) {
+                // T0e-3 (22/10): anexo NÃO veio na listagem (grande >3MB) — busca
+                // individual /messages/{id}/attachments/{id} e injeta no topo
+                try {
+                  const rg = $http.send({
+                    // $search é QUERY PARAM (não path) — formato: ?$search="termo"
+                    url:
+                      'https://graph.microsoft.com/v1.0/me/messages?$search=%22' +
+                      encodeURIComponent(
+                        String(rec.getString('assunto') || '')
+                          .replace(/"/g, '')
+                          .slice(0, 60),
+                      ) +
+                      '%22',
+                    method: 'GET',
+                    headers: { Authorization: 'Bearer ' + at },
+                    timeout: 30,
+                  })
+                  let idBusca = ''
+                  if (rg.statusCode === 200) {
+                    const lg = JSON.parse(bodyOf(rg))
+                    const alvo = String(rec.getString('assunto') || '').toLowerCase()
+                    const achado = (lg.value || []).find(
+                      (x) => String(x.subject || '').toLowerCase() === alvo,
+                    )
+                    if (achado) idBusca = String(achado.id)
+                  }
+                  if (idBusca) {
+                    const ra2 = $http.send({
+                      url:
+                        'https://graph.microsoft.com/v1.0/me/messages/' +
+                        encodeURIComponent(idBusca) +
+                        '/attachments?$select=id,name,contentType,contentBytes,size,isInline,contentId&$top=25',
+                      method: 'GET',
+                      headers: { Authorization: 'Bearer ' + at },
+                      timeout: 60,
+                    })
+                    if (ra2.statusCode === 200) {
+                      const la2 = JSON.parse(bodyOf(ra2)).value || []
+                      const a2 = la2.find((x) => {
+                        const cidA = String(x.contentId || '')
+                          .replace(/[<>]/g, '')
+                          .toLowerCase()
+                        const nomA = String(x.name || '').toLowerCase()
+                        return cidA.split('@')[0] === prefixo || nomA.split('@')[0] === prefixo
+                      })
+                      if (a2 && a2.contentBytes && a2.isInline) {
+                        const dataUrl3 = 'data:' + a2.contentType + ';base64,' + a2.contentBytes
+                        out.corpo_html =
+                          '<div><img src="' +
+                          dataUrl3 +
+                          '" style="max-width:100%;" /></div>' +
+                          out.corpo_html
+                      }
+                    }
+                  }
+                } catch (_eG) {}
               }
             }
           }
