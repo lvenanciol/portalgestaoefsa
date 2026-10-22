@@ -309,10 +309,8 @@ routerAdd(
             url:
               'https://graph.microsoft.com/v1.0/me/messages/' +
               encodeURIComponent(mid) +
-              // T0e fix (22/10 v3): $select SEM contentBytes E SEM contentId —
-              // ambos NÃO são selecionáveis no tipo base attachment (Graph 400
-              // "Could not find a property named 'contentId'"). Listar metadados
-              // (name casa o cid por prefixo) e buscar bytes individualmente.
+              // T0e fix (22/10 v2): contentBytes NAO e aceito em $select de LISTAGEM
+              // (Graph devolve 400) — listar metadados e buscar bytes individualmente
               '/attachments?$select=id,name,contentType,size,isInline',
             method: 'GET',
             headers: { Authorization: 'Bearer ' + at },
@@ -321,7 +319,6 @@ routerAdd(
           if (ri.statusCode === 200) {
             const listaAnexos = JSON.parse(bodyOf(ri)).value || []
             const bytesCache = {} // T0e fix (22/10 v4): dedupe — 1 busca por anexo único
-            let fallbacks = 0 // v5: $search lento no MÁXIMO 2×
             for (const cid of cids.slice(0, 10)) {
               const cidLimpo = cid.replace('cid:', '')
               // T0e fix (22/10): casa por PREFIXO antes do '@' e case-insensitive
@@ -394,66 +391,6 @@ routerAdd(
                   dataUrl2 +
                   '" style="max-width:100%;" /></div>' +
                   out.corpo_html
-              } else if (!a && prefixo && fallbacks < 2) {
-                // v5: fallback $search (LENTO ~30s) no MÁXIMO 2× por requisição —
-                // cids sem match além disso seguem sem imagem (não travam o hook)
-                fallbacks++
-                // T0e-3 (22/10): anexo NÃO veio na listagem (grande >3MB) — busca
-                // individual /messages/{id}/attachments/{id} e injeta no topo
-                try {
-                  const rg = $http.send({
-                    // $search é QUERY PARAM (não path) — formato: ?$search="termo"
-                    url:
-                      'https://graph.microsoft.com/v1.0/me/messages?$search=%22' +
-                      encodeURIComponent(
-                        String(rec.getString('assunto') || '')
-                          .replace(/"/g, '')
-                          .slice(0, 60),
-                      ) +
-                      '%22',
-                    method: 'GET',
-                    headers: { Authorization: 'Bearer ' + at },
-                    timeout: 30,
-                  })
-                  let idBusca = ''
-                  if (rg.statusCode === 200) {
-                    const lg = JSON.parse(bodyOf(rg))
-                    const alvo = String(rec.getString('assunto') || '').toLowerCase()
-                    const achado = (lg.value || []).find(
-                      (x) => String(x.subject || '').toLowerCase() === alvo,
-                    )
-                    if (achado) idBusca = String(achado.id)
-                  }
-                  if (idBusca) {
-                    const ra2 = $http.send({
-                      url:
-                        'https://graph.microsoft.com/v1.0/me/messages/' +
-                        encodeURIComponent(idBusca) +
-                        '/attachments?$select=id,name,contentType,contentBytes,size,isInline,contentId&$top=25',
-                      method: 'GET',
-                      headers: { Authorization: 'Bearer ' + at },
-                      timeout: 60,
-                    })
-                    if (ra2.statusCode === 200) {
-                      const la2 = JSON.parse(bodyOf(ra2)).value || []
-                      const a2 = la2.find((x) => {
-                        const cidA = String(x.contentId || '')
-                          .replace(/[<>]/g, '')
-                          .toLowerCase()
-                        const nomA = String(x.name || '').toLowerCase()
-                        return cidA.split('@')[0] === prefixo || nomA.split('@')[0] === prefixo
-                      })
-                      if (a2 && a2.contentBytes && a2.isInline) {
-                        const dataUrl3 = 'data:' + a2.contentType + ';base64,' + a2.contentBytes
-                        out.corpo_html =
-                          '<div><img src="' +
-                          dataUrl3 +
-                          '" style="max-width:100%;" /></div>' +
-                          out.corpo_html
-                      }
-                    }
-                  }
-                } catch (_eG) {}
               }
             }
           }
