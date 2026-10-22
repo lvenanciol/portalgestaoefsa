@@ -3,20 +3,8 @@
 // POST /backend/v1/integracoes/whatsapp/config → salva (preserva segredos
 // mascarados/em branco) + auditoria. Estado em integracoes_config (JSONB).
 // v12 (22/10): cfg.get('config') no JSVM devolve o JSONB como ARRAY DE CHARS
-// (não objeto) — normaliza p/ objeto antes de ler (causa do GET config vazio)
-const cfgObj = (cfg) => {
-  if (!cfg) return {}
-  let c = cfg.get('config')
-  if (Array.isArray(c)) c = c.join('')
-  if (typeof c === 'string') {
-    try {
-      c = JSON.parse(c)
-    } catch (_) {
-      c = {}
-    }
-  }
-  return c && typeof c === 'object' && !Array.isArray(c) ? c : {}
-}
+// (não objeto) — normaliza p/ objeto antes de ler (causa do GET config vazio).
+// cfgObj é INLINE em cada callback (JSVM não acessa declarações top-level).
 
 routerAdd(
   'GET',
@@ -24,6 +12,19 @@ routerAdd(
   (e) => {
     const auth = e.auth
     if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
+    const cfgObj = (cfg) => {
+      if (!cfg) return {}
+      let c = cfg.get('config')
+      if (Array.isArray(c)) c = c.join('')
+      if (typeof c === 'string') {
+        try {
+          c = JSON.parse(c)
+        } catch (_) {
+          c = {}
+        }
+      }
+      return c && typeof c === 'object' && !Array.isArray(c) ? c : {}
+    }
     let cfg = null
     try {
       cfg = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'whatsapp'")
@@ -67,6 +68,19 @@ routerAdd(
   (e) => {
     const auth = e.auth
     if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
+    const cfgObj = (cfg) => {
+      if (!cfg) return {}
+      let c = cfg.get('config')
+      if (Array.isArray(c)) c = c.join('')
+      if (typeof c === 'string') {
+        try {
+          c = JSON.parse(c)
+        } catch (_) {
+          c = {}
+        }
+      }
+      return c && typeof c === 'object' && !Array.isArray(c) ? c : {}
+    }
     let isAdmin = false
     try {
       const g = $app.findRecordById('grupos_permissao', auth.getString('grupo_id'))
@@ -247,6 +261,19 @@ routerAdd(
   (e) => {
     const auth = e.auth
     if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
+    const cfgObj = (cfg) => {
+      if (!cfg) return {}
+      let c = cfg.get('config')
+      if (Array.isArray(c)) c = c.join('')
+      if (typeof c === 'string') {
+        try {
+          c = JSON.parse(c)
+        } catch (_) {
+          c = {}
+        }
+      }
+      return c && typeof c === 'object' && !Array.isArray(c) ? c : {}
+    }
     let cfg = null
     try {
       cfg = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'whatsapp'")
