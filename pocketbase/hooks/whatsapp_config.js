@@ -2,9 +2,10 @@
 // GET /backend/v1/integracoes/whatsapp/config → config mascarada + flags
 // POST /backend/v1/integracoes/whatsapp/config → salva (preserva segredos
 // mascarados/em branco) + auditoria. Estado em integracoes_config (JSONB).
-// v12 (22/10): cfg.get('config') no JSVM devolve o JSONB como ARRAY DE CHARS
-// (não objeto) — normaliza p/ objeto antes de ler (causa do GET config vazio).
-// cfgObj é INLINE em cada callback (JSVM não acessa declarações top-level).
+// v12 (22/10): cfg.get('config') no JSVM devolve o JSONB como ARRAY DE CHAR
+// CODES numéricos (não objeto, não strings) — decodifica com fromCharCode em
+// blocos antes do JSON.parse (causa do GET config vazio). cfgObj é INLINE em
+// cada callback (JSVM não acessa declarações top-level).
 
 routerAdd(
   'GET',
@@ -15,7 +16,18 @@ routerAdd(
     const cfgObj = (cfg) => {
       if (!cfg) return {}
       let c = cfg.get('config')
-      if (Array.isArray(c)) c = c.join('')
+      if (Array.isArray(c)) {
+        // JSVM: array de char codes numéricos (v12b) OU de chars string
+        if (c.length && typeof c[0] === 'number') {
+          let s = ''
+          for (let i = 0; i < c.length; i += 65536) {
+            s += String.fromCharCode.apply(null, c.slice(i, i + 65536))
+          }
+          c = s
+        } else {
+          c = c.join('')
+        }
+      }
       if (typeof c === 'string') {
         try {
           c = JSON.parse(c)
@@ -29,7 +41,7 @@ routerAdd(
     try {
       cfg = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'whatsapp'")
     } catch (_) {}
-    const c = cfgObj(cfg) // v12: JSONB pode virar array de chars no JSVM
+    const c = cfgObj(cfg) // v12: JSONB pode virar array de char codes no JSVM
     const rawToken = String(c.access_token || '').trim()
     const rawSecret = String(c.app_secret || '').trim()
     const mask = function (v, keep) {
@@ -71,7 +83,17 @@ routerAdd(
     const cfgObj = (cfg) => {
       if (!cfg) return {}
       let c = cfg.get('config')
-      if (Array.isArray(c)) c = c.join('')
+      if (Array.isArray(c)) {
+        if (c.length && typeof c[0] === 'number') {
+          let s = ''
+          for (let i = 0; i < c.length; i += 65536) {
+            s += String.fromCharCode.apply(null, c.slice(i, i + 65536))
+          }
+          c = s
+        } else {
+          c = c.join('')
+        }
+      }
       if (typeof c === 'string') {
         try {
           c = JSON.parse(c)
@@ -94,7 +116,7 @@ routerAdd(
     try {
       cfg = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'whatsapp'")
     } catch (_) {}
-    const atual = cfgObj(cfg) // v12: JSONB pode virar array de chars no JSVM
+    const atual = cfgObj(cfg) // v12: JSONB pode virar array de char codes no JSVM
     // preserva segredos quando o valor vem mascarado/em branco
     const novoToken = String(body.access_token || '').trim()
     const novoSecret = String(body.app_secret || '').trim()
@@ -264,7 +286,17 @@ routerAdd(
     const cfgObj = (cfg) => {
       if (!cfg) return {}
       let c = cfg.get('config')
-      if (Array.isArray(c)) c = c.join('')
+      if (Array.isArray(c)) {
+        if (c.length && typeof c[0] === 'number') {
+          let s = ''
+          for (let i = 0; i < c.length; i += 65536) {
+            s += String.fromCharCode.apply(null, c.slice(i, i + 65536))
+          }
+          c = s
+        } else {
+          c = c.join('')
+        }
+      }
       if (typeof c === 'string') {
         try {
           c = JSON.parse(c)
@@ -278,7 +310,7 @@ routerAdd(
     try {
       cfg = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'whatsapp'")
     } catch (_) {}
-    const c = cfgObj(cfg) // v12: JSONB pode virar array de chars no JSVM
+    const c = cfgObj(cfg) // v12: JSONB pode virar array de char codes no JSVM
     const token = String(c.access_token || '').trim()
     const phoneId = String(c.phone_number_id || '').trim()
     if (!token || !phoneId) {
