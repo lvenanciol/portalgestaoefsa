@@ -342,13 +342,14 @@ routerAdd(
                 a.contentBytes = bytesCache[a.id]
               } else if (a && !a.contentBytes && a.id) {
                 try {
+                  // v7: SEM $select — contentBytes não é selecionável no tipo base
+                  // attachment (Graph 400 OData); sem select o Graph devolve tudo
                   const ra = $http.send({
                     url:
                       'https://graph.microsoft.com/v1.0/me/messages/' +
                       encodeURIComponent(mid) +
                       '/attachments/' +
-                      encodeURIComponent(a.id) +
-                      '?$select=contentType,contentBytes',
+                      encodeURIComponent(a.id),
                     method: 'GET',
                     headers: { Authorization: 'Bearer ' + at },
                     timeout: 60,
