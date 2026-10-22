@@ -7,6 +7,8 @@
 // Devolve { ok, assunto, de, para, data, corpo_html, corpo_texto, anexos:[{nome, mime, tamanho, base64?}] }
 // v10 (22/10): imagens inline vão em out.cids_inline [{cid, dataUrl}] — o FRONT
 // resolve cid→dataUrl no iframe (JSVM é lento com strings de MB; browser não).
+// v11 (22/10): bodyOf rápido p/ payloads grandes (fromCharCode em blocos) —
+// utf8Decode char a char sobre 1.6MB de base64 travava o JSVM (timeout 40s+).
 
 routerAdd(
   'GET',
@@ -114,10 +116,21 @@ routerAdd(
       }
       return out
     }
+    // v11: body grande (base64 ~MB) é ASCII puro — fromCharCode em blocos é
+    // ~100× mais rápido que utf8Decode char a char (que travava o JSVM)
     const bodyOf = (res) => {
       const b = res && res.body
       if (typeof b === 'string') return b
-      if (Array.isArray(b)) return utf8Decode(b)
+      if (Array.isArray(b)) {
+        if (b.length > 65536) {
+          let s = ''
+          for (let i = 0; i < b.length; i += 65536) {
+            s += String.fromCharCode.apply(null, b.slice(i, i + 65536))
+          }
+          return s
+        }
+        return String.fromCharCode.apply(null, b)
+      }
       return String(b || '')
     }
     // T0b (22/10): mojibake windows-1252 — texto UTF-8 lido como latin1 vira
