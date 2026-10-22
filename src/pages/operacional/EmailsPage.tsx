@@ -76,6 +76,8 @@ interface Detalhe {
   data?: string
   corpo_html?: string
   corpo_texto?: string
+  // T0e v10 (22/10): imagens inline do Outlook (cid) com dataUrl pronto
+  cids_inline?: { cid: string; dataUrl: string }[]
   anexos?: {
     nome: string
     mime?: string
@@ -303,6 +305,19 @@ export default function EmailsPage() {
       setEnviando(false)
       setTimeout(() => setMsg(''), 6000)
     }
+  }
+
+  // T0e v10 (22/10): substitui cid:<id> do HTML pelas imagens inline que o
+  // hook devolveu em cids_inline (dataUrl pronto) — rápido no browser
+  const resolverCids = (d: Detalhe): string => {
+    let html = d.corpo_html || ''
+    for (const ci of d.cids_inline || []) {
+      if (!ci?.cid || !ci?.dataUrl) continue
+      const prefixo = ci.cid.split('@')[0].toLowerCase()
+      const re = new RegExp('src=(["\'])cid:' + prefixo + '[^"\']*\\1', 'gi')
+      html = html.replace(re, 'src="' + ci.dataUrl + '"')
+    }
+    return html
   }
 
   const STATUS_COR: Record<string, string> = {
@@ -725,13 +740,14 @@ export default function EmailsPage() {
                   </Button>
                 </span>
               </div>
-              {/* corpo: HTML sanitizado pelo navegador em iframe sandbox */}
+              {/* corpo: HTML sanitizado pelo navegador em iframe sandbox.
+                  T0e v10: cids do Outlook resolvidos p/ dataUrl ANTES do srcDoc */}
               {detalhe.corpo_html ? (
                 <iframe
                   title="corpo"
                   sandbox=""
                   className="w-full h-[420px] border border-gray-100 rounded-lg bg-white"
-                  srcDoc={detalhe.corpo_html}
+                  srcDoc={resolverCids(detalhe)}
                 />
               ) : (
                 <p className="text-[13px] text-gray-800 whitespace-pre-wrap leading-relaxed">
