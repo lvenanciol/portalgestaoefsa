@@ -320,6 +320,7 @@ routerAdd(
           })
           if (ri.statusCode === 200) {
             const listaAnexos = JSON.parse(bodyOf(ri)).value || []
+            const bytesCache = {} // T0e fix (22/10 v4): dedupe — 1 busca por anexo único
             for (const cid of cids.slice(0, 10)) {
               const cidLimpo = cid.replace('cid:', '')
               // T0e fix (22/10): casa por PREFIXO antes do '@' e case-insensitive
@@ -338,7 +339,10 @@ routerAdd(
                 )
               })
               // anexo grande: listagem NÃO traz contentBytes — buscar individual
-              if (a && !a.contentBytes && a.id) {
+              // (v4: UMA busca por attachment id; cids repetidos reusam o cache)
+              if (a && a.id && bytesCache[a.id]) {
+                a.contentBytes = bytesCache[a.id]
+              } else if (a && !a.contentBytes && a.id) {
                 try {
                   const ra = $http.send({
                     url:
@@ -355,6 +359,7 @@ routerAdd(
                     const aa = JSON.parse(bodyOf(ra))
                     a.contentBytes = aa.contentBytes
                     a.contentType = aa.contentType || a.contentType
+                    if (a.contentBytes) bytesCache[a.id] = a.contentBytes
                   }
                 } catch (_eA) {}
               }
