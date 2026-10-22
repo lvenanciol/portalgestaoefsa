@@ -374,55 +374,8 @@ export default function AtasReunioesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* TX-a (22/10): botões IA/áudio AO LADO DO TÍTULO — operam no dialog
-              aberto (nova ata em edição); sem dialog, avisam p/ abrir */}
-          <Button
-            variant="outline"
-            className="h-9"
-            onClick={() =>
-              dialog ? gerarResumo() : setErro('Abra uma ata (nova ou editar) para usar a IA.')
-            }
-            disabled={iaCarregando === 'resumo'}
-          >
-            {iaCarregando === 'resumo' ? (
-              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-            ) : (
-              <Sparkles className="h-4 w-4 mr-1.5" />
-            )}
-            Gerar com IA
-          </Button>
-          <Button
-            variant="outline"
-            className="h-9"
-            onClick={() =>
-              dialog
-                ? gravando
-                  ? pararGravacao()
-                  : iniciarGravacao()
-                : setErro('Abra uma ata (nova ou editar) para gravar áudio.')
-            }
-          >
-            {gravando ? (
-              <>
-                <Square className="h-4 w-4 mr-1.5" /> Parar
-              </>
-            ) : (
-              <>
-                <Mic className="h-4 w-4 mr-1.5" /> Gravar áudio
-              </>
-            )}
-          </Button>
-          <Button
-            variant="outline"
-            className="h-9"
-            onClick={() =>
-              dialog
-                ? fileAudioRef.current?.click()
-                : setErro('Abra uma ata (nova ou editar) para subir áudio.')
-            }
-          >
-            <Upload className="h-4 w-4 mr-1.5" /> Upload de áudio
-          </Button>
+          {/* TX-a v2 (22/10): botões IA/áudio moraram p/ o TÍTULO do dialog —
+              header da tela fica só com Parecer + Nova ata */}
           <Button variant="outline" className="h-9" onClick={() => gerarParecer()}>
             {iaCarregando === 'parecer' ? (
               <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
@@ -559,9 +512,54 @@ export default function AtasReunioesPage() {
       <Dialog open={dialog} onOpenChange={setDialog}>
         <DialogContent className="bg-white max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-[#1B5E20]" />{' '}
+            {/* TX-a v2 (22/10): botões IA/áudio/upload AO LADO DO TÍTULO da
+                tela "Nova ata" — removidos dos outros locais */}
+            <DialogTitle className="flex items-center gap-2 flex-wrap pr-6">
+              <Users className="h-4 w-4 text-[#1B5E20] shrink-0" />{' '}
               {editandoAta ? 'Editar ata' : 'Nova ata de reunião'}
+              <span className="flex items-center gap-1.5 ml-auto">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[11px] text-[#1B5E20]"
+                  onClick={gerarResumo}
+                  disabled={iaCarregando === 'resumo'}
+                >
+                  {iaCarregando === 'resumo' ? (
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3 w-3 mr-1" />
+                  )}
+                  Gerar com IA
+                </Button>
+                <Button
+                  type="button"
+                  variant={gravando ? 'destructive' : 'outline'}
+                  size="sm"
+                  className="h-7 text-[11px]"
+                  onClick={gravando ? pararGravacao : iniciarGravacao}
+                >
+                  {gravando ? (
+                    <>
+                      <Square className="h-3 w-3 mr-1" /> Parar
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="h-3 w-3 mr-1" /> Gravar áudio
+                    </>
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[11px]"
+                  onClick={() => fileAudioRef.current?.click()}
+                >
+                  <Upload className="h-3 w-3 mr-1" /> Upload
+                </Button>
+              </span>
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
@@ -693,43 +691,30 @@ export default function AtasReunioesPage() {
                   {arquivosAudio.length} arquivo(s) de áudio pronto(s) p/ anexar.
                 </div>
               )}
-              {/* TX-f (22/10): campo TRANSCRIÇÃO de volta — visível quando há texto */}
-              {transcricao && (
-                <div className="grid gap-1">
-                  <Label className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 flex items-center gap-1">
-                    <FileAudio className="h-3 w-3" /> Transcrição do áudio (IA)
-                  </Label>
-                  <Textarea
-                    value={transcricao}
-                    onChange={(e) => setTranscricao(e.target.value)}
-                    rows={4}
-                    className="bg-white text-[12px]"
-                  />
-                </div>
-              )}
+              {/* TX-f v2 (22/10): campo TRANSCRIÇÃO SEMPRE visível no dialog */}
+              <div className="grid gap-1">
+                <Label className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 flex items-center gap-1">
+                  <FileAudio className="h-3 w-3" /> Transcrição do áudio (IA)
+                  {transcrevendo && (
+                    <span className="inline-flex items-center gap-1 text-gray-400 normal-case font-medium">
+                      <Loader2 className="h-3 w-3 animate-spin" /> transcrevendo…
+                    </span>
+                  )}
+                </Label>
+                <Textarea
+                  value={transcricao}
+                  onChange={(e) => setTranscricao(e.target.value)}
+                  rows={4}
+                  placeholder="Grave ou suba um áudio — a transcrição aparece aqui (editável)."
+                  className="bg-white text-[12px]"
+                />
+              </div>
             </div>
 
             <div className="grid gap-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Resumo / discussões
-                </Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-[11px] text-[#1B5E20]"
-                  onClick={gerarResumo}
-                  disabled={iaCarregando === 'resumo'}
-                >
-                  {iaCarregando === 'resumo' ? (
-                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                  ) : (
-                    <Sparkles className="h-3 w-3 mr-1" />
-                  )}
-                  Gerar com IA
-                </Button>
-              </div>
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Resumo / discussões
+              </Label>
               <Textarea
                 value={form.resumo}
                 onChange={(e) => setForm({ ...form, resumo: e.target.value })}
