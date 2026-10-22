@@ -28,7 +28,7 @@ import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
 import { carregarPermissoes, menuVisivel, Permissoes } from '@/services/permissoes-service'
 // Versão real do app — atualizada a cada apply_changes (mesma do package.json)
-const pkgVersion = '0.0.137'
+const pkgVersion = '0.0.142'
 import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
 import { idiomaSalvo, traduzir } from '@/lib/i18n'
@@ -198,10 +198,11 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
           className="w-full flex items-center gap-2.5 rounded-lg hover:bg-white/10 transition-colors p-1.5 -m-1.5 focus:outline-none"
           title="Trocar empresa"
         >
+          {/* SDB-a (22/10): fundo BRANCO sólido no quadrado da logo — contraste
+              com logos escuras no fundo verde da sidebar */}
           <div className="h-9 w-9 rounded-lg bg-white border border-white/60 flex items-center justify-center shadow-sm overflow-hidden">
             {(() => {
               const emp = empresas.find((e) => e.id === selectedCompany)
->>>>>>>
               // SDB-a (22/10): match por nome de empresa CASE-INSENSITIVE — o banco grava
               // "FoldBox"/"Casafruti" e a comparação exata escondia a logo (fallback errado).
               // Prioridade: logo (imagem) → emblema (imagem) → sigla/cor → Leaf.
