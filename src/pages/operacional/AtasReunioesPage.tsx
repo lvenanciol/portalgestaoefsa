@@ -12,6 +12,7 @@ import {
   Square,
   Pencil,
   Trash2,
+  FileAudio,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -40,6 +41,11 @@ import { fmtDataBRT } from '@/lib/brt'
 // Teams, Meet + link), participantes, pauta, discussões, decisões e action
 // items com dono/prazo. Botão "Gerar tarefas" cria itens no kanban.
 // TX-h (22/10): data/hora da ÚLTIMA ALTERAÇÃO abaixo dos botões editar/excluir.
+// TX-a (22/10): botões "Gerar com IA"/"Gravar áudio"/"Upload de áudio" AO LADO
+// DO TÍTULO da tela (operam no dialog aberto; sem dialog, avisam p/ abrir).
+// TX-b (22/10): "Gerar com IA" envia a TRANSCRIÇÃO do áudio e preenche
+// resumo + decisões + action items (hook ia_resumo_ata v2, payload direto).
+// TX-f (22/10): campo TRANSCRIÇÃO visível de volta no dialog.
 
 const parse = (v: any) => {
   if (Array.isArray(v)) return v
@@ -114,6 +120,7 @@ export default function AtasReunioesPage() {
     setArquivosAudio([])
     setTranscricao('')
     setParecer('')
+    setErro('')
     setDialog(true)
   }
 
@@ -132,6 +139,7 @@ export default function AtasReunioesPage() {
     setArquivosAudio([])
     setTranscricao('')
     setParecer('')
+    setErro('')
     setDialog(true)
   }
 
@@ -150,7 +158,7 @@ export default function AtasReunioesPage() {
         const ext = (mr.mimeType || 'audio/webm').includes('mp4') ? 'm4a' : 'webm'
         const f = new File([blob], 'gravacao-' + Date.now() + '.' + ext, { type: blob.type })
         setArquivosAudio((p) => [...p, f])
-        // T-Xb: transcreve automaticamente o 1º áudio
+        // T-Xb: transcreve automaticamente o áudio gravado
         await transcrever(f)
       }
       mr.start()
@@ -181,6 +189,8 @@ export default function AtasReunioesPage() {
       if (texto) {
         setTranscricao(texto)
         setForm((p) => ({ ...p, pauta: (p.pauta ? p.pauta + '\n\n' : '') + texto }))
+      } else {
+        setErro('IA não retornou transcrição — verifique o áudio.')
       }
     } catch (e) {
       setErro('Falha na transcrição: ' + String(e).slice(0, 150))
@@ -258,20 +268,43 @@ export default function AtasReunioesPage() {
     }
   }
 
-  // IA: resumo estruturado (hook ia_resumo_ata)
+  // IA: resumo estruturado (hook ia_resumo_ata v2 — payload direto)
   const gerarResumo = async () => {
+    // TX-b (22/10): envia a TRANSCRIÇÃO do áudio (fonte principal) + campos
+    // preenchidos; a IA devolve resumo + decisões + action items e o front
+    // preenche os campos do dialog.
     setIaCarregando('resumo')
     try {
       const r = (await pb.send('/backend/v1/ia/resumo-ata', {
         method: 'POST',
         body: JSON.stringify({
+          transcricao: transcricao,
           pauta: form.pauta,
           resumo: form.resumo,
           decisoes: form.decisoes,
+          participantes: form.participantes,
         }),
       })) as any
       if (r.resumo) setForm((p) => ({ ...p, resumo: r.resumo }))
       if (r.decisoes) setForm((p) => ({ ...p, decisoes: r.decisoes }))
+      if (r.action_items && r.action_items.length > 0) {
+        // action items sugeridos entram na pauta (visual) — ata salva via salvar()
+        const linhas = r.action_items
+          .map(
+            (it: any) =>
+              '• ' +
+              (it.acao || '') +
+              (it.dono ? ' — ' + it.dono : '') +
+              (it.prazo ? ' (até ' + it.prazo + ')' : ''),
+          )
+          .join('\n')
+        setForm((p) => ({
+          ...p,
+          pauta: (p.pauta ? p.pauta + '\n\n' : '') + 'Action items sugeridos:\n' + linhas,
+        }))
+      }
+      if (!r.resumo && !r.decisoes)
+        setErro('IA não retornou conteúdo — grave/suba um áudio primeiro (transcrição vazia).')
     } catch (e) {
       setErro('Falha na IA: ' + String(e).slice(0, 150))
     } finally {
@@ -340,7 +373,56 @@ export default function AtasReunioesPage() {
             Pauta, decisões e action items com dono e prazo
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* TX-a (22/10): botões IA/áudio AO LADO DO TÍTULO — operam no dialog
+              aberto (nova ata em edição); sem dialog, avisam p/ abrir */}
+          <Button
+            variant="outline"
+            className="h-9"
+            onClick={() =>
+              dialog ? gerarResumo() : setErro('Abra uma ata (nova ou editar) para usar a IA.')
+            }
+            disabled={iaCarregando === 'resumo'}
+          >
+            {iaCarregando === 'resumo' ? (
+              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-1.5" />
+            )}
+            Gerar com IA
+          </Button>
+          <Button
+            variant="outline"
+            className="h-9"
+            onClick={() =>
+              dialog
+                ? gravando
+                  ? pararGravacao()
+                  : iniciarGravacao()
+                : setErro('Abra uma ata (nova ou editar) para gravar áudio.')
+            }
+          >
+            {gravando ? (
+              <>
+                <Square className="h-4 w-4 mr-1.5" /> Parar
+              </>
+            ) : (
+              <>
+                <Mic className="h-4 w-4 mr-1.5" /> Gravar áudio
+              </>
+            )}
+          </Button>
+          <Button
+            variant="outline"
+            className="h-9"
+            onClick={() =>
+              dialog
+                ? fileAudioRef.current?.click()
+                : setErro('Abra uma ata (nova ou editar) para subir áudio.')
+            }
+          >
+            <Upload className="h-4 w-4 mr-1.5" /> Upload de áudio
+          </Button>
           <Button variant="outline" className="h-9" onClick={() => gerarParecer()}>
             {iaCarregando === 'parecer' ? (
               <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
@@ -559,7 +641,7 @@ export default function AtasReunioesPage() {
               />
             </div>
 
-            {/* T-X: gravação + upload de áudio */}
+            {/* T-X: gravação + upload de áudio (também acessíveis pelo header) */}
             <div className="p-3 rounded-lg bg-gray-50 border border-gray-100 space-y-2">
               <div className="flex items-center gap-2">
                 <Button
@@ -609,6 +691,20 @@ export default function AtasReunioesPage() {
               {arquivosAudio.length > 0 && (
                 <div className="text-[11px] text-gray-600">
                   {arquivosAudio.length} arquivo(s) de áudio pronto(s) p/ anexar.
+                </div>
+              )}
+              {/* TX-f (22/10): campo TRANSCRIÇÃO de volta — visível quando há texto */}
+              {transcricao && (
+                <div className="grid gap-1">
+                  <Label className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 flex items-center gap-1">
+                    <FileAudio className="h-3 w-3" /> Transcrição do áudio (IA)
+                  </Label>
+                  <Textarea
+                    value={transcricao}
+                    onChange={(e) => setTranscricao(e.target.value)}
+                    rows={4}
+                    className="bg-white text-[12px]"
+                  />
                 </div>
               )}
             </div>

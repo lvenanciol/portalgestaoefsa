@@ -1,7 +1,8 @@
-// Fechamento de gaps (verificação 19/10) — IA nos botões de Atas e Documentos:
-// (1) Resumo de ATA: POST /backend/v1/ia/resumo-ata { ata_id } → resumo executivo
-// gravado em atas.resumo + ia_pareceres + auditoria.
-// (2) Ambos usam o texto já persistido (ata: pauta/decisões/action_items).
+// Fechamento de gaps (19/10) + TX-b (22/10): resumo de ATA via IA.
+// v2: aceita PAYLOAD DIRETO (transcricao/pauta/resumo/decisoes/participantes)
+// para gerar resumo ANTES de salvar a ata (botão "Gerar com IA" no dialog) —
+// e mantém o modo ata_id para atas já salvas. Retorna resumo + decisoes +
+// action_items sugeridos; o front preenche os campos (TX-b).
 
 routerAdd(
   'POST',
@@ -12,37 +13,63 @@ routerAdd(
     const body = e.requestInfo().body || {}
     const ataId = String(body.ata_id || '')
     const promptExtra = String(body.prompt_extra || '').trim()
-    if (!ataId) return e.badRequestError('ata_id é obrigatório')
+    // payload direto (TX-b)
+    const transcricao = String(body.transcricao || '').trim()
+    const pauta = String(body.pauta || '').trim()
+    const resumoAtual = String(body.resumo || '').trim()
+    const decisoes = String(body.decisoes || '').trim()
+    const participantes = String(body.participantes || '').trim()
 
-    let ata
-    try {
-      ata = $app.findRecordById('atas', ataId)
-    } catch (_) {
-      return e.json(404, { ok: false, erro: 'Ata não encontrada.' })
+    let contexto = ''
+    let tituloRef = ''
+    if (ataId) {
+      let ata
+      try {
+        ata = $app.findRecordById('atas', ataId)
+      } catch (_) {
+        return e.json(404, { ok: false, erro: 'Ata não encontrada.' })
+      }
+      tituloRef = ata.getString('titulo')
+      contexto =
+        'Título: ' +
+        tituloRef +
+        '\nData: ' +
+        ata.getString('data') +
+        '\nModalidade: ' +
+        ata.getString('modalidade') +
+        '\nParticipantes: ' +
+        ata.getString('participantes') +
+        '\nPauta: ' +
+        ata.getString('pauta') +
+        '\nResumo atual: ' +
+        ata.getString('resumo') +
+        '\nDecisões: ' +
+        ata.getString('decisoes') +
+        '\nAction items: ' +
+        ata.getString('action_items')
+    } else {
+      // TX-b: payload direto do dialog (transcrição do áudio é a fonte principal)
+      tituloRef = (pauta || transcricao || '').slice(0, 60)
+      contexto =
+        'Participantes: ' +
+        participantes +
+        '\nTranscrição do áudio: ' +
+        transcricao +
+        '\nPauta: ' +
+        pauta +
+        '\nResumo atual: ' +
+        resumoAtual +
+        '\nDecisões: ' +
+        decisoes
     }
-
-    const contexto =
-      'Título: ' +
-      ata.getString('titulo') +
-      '\nData: ' +
-      ata.getString('data') +
-      '\nModalidade: ' +
-      ata.getString('modalidade') +
-      '\nParticipantes: ' +
-      ata.getString('participantes') +
-      '\nPauta: ' +
-      ata.getString('pauta') +
-      '\nDecisões: ' +
-      ata.getString('decisoes') +
-      '\nAction items: ' +
-      ata.getString('action_items')
 
     const sys =
       'Você é analista sênior do grupo Extrafruti (Extrafruti, Casafruti, FoldBox). ' +
       'Responda EXCLUSIVAMENTE em JSON válido (sem markdown, sem cercas), com as chaves: ' +
-      'sumario_executivo (string, até 5 linhas), principais_achados (array de strings), riscos_alertas (array de strings), ' +
-      'recomendacoes (array de strings, priorizadas), score_saude (numero 0-10), disclaimer (string). ' +
-      'Português do Brasil, objetivo. Não invente informação: use apenas o conteúdo da ata.'
+      '"resumo" (string, até 5 linhas executivas com decisões/responsáveis/prazos), ' +
+      '"decisoes" (string, decisões em linhas numeradas "1) ..."), ' +
+      '"action_items" (array de objetos {acao, dono, prazo(YYYY-MM-DD ou "")}). ' +
+      'Português do Brasil, objetivo. Não invente informação: use apenas o conteúdo fornecido.'
 
     const r = $ai.chat({
       model: 'fast',
@@ -51,11 +78,11 @@ routerAdd(
         {
           role: 'user',
           content:
-            'Ata:\n' +
+            'Conteúdo da reunião:\n' +
             contexto +
             '\n\nTarefa: ' +
             (promptExtra ||
-              'resuma em 5 linhas executivas: decisões, responsáveis, prazos e pendências críticas.'),
+              'gere o resumo executivo, as decisões tomadas e os action items (com dono e prazo quando mencionados).'),
         },
       ],
     })
@@ -74,30 +101,25 @@ routerAdd(
     try {
       estrutura = JSON.parse(limpo)
     } catch (_) {
-      estrutura = {
-        sumario_executivo: texto,
-        principais_achados: [],
-        riscos_alertas: [],
-        recomendacoes: [],
-        score_saude: null,
-        disclaimer: 'Análise assistida — não substitui contador/auditor.',
-      }
+      estrutura = { resumo: texto, decisoes: '', action_items: [] }
     }
 
-    // grava resumo na ata (campo resumo = sumário executivo)
-    try {
-      ata.set('resumo', String(estrutura.sumario_executivo || '').slice(0, 4000))
-      $app.save(ata)
-    } catch (_) {}
+    // modo ata_id: grava o resumo na ata (comportamento original)
+    if (ataId && estrutura.resumo) {
+      try {
+        const ata = $app.findRecordById('atas', ataId)
+        ata.set('resumo', String(estrutura.resumo).slice(0, 4000))
+        $app.save(ata)
+      } catch (_) {}
+    }
 
     // histórico
-    let parecerId = ''
     try {
       const col = $app.findCollectionByNameOrId('ia_pareceres')
       const rec = new Record(col)
       rec.set('modulo', 'atas')
-      rec.set('ref', ata.getString('titulo'))
-      rec.set('prompt', 'Resumo executivo da ata')
+      rec.set('ref', tituloRef)
+      rec.set('prompt', 'Resumo/decisões/action items da ata')
       rec.set('contexto', contexto.slice(0, 12000))
       rec.set('resultado', JSON.stringify(estrutura))
       rec.set('status', 'rascunho')
@@ -105,7 +127,6 @@ routerAdd(
       rec.set('criado_por', auth.getString('email'))
       rec.set('modelo', 'fast')
       $app.save(rec)
-      parecerId = rec.id
     } catch (_) {}
 
     // auditoria
@@ -120,13 +141,18 @@ routerAdd(
           id: aid,
           uid: auth.id,
           uemail: auth.getString('email'),
-          det: 'resumo IA: ' + ata.getString('titulo'),
+          det: 'resumo IA: ' + tituloRef,
           now: new DateTime().string(),
         })
         .execute()
     } catch (_) {}
 
-    return e.json(200, { ok: true, parecer_id: parecerId, estrutura: estrutura })
+    return e.json(200, {
+      ok: true,
+      resumo: String(estrutura.resumo || ''),
+      decisoes: String(estrutura.decisoes || ''),
+      action_items: estrutura.action_items || [],
+    })
   },
   $apis.requireAuth(),
 )

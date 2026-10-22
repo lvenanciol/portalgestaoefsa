@@ -49,11 +49,10 @@ import { cn } from '@/lib/utils'
 // "Sincronizar caixa" POR ABA, lista sincronizada por provedor, clique abre
 // DETALHE (corpo completo + anexos via /backend/v1/email/oauth/detalhe) e
 // compositor com assinatura da conta conectada (T0c).
-// Lote 22/10 (tarde): T0c altura MEMORIZADA (localStorage) · T0g conteúdo abre
-// na CAIXA INFERIOR (título dinâmico, sem dialog) · T0h/T0k menu de ordenação
-// estilo Outlook (Data/De/Assunto + A on Top/Z on Top) no lugar do texto
-// "N e-mail(s)" · T0i Conectar/Reconectar SEMPRE visível · T0j dropdown com
-// ENTRADA (default) · T0e v10 resolverCids (imagens inline do Outlook).
+// Lote 22/10 (tarde): T0c altura MEMORIZADA · T0g conteúdo na CAIXA INFERIOR ·
+// T0h/k ordenação Outlook · T0i Conectar sempre · T0j ENTRADA default.
+// Rodada 3 (22/10): T0-l1 caixa "ENVIADOS PELO PORTAL" REMOVIDA · T0-l2 botões
+// duplicados abaixo da caixa REMOVIDOS (só os de cima da caixa).
 
 interface Modelo {
   chave: string
@@ -93,10 +92,8 @@ interface Detalhe {
 
 export default function EmailsPage() {
   const { user } = useAuth()
-  const [regs, setRegs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
-  const [busca, setBusca] = useState('')
   const [oauth, setOauth] = useState<Record<string, { conectado: boolean; conta?: string }>>({
     google: { conectado: false },
     microsoft: { conectado: false },
@@ -117,17 +114,15 @@ export default function EmailsPage() {
   const [corpo, setCorpo] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [assinaturaUrl, setAssinaturaUrl] = useState('')
-  // T0f+T0j (22/10): pasta por aba — 'entrada' (default, caixa de entrada),
-  // enviados, excluídos, rascunhos
+  // T0f+T0j (22/10): pasta por aba — 'entrada' (default), enviados, excluídos, rascunhos
   const [pastaPorAba, setPastaPorAba] = useState<Record<string, string>>({
     google: 'entrada',
     microsoft: 'entrada',
   })
-  // T0h/T0k (22/10): ordenação estilo Outlook — campo (data|de|assunto) +
-  // direção (A on Top = asc / Z on Top = desc)
+  // T0h/T0k (22/10): ordenação estilo Outlook — campo + direção
   const [ordemCampo, setOrdemCampo] = useState<'data' | 'de' | 'assunto'>('data')
   const [ordemDesc, setOrdemDesc] = useState(true)
-  // T0c (22/10): altura da caixa redimensionável (resize-y) — MEMORIZADA (T0-c)
+  // T0c (22/10): altura da caixa redimensionável — MEMORIZADA
   const [alturaCaixa, setAlturaCaixa] = useState(() => {
     try {
       const v = Number(localStorage.getItem('pge_emails_altura_caixa'))
@@ -143,19 +138,6 @@ export default function EmailsPage() {
       /* storage indisponível — segue sem memorizar */
     }
   }, [alturaCaixa])
-
-  const carregar = async () => {
-    setLoading(true)
-    try {
-      const r = await pb.collection('emails').getFullList({ sort: '-created' })
-      setRegs(r as any[])
-      setErro('')
-    } catch (e) {
-      setErro(String(e))
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const carregarOauth = async () => {
     try {
@@ -179,16 +161,16 @@ export default function EmailsPage() {
   }
 
   useEffect(() => {
-    carregar()
-    carregarOauth()
-    carregarInbox()
     ;(async () => {
+      setLoading(true)
+      await Promise.all([carregarOauth(), carregarInbox()])
       try {
         const r = (await pb.send('/backend/v1/emails/modelos', { method: 'GET' })) as any
         setModelos(r.modelos || [])
       } catch (_) {
         setModelos([])
       }
+      setLoading(false)
     })()
   }, [])
 
@@ -319,7 +301,6 @@ export default function EmailsPage() {
         setMsg('E-mail enviado com sucesso.')
       }
       setDialog(false)
-      await carregar()
     } catch (e: any) {
       setMsg('Falha: ' + (e?.response?.data?.erro || e?.message || String(e)))
     } finally {
@@ -339,11 +320,6 @@ export default function EmailsPage() {
       html = html.replace(re, 'src="' + ci.dataUrl + '"')
     }
     return html
-  }
-
-  const STATUS_COR: Record<string, string> = {
-    enviado: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    erro: 'bg-red-50 text-red-700 border-red-200',
   }
 
   const TITULO_PASTA: Record<string, string> = {
@@ -403,10 +379,10 @@ export default function EmailsPage() {
       })
     return (
       <div className="space-y-3">
-        {/* T0d (22/10): botões ACIMA da caixa, alinhados à ESQUERDA */}
+        {/* T0d (22/10): botões ACIMA da caixa, alinhados à ESQUERDA — ÚNICOS
+            (T0-l2: os duplicados abaixo da caixa foram REMOVIDOS) */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* T0i (22/10): conectar conta SEMPRE visível (igual à Integrações →
-              E-mail) — quando conectado vira "Reconectar" */}
+          {/* T0i (22/10): conectar conta SEMPRE visível — quando conectado vira "Reconectar" */}
           <Button variant="outline" className="h-9" onClick={() => conectar(prov)}>
             <Plug className="h-4 w-4 mr-1" />{' '}
             {st.conectado ? 'Reconectar ' + nome : 'Conectar ' + nome}
@@ -469,8 +445,7 @@ export default function EmailsPage() {
             )}
             Sincronizar caixa
           </Button>
-          {/* T0k: texto "N e-mail(s) nesta pasta" REMOVIDO — contagem fica no
-              título da caixa; desconectado mostra só o link p/ Integrações */}
+          {/* T0k: texto "N e-mail(s) nesta pasta" REMOVIDO — contagem no título da caixa */}
           {!st.conectado && (
             <div className="text-[12px] text-gray-600 ml-1">
               <strong>{nome}</strong> desconectado — conecte na tela{' '}
@@ -484,8 +459,7 @@ export default function EmailsPage() {
           <div className="px-4 py-2.5 border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-2">
             {ICONE_PASTA[pastaSel] || <Inbox className="h-3.5 w-3.5" />}{' '}
             {TITULO_PASTA[pastaSel] || 'Caixa sincronizada'} ({lista.length})
-            {/* T0h/T0k (22/10): MENU de ordenação estilo Outlook (Data/De/Assunto
-                + A on Top/Z on Top) no lugar do texto "N e-mail(s) nesta pasta" */}
+            {/* T0h/T0k (22/10): MENU de ordenação estilo Outlook */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -651,36 +625,6 @@ export default function EmailsPage() {
         </TabsContent>
       </Tabs>
 
-      {/* T0d (22/10): botões de ação ACIMA da caixa sincronizada — à esquerda */}
-      <div className="flex items-center gap-2">
-        <Button
-          onClick={abrirCompositor}
-          className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
-        >
-          <Plus className="h-4 w-4 mr-1" /> Novo e-mail
-        </Button>
-        <Button
-          variant="outline"
-          className="h-9"
-          onClick={() => {
-            const prov = oauth.google?.conectado
-              ? 'google'
-              : oauth.microsoft?.conectado
-                ? 'microsoft'
-                : 'google'
-            sincronizar(prov)
-          }}
-          disabled={!(oauth.google?.conectado || oauth.microsoft?.conectado) || !!syncando}
-        >
-          {syncando ? (
-            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4 mr-1" />
-          )}
-          Sincronizar caixa
-        </Button>
-      </div>
-
       {/* T0g (22/10): conteúdo do e-mail aberto — CAIXA INFERIOR com título
           dinâmico conforme o e-mail/pasta selecionada */}
       {detalheId && (
@@ -822,61 +766,6 @@ export default function EmailsPage() {
           )}
         </div>
       )}
-
-      {/* Histórico de envios do portal */}
-      <div className="bg-white rounded-xl border border-[#E5E7EB] shadow-xs overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-500">
-          Enviados pelo portal
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-[13px]">
-            <thead className="bg-gray-50 border-b border-gray-100">
-              <tr className="text-left text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                <th className="px-4 py-2.5">Assunto</th>
-                <th className="px-4 py-2.5">Para</th>
-                <th className="px-4 py-2.5">Status</th>
-                <th className="px-4 py-2.5">Enviado por</th>
-                <th className="px-4 py-2.5">Data</th>
-              </tr>
-            </thead>
-            <tbody>
-              {regs.map((r) => (
-                <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-4 py-2.5 font-semibold text-gray-800">{r.assunto}</td>
-                  <td className="px-4 py-2.5 text-gray-600">{r.para}</td>
-                  <td className="px-4 py-2.5">
-                    <span
-                      className={cn(
-                        'text-[10px] font-bold px-2 py-0.5 rounded-full border',
-                        STATUS_COR[r.status] || 'bg-gray-100 text-gray-600 border-gray-200',
-                      )}
-                    >
-                      {r.status}
-                    </span>
-                    {r.erro && (
-                      <div className="text-[10px] text-red-600 mt-0.5 max-w-[200px] truncate">
-                        {r.erro}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-gray-600">{r.criado_por || '—'}</td>
-                  <td className="px-4 py-2.5 text-gray-500 tabular-nums">
-                    {fmtDataBRT(r.created)}
-                  </td>
-                </tr>
-              ))}
-              {regs.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-gray-400">
-                    Nenhum e-mail enviado ainda pelo portal. Use "Novo e-mail" para enviar o
-                    primeiro.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
       {/* Dialog compositor */}
       <Dialog open={dialog} onOpenChange={setDialog}>

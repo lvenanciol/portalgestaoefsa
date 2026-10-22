@@ -6,11 +6,9 @@ import { getErrorMessage } from '@/lib/pocketbase/errors'
 import pb from '@/lib/pocketbase/client'
 
 // LOGIN (22/10): logomarca(s) reais da coleção logomarcas no topo do card.
-// Mais de uma empresa com imagem → ALTERNÂNCIA a cada 2s com fade suave
-// (transition-opacity). Sem imagem (ou só PDF) → fallback emblema/Leaf.
-// v2 (22/10): carrega via hook PÚBLICO /backend/v1/public/logos (a coleção
-// logomarcas exige auth — anon via listRule fechado via 0 itens; o print do
-// dono mostrava Leaf). Logo → emblema (ícone) → Leaf.
+// Mais de uma empresa com imagem → ALTERNÂNCIA a cada 2s com fade suave.
+// v3 (22/10): cor de FUNDO do quadrado = cor da identidade da logomarca
+// (registro.cor — ex. Casafruti #FFFFFF), conforme pedido do dono.
 export default function Login() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
@@ -23,8 +21,8 @@ export default function Login() {
   const [recuperar, setRecuperar] = useState(false)
   const [msgRecuperar, setMsgRecuperar] = useState('')
 
-  // Logos de imagem (png/jpg/svg/webp) — PDF NÃO renderiza em <img>
-  const [logos, setLogos] = useState<string[]>([])
+  // Logos de imagem (png/jpg/svg/webp) + cor de fundo da identidade
+  const [logos, setLogos] = useState<{ url: string; cor: string }[]>([])
   const [logoIdx, setLogoIdx] = useState(0)
 
   useEffect(() => {
@@ -39,7 +37,10 @@ export default function Login() {
             const ext = String(campo).split('?')[0].split('.').pop()?.toLowerCase() || ''
             const ehImagem = ['png', 'jpg', 'jpeg', 'svg', 'webp'].includes(ext)
             if (!ehImagem) return ''
-            return pb.files.getURL({ collectionId: 'logomarcas', id: l.id }, campo)
+            return {
+              url: pb.files.getURL({ collectionId: 'logomarcas', id: l.id }, campo),
+              cor: String(l.cor || '#1B5E20'),
+            }
           })
           .filter(Boolean)
         if (vivo) setLogos(urls)
@@ -92,11 +93,17 @@ export default function Login() {
         {/* Card de login */}
         <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-sm p-8">
           <div className="flex flex-col items-center mb-8">
-            <div className="h-16 w-16 rounded-2xl bg-[#1B5E20] flex items-center justify-center mb-4 overflow-hidden relative">
+            {/* Cor de fundo = cor da identidade da logomarca (dono 22/10) */}
+            <div
+              className="h-16 w-16 rounded-2xl flex items-center justify-center mb-4 overflow-hidden relative border border-gray-200"
+              style={{
+                backgroundColor: logos.length > 0 ? logos[logoIdx % logos.length].cor : '#1B5E20',
+              }}
+            >
               {logos.length > 0 ? (
                 <img
-                  key={logos[logoIdx % logos.length]}
-                  src={logos[logoIdx % logos.length]}
+                  key={logos[logoIdx % logos.length].url}
+                  src={logos[logoIdx % logos.length].url}
                   alt="Logomarca"
                   className="h-full w-full object-contain p-1.5 animate-in fade-in duration-500"
                 />
