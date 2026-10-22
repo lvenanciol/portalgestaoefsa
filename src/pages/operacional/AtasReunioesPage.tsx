@@ -642,32 +642,8 @@ export default function AtasReunioesPage() {
             {/* T-X: gravação + upload de áudio (também acessíveis pelo header) */}
             <div className="p-3 rounded-lg bg-gray-50 border border-gray-100 space-y-2">
               <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant={gravando ? 'destructive' : 'outline'}
-                  size="sm"
-                  className="h-8"
-                  onClick={gravando ? pararGravacao : iniciarGravacao}
-                >
-                  {gravando ? (
-                    <>
-                      <Square className="h-3.5 w-3.5 mr-1" /> Parar
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="h-3.5 w-3.5 mr-1" /> Gravar áudio
-                    </>
-                  )}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8"
-                  onClick={() => fileAudioRef.current?.click()}
-                >
-                  <Upload className="h-3.5 w-3.5 mr-1" /> Upload de áudio
-                </Button>
+                {/* TX-a v3 (22/10): botões SÓ no título do dialog — aqui fica só
+                    o input hidden (ref do título), status e transcrição */}
                 <input
                   ref={fileAudioRef}
                   type="file"
@@ -683,6 +659,11 @@ export default function AtasReunioesPage() {
                 {transcrevendo && (
                   <span className="text-[11px] text-gray-500 inline-flex items-center gap-1">
                     <Loader2 className="h-3 w-3 animate-spin" /> Transcrevendo…
+                  </span>
+                )}
+                {gravando && (
+                  <span className="text-[11px] text-red-600 inline-flex items-center gap-1">
+                    <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" /> gravando…
                   </span>
                 )}
               </div>
