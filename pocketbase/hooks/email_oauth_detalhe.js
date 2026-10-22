@@ -246,12 +246,14 @@ routerAdd(
       // T0b fix (21/10): IDs do Graph são VOLÁTEIS (mudam entre sessões) —
       // 404 ErrorItemNotFound mesmo com id completo. Re-lista e casa por
       // assunto/remetente; atualiza o vínculo no registro.
+      // v9: SEM attachments no $select — a listagem v8 (/attachments) já traz
+      // contentId+contentBytes; expandir attachments aqui dobra o tráfego
       const buscar = (idMid) =>
         $http.send({
           url:
             'https://graph.microsoft.com/v1.0/me/messages/' +
             encodeURIComponent(idMid) +
-            '?$select=subject,from,toRecipients,body,bodyPreview,attachments,receivedDateTime',
+            '?$select=subject,from,toRecipients,body,bodyPreview,receivedDateTime',
           method: 'GET',
           headers: { Authorization: 'Bearer ' + at },
           timeout: 30,
@@ -320,6 +322,7 @@ routerAdd(
           if (ri.statusCode === 200) {
             const listaAnexos = JSON.parse(bodyOf(ri)).value || []
             const bytesCache = {} // dedupe — 1 busca individual por anexo único (fallback)
+            const mapaCid = {} // v9: prefixo→dataUrl (substituição única no fim)
             for (const cid of cids.slice(0, 10)) {
               const cidLimpo = cid.replace('cid:', '')
               // T0e fix (22/10): casa por contentId REAL (listagem v8 traz),
@@ -364,25 +367,9 @@ routerAdd(
                 } catch (_eA) {}
               }
               if (a && a.contentBytes) {
-                // substitui TODAS as variantes (aspas duplas/simples, case)
-                const dataUrl = 'data:' + a.contentType + ';base64,' + a.contentBytes
-                out.corpo_html = out.corpo_html
-                  .split('src="cid:' + cidLimpo + '"')
-                  .join('src="' + dataUrl + '"')
-                out.corpo_html = out.corpo_html
-                  .split("src='cid:" + cidLimpo + "'")
-                  .join("src='" + dataUrl + "'")
-                out.corpo_html = out.corpo_html.split('src=CID:' + cidLimpo).join('src=' + dataUrl)
-                // T0e fix (22/10): case-insensitive (src="CID:IMAGE001.gif")
-                out.corpo_html = out.corpo_html
-                  .split('src="CID:' + cidLimpo.toUpperCase() + '"')
-                  .join('src="' + dataUrl + '"')
-                out.corpo_html = out.corpo_html
-                  .split("src='CID:" + cidLimpo.toUpperCase() + "'")
-                  .join("src='" + dataUrl + "'")
-                // regex geral: cid:<prefixo>...@... em qualquer case/aspas
-                const re = new RegExp('src=(["\'])cid:' + prefixo + '[^"\']*\\1', 'gi')
-                out.corpo_html = out.corpo_html.replace(re, 'src="' + dataUrl + '"')
+                // v9: registra no mapa (substituição ÚNICA no fim — split/join
+                // por cid com dataUrl de ~1MB × 18 cids travava o JSVM)
+                mapaCid[prefixo] = 'data:' + a.contentType + ';base64,' + a.contentBytes
               } else if (a && a.isInline) {
                 // T0e-2 (21/10): anexo INLINE cujo cid não casou no HTML — injeta
                 // <img> no topo (o Outlook referencia por contentId que nem sempre
@@ -394,6 +381,11 @@ routerAdd(
                   '" style="max-width:100%;" /></div>' +
                   out.corpo_html
               }
+            }
+            // v9: substituição ÚNICA — cada src="cid:PREFIXO..." vira o dataUrl
+            for (const pref in mapaCid) {
+              const re = new RegExp('src=(["\'])cid:' + pref + '[^"\']*\\1', 'gi')
+              out.corpo_html = out.corpo_html.replace(re, 'src="' + mapaCid[pref] + '"')
             }
           }
         }
