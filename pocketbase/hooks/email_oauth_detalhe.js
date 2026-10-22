@@ -321,6 +321,7 @@ routerAdd(
           if (ri.statusCode === 200) {
             const listaAnexos = JSON.parse(bodyOf(ri)).value || []
             const bytesCache = {} // T0e fix (22/10 v4): dedupe — 1 busca por anexo único
+            let fallbacks = 0 // v5: $search lento no MÁXIMO 2×
             for (const cid of cids.slice(0, 10)) {
               const cidLimpo = cid.replace('cid:', '')
               // T0e fix (22/10): casa por PREFIXO antes do '@' e case-insensitive
@@ -393,7 +394,10 @@ routerAdd(
                   dataUrl2 +
                   '" style="max-width:100%;" /></div>' +
                   out.corpo_html
-              } else if (!a && prefixo) {
+              } else if (!a && prefixo && fallbacks < 2) {
+                // v5: fallback $search (LENTO ~30s) no MÁXIMO 2× por requisição —
+                // cids sem match além disso seguem sem imagem (não travam o hook)
+                fallbacks++
                 // T0e-3 (22/10): anexo NÃO veio na listagem (grande >3MB) — busca
                 // individual /messages/{id}/attachments/{id} e injeta no topo
                 try {
