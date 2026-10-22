@@ -2,6 +2,21 @@
 // GET /backend/v1/integracoes/whatsapp/config → config mascarada + flags
 // POST /backend/v1/integracoes/whatsapp/config → salva (preserva segredos
 // mascarados/em branco) + auditoria. Estado em integracoes_config (JSONB).
+// v12 (22/10): cfg.get('config') no JSVM devolve o JSONB como ARRAY DE CHARS
+// (não objeto) — normaliza p/ objeto antes de ler (causa do GET config vazio)
+const cfgObj = (cfg) => {
+  if (!cfg) return {}
+  let c = cfg.get('config')
+  if (Array.isArray(c)) c = c.join('')
+  if (typeof c === 'string') {
+    try {
+      c = JSON.parse(c)
+    } catch (_) {
+      c = {}
+    }
+  }
+  return c && typeof c === 'object' && !Array.isArray(c) ? c : {}
+}
 
 routerAdd(
   'GET',
@@ -13,7 +28,7 @@ routerAdd(
     try {
       cfg = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'whatsapp'")
     } catch (_) {}
-    const c = cfg ? cfg.get('config') || {} : {}
+    const c = cfgObj(cfg) // v12: JSONB pode virar array de chars no JSVM
     const rawToken = String(c.access_token || '').trim()
     const rawSecret = String(c.app_secret || '').trim()
     const mask = function (v, keep) {
@@ -65,7 +80,7 @@ routerAdd(
     try {
       cfg = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'whatsapp'")
     } catch (_) {}
-    const atual = cfg ? cfg.get('config') || {} : {}
+    const atual = cfgObj(cfg) // v12: JSONB pode virar array de chars no JSVM
     // preserva segredos quando o valor vem mascarado/em branco
     const novoToken = String(body.access_token || '').trim()
     const novoSecret = String(body.app_secret || '').trim()
@@ -236,7 +251,7 @@ routerAdd(
     try {
       cfg = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'whatsapp'")
     } catch (_) {}
-    const c = cfg ? cfg.get('config') || {} : {}
+    const c = cfgObj(cfg) // v12: JSONB pode virar array de chars no JSVM
     const token = String(c.access_token || '').trim()
     const phoneId = String(c.phone_number_id || '').trim()
     if (!token || !phoneId) {
@@ -273,7 +288,8 @@ routerAdd(
     }
     try {
       if (cfg) {
-        const cfg2 = cfg.get('config') || {}
+        // v12: parte do objeto NORMALIZADO (não do get() cru que vira array)
+        const cfg2 = cfgObj(cfg)
         cfg2.last_tested_at = new DateTime().string()
         cfg2.last_test_result = { ok: ok, detalhe: detalhe, quando: new DateTime().string() }
         cfg.set('config', cfg2)
