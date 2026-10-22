@@ -286,13 +286,21 @@ export function Topbar() {
     const telasDb: BuscaItem[] = (menusDb || [])
       .filter((m) => m.ativo !== false && m.rota)
       .map((m) => ({
-        label: m.titulo,
+        // SDB-c: label mostra SEÇÃO → Tela quando a seção existe
+        label: m.secao ? m.secao + ' → ' + m.titulo : m.titulo,
         rota: m.rota,
         tipo: 'tela' as const,
         chaves: (m.secao || '') + ' ' + (m.titulo || ''),
       }))
     const telas = telasDb.length ? telasDb : BUSCA_TELAS_FALLBACK
-    return [...telas, ...BUSCA_ACOES]
+    // SDB-c: Meu Perfil como resultado da busca (abre o dialog do avatar)
+    const perfil: BuscaItem = {
+      label: 'Meu Perfil',
+      rota: '__perfil__',
+      tipo: 'acao',
+      chaves: 'perfil usuario dados telefone cargo senha conta',
+    }
+    return [perfil, ...telas, ...BUSCA_ACOES]
   })()
 
   const resultados = (() => {
@@ -307,6 +315,11 @@ export function Topbar() {
     setBuscaAberta(false)
     setBusca('')
     setBuscaDeb('')
+    // SDB-c: resultado "Meu Perfil" abre o dialog de perfil do avatar
+    if (rota === '__perfil__') {
+      setPerfilOpen(true)
+      return
+    }
     navigate(rota)
   }
 
@@ -357,7 +370,7 @@ export function Topbar() {
         <button
           type="button"
           onClick={toggleSidebar}
-          className="lg:hidden p-2 -ml-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg focus:outline-none"
+          className="lg:hidden p-2 -ml-1 text-gray-600 hover:bg-gray-100 rounded-lg focus:outline-none"
           aria-label="Abrir menu"
         >
           <Menu className="h-5 w-5" />

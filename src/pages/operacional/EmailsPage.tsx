@@ -14,6 +14,7 @@ import {
   FilePlus2,
   ArrowUpDown,
   ChevronDown,
+  Plug,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -168,6 +169,24 @@ export default function EmailsPage() {
       }
     })()
   }, [])
+
+  // T0i (22/10): conectar conta igual à tela Integrações → E-mail (OAuth redirect)
+  const conectar = async (provedor: string) => {
+    setMsg('')
+    try {
+      const r = (await pb.send('/backend/v1/email/oauth/iniciar', {
+        method: 'POST',
+        body: JSON.stringify({ provedor }),
+      })) as any
+      if (r.ok && r.url) {
+        window.location.href = r.url
+        return
+      }
+      setMsg(r.erro || 'Falha ao iniciar OAuth.')
+    } catch (e) {
+      setMsg('Erro: ' + String(e))
+    }
+  }
 
   const sincronizar = async (provedor: string, pastaForcar?: string) => {
     setSyncando(provedor)
@@ -338,6 +357,12 @@ export default function EmailsPage() {
       <div className="space-y-3">
         {/* T0d (22/10): botões ACIMA da caixa, alinhados à ESQUERDA */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* T0i (22/10): conectar conta igual à Integrações → E-mail (OAuth) */}
+          {!st.conectado && (
+            <Button variant="outline" className="h-9" onClick={() => conectar(prov)}>
+              <Plug className="h-4 w-4 mr-1" /> Conectar {nome}
+            </Button>
+          )}
           {/* T0g (22/10): "Novo e-mail" = dropdown (novo/enviados/excluídos/rascunhos) */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

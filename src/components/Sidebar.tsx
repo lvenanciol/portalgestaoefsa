@@ -198,9 +198,10 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
           className="w-full flex items-center gap-2.5 rounded-lg hover:bg-white/10 transition-colors p-1.5 -m-1.5 focus:outline-none"
           title="Trocar empresa"
         >
-          <div className="h-9 w-9 rounded-lg bg-white/15 border border-white/25 flex items-center justify-center text-white shadow-sm overflow-hidden">
+          <div className="h-9 w-9 rounded-lg bg-white border border-white/60 flex items-center justify-center shadow-sm overflow-hidden">
             {(() => {
               const emp = empresas.find((e) => e.id === selectedCompany)
+>>>>>>>
               // SDB-a (22/10): match por nome de empresa CASE-INSENSITIVE — o banco grava
               // "FoldBox"/"Casafruti" e a comparação exata escondia a logo (fallback errado).
               // Prioridade: logo (imagem) → emblema (imagem) → sigla/cor → Leaf.
