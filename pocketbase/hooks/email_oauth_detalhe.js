@@ -9,6 +9,7 @@
 // resolve cid→dataUrl no iframe (JSVM é lento com strings de MB; browser não).
 // v11 (22/10): bodyOf rápido p/ payloads grandes (fromCharCode em blocos) —
 // utf8Decode char a char sobre 1.6MB de base64 travava o JSVM (timeout 40s+).
+// v12 (22/10): re-lista 100 (não 50) ao re-vincular + erro 502 amigável.
 
 routerAdd(
   'GET',
@@ -23,14 +24,13 @@ routerAdd(
     const rec = $app.findRecordById('emails_inbox', id)
     const provedor = rec.getString('provedor')
     let mid = rec.getString('message_id') // T0b: pode ser re-vinculado (Graph volátil)
-    let at = rec.getString('access_token') // não existe — usa tokens do provedor
     let tok
     try {
       tok = $app.findFirstRecordByFilter('email_oauth_tokens', 'provedor = "' + provedor + '"')
     } catch (_) {
       return e.json(502, { ok: false, erro: 'Conta não conectada.' })
     }
-    at = tok.getString('access_token')
+    let at = tok.getString('access_token')
     const rt = tok.getString('refresh_token')
     const expira = tok.getString('expires_at')
 
@@ -138,7 +138,6 @@ routerAdd(
     // em 1 codepoint UTF-8 real (JSVM não tem TextDecoder — manual).
     const fix1252 = (s) => {
       if (!s || s.length < 2) return s
-      // heurística: só mexe se HÁ sinais de mojibake (evita estragar texto são)
       let temMojibake = false
       for (let i = 0; i < s.length - 1; i++) {
         const c = s.charCodeAt(i)
@@ -159,7 +158,6 @@ routerAdd(
         if ((c === 0xc2 || c === 0xc3) && i + 1 < s.length) {
           const c2 = s.charCodeAt(i + 1)
           if (c2 >= 0x80 && c2 <= 0xbf) {
-            // byte1 é o lead (C2/C3) e byte2 a continuação — recombina
             out += String.fromCodePoint(((c & 31) << 6) | (c2 & 63))
             i += 2
             continue
@@ -170,11 +168,9 @@ routerAdd(
       }
       return out
     }
-    // aplica no HTML e no texto (recursivo em atributos style com font-family)
     const consertaCharset = (html) => {
       if (!html) return html
       let h = fix1252(html)
-      // meta charset ausente → injeta (browser assume windows-1252)
       if (!/charset=/i.test(h)) h = '<meta charset="utf-8">' + h
       return h
     }
@@ -205,10 +201,8 @@ routerAdd(
           erro: 'gmail ' + r.statusCode + ': ' + bodyOf(r).slice(0, 120),
         })
       const d = JSON.parse(bodyOf(r))
-      // varre as partes MIME
       const b64urlDecode = (s) => {
         const b64 = s.replace(/-/g, '+').replace(/_/g, '/')
-        // decodifica base64 → bytes → UTF-8
         const CH = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
         const bytes = []
         let bits = 0
@@ -258,11 +252,9 @@ routerAdd(
       if (d.payload) pegaPartes(d.payload)
       if (!out.corpo_html && !out.corpo_texto && d.snippet) out.corpo_texto = String(d.snippet)
     } else {
-      // T0b fix (21/10): IDs do Graph são VOLÁTEIS (mudam entre sessões) —
-      // 404 ErrorItemNotFound mesmo com id completo. Re-lista e casa por
-      // assunto/remetente; atualiza o vínculo no registro.
-      // v9: SEM attachments no $select — a listagem v8 (/attachments) já traz
-      // contentId+contentBytes; expandir attachments aqui dobra o tráfego
+      // T0b fix (21/10): IDs do Graph são VOLÁTEIS — 404 → re-lista e casa por
+      // assunto/remetente; v12: top=100 (não 50) p/ cobrir caixas movimentadas.
+      // v9: SEM attachments no $select — a listagem /attachments já traz tudo
       const buscar = (idMid) =>
         $http.send({
           url:
@@ -276,7 +268,7 @@ routerAdd(
       let r = buscar(mid)
       if (r.statusCode === 404) {
         const rl = $http.send({
-          url: 'https://graph.microsoft.com/v1.0/me/messages?$top=50&$select=id,subject,from,receivedDateTime&$orderby=receivedDateTime%20desc',
+          url: 'https://graph.microsoft.com/v1.0/me/messages?$top=100&$select=id,subject,from,receivedDateTime&$orderby=receivedDateTime%20desc',
           method: 'GET',
           headers: { Authorization: 'Bearer ' + at },
           timeout: 30,
@@ -306,19 +298,14 @@ routerAdd(
       if (r.statusCode !== 200)
         return e.json(502, {
           ok: false,
-          erro:
-            'graph ' + r.statusCode + ': e-mail não encontrado na caixa atual (movido/excluído?).',
+          erro: 'Este e-mail não está mais na caixa sincronizada (movido/excluído no Outlook). Sincronize a caixa e abra novamente — ou abra direto no Outlook.',
         })
       const d = JSON.parse(bodyOf(r))
       out.corpo_html = String((d.body && d.body.content) || '')
       if ((d.body || {}).contentType === 'text') out.corpo_texto = out.corpo_html
-      // T0b (22/10): mojibake windows-1252 + charset explícito (consertaCharset)
       out.corpo_html = consertaCharset(out.corpo_html)
       if (out.corpo_texto) out.corpo_texto = fix1252(out.corpo_texto)
       const anexos = d.attachments || []
-      // T0e fix (21/10): imagens INLINE (cid:) não abrem — baixar cada uma e
-      // embutir como data URL no HTML (contentBytes já vem na listagem de
-      // attachments com $expand). Sem expand, busca individual <100KB.
       try {
         const cids = out.corpo_html.match(/cid:[a-zA-Z0-9._@-]+/g) || []
         if (cids.length) {
@@ -339,8 +326,6 @@ routerAdd(
             const mapaCid = {} // v10: prefixo→{cid,dataUrl} p/ o front
             for (const cid of cids.slice(0, 10)) {
               const cidLimpo = cid.replace('cid:', '')
-              // T0e fix (22/10): casa por contentId REAL (listagem v8 traz),
-              // depois por PREFIXO antes do '@' e case-insensitive
               const prefixo = cidLimpo.split('@')[0].toLowerCase()
               let a = listaAnexos.find((x) => {
                 const cidAnexo = String(x.contentId || '')
@@ -355,14 +340,12 @@ routerAdd(
                 )
               })
               if (a && a.contentBytes) {
-                // v10: anexo inline vai p/ o front (base64 + contentId)
                 mapaCid[prefixo] = {
                   cid: cidLimpo,
                   dataUrl: 'data:' + a.contentType + ';base64,' + a.contentBytes,
                 }
               }
             }
-            // v10: lista de imagens inline p/ o front resolver cid→dataUrl
             out.cids_inline = Object.values(mapaCid)
           }
         }
@@ -374,7 +357,6 @@ routerAdd(
           nome: String(a.name || 'anexo'),
           mime: String((a.contentType || '').slice(0, 60)),
           tamanho: a.size || 0,
-          // anexos pequenos (<100KB) vêm inline — entregar base64 p/ download
           base64: a.contentBytes && (a.size || 0) < 100 * 1024 ? String(a.contentBytes) : '',
         })
       }

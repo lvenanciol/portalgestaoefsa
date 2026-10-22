@@ -8,6 +8,9 @@ import pb from '@/lib/pocketbase/client'
 // LOGIN (22/10): logomarca(s) reais da coleção logomarcas no topo do card.
 // Mais de uma empresa com imagem → ALTERNÂNCIA a cada 2s com fade suave
 // (transition-opacity). Sem imagem (ou só PDF) → fallback emblema/Leaf.
+// v2 (22/10): carrega via hook PÚBLICO /backend/v1/public/logos (a coleção
+// logomarcas exige auth — anon via listRule fechado via 0 itens; o print do
+// dono mostrava Leaf). Logo → emblema (ícone) → Leaf.
 export default function Login() {
   const { signIn } = useAuth()
   const navigate = useNavigate()
@@ -28,14 +31,15 @@ export default function Login() {
     let vivo = true
     ;(async () => {
       try {
-        const r = await pb.collection('logomarcas').getFullList({ sort: 'empresa' })
-        const urls = (r as any[])
-          .filter((l) => l.ativo !== false && (l.logo || l.emblema))
-          .map((l) => {
+        const r = (await pb.send('/backend/v1/public/logos', { method: 'GET' })) as any
+        const urls = ((r && r.logos) || [])
+          .map((l: any) => {
             const campo = l.logo || l.emblema
+            if (!campo) return ''
             const ext = String(campo).split('?')[0].split('.').pop()?.toLowerCase() || ''
             const ehImagem = ['png', 'jpg', 'jpeg', 'svg', 'webp'].includes(ext)
-            return ehImagem ? pb.files.getURL(l, campo) : ''
+            if (!ehImagem) return ''
+            return pb.files.getURL({ collectionId: 'logomarcas', id: l.id }, campo)
           })
           .filter(Boolean)
         if (vivo) setLogos(urls)

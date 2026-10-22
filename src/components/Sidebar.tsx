@@ -225,20 +225,21 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
                 const logoEx = logos.find((l) => norm(l.empresa) === 'extrafruti')
                 return urlImagem(logoEx, 'logo')
               })()
+              // SDB-a (22/10): ÍCONE (emblema) em vez da logo — pedido do dono
+              if (urlEmb) {
+                return (
+                  <img
+                    src={urlEmb}
+                    alt={emp?.nome || 'ícone'}
+                    className="h-full w-full object-contain p-1"
+                  />
+                )
+              }
               if (urlLogo) {
                 return (
                   <img
                     src={urlLogo}
                     alt={emp?.nome || 'logo'}
-                    className="h-full w-full object-contain p-1"
-                  />
-                )
-              }
-              if (urlEmb) {
-                return (
-                  <img
-                    src={urlEmb}
-                    alt={emp?.nome || 'emblema'}
                     className="h-full w-full object-contain p-1"
                   />
                 )

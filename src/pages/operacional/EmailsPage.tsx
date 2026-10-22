@@ -46,10 +46,14 @@ import {
 import { fmtDataBRT } from '@/lib/brt'
 import { cn } from '@/lib/utils'
 // TAREFA MAIL b + T0 (21/10) — E-mails: abas Gmail / Outlook com
-// "Sincronizar caixa" POR ABA (espelho das conexões da tela E-mail em
-// Integrações), lista sincronizada por provedor, clique abre DETALHE
-// (corpo completo + anexos via /backend/v1/email/oauth/detalhe) e
+// "Sincronizar caixa" POR ABA, lista sincronizada por provedor, clique abre
+// DETALHE (corpo completo + anexos via /backend/v1/email/oauth/detalhe) e
 // compositor com assinatura da conta conectada (T0c).
+// Lote 22/10 (tarde): T0c altura MEMORIZADA (localStorage) · T0g conteúdo abre
+// na CAIXA INFERIOR (título dinâmico, sem dialog) · T0h/T0k menu de ordenação
+// estilo Outlook (Data/De/Assunto + A on Top/Z on Top) no lugar do texto
+// "N e-mail(s)" · T0i Conectar/Reconectar SEMPRE visível · T0j dropdown com
+// ENTRADA (default) · T0e v10 resolverCids (imagens inline do Outlook).
 
 interface Modelo {
   chave: string
@@ -76,7 +80,6 @@ interface Detalhe {
   data?: string
   corpo_html?: string
   corpo_texto?: string
-  // T0e v10 (22/10): imagens inline do Outlook (cid) com dataUrl pronto
   cids_inline?: { cid: string; dataUrl: string }[]
   anexos?: {
     nome: string
@@ -94,7 +97,6 @@ export default function EmailsPage() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
   const [busca, setBusca] = useState('')
-  // abas por provedor (TAREFA MAIL b)
   const [oauth, setOauth] = useState<Record<string, { conectado: boolean; conta?: string }>>({
     google: { conectado: false },
     microsoft: { conectado: false },
@@ -102,9 +104,10 @@ export default function EmailsPage() {
   const [inbox, setInbox] = useState<InboxMsg[]>([])
   const [syncando, setSyncando] = useState('')
   const [msg, setMsg] = useState('')
-  // detalhe do e-mail (T0b)
+  // detalhe do e-mail (T0b) — T0g: abre NA CAIXA INFERIOR (não dialog)
   const [detalhe, setDetalhe] = useState<Detalhe | null>(null)
   const [detalheId, setDetalheId] = useState('')
+  const [detalheCarregando, setDetalheCarregando] = useState(false)
   // compositor
   const [dialog, setDialog] = useState(false)
   const [modelos, setModelos] = useState<Modelo[]>([])
@@ -114,15 +117,30 @@ export default function EmailsPage() {
   const [corpo, setCorpo] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [assinaturaUrl, setAssinaturaUrl] = useState('')
-  // T0f (22/10): pasta selecionada por aba (caixa|sent|trash|drafts)
+  // T0f+T0j (22/10): pasta por aba — 'entrada' (default, caixa de entrada),
+  // enviados, excluídos, rascunhos
   const [pastaPorAba, setPastaPorAba] = useState<Record<string, string>>({
-    google: 'caixa',
-    microsoft: 'caixa',
+    google: 'entrada',
+    microsoft: 'entrada',
   })
-  // T0h (22/10): ordenação por data (desc = mais recentes) — persiste na sessão
-  const [ordemRecentes, setOrdemRecentes] = useState(true)
-  // T0c (22/10): altura da caixa redimensionável (resize-y)
-  const [alturaCaixa, setAlturaCaixa] = useState(420)
+  // T0h/T0k (22/10): ordenação estilo Outlook — campo (data|de|assunto) +
+  // direção (A on Top = asc / Z on Top = desc)
+  const [ordemCampo, setOrdemCampo] = useState<'data' | 'de' | 'assunto'>('data')
+  const [ordemDesc, setOrdemDesc] = useState(true)
+  // T0c (22/10): altura da caixa redimensionável (resize-y) — MEMORIZADA (T0-c)
+  const [alturaCaixa, setAlturaCaixa] = useState(() => {
+    try {
+      const v = Number(localStorage.getItem('pge_emails_altura_caixa'))
+      return v >= 160 && v <= 900 ? v : 420
+    } catch (_) {
+      return 420
+    }
+  })
+  useEffect(() => {
+    try {
+      localStorage.setItem('pge_emails_altura_caixa', String(alturaCaixa))
+    } catch (_) {}
+  }, [alturaCaixa])
 
   const carregar = async () => {
     setLoading(true)
@@ -194,12 +212,12 @@ export default function EmailsPage() {
     setSyncando(provedor)
     setMsg('')
     try {
-      // T0f (22/10): sync respeita a pasta selecionada (pastaForcar evita
-      // closure velho quando o dropdown muda a pasta e sincroniza em seguida)
       const pastaSel = pastaForcar || pastaPorAba[provedor] || 'caixa'
+      // T0j: 'entrada' é o rótulo da UI — o sync continua usando 'caixa'
+      const pastaSync = pastaSel === 'entrada' ? 'caixa' : pastaSel
       const r = (await pb.send('/backend/v1/email/oauth/sync', {
         method: 'POST',
-        body: JSON.stringify({ provedor, pasta: pastaSel }),
+        body: JSON.stringify({ provedor, pasta: pastaSync }),
       })) as any
       if (r.ok) {
         setMsg('Caixa sincronizada — ' + r.novos + ' novo(s) e-mail(s).')
@@ -216,22 +234,25 @@ export default function EmailsPage() {
   }
 
   const abrirDetalhe = async (m: InboxMsg) => {
+    // T0g: conteúdo abre na caixa inferior (abaixo da lista) — sem dialog
     setDetalheId(m.id)
     setDetalhe(null)
+    setDetalheCarregando(true)
     try {
       const r = (await pb.send('/backend/v1/email/oauth/detalhe?id=' + encodeURIComponent(m.id), {
         method: 'GET',
       })) as any
       setDetalhe(r)
     } catch (e: any) {
-      // T0e: erro REAL do hook (não "ClientResponseError 502" cru)
       const det =
         e?.response?.data?.erro ||
         e?.response?.data?.message ||
         (String(e?.message || e).includes('502')
-          ? 'Não foi possível carregar este e-mail — pode ter sido movido/excluído da caixa. Sincronize a caixa e tente de novo.'
+          ? 'Este e-mail não está mais na caixa sincronizada (movido/excluído). Sincronize a caixa e abra novamente.'
           : e?.message || String(e))
       setDetalhe({ ok: false, erro: det })
+    } finally {
+      setDetalheCarregando(false)
     }
   }
 
@@ -257,13 +278,11 @@ export default function EmailsPage() {
     setEnviando(true)
     setMsg('')
     try {
-      // COR-4 F8: conexão real OAuth disponível? envia pela conta conectada
       let oauthProvider = ''
       try {
         const st = (await pb.send('/backend/v1/email/oauth/status', { method: 'GET' })) as any
         if (st.google?.conectado) oauthProvider = 'google'
         else if (st.microsoft?.conectado) oauthProvider = 'microsoft'
-        // T0c: assinatura da conta selecionada (se houver)
         if (oauthProvider) {
           const ass = (await pb
             .collection('email_assinaturas')
@@ -326,18 +345,20 @@ export default function EmailsPage() {
   }
 
   const TITULO_PASTA: Record<string, string> = {
-    caixa: 'Caixa sincronizada',
+    entrada: 'Entrada — caixa de entrada',
+    caixa: 'Entrada — caixa de entrada',
     sent: 'E-mails enviados',
     trash: 'Excluídos',
     drafts: 'Rascunhos',
   }
   const ICONE_PASTA: Record<string, any> = {
+    entrada: <Inbox className="h-3.5 w-3.5" />,
     caixa: <Inbox className="h-3.5 w-3.5" />,
     sent: <Send className="h-3.5 w-3.5" />,
     trash: <Trash2 className="h-3.5 w-3.5" />,
     drafts: <FilePlus2 className="h-3.5 w-3.5" />,
   }
-  // T0c (22/10): drag no rodapé da caixa (resize manual)
+  // T0c (22/10): drag no rodapé da caixa (resize manual, memorizado)
   const dragRef = { atual: false }
   const iniciarDrag = (ev: ReactMouseEvent) => {
     ev.preventDefault()
@@ -359,26 +380,36 @@ export default function EmailsPage() {
   }
   const abaCaixa = (prov: 'google' | 'microsoft', nome: string) => {
     const st = oauth[prov] || { conectado: false }
-    // T0f (22/10): lista respeita a pasta selecionada da aba
-    const pastaSel = pastaPorAba[prov] || 'caixa'
+    const pastaSel = pastaPorAba[prov] || 'entrada'
+    const val = (m: InboxMsg, campo: string) => {
+      if (campo === 'data') return new Date(m.recebido_em).getTime() || 0
+      if (campo === 'de') return String(m.de || '').toLowerCase()
+      return String(m.assunto || '').toLowerCase()
+    }
     const lista = inbox
-      .filter((m) => m.provedor === prov && (m as any).pasta === pastaSel)
+      .filter((m) => {
+        const p = (m as any).pasta || 'caixa'
+        if (pastaSel === 'entrada') return m.provedor === prov && (p === 'entrada' || p === 'caixa')
+        return m.provedor === prov && p === pastaSel
+      })
       .sort((a, b) => {
-        const da = new Date(a.recebido_em).getTime() || 0
-        const db = new Date(b.recebido_em).getTime() || 0
-        return ordemRecentes ? db - da : da - db
+        const va = val(a, ordemCampo)
+        const vb = val(b, ordemCampo)
+        if (va === vb) return 0
+        const cmp = va > vb ? 1 : -1
+        return ordemDesc ? -cmp : cmp
       })
     return (
       <div className="space-y-3">
         {/* T0d (22/10): botões ACIMA da caixa, alinhados à ESQUERDA */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* T0i (22/10): conectar conta igual à Integrações → E-mail (OAuth) */}
-          {!st.conectado && (
-            <Button variant="outline" className="h-9" onClick={() => conectar(prov)}>
-              <Plug className="h-4 w-4 mr-1" /> Conectar {nome}
-            </Button>
-          )}
-          {/* T0g (22/10): "Novo e-mail" = dropdown (novo/enviados/excluídos/rascunhos) */}
+          {/* T0i (22/10): conectar conta SEMPRE visível (igual à Integrações →
+              E-mail) — quando conectado vira "Reconectar" */}
+          <Button variant="outline" className="h-9" onClick={() => conectar(prov)}>
+            <Plug className="h-4 w-4 mr-1" />{' '}
+            {st.conectado ? 'Reconectar ' + nome : 'Conectar ' + nome}
+          </Button>
+          {/* T0g (22/10): "Novo e-mail" = dropdown (ENTRADA default + enviados/excluídos/rascunhos) */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white">
@@ -387,13 +418,14 @@ export default function EmailsPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
+              {/* T0j: ENTRADA é a opção DEFAULT da tela */}
               <DropdownMenuItem
                 onClick={() => {
-                  setPastaPorAba((p) => ({ ...p, [prov]: 'caixa' }))
+                  setPastaPorAba((p) => ({ ...p, [prov]: 'entrada' }))
                   sincronizar(prov, 'caixa')
                 }}
               >
-                <Inbox className="h-4 w-4 mr-2" /> Novo e-mail
+                <Inbox className="h-4 w-4 mr-2" /> Entrada (caixa de entrada)
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => {
@@ -435,44 +467,88 @@ export default function EmailsPage() {
             )}
             Sincronizar caixa
           </Button>
-          <div className="text-[12px] text-gray-600 ml-1">
-            {st.conectado ? (
-              <>
-                <strong>{nome}</strong> — {lista.length} e-mail(s) nesta pasta
-              </>
-            ) : (
-              <>
-                <strong>{nome}</strong> desconectado — conecte na tela{' '}
-                <a
-                  href="/integracoes/email"
-                  className="text-[#1B5E20] font-semibold hover:underline"
-                >
-                  E-mail (Integrações)
-                </a>
-              </>
-            )}
-          </div>
+          {/* T0k: texto "N e-mail(s) nesta pasta" REMOVIDO — contagem fica no
+              título da caixa; desconectado mostra só o link p/ Integrações */}
+          {!st.conectado && (
+            <div className="text-[12px] text-gray-600 ml-1">
+              <strong>{nome}</strong> desconectado — conecte na tela{' '}
+              <a href="/integracoes/email" className="text-[#1B5E20] font-semibold hover:underline">
+                E-mail (Integrações)
+              </a>
+            </div>
+          )}
         </div>
         <div className="bg-white rounded-xl border border-[#E5E7EB] shadow-xs overflow-hidden">
           <div className="px-4 py-2.5 border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-2">
             {ICONE_PASTA[pastaSel] || <Inbox className="h-3.5 w-3.5" />}{' '}
             {TITULO_PASTA[pastaSel] || 'Caixa sincronizada'} ({lista.length})
-            {/* T0h (22/10): alterna ordenação por data (recentes ↔ antigos) */}
-            <button
-              type="button"
-              onClick={() => setOrdemRecentes((o) => !o)}
-              title={
-                ordemRecentes
-                  ? 'Mais recentes primeiro (clique p/ inverter)'
-                  : 'Mais antigos primeiro (clique p/ inverter)'
-              }
-              className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold text-gray-400 hover:text-gray-600"
-            >
-              <ArrowUpDown className="h-3 w-3" />
-              {ordemRecentes ? 'Recentes' : 'Antigos'}
-            </button>
+            {/* T0h/T0k (22/10): MENU de ordenação estilo Outlook (Data/De/Assunto
+                + A on Top/Z on Top) no lugar do texto "N e-mail(s) nesta pasta" */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold text-gray-400 hover:text-gray-600 focus:outline-none"
+                  title="Ordenar e-mails"
+                >
+                  <ArrowUpDown className="h-3 w-3" />
+                  {ordemCampo === 'data' ? 'Data' : ordemCampo === 'de' ? 'De' : 'Assunto'}
+                  <ChevronDown className="h-2.5 w-2.5 opacity-70" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="text-[12px]">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setOrdemCampo('data')
+                    setOrdemDesc(true)
+                  }}
+                >
+                  Data (recentes no topo) {ordemCampo === 'data' && ordemDesc ? '✓' : ''}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setOrdemCampo('data')
+                    setOrdemDesc(false)
+                  }}
+                >
+                  Data (antigos no topo) {ordemCampo === 'data' && !ordemDesc ? '✓' : ''}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setOrdemCampo('de')
+                    setOrdemDesc(false)
+                  }}
+                >
+                  De (A on Top) {ordemCampo === 'de' && !ordemDesc ? '✓' : ''}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setOrdemCampo('de')
+                    setOrdemDesc(true)
+                  }}
+                >
+                  De (Z on Top) {ordemCampo === 'de' && ordemDesc ? '✓' : ''}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setOrdemCampo('assunto')
+                    setOrdemDesc(false)
+                  }}
+                >
+                  Assunto (A on Top) {ordemCampo === 'assunto' && !ordemDesc ? '✓' : ''}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setOrdemCampo('assunto')
+                    setOrdemDesc(true)
+                  }}
+                >
+                  Assunto (Z on Top) {ordemCampo === 'assunto' && ordemDesc ? '✓' : ''}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
-          {/* T0c (22/10): caixa REDIMENSIONÁVEL (drag no rodapé + resize-y) */}
+          {/* T0c (22/10): caixa REDIMENSIONÁVEL (drag no rodapé + resize-y, memorizada) */}
           <div
             className="divide-y divide-gray-50 overflow-y-auto resize-y"
             style={{ height: alturaCaixa, minHeight: 160, maxHeight: 900 }}
@@ -494,7 +570,7 @@ export default function EmailsPage() {
             {lista.length === 0 && (
               <p className="text-center text-[12px] text-gray-400 py-8">
                 {st.conectado
-                  ? pastaSel === 'caixa'
+                  ? pastaSel === 'entrada' || pastaSel === 'caixa'
                     ? 'Nenhum e-mail sincronizado — clique em "Sincronizar caixa".'
                     : 'Nenhum e-mail nesta pasta — clique em "Sincronizar caixa".'
                   : 'Conta não conectada.'}
@@ -585,14 +661,11 @@ export default function EmailsPage() {
           variant="outline"
           className="h-9"
           onClick={() => {
-            const prov =
-              pastaPorAba.google === 'caixa' && oauth.google?.conectado
-                ? 'google'
-                : oauth.microsoft?.conectado
-                  ? 'microsoft'
-                  : oauth.google?.conectado
-                    ? 'google'
-                    : 'google'
+            const prov = oauth.google?.conectado
+              ? 'google'
+              : oauth.microsoft?.conectado
+                ? 'microsoft'
+                : 'google'
             sincronizar(prov)
           }}
           disabled={!(oauth.google?.conectado || oauth.microsoft?.conectado) || !!syncando}
@@ -605,6 +678,148 @@ export default function EmailsPage() {
           Sincronizar caixa
         </Button>
       </div>
+
+      {/* T0g (22/10): conteúdo do e-mail aberto — CAIXA INFERIOR com título
+          dinâmico conforme o e-mail/pasta selecionada */}
+      {detalheId && (
+        <div className="bg-white rounded-xl border border-[#E5E7EB] shadow-xs overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-2">
+            <Mail className="h-3.5 w-3.5 text-[#1B5E20]" />{' '}
+            {detalheCarregando
+              ? 'Carregando e-mail…'
+              : detalhe?.ok
+                ? detalhe.assunto || '(sem assunto)'
+                : detalhe?.erro
+                  ? 'Não foi possível abrir o e-mail'
+                  : 'Carregando…'}
+            <button
+              type="button"
+              onClick={() => {
+                setDetalheId('')
+                setDetalhe(null)
+              }}
+              className="ml-auto text-gray-400 hover:text-gray-600 focus:outline-none"
+              title="Fechar"
+            >
+              ✕
+            </button>
+          </div>
+          {detalheCarregando && (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="h-5 w-5 animate-spin text-[#1B5E20]" />
+            </div>
+          )}
+          {detalhe && !detalhe.ok && (
+            <div className="p-3 m-3 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
+              {detalhe.erro || 'Falha ao carregar o e-mail.'}
+            </div>
+          )}
+          {detalhe && detalhe.ok && (
+            <div className="p-4 space-y-3">
+              <div className="text-[12px] text-gray-500 border-b border-gray-100 pb-2 flex items-center justify-between gap-2">
+                <span>
+                  De: <strong>{detalhe.de}</strong> · {fmtDataBRT(detalhe.data)}
+                </span>
+                <span className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    onClick={() => {
+                      const extra = String(detalhe.corpo_texto || '').slice(0, 2000)
+                      setPara(
+                        String(detalhe.de || '')
+                          .replace(/^[^<]*<|>.*$/g, '')
+                          .trim() ||
+                          detalhe.de ||
+                          '',
+                      )
+                      setAssunto('Re: ' + (detalhe.assunto || ''))
+                      setCorpo(
+                        '\n\n---------- Mensagem original ----------\nDe: ' +
+                          detalhe.de +
+                          '\nData: ' +
+                          fmtDataBRT(detalhe.data) +
+                          '\n\n' +
+                          extra,
+                      )
+                      setDetalheId('')
+                      setDialog(true)
+                    }}
+                  >
+                    <Reply className="h-3 w-3 mr-1" /> Responder
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[11px]"
+                    onClick={() => {
+                      const extra = String(detalhe.corpo_texto || '').slice(0, 2000)
+                      setPara('')
+                      setAssunto('Enc: ' + (detalhe.assunto || ''))
+                      setCorpo(
+                        '\n\n---------- Mensagem encaminhada ----------\nDe: ' +
+                          detalhe.de +
+                          '\nData: ' +
+                          fmtDataBRT(detalhe.data) +
+                          '\n\n' +
+                          extra,
+                      )
+                      setDetalheId('')
+                      setDialog(true)
+                    }}
+                  >
+                    <Share2 className="h-3 w-3 mr-1" /> Encaminhar
+                  </Button>
+                </span>
+              </div>
+              {detalhe.corpo_html ? (
+                <iframe
+                  title="corpo"
+                  sandbox=""
+                  className="w-full h-[420px] border border-gray-100 rounded-lg bg-white"
+                  srcDoc={resolverCids(detalhe)}
+                />
+              ) : (
+                <p className="text-[13px] text-gray-800 whitespace-pre-wrap leading-relaxed">
+                  {detalhe.corpo_texto || '(sem conteúdo)'}
+                </p>
+              )}
+              {detalhe.anexos && detalhe.anexos.length > 0 && (
+                <div className="border-t border-gray-100 pt-2">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2 flex items-center gap-1.5">
+                    <Paperclip className="h-3.5 w-3.5" /> Anexos ({detalhe.anexos.length})
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {detalhe.anexos.map((a, i) =>
+                      a.base64 ? (
+                        <a
+                          key={i}
+                          href={
+                            'data:' + (a.mime || 'application/octet-stream') + ';base64,' + a.base64
+                          }
+                          download={a.nome}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-[12px] font-semibold text-gray-700"
+                        >
+                          <Paperclip className="h-3 w-3" /> {a.nome}{' '}
+                          {a.tamanho ? '(' + Math.round(a.tamanho / 1024) + ' KB)' : ''}
+                        </a>
+                      ) : (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-[12px] font-semibold text-gray-500"
+                        >
+                          <Paperclip className="h-3 w-3" /> {a.nome} (baixar via provedor)
+                        </span>
+                      ),
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Histórico de envios do portal */}
       <div className="bg-white rounded-xl border border-[#E5E7EB] shadow-xs overflow-hidden">
@@ -661,140 +876,10 @@ export default function EmailsPage() {
         </div>
       </div>
 
-      {/* T0b: dialog do e-mail — corpo completo + anexos (layout Outlook) */}
-      <Dialog open={!!detalheId} onOpenChange={(o) => !o && setDetalheId('')}>
-        <DialogContent className="bg-white max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            {/* T0a (22/10): X custom REMOVIDO — só o nativo do DialogContent */}
-            <DialogTitle className="text-[15px] pr-6">
-              {detalhe?.assunto || 'Carregando…'}
-            </DialogTitle>
-          </DialogHeader>
-          {!detalhe && (
-            <div className="flex items-center justify-center py-10">
-              <Loader2 className="h-5 w-5 animate-spin text-[#1B5E20]" />
-            </div>
-          )}
-          {detalhe && !detalhe.ok && (
-            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
-              {detalhe.erro || 'Falha ao carregar o e-mail.'}
-            </div>
-          )}
-          {detalhe && detalhe.ok && (
-            <>
-              <div className="text-[12px] text-gray-500 border-b border-gray-100 pb-2 flex items-center justify-between gap-2">
-                <span>
-                  De: <strong>{detalhe.de}</strong> · {fmtDataBRT(detalhe.data)}
-                </span>
-                <span className="flex items-center gap-1.5 shrink-0">
-                  {/* T0d: responder / encaminhar — abre o compositor preenchido */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-[11px]"
-                    onClick={() => {
-                      const extra = String(detalhe.corpo_texto || '').slice(0, 2000)
-                      setPara(
-                        String(detalhe.de || '')
-                          .replace(/^[^<]*<|>.*$/g, '')
-                          .trim() ||
-                          detalhe.de ||
-                          '',
-                      )
-                      setAssunto('Re: ' + (detalhe.assunto || ''))
-                      setCorpo(
-                        '\n\n---------- Mensagem original ----------\nDe: ' +
-                          detalhe.de +
-                          '\nData: ' +
-                          fmtDataBRT(detalhe.data) +
-                          '\n\n' +
-                          extra,
-                      )
-                      setDetalheId('')
-                      setDialog(true)
-                    }}
-                  >
-                    <Reply className="h-3 w-3 mr-1" /> Responder
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-[11px]"
-                    onClick={() => {
-                      const extra = String(detalhe.corpo_texto || '').slice(0, 2000)
-                      setPara('')
-                      setAssunto('Enc: ' + (detalhe.assunto || ''))
-                      setCorpo(
-                        '\n\n---------- Mensagem encaminhada ----------\nDe: ' +
-                          detalhe.de +
-                          '\nData: ' +
-                          fmtDataBRT(detalhe.data) +
-                          '\n\n' +
-                          extra,
-                      )
-                      setDetalheId('')
-                      setDialog(true)
-                    }}
-                  >
-                    <Share2 className="h-3 w-3 mr-1" /> Encaminhar
-                  </Button>
-                </span>
-              </div>
-              {/* corpo: HTML sanitizado pelo navegador em iframe sandbox.
-                  T0e v10: cids do Outlook resolvidos p/ dataUrl ANTES do srcDoc */}
-              {detalhe.corpo_html ? (
-                <iframe
-                  title="corpo"
-                  sandbox=""
-                  className="w-full h-[420px] border border-gray-100 rounded-lg bg-white"
-                  srcDoc={resolverCids(detalhe)}
-                />
-              ) : (
-                <p className="text-[13px] text-gray-800 whitespace-pre-wrap leading-relaxed">
-                  {detalhe.corpo_texto || '(sem conteúdo)'}
-                </p>
-              )}
-              {detalhe.anexos && detalhe.anexos.length > 0 && (
-                <div className="border-t border-gray-100 pt-2">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2 flex items-center gap-1.5">
-                    <Paperclip className="h-3.5 w-3.5" /> Anexos ({detalhe.anexos.length})
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {detalhe.anexos.map((a, i) =>
-                      a.base64 ? (
-                        <a
-                          key={i}
-                          href={
-                            'data:' + (a.mime || 'application/octet-stream') + ';base64,' + a.base64
-                          }
-                          download={a.nome}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-[12px] font-semibold text-gray-700"
-                        >
-                          <Paperclip className="h-3 w-3" /> {a.nome}{' '}
-                          {a.tamanho ? '(' + Math.round(a.tamanho / 1024) + ' KB)' : ''}
-                        </a>
-                      ) : (
-                        <span
-                          key={i}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-[12px] font-semibold text-gray-500"
-                        >
-                          <Paperclip className="h-3 w-3" /> {a.nome} (baixar via provedor)
-                        </span>
-                      ),
-                    )}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-
       {/* Dialog compositor */}
       <Dialog open={dialog} onOpenChange={setDialog}>
         <DialogContent className="bg-white max-w-2xl">
           <DialogHeader>
-            {/* T0a (22/10): X custom REMOVIDO — só o nativo do DialogContent */}
             <DialogTitle className="flex items-center gap-2">
               <Send className="h-4 w-4 text-[#1B5E20]" /> Novo e-mail
             </DialogTitle>
