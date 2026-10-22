@@ -555,7 +555,7 @@ export default function AtasReunioesPage() {
                   {/* T-Xe: gravações da ata — cada áudio tocável individualmente */}
                   {(a.audio || []).length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                      {(a.audio as string[]).map((fn: string) => (
+                      {(parse(a.audio) as string[]).map((fn: string) => (
                         <audio
                           key={fn}
                           controls
@@ -897,10 +897,10 @@ export default function AtasReunioesPage() {
                 <div>
                   <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5 flex items-center gap-1.5">
                     <FileAudio className="h-3.5 w-3.5" /> Gravações (
-                    {(detalhe.audio as string[]).length})
+                    {(parse(detalhe.audio) as string[]).length})
                   </div>
                   <div className="space-y-2">
-                    {(detalhe.audio as string[]).map((fn: string) => (
+                    {(parse(detalhe.audio) as string[]).map((fn: string) => (
                       <audio
                         key={fn}
                         controls
