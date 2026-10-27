@@ -64,7 +64,8 @@ const fmtData = (s?: string) => {
 
 export default function TarefasKanbanPage() {
   const { user } = useAuth()
-  const { empresas } = useApp()
+  const { empresas, selectedCompany } = useApp()
+  const [filtroEmpresa, setFiltroEmpresa] = useState<string>('__default__')
   const [itens, setItens] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
@@ -101,11 +102,36 @@ export default function TarefasKanbanPage() {
     carregar()
   }, [])
 
+  // Empresa ativa para filtro: se não foi trocada manualmente no dropdown local, usa a da sidebar
+  const empresaFiltroAtiva = useMemo(() => {
+    if (filtroEmpresa !== '__default__') {
+      return filtroEmpresa // 'todas' ou id ou nome
+    }
+    // Default: empresa selecionada na sidebar
+    if (selectedCompany) {
+      const empSidebar = empresas.find((e) => e.id === selectedCompany)
+      return empSidebar?.nome || 'todas'
+    }
+    return 'todas'
+  }, [filtroEmpresa, selectedCompany, empresas])
+
+  // Itens filtrados pela empresa selecionada (ou todas)
+  const itensFiltrados = useMemo(() => {
+    if (!empresaFiltroAtiva || empresaFiltroAtiva === 'todas') {
+      return itens
+    }
+    const norm = (s: any) =>
+      String(s || '')
+        .trim()
+        .toLowerCase()
+    return itens.filter((t) => norm(t.empresa) === norm(empresaFiltroAtiva))
+  }, [itens, empresaFiltroAtiva])
+
   const hoje = new Date().toISOString().slice(0, 10)
-  const atrasadas = itens.filter(
+  const atrasadas = itensFiltrados.filter(
     (t) => t.status_kanban !== 'concluido' && t.prazo && String(t.prazo).slice(0, 10) < hoje,
   )
-  const deHoje = itens.filter((t) => t.prazo && String(t.prazo).slice(0, 10) === hoje)
+  const deHoje = itensFiltrados.filter((t) => t.prazo && String(t.prazo).slice(0, 10) === hoje)
 
   // T2: abre o detalhe e carrega o histórico (chat)
   const abrirDetalhe = (t: any) => {
@@ -458,7 +484,7 @@ export default function TarefasKanbanPage() {
   }, [mesRef])
 
   const tarefasPorDia = (dia: string) =>
-    itens.filter((t) => String(t.prazo || '').slice(0, 10) === dia)
+    itensFiltrados.filter((t) => String(t.prazo || '').slice(0, 10) === dia)
 
   if (loading) {
     return (
@@ -479,14 +505,16 @@ export default function TarefasKanbanPage() {
             Kanban do time com prioridades, subtarefas e calendário
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5">
             <button
               type="button"
               onClick={() => setVista('kanban')}
               className={cn(
-                'px-3 py-1.5 rounded-md text-[12px] font-semibold',
-                vista === 'kanban' ? 'bg-[#1B5E20] text-white' : 'text-gray-600',
+                'px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors',
+                vista === 'kanban'
+                  ? 'bg-[#1B5E20] text-white'
+                  : 'text-gray-600 hover:text-gray-900',
               )}
             >
               Kanban
@@ -495,14 +523,51 @@ export default function TarefasKanbanPage() {
               type="button"
               onClick={() => setVista('calendario')}
               className={cn(
-                'px-3 py-1.5 rounded-md text-[12px] font-semibold',
-                vista === 'calendario' ? 'bg-[#1B5E20] text-white' : 'text-gray-600',
+                'px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors',
+                vista === 'calendario'
+                  ? 'bg-[#1B5E20] text-white'
+                  : 'text-gray-600 hover:text-gray-900',
               )}
             >
               Calendário
             </button>
           </div>
-          <Button onClick={abrirNova} className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white">
+
+          {/* Dropdown "empresa" posicionado à direita do botão "calendário" */}
+          <Select value={empresaFiltroAtiva} onValueChange={(v) => setFiltroEmpresa(v)}>
+            <SelectTrigger
+              className="h-9 w-[190px] bg-white border-gray-200 text-xs font-medium text-gray-700 shadow-xs focus:ring-[#1B5E20]"
+              aria-label="Filtrar por empresa"
+            >
+              <div className="flex items-center gap-1.5 truncate">
+                <span className="text-gray-400 font-normal">Empresa:</span>
+                <span className="truncate font-semibold text-gray-800">
+                  {empresaFiltroAtiva === 'todas' ? 'Todas as empresas' : empresaFiltroAtiva}
+                </span>
+              </div>
+            </SelectTrigger>
+            <SelectContent align="end" className="w-[210px]">
+              <SelectItem value="todas">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-gray-400" />
+                  <span>Todas as empresas</span>
+                </div>
+              </SelectItem>
+              {empresas.map((e) => (
+                <SelectItem key={e.id} value={e.nome}>
+                  <div className="flex items-center gap-2">
+                    {obterIconeEmpresa(e.nome)}
+                    <span>{e.nome}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button
+            onClick={abrirNova}
+            className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs"
+          >
             <Plus className="h-4 w-4 mr-1" /> Nova tarefa
           </Button>
         </div>
@@ -572,7 +637,7 @@ export default function TarefasKanbanPage() {
       {vista === 'kanban' && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           {COLUNAS.map((col) => {
-            const cards = itens.filter((t) => (t.status_kanban || 'a_fazer') === col.key)
+            const cards = itensFiltrados.filter((t) => (t.status_kanban || 'a_fazer') === col.key)
             return (
               <div
                 key={col.key}
@@ -776,13 +841,15 @@ export default function TarefasKanbanPage() {
         </div>
       )}
 
-      {/* Dialog nova/editar */}
+      {/* Dialog nova/editar (+50% de largura: max-w-md 448px -> max-w-2xl 672px) */}
       <Dialog open={dialog} onOpenChange={setDialog}>
-        <DialogContent className="bg-white max-w-md">
+        <DialogContent className="bg-white sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editando ? 'Editar' : 'Nova'} tarefa</DialogTitle>
+            <DialogTitle className="text-lg font-bold text-gray-900">
+              {editando ? 'Editar' : 'Nova'} tarefa
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-4 pt-1">
             {/* T2a: abertura por áudio */}
             <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/50 space-y-2">
               <div className="flex items-center justify-between">
@@ -824,6 +891,8 @@ export default function TarefasKanbanPage() {
                 </p>
               )}
             </div>
+
+            {/* Campo Título */}
             <div className="grid gap-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Título *
@@ -831,20 +900,49 @@ export default function TarefasKanbanPage() {
               <Input
                 value={form.titulo || ''}
                 onChange={(e) => setForm({ ...form, titulo: e.target.value })}
+                placeholder="Ex.: Alinhar faturamento mensal..."
                 className="h-10 bg-gray-50"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+
+            {/* Linha 1 após Título: EMPRESA (ESCOPO) e RESPONSÁVEL */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              {/* 1. EMPRESA (ESCOPO) */}
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Responsável Principal
+                  Empresa (escopo)
+                </Label>
+                <Select
+                  value={form.empresa || ' '}
+                  onValueChange={(v) => setForm({ ...form, empresa: v === ' ' ? '' : v })}
+                >
+                  <SelectTrigger className="h-10 bg-gray-50">
+                    <SelectValue placeholder="Selecione a empresa..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value=" ">Todas / Grupo Consolidado</SelectItem>
+                    {empresas.map((e) => (
+                      <SelectItem key={e.id} value={e.nome}>
+                        <div className="flex items-center gap-2">
+                          {obterIconeEmpresa(e.nome)}
+                          <span>{e.nome}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* 2. RESPONSÁVEL */}
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Responsável
                 </Label>
                 <Select
                   value={form.responsavel || ' '}
                   onValueChange={(v) => {
                     const novoNome = v === ' ' ? '' : v
                     setForm((f: any) => {
-                      // Se selecionar um responsável e ele for um parceiro cadastrado, garante o vínculo
                       const pMatch = parceiros.find((p) => p.nome === novoNome)
                       const curParceiros = f.parceiro_ids || []
                       const novosParceiros =
@@ -876,6 +974,44 @@ export default function TarefasKanbanPage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* Linha 2 após Título: VÍNCULO e PRAZO */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              {/* 3. VÍNCULO */}
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Vínculo (origem)
+                </Label>
+                <div className="flex gap-2">
+                  <Select
+                    value={form.vinculo_tipo || ''}
+                    onValueChange={(v) =>
+                      setForm({ ...form, vinculo_tipo: v, vinculo_id: v ? form.vinculo_id : '' })
+                    }
+                  >
+                    <SelectTrigger className="h-10 bg-gray-50 flex-1">
+                      <SelectValue placeholder="Nenhum" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value=" ">Nenhum</SelectItem>
+                      <SelectItem value="ata">Ata</SelectItem>
+                      <SelectItem value="projeto">Projeto</SelectItem>
+                      <SelectItem value="contrato">Contrato</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {form.vinculo_tipo && form.vinculo_tipo !== ' ' && (
+                    <Input
+                      value={form.vinculo_id || ''}
+                      onChange={(e) => setForm({ ...form, vinculo_id: e.target.value })}
+                      placeholder="ID (opcional)"
+                      className="h-10 bg-gray-50 w-28 text-xs"
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* 4. PRAZO */}
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Prazo
@@ -888,7 +1024,10 @@ export default function TarefasKanbanPage() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+
+            {/* Linha 3 após Título: PRIORIDADE e STATUS (antiga COLUNA) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              {/* 5. PRIORIDADE */}
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Prioridade
@@ -907,9 +1046,11 @@ export default function TarefasKanbanPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* 6. STATUS (renomeado de "Coluna") */}
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Coluna
+                  Status
                 </Label>
                 <Select
                   value={form.status_kanban || 'a_fazer'}
@@ -928,6 +1069,8 @@ export default function TarefasKanbanPage() {
                 </Select>
               </div>
             </div>
+
+            {/* Descrição */}
             <div className="grid gap-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                 Descrição
@@ -936,9 +1079,11 @@ export default function TarefasKanbanPage() {
                 value={form.descricao || ''}
                 onChange={(e) => setForm({ ...form, descricao: e.target.value })}
                 rows={2}
+                placeholder="Detalhes ou orientações sobre a tarefa..."
               />
             </div>
-            {/* T2b: parceiros/contatos responsáveis — OBRIGATÓRIO (dropdown com lista de parceiros cadastrados) */}
+
+            {/* e4: Apenas o dropdown para vincular parceiros, SEM a caixa/quadro auxiliar abaixo */}
             <div className="grid gap-1.5">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
@@ -948,7 +1093,6 @@ export default function TarefasKanbanPage() {
                   {(form.parceiro_ids || []).length} selecionado(s)
                 </span>
               </div>
-              {/* Dropdown seletor rápido para adicionar parceiro */}
               <Select
                 value="placeholder"
                 onValueChange={(val) => {
@@ -967,7 +1111,7 @@ export default function TarefasKanbanPage() {
                 }}
               >
                 <SelectTrigger className="h-10 bg-gray-50 text-xs">
-                  <SelectValue placeholder="Adicionar/remover parceiro via dropdown..." />
+                  <SelectValue placeholder="Selecione um parceiro cadastrado para adicionar/remover..." />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
                   <SelectItem value="placeholder" disabled>
@@ -975,6 +1119,8 @@ export default function TarefasKanbanPage() {
                   </SelectItem>
                   {parceiros.map((p) => {
                     const sel = (form.parceiro_ids || []).includes(p.id)
+                    const empRotulo =
+                      p.empresa || (Array.isArray(p.empresas) ? p.empresas.join(', ') : '')
                     return (
                       <SelectItem key={p.id} value={p.id}>
                         <div className="flex items-center justify-between gap-3 w-full">
@@ -987,7 +1133,7 @@ export default function TarefasKanbanPage() {
                             {p.nome}
                           </span>
                           <span className="text-[10px] text-gray-400">
-                            {sel ? '✓ Selecionado' : `(${p.tipo})`}
+                            {sel ? '✓ Selecionado' : empRotulo ? `(${empRotulo})` : `(${p.tipo})`}
                           </span>
                         </div>
                       </SelectItem>
@@ -995,125 +1141,16 @@ export default function TarefasKanbanPage() {
                   })}
                 </SelectContent>
               </Select>
-
-              {/* Lista dos parceiros cadastrados selecionáveis */}
-              <div className="p-2.5 rounded-lg border border-gray-200 bg-gray-50 max-h-36 overflow-y-auto space-y-1">
-                {parceiros.map((p) => {
-                  const sel = (form.parceiro_ids || []).includes(p.id)
-                  const empRotulo =
-                    p.empresa || (Array.isArray(p.empresas) ? p.empresas.join(', ') : '')
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() =>
-                        setForm((f: any) => {
-                          const cur = f.parceiro_ids || []
-                          const novoIds = sel
-                            ? cur.filter((x: string) => x !== p.id)
-                            : [...cur, p.id]
-                          return {
-                            ...f,
-                            parceiro_ids: novoIds,
-                            responsavel: !f.responsavel && !sel ? p.nome : f.responsavel,
-                          }
-                        })
-                      }
-                      className={cn(
-                        'w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-[12px] transition-colors',
-                        sel
-                          ? 'bg-emerald-100 text-[#1B5E20] font-semibold'
-                          : 'text-gray-700 hover:bg-gray-100',
-                      )}
-                    >
-                      <span className="truncate flex items-center gap-1.5">
-                        <span>{p.nome}</span>
-                        {empRotulo && (
-                          <span className="text-[10px] text-gray-400 font-normal">
-                            · {empRotulo}
-                          </span>
-                        )}
-                      </span>
-                      {sel && <span className="text-[10px] font-bold">✓</span>}
-                    </button>
-                  )
-                })}
-                {parceiros.length === 0 && (
-                  <p className="text-[11px] text-gray-400 py-2 text-center">
-                    Nenhum parceiro ativo cadastrado — cadastre na tela Parceiros & Contatos.
-                  </p>
-                )}
-              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Vínculo (origem)
-                </Label>
-                <Select
-                  value={form.vinculo_tipo || ''}
-                  onValueChange={(v) =>
-                    setForm({ ...form, vinculo_tipo: v, vinculo_id: v ? form.vinculo_id : '' })
-                  }
-                >
-                  <SelectTrigger className="h-10 bg-gray-50">
-                    <SelectValue placeholder="Nenhum" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value=" ">Nenhum</SelectItem>
-                    <SelectItem value="ata">Ata</SelectItem>
-                    <SelectItem value="projeto">Projeto</SelectItem>
-                    <SelectItem value="contrato">Contrato</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Empresa (escopo)
-                </Label>
-                <Select
-                  value={form.empresa || ' '}
-                  onValueChange={(v) => setForm({ ...form, empresa: v === ' ' ? '' : v })}
-                >
-                  <SelectTrigger className="h-10 bg-gray-50">
-                    <SelectValue placeholder="Selecione a empresa..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value=" ">Todas / Grupo Consolidado</SelectItem>
-                    {empresas.map((e) => (
-                      <SelectItem key={e.id} value={e.nome}>
-                        <div className="flex items-center gap-2">
-                          {obterIconeEmpresa(e.nome)}
-                          <span>{e.nome}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            {form.vinculo_tipo && form.vinculo_tipo !== ' ' && (
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  ID do vínculo (opcional)
-                </Label>
-                <Input
-                  value={form.vinculo_id || ''}
-                  onChange={(e) => setForm({ ...form, vinculo_id: e.target.value })}
-                  placeholder="deixe vazio se não souber o id"
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-            )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="pt-2">
             <Button variant="outline" onClick={() => setDialog(false)} className="h-9">
               Cancelar
             </Button>
             <Button
               onClick={salvar}
               disabled={salvando || !form.titulo}
-              className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+              className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs"
             >
               {salvando ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Salvar
             </Button>
