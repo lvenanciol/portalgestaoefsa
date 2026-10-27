@@ -80,7 +80,7 @@ const PADRAO = [
     ordem: 10,
     icone: 'file-check',
   },
-  { titulo: 'Power BI', rota: '/power-bi', secao: 'PLATAFORMA', ordem: 11, icone: 'chart' },
+  { titulo: 'Power BI', rota: '/power-bi', secao: 'GESTÃO', ordem: 5, icone: 'chart' },
   { titulo: 'IA Gemini Flash', rota: '/ia', secao: 'PLATAFORMA', ordem: 12, icone: 'sparkles' },
   { titulo: 'Árvore de Menus', rota: '/menus', secao: 'PLATAFORMA', ordem: 13, icone: 'list-tree' },
   {

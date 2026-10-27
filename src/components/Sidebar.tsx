@@ -53,6 +53,7 @@ const navSections: NavSection[] = [
       { label: 'Financeiro & Contábil', rota: '/financeiro', icon: Briefcase },
       { label: 'Desempenho por Unidade', rota: '/desempenho', icon: BarChart3 },
       { label: 'Indicadores', rota: '/indicadores', icon: LineChart },
+      { label: 'Power BI', rota: '/power-bi', icon: ChartColumnBig },
     ],
   },
   {
@@ -74,7 +75,6 @@ const navSections: NavSection[] = [
   {
     title: 'PLATAFORMA',
     items: [
-      { label: 'Power BI', rota: '/power-bi', icon: ChartColumnBig },
       { label: 'IA Gemini Flash', rota: '/ia', icon: Sparkles },
       { label: 'Árvore de Menus', rota: '/menus', icon: ListTree },
       { label: 'Controle de Acessos', rota: '/acessos', icon: ShieldCheck },

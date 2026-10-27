@@ -202,7 +202,7 @@ export default function AditivosDialog({
                   </div>
                   {a.anexo && (
                     <a
-                      href={pb.files.getURL(pb.collection('contratos_aditivos'), a as any, a.anexo)}
+                      href={pb.files.getURL(a as any, a.anexo)}
                       target="_blank"
                       rel="noreferrer"
                       className="text-[11px] text-emerald-700 hover:underline shrink-0"

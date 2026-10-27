@@ -135,9 +135,9 @@ export default function ControleAcessos() {
         listarUnidades(),
       ])
       setUsuarios(us)
-      setGrupos(gs as Grupo[])
-      setEmpresas(es as Empresa[])
-      setUnidades(uns as Unidade[])
+      setGrupos(gs as unknown as Grupo[])
+      setEmpresas(es as unknown as Empresa[])
+      setUnidades(uns as unknown as Unidade[])
       setIsAdmin(us.some((u) => u.email === user?.email && u.grupo === 'Admin'))
       try {
         const { registros } = await listarAuditoria(50)

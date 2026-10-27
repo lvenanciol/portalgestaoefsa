@@ -12,9 +12,12 @@ import {
   Share2,
   Mail,
   Paperclip,
+  Trash2,
+  Leaf,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { useApp } from '@/context/AppContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -61,12 +64,15 @@ const fmtData = (s?: string) => {
 
 export default function TarefasKanbanPage() {
   const { user } = useAuth()
+  const { empresas } = useApp()
   const [itens, setItens] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
   const [vista, setVista] = useState<'kanban' | 'calendario'>('kanban')
   const [dialog, setDialog] = useState(false)
   const [editando, setEditando] = useState<any | null>(null)
+  const [excluindoTarefa, setExcluindoTarefa] = useState<any | null>(null)
+  const [excluindoEmAndamento, setExcluindoEmAndamento] = useState(false)
   const [form, setForm] = useState<any>({})
   const [salvando, setSalvando] = useState(false)
   const [detalhe, setDetalhe] = useState<any | null>(null)
@@ -76,6 +82,7 @@ export default function TarefasKanbanPage() {
   const [chatErro, setChatErro] = useState('')
   const [novaSub, setNovaSub] = useState('')
   const [mesRef, setMesRef] = useState(() => new Date().toISOString().slice(0, 7))
+  const [logos, setLogos] = useState<any[]>([])
 
   const carregar = async () => {
     setLoading(true)
@@ -158,9 +165,72 @@ export default function TarefasKanbanPage() {
     }
   }
 
+  const carregarLogos = async () => {
+    try {
+      const r = await pb.collection('logomarcas').getFullList()
+      setLogos(r as any[])
+    } catch (_) {
+      setLogos([])
+    }
+  }
+
   useEffect(() => {
     carregarParceiros()
+    carregarLogos()
   }, [])
+
+  const obterIconeEmpresa = (nomeEmpresa: string) => {
+    if (!nomeEmpresa) return null
+    const norm = (s: any) =>
+      String(s || '')
+        .trim()
+        .toLowerCase()
+    const logoRec = logos.find((l) => norm(l.empresa) === norm(nomeEmpresa))
+    const empRec = empresas.find((e) => norm(e.nome) === norm(nomeEmpresa))
+    const cor = logoRec?.cor || empRec?.cor || '#1B5E20'
+    const sigla =
+      logoRec?.sigla ||
+      (empRec ? empRec.nome.slice(0, 2).toUpperCase() : nomeEmpresa.slice(0, 2).toUpperCase())
+
+    const urlImagem = (rec: any, campo: string) => {
+      if (!rec || !rec[campo]) return ''
+      return pb.files.getURL(rec, rec[campo])
+    }
+    const urlEmb = urlImagem(logoRec, 'emblema')
+    const urlLogo = urlImagem(logoRec, 'logo')
+
+    if (urlEmb) {
+      return <img src={urlEmb} alt={nomeEmpresa} className="h-4 w-4 object-contain rounded-xs" />
+    }
+    if (urlLogo) {
+      return <img src={urlLogo} alt={nomeEmpresa} className="h-4 w-4 object-contain rounded-xs" />
+    }
+    return (
+      <span
+        className="h-4 w-4 rounded-xs text-[8px] font-bold text-white flex items-center justify-center shrink-0"
+        style={{ backgroundColor: cor }}
+      >
+        {sigla}
+      </span>
+    )
+  }
+
+  const confirmarExclusao = async () => {
+    if (!excluindoTarefa) return
+    setExcluindoEmAndamento(true)
+    try {
+      await pb.collection('tarefas').delete(excluindoTarefa.id)
+      setExcluindoTarefa(null)
+      if (detalhe && detalhe.id === excluindoTarefa.id) {
+        setDetalhe(null)
+      }
+      await carregar()
+    } catch (e) {
+      setErro('Falha ao excluir tarefa: ' + String(e))
+    } finally {
+      setExcluindoEmAndamento(false)
+    }
+  }
 
   const toggleOuvir = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -530,11 +600,24 @@ export default function TarefasKanbanPage() {
                         >
                           {t.prioridade_p || 'P3'}
                         </span>
-                        {t.prazo &&
-                          String(t.prazo).slice(0, 10) < hoje &&
-                          t.status_kanban !== 'concluido' && (
-                            <span className="text-[9px] font-bold text-red-600">ATRASADA</span>
-                          )}
+                        <div className="flex items-center gap-1.5">
+                          {t.prazo &&
+                            String(t.prazo).slice(0, 10) < hoje &&
+                            t.status_kanban !== 'concluido' && (
+                              <span className="text-[9px] font-bold text-red-600">ATRASADA</span>
+                            )}
+                          <button
+                            type="button"
+                            title="Excluir tarefa"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setExcluindoTarefa(t)
+                            }}
+                            className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                       <div className="text-[13px] font-semibold text-gray-900 leading-snug">
                         {t.titulo}
@@ -754,13 +837,44 @@ export default function TarefasKanbanPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Responsável
+                  Responsável Principal
                 </Label>
-                <Input
-                  value={form.responsavel || ''}
-                  onChange={(e) => setForm({ ...form, responsavel: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
+                <Select
+                  value={form.responsavel || ' '}
+                  onValueChange={(v) => {
+                    const novoNome = v === ' ' ? '' : v
+                    setForm((f: any) => {
+                      // Se selecionar um responsável e ele for um parceiro cadastrado, garante o vínculo
+                      const pMatch = parceiros.find((p) => p.nome === novoNome)
+                      const curParceiros = f.parceiro_ids || []
+                      const novosParceiros =
+                        pMatch && !curParceiros.includes(pMatch.id)
+                          ? [...curParceiros, pMatch.id]
+                          : curParceiros
+                      return { ...f, responsavel: novoNome, parceiro_ids: novosParceiros }
+                    })
+                  }}
+                >
+                  <SelectTrigger className="h-10 bg-gray-50">
+                    <SelectValue placeholder="Selecione o parceiro responsável..." />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-56">
+                    <SelectItem value=" ">Não definido</SelectItem>
+                    {parceiros.map((p) => (
+                      <SelectItem key={p.id} value={p.nome}>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900">{p.nome}</span>
+                          <span className="text-[10px] text-gray-400">
+                            (
+                            {p.empresa ||
+                              (Array.isArray(p.empresas) ? p.empresas.join(', ') : p.tipo)}
+                            )
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
@@ -824,14 +938,70 @@ export default function TarefasKanbanPage() {
                 rows={2}
               />
             </div>
-            {/* T2b: parceiros/contatos responsáveis — OBRIGATÓRIO */}
+            {/* T2b: parceiros/contatos responsáveis — OBRIGATÓRIO (dropdown com lista de parceiros cadastrados) */}
             <div className="grid gap-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Parceiros/contatos responsáveis * (obrigatório)
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Parceiros/contatos responsáveis * (obrigatório)
+                </Label>
+                <span className="text-[11px] text-[#1B5E20] font-semibold">
+                  {(form.parceiro_ids || []).length} selecionado(s)
+                </span>
+              </div>
+              {/* Dropdown seletor rápido para adicionar parceiro */}
+              <Select
+                value="placeholder"
+                onValueChange={(val) => {
+                  if (val === 'placeholder') return
+                  setForm((f: any) => {
+                    const cur = f.parceiro_ids || []
+                    const exists = cur.includes(val)
+                    const novoIds = exists ? cur.filter((x: string) => x !== val) : [...cur, val]
+                    const pObj = parceiros.find((p) => p.id === val)
+                    return {
+                      ...f,
+                      parceiro_ids: novoIds,
+                      responsavel: !f.responsavel && pObj ? pObj.nome : f.responsavel,
+                    }
+                  })
+                }}
+              >
+                <SelectTrigger className="h-10 bg-gray-50 text-xs">
+                  <SelectValue placeholder="Adicionar/remover parceiro via dropdown..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-60">
+                  <SelectItem value="placeholder" disabled>
+                    Selecione um parceiro cadastrado para alternar seleção
+                  </SelectItem>
+                  {parceiros.map((p) => {
+                    const sel = (form.parceiro_ids || []).includes(p.id)
+                    return (
+                      <SelectItem key={p.id} value={p.id}>
+                        <div className="flex items-center justify-between gap-3 w-full">
+                          <span
+                            className={cn(
+                              'text-xs',
+                              sel ? 'font-bold text-[#1B5E20]' : 'text-gray-700',
+                            )}
+                          >
+                            {p.nome}
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            {sel ? '✓ Selecionado' : `(${p.tipo})`}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+
+              {/* Lista dos parceiros cadastrados selecionáveis */}
               <div className="p-2.5 rounded-lg border border-gray-200 bg-gray-50 max-h-36 overflow-y-auto space-y-1">
                 {parceiros.map((p) => {
                   const sel = (form.parceiro_ids || []).includes(p.id)
+                  const empRotulo =
+                    p.empresa || (Array.isArray(p.empresas) ? p.empresas.join(', ') : '')
                   return (
                     <button
                       key={p.id}
@@ -839,11 +1009,13 @@ export default function TarefasKanbanPage() {
                       onClick={() =>
                         setForm((f: any) => {
                           const cur = f.parceiro_ids || []
+                          const novoIds = sel
+                            ? cur.filter((x: string) => x !== p.id)
+                            : [...cur, p.id]
                           return {
                             ...f,
-                            parceiro_ids: sel
-                              ? cur.filter((x: string) => x !== p.id)
-                              : [...cur, p.id],
+                            parceiro_ids: novoIds,
+                            responsavel: !f.responsavel && !sel ? p.nome : f.responsavel,
                           }
                         })
                       }
@@ -854,8 +1026,13 @@ export default function TarefasKanbanPage() {
                           : 'text-gray-700 hover:bg-gray-100',
                       )}
                     >
-                      <span className="truncate">
-                        {p.nome} <span className="text-gray-400">· {p.tipo}</span>
+                      <span className="truncate flex items-center gap-1.5">
+                        <span>{p.nome}</span>
+                        {empRotulo && (
+                          <span className="text-[10px] text-gray-400 font-normal">
+                            · {empRotulo}
+                          </span>
+                        )}
                       </span>
                       {sel && <span className="text-[10px] font-bold">✓</span>}
                     </button>
@@ -894,12 +1071,25 @@ export default function TarefasKanbanPage() {
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Empresa (escopo)
                 </Label>
-                <Input
-                  value={form.empresa || ''}
-                  onChange={(e) => setForm({ ...form, empresa: e.target.value })}
-                  placeholder="Extrafruti / Casafruti / FoldBox"
-                  className="h-10 bg-gray-50"
-                />
+                <Select
+                  value={form.empresa || ' '}
+                  onValueChange={(v) => setForm({ ...form, empresa: v === ' ' ? '' : v })}
+                >
+                  <SelectTrigger className="h-10 bg-gray-50">
+                    <SelectValue placeholder="Selecione a empresa..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value=" ">Todas / Grupo Consolidado</SelectItem>
+                    {empresas.map((e) => (
+                      <SelectItem key={e.id} value={e.nome}>
+                        <div className="flex items-center gap-2">
+                          {obterIconeEmpresa(e.nome)}
+                          <span>{e.nome}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             {form.vinculo_tipo && form.vinculo_tipo !== ' ' && (
@@ -945,6 +1135,15 @@ export default function TarefasKanbanPage() {
                   className="h-8"
                 >
                   <Share2 className="h-3.5 w-3.5 mr-1" /> Compartilhar
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setExcluindoTarefa(detalhe)}
+                  className="h-8 text-red-600 hover:bg-red-50 hover:border-red-200"
+                  title="Excluir tarefa"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
                 </Button>
                 <button
                   onClick={() => setDetalhe(null)}
@@ -1123,6 +1322,44 @@ export default function TarefasKanbanPage() {
               </p>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmação de exclusão da tarefa */}
+      <Dialog open={!!excluindoTarefa} onOpenChange={(o) => !o && setExcluindoTarefa(null)}>
+        <DialogContent className="bg-white max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-4 w-4" /> Excluir Tarefa
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 text-[13px] text-gray-700 leading-relaxed">
+            Tem certeza que deseja excluir a tarefa{' '}
+            <strong className="text-gray-900 font-semibold">"{excluindoTarefa?.titulo}"</strong>?
+            Esta ação é irreversível e removerá todos os dados do kanban e histórico de chat.
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setExcluindoTarefa(null)}
+              className="h-9"
+              disabled={excluindoEmAndamento}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={confirmarExclusao}
+              disabled={excluindoEmAndamento}
+              className="h-9 bg-red-600 hover:bg-red-700 text-white font-semibold"
+            >
+              {excluindoEmAndamento ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-1.5" />
+              )}
+              Confirmar Exclusão
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

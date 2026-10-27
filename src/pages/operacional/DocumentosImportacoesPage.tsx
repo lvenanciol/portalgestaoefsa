@@ -366,7 +366,7 @@ export default function DocumentosImportacoesPage() {
         const mesmas = await pb.collection('importacoes').getFullList({
           filter: `tipo="${tipo}" && empresa="${empresa}" && periodo="${periodo}"`,
         })
-        versao = (mesmas.items?.length || 0) + 1
+        versao = (mesmas?.length || 0) + 1
       } catch (_e) {
         versao = 1
       }

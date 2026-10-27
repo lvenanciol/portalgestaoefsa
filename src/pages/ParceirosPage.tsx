@@ -1,7 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Users, Plus, Loader2, Search, X, Pencil, Trash2, Download, Building2 } from 'lucide-react'
+import {
+  Users,
+  Plus,
+  Loader2,
+  Search,
+  X,
+  Pencil,
+  Trash2,
+  Download,
+  Building2,
+  Check,
+} from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { useApp } from '@/context/AppContext'
 import { idiomaSalvo, traduzir } from '@/lib/i18n'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -69,6 +81,7 @@ const mascaraTelefone = (v: string): string => {
 
 export default function ParceirosPage() {
   const { user } = useAuth()
+  const { empresas: empresasApp } = useApp()
   const [itens, setItens] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
@@ -80,6 +93,7 @@ export default function ParceirosPage() {
   const [form, setForm] = useState<any>({})
   const [salvando, setSalvando] = useState(false)
   const [excluindo, setExcluindo] = useState<any | null>(null)
+  const [logos, setLogos] = useState<any[]>([])
   // centros de resultado (Sankhya)
   const [centros, setCentros] = useState<any[]>([])
   const [centroBusca, setCentroBusca] = useState('')
@@ -105,8 +119,15 @@ export default function ParceirosPage() {
   const carregar = async () => {
     setLoading(true)
     try {
-      const r = await pb.collection('parceiros').getFullList({ sort: 'nome' })
+      const [r, l] = await Promise.all([
+        pb.collection('parceiros').getFullList({ sort: 'nome' }),
+        pb
+          .collection('logomarcas')
+          .getFullList()
+          .catch(() => []),
+      ])
       setItens(r as any[])
+      setLogos(l as any[])
       setErro('')
     } catch (e) {
       setErro(String(e))
@@ -118,6 +139,83 @@ export default function ParceirosPage() {
   useEffect(() => {
     carregar()
   }, [])
+
+  // Lista unificada de empresas cadastradas no portal
+  const listaEmpresas = useMemo(() => {
+    if (empresasApp && empresasApp.length > 0) {
+      return empresasApp.map((e) => e.nome)
+    }
+    return EMPRESAS
+  }, [empresasApp])
+
+  const obterIconeEmpresa = (nomeEmpresa: string) => {
+    if (!nomeEmpresa) return null
+    const norm = (s: any) =>
+      String(s || '')
+        .trim()
+        .toLowerCase()
+    const logoRec = logos.find((l) => norm(l.empresa) === norm(nomeEmpresa))
+    const empRec = empresasApp.find((e) => norm(e.nome) === norm(nomeEmpresa))
+    const cor = logoRec?.cor || empRec?.cor || '#1B5E20'
+    const sigla =
+      logoRec?.sigla ||
+      (empRec ? empRec.nome.slice(0, 2).toUpperCase() : nomeEmpresa.slice(0, 2).toUpperCase())
+
+    const urlImagem = (rec: any, campo: string) => {
+      if (!rec || !rec[campo]) return ''
+      return pb.files.getURL(rec, rec[campo])
+    }
+    const urlEmb = urlImagem(logoRec, 'emblema')
+    const urlLogo = urlImagem(logoRec, 'logo')
+
+    if (urlEmb) {
+      return (
+        <img
+          src={urlEmb}
+          alt={nomeEmpresa}
+          className="h-4 w-4 object-contain rounded-xs shrink-0"
+        />
+      )
+    }
+    if (urlLogo) {
+      return (
+        <img
+          src={urlLogo}
+          alt={nomeEmpresa}
+          className="h-4 w-4 object-contain rounded-xs shrink-0"
+        />
+      )
+    }
+    return (
+      <span
+        className="h-4 w-4 rounded-xs text-[8px] font-bold text-white flex items-center justify-center shrink-0"
+        style={{ backgroundColor: cor }}
+      >
+        {sigla}
+      </span>
+    )
+  }
+
+  // Extrai array de empresas de um parceiro (compatibilidade múltipla + legado)
+  const obterEmpresasParceiro = (p: any): string[] => {
+    let lista: string[] = []
+    if (p.empresas) {
+      if (Array.isArray(p.empresas)) {
+        lista = p.empresas
+      } else {
+        try {
+          const parsed = JSON.parse(p.empresas)
+          if (Array.isArray(parsed)) lista = parsed
+        } catch {
+          /* intentionally ignored */
+        }
+      }
+    }
+    if (lista.length === 0 && p.empresa) {
+      lista = [p.empresa]
+    }
+    return lista.filter(Boolean)
+  }
 
   const buscarCentros = async (q: string) => {
     setCentrosErro('')
@@ -151,7 +249,10 @@ export default function ParceirosPage() {
     )
       return false
     if (fTipo !== 'todos' && i.tipo !== fTipo) return false
-    if (fEmpresa !== 'todas' && i.empresa !== fEmpresa) return false
+    if (fEmpresa !== 'todas') {
+      const emps = obterEmpresasParceiro(i)
+      if (!emps.includes(fEmpresa)) return false
+    }
     return true
   })
 
@@ -160,6 +261,7 @@ export default function ParceirosPage() {
       nome: '',
       tipo: 'Parceiro',
       empresa: 'Extrafruti',
+      empresas: ['Extrafruti'],
       documento: '',
       email: '',
       whatsapp: '',
@@ -175,7 +277,12 @@ export default function ParceirosPage() {
   }
 
   const abrirEditar = (p: any) => {
-    setForm({ ...p })
+    const listaEmpresasP = obterEmpresasParceiro(p)
+    setForm({
+      ...p,
+      empresas: listaEmpresasP.length > 0 ? listaEmpresasP : [p.empresa || 'Extrafruti'],
+      empresa: listaEmpresasP[0] || p.empresa || 'Extrafruti',
+    })
     setEditando(p)
     setDialog(true)
   }
@@ -183,10 +290,16 @@ export default function ParceirosPage() {
   const salvar = async () => {
     setSalvando(true)
     try {
-      const dados = {
+      const empresasSalvas =
+        Array.isArray(form.empresas) && form.empresas.length > 0
+          ? form.empresas
+          : [form.empresa || 'Extrafruti']
+
+      const dados: any = {
         nome: form.nome,
         tipo: form.tipo,
-        empresa: form.empresa,
+        empresa: empresasSalvas[0] || 'Extrafruti', // mantém compatibilidade com campo legado
+        empresas: JSON.stringify(empresasSalvas), // suporta múltiplas empresas
         documento: form.documento,
         email: form.email,
         whatsapp: form.whatsapp,
@@ -320,14 +433,17 @@ export default function ParceirosPage() {
           </SelectContent>
         </Select>
         <Select value={fEmpresa} onValueChange={setFEmpresa}>
-          <SelectTrigger className="h-9 w-40 text-xs bg-gray-50">
+          <SelectTrigger className="h-9 w-44 text-xs bg-gray-50">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas as empresas</SelectItem>
-            {EMPRESAS.map((e) => (
+            {listaEmpresas.map((e) => (
               <SelectItem key={e} value={e}>
-                {e}
+                <div className="flex items-center gap-1.5">
+                  {obterIconeEmpresa(e)}
+                  <span>{e}</span>
+                </div>
               </SelectItem>
             ))}
           </SelectContent>
@@ -362,7 +478,25 @@ export default function ParceirosPage() {
                     {p.tipo}
                   </span>
                 </td>
-                <td className="px-4 py-2.5 text-[12px] text-gray-600">{p.empresa || '—'}</td>
+                <td className="px-4 py-2.5 text-[12px] text-gray-600">
+                  {(() => {
+                    const emps = obterEmpresasParceiro(p)
+                    if (emps.length === 0) return '—'
+                    return (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {emps.map((emp) => (
+                          <span
+                            key={emp}
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-800 text-[11px] font-medium border border-gray-200"
+                          >
+                            {obterIconeEmpresa(emp)}
+                            <span>{emp}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )
+                  })()}
+                </td>
                 <td className="px-4 py-2.5 text-[12px] text-gray-600">
                   {p.email && <div>{p.email}</div>}
                   {(p.whatsapp || p.telefone) && (
@@ -450,27 +584,112 @@ export default function ParceirosPage() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            {/* TAREFA CONT: Seleção de MAIS DE UMA empresa com ícone ao lado do nome */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Empresa
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    Empresas do Parceiro * (múltipla escolha)
+                  </Label>
+                  <span className="text-[11px] text-[#1B5E20] font-semibold">
+                    {(form.empresas || []).length} selecionada(s)
+                  </span>
+                </div>
+                {/* Dropdown com ícone ao lado do nome da empresa para alternar seleção */}
                 <Select
-                  value={form.empresa || 'Extrafruti'}
-                  onValueChange={(v) => setForm({ ...form, empresa: v })}
+                  value="placeholder"
+                  onValueChange={(val) => {
+                    if (val === 'placeholder') return
+                    setForm((f: any) => {
+                      const cur = Array.isArray(f.empresas)
+                        ? f.empresas
+                        : [f.empresa || 'Extrafruti']
+                      const exists = cur.includes(val)
+                      // Se desmarcar a única, mantém ao menos uma
+                      if (exists && cur.length === 1) return f
+                      const novas = exists ? cur.filter((x: string) => x !== val) : [...cur, val]
+                      return {
+                        ...f,
+                        empresas: novas,
+                        empresa: novas[0] || val,
+                      }
+                    })
+                  }}
                 >
                   <SelectTrigger className="h-10 bg-gray-50">
-                    <SelectValue />
+                    <SelectValue placeholder="Adicionar/remover empresa..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {EMPRESAS.map((e) => (
-                      <SelectItem key={e} value={e}>
-                        {e}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="placeholder" disabled>
+                      Selecione uma empresa para alternar vínculo
+                    </SelectItem>
+                    {listaEmpresas.map((e) => {
+                      const sel = (form.empresas || []).includes(e)
+                      return (
+                        <SelectItem key={e} value={e}>
+                          <div className="flex items-center justify-between gap-3 w-full">
+                            <div className="flex items-center gap-2">
+                              {obterIconeEmpresa(e)}
+                              <span
+                                className={cn(
+                                  'text-xs',
+                                  sel ? 'font-bold text-[#1B5E20]' : 'text-gray-800',
+                                )}
+                              >
+                                {e}
+                              </span>
+                            </div>
+                            {sel && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                          </div>
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
+
+                {/* Badges/Tags clicáveis com os ícones das empresas */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  {listaEmpresas.map((e) => {
+                    const sel = (form.empresas || []).includes(e)
+                    return (
+                      <button
+                        key={e}
+                        type="button"
+                        onClick={() => {
+                          setForm((f: any) => {
+                            const cur = Array.isArray(f.empresas)
+                              ? f.empresas
+                              : [f.empresa || 'Extrafruti']
+                            const exists = cur.includes(e)
+                            if (exists && cur.length === 1) return f
+                            const novas = exists ? cur.filter((x: string) => x !== e) : [...cur, e]
+                            return {
+                              ...f,
+                              empresas: novas,
+                              empresa: novas[0] || e,
+                            }
+                          })
+                        }}
+                        className={cn(
+                          'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer',
+                          sel
+                            ? 'bg-emerald-50 text-[#1B5E20] border-emerald-300 shadow-2xs'
+                            : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-800',
+                        )}
+                      >
+                        {obterIconeEmpresa(e)}
+                        <span>{e}</span>
+                        {sel ? (
+                          <Check className="h-3 w-3 ml-0.5 text-[#1B5E20]" />
+                        ) : (
+                          <Plus className="h-3 w-3 ml-0.5 text-gray-400" />
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
+
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   CPF/CNPJ

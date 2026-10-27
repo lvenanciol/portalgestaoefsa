@@ -24,6 +24,7 @@ interface MenuItem {
 
 export default function MenusPage() {
   const { user } = useAuth()
+  const { pode } = useBotoes()
   const [itens, setItens] = useState<MenuItem[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
