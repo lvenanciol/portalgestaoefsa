@@ -8,6 +8,7 @@ import {
   Users,
   ArrowUpRight,
   ArrowDownRight,
+  Info,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -21,16 +22,19 @@ const iconMap = {
 }
 
 interface KpiCardProps {
-  kpi: KPI
+  kpi: KPI & { semDados?: boolean; motivoSemDados?: string }
   index: number
 }
 
 export function KpiCard({ kpi, index }: KpiCardProps) {
   const Icon = iconMap[kpi.iconName] || DollarSign
   const isPositive = kpi.deltaType === 'positive'
-  const hasDelta = Boolean(kpi.delta)
+  const hasDelta = Boolean(kpi.delta) && !kpi.semDados
 
   const iconTheme = (() => {
+    if (kpi.semDados) {
+      return { bg: 'bg-gray-100', border: 'border-gray-200', text: 'text-gray-400' }
+    }
     switch (kpi.iconName) {
       case 'dollar-sign':
         return { bg: 'bg-emerald-50', border: 'border-emerald-200/60', text: 'text-[#1B5E20]' }
@@ -51,16 +55,26 @@ export function KpiCard({ kpi, index }: KpiCardProps) {
 
   return (
     <div
-      className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-[3px] flex flex-col justify-between"
+      className={cn(
+        'bg-white rounded-xl border p-5 shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-[2px] flex flex-col justify-between',
+        kpi.semDados ? 'border-dashed border-gray-300/80 bg-gray-50/40' : 'border-[#E5E7EB]',
+      )}
       style={{
         animation: `fade-in-up 400ms ease-out ${index * 50}ms both`,
       }}
     >
-      {/* Topo: label uppercase + ícone */}
+      {/* Topo: label uppercase + badge ou ícone */}
       <div className="flex items-start justify-between gap-2">
-        <span className="text-[12px] font-semibold text-gray-500 tracking-wider uppercase">
-          {kpi.label}
-        </span>
+        <div className="flex flex-col">
+          <span className="text-[12px] font-semibold text-gray-500 tracking-wider uppercase">
+            {kpi.label}
+          </span>
+          {kpi.semDados && (
+            <span className="text-[10px] text-amber-700 font-medium inline-flex items-center gap-1 mt-0.5">
+              <Info className="h-3 w-3 shrink-0" /> Sem dados no Sankhya
+            </span>
+          )}
+        </div>
         <div
           className={cn(
             'h-9 w-9 rounded-lg border flex items-center justify-center shrink-0 shadow-2xs',
@@ -75,12 +89,21 @@ export function KpiCard({ kpi, index }: KpiCardProps) {
 
       {/* Valor com numerais tabulares */}
       <div className="my-2">
-        <div className="text-[28px] lg:text-[30px] font-extrabold text-[#111827] tracking-tight tabular-nums leading-none">
-          {kpi.value}
-        </div>
+        {kpi.semDados ? (
+          <div className="py-1">
+            <span className="text-[19px] font-bold text-gray-400">Sem dados</span>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              {kpi.motivoSemDados || 'Métrica não disponível na rotina de sincronização atual.'}
+            </p>
+          </div>
+        ) : (
+          <div className="text-[26px] lg:text-[28px] font-extrabold text-[#111827] tracking-tight tabular-nums leading-none">
+            {kpi.value}
+          </div>
+        )}
       </div>
 
-      {/* Base: chip de variação (quando houver) */}
+      {/* Base: chip de variação ou rodapé explicativo */}
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100 min-h-[28px]">
         {hasDelta ? (
           <div
@@ -98,8 +121,10 @@ export function KpiCard({ kpi, index }: KpiCardProps) {
             )}
             <span>{kpi.delta}</span>
           </div>
+        ) : kpi.semDados ? (
+          <span className="text-[10px] text-gray-400">Requer ativação no ERP</span>
         ) : (
-          <span />
+          <span className="text-[10px] text-emerald-700/80 font-medium">Sankhya ERP</span>
         )}
       </div>
     </div>
