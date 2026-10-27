@@ -18,6 +18,7 @@ import {
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useApp } from '@/context/AppContext'
+import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -173,12 +174,16 @@ export default function TarefasKanbanPage() {
     setDialog(true)
   }
 
-  // T2a: abertura de chamado por ÁUDIO — Web Speech API (nativo do navegador)
+  // T2a: abertura de chamado por ÁUDIO — Web Speech API com fallback gracioso MediaRecorder
   const [parceiros, setParceiros] = useState<any[]>([])
   const [ouvindo, setOuvindo] = useState(false)
+  const [processandoAudio, setProcessandoAudio] = useState(false)
   const [transcricao, setTranscricao] = useState('')
   const [estruturando, setEstruturando] = useState(false)
   const recRef = useRef<any>(null)
+  const mediaRecRef = useRef<MediaRecorder | null>(null)
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const mediaChunksRef = useRef<Blob[]>([])
 
   const carregarParceiros = async () => {
     try {
@@ -258,33 +263,296 @@ export default function TarefasKanbanPage() {
     }
   }
 
-  const toggleOuvir = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SR) {
-      setErro('Reconhecimento de voz não suportado neste navegador (use Chrome ou Safari).')
+  const pararOuvir = () => {
+    try {
+      if (recRef.current) {
+        recRef.current.onend = null
+        recRef.current.onerror = null
+        recRef.current.stop()
+      }
+    } catch (_) {
+      /* noop */
+    }
+    try {
+      if (mediaRecRef.current && mediaRecRef.current.state !== 'inactive') {
+        mediaRecRef.current.stop()
+      }
+    } catch (_) {
+      /* noop */
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop())
+      mediaStreamRef.current = null
+    }
+    setOuvindo(false)
+  }
+
+  // Cleanup de gravação ao desmontar ou fechar diálogo
+  useEffect(() => {
+    return () => {
+      pararOuvir()
+    }
+  }, [])
+
+  const transcreverAudioBlob = async (blob: Blob) => {
+    setProcessandoAudio(true)
+    try {
+      // Converte Blob para base64
+      const reader = new FileReader()
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => {
+          const res = reader.result as string
+          const b64 = res.split(',')[1] || ''
+          resolve(b64)
+        }
+        reader.onerror = reject
+      })
+      reader.readAsDataURL(blob)
+      const b64 = await base64Promise
+
+      const mime = blob.type || 'audio/webm'
+      const r = (await pb.send('/backend/v1/ia/transcrever', {
+        method: 'POST',
+        body: JSON.stringify({ audio_base64: b64, mime }),
+      })) as any
+      const texto = r.texto || r.transcricao || ''
+      if (texto) {
+        setTranscricao((prev) => (prev ? prev + ' ' + texto : texto).trim())
+        toast({
+          title: 'Áudio transcrito com sucesso',
+          description: 'Clique em "Preencher com IA" para organizar os campos da tarefa.',
+        })
+      } else {
+        toast({
+          title: 'Transcrição vazia',
+          description: 'A IA não identificou fala clara no áudio gravado. Tente novamente.',
+          variant: 'destructive',
+        })
+      }
+    } catch (e: any) {
+      const msg = String(e?.message || e || 'Erro ao transcrever')
+      toast({
+        title: 'Falha na transcrição do áudio',
+        description: msg.includes('GEMINI_API_KEY')
+          ? 'Chave de IA para transcrição não configurada. Use o reconhecimento nativo do Chrome ou digite o texto.'
+          : 'Não foi possível transcrever o áudio gravado.',
+        variant: 'destructive',
+      })
+    } finally {
+      setProcessandoAudio(false)
+    }
+  }
+
+  const iniciarGravacaoMediaRecorder = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast({
+        title: 'Microfone indisponível',
+        description:
+          'Seu navegador não possui suporte a captura de áudio ou a página não está em contexto seguro (HTTPS).',
+        variant: 'destructive',
+      })
       return
     }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      mediaStreamRef.current = stream
+      const mr = new MediaRecorder(stream)
+      mediaChunksRef.current = []
+
+      mr.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) {
+          mediaChunksRef.current.push(ev.data)
+        }
+      }
+
+      mr.onstop = async () => {
+        if (mediaStreamRef.current) {
+          mediaStreamRef.current.getTracks().forEach((t) => t.stop())
+          mediaStreamRef.current = null
+        }
+        const mime = mr.mimeType || 'audio/webm'
+        const audioBlob = new Blob(mediaChunksRef.current, { type: mime })
+        if (audioBlob.size > 0) {
+          await transcreverAudioBlob(audioBlob)
+        }
+      }
+
+      mr.onerror = (ev: any) => {
+        setOuvindo(false)
+        toast({
+          title: 'Erro na gravação',
+          description: String(ev?.error || 'Falha no gravador de áudio.'),
+          variant: 'destructive',
+        })
+      }
+
+      mr.start()
+      mediaRecRef.current = mr
+      setOuvindo(true)
+      toast({
+        title: 'Gravando áudio...',
+        description: 'Fale sua tarefa. Ao terminar, clique em "Parar" para transcrever.',
+      })
+    } catch (err: any) {
+      const name = err?.name || ''
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        toast({
+          title: 'Permissão de microfone negada',
+          description:
+            'Permita o acesso ao microfone nas permissões do navegador (ícone de cadeado na barra de endereços).',
+          variant: 'destructive',
+        })
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        toast({
+          title: 'Nenhum microfone encontrado',
+          description: 'Conecte um microfone ao dispositivo para gravar.',
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: 'Erro ao acessar microfone',
+          description: String(err?.message || err),
+          variant: 'destructive',
+        })
+      }
+    }
+  }
+
+  const toggleOuvir = async () => {
+    // Se já estiver gravando, para a gravação
     if (ouvindo) {
-      recRef.current?.stop()
-      setOuvindo(false)
+      pararOuvir()
       return
     }
-    const rec = new SR()
-    rec.lang = 'pt-BR'
-    rec.continuous = true
-    rec.interimResults = false
-    rec.onresult = (ev: any) => {
-      let t = ''
-      for (let i = ev.resultIndex; i < ev.results.length; i++)
-        t += ev.results[i][0].transcript + ' '
-      setTranscricao((prev) => (prev + ' ' + t).trim())
-    }
-    rec.onerror = () => setOuvindo(false)
-    rec.onend = () => setOuvindo(false)
-    recRef.current = rec
+
+    // Limpa transcrição anterior para nova gravação
     setTranscricao('')
-    rec.start()
-    setOuvindo(true)
+
+    const SR =
+      (typeof window !== 'undefined' &&
+        ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)) ||
+      null
+
+    // Caminho 1: Web Speech API suportada
+    if (SR) {
+      // Solicita permissão prévia explícita no getUserMedia para dar feedback claro se for negada
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        try {
+          const probeStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+          probeStream.getTracks().forEach((t) => t.stop())
+        } catch (err: any) {
+          const name = err?.name || ''
+          if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+            toast({
+              title: 'Permissão de microfone negada',
+              description:
+                'Permita o acesso ao microfone nas configurações do navegador (ícone de cadeado na barra de endereços).',
+              variant: 'destructive',
+            })
+            return
+          }
+          if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+            toast({
+              title: 'Nenhum microfone encontrado',
+              description: 'Conecte um microfone para gravar.',
+              variant: 'destructive',
+            })
+            return
+          }
+          // Outros erros: prossegue para tentar SR diretamente
+        }
+      }
+
+      try {
+        const rec = new SR()
+        rec.lang = 'pt-BR'
+        rec.continuous = true
+        rec.interimResults = true
+
+        rec.onstart = () => {
+          setOuvindo(true)
+          toast({
+            title: 'Gravando voz...',
+            description: 'Fale sua tarefa. O texto será reconhecido automaticamente.',
+          })
+        }
+
+        rec.onresult = (ev: any) => {
+          let tFinal = ''
+          let tInterim = ''
+          for (let i = 0; i < ev.results.length; i++) {
+            const item = ev.results[i]
+            if (item.isFinal) {
+              tFinal += item[0].transcript + ' '
+            } else {
+              tInterim += item[0].transcript + ' '
+            }
+          }
+          const total = (tFinal + tInterim).trim()
+          if (total) {
+            setTranscricao(total)
+          }
+        }
+
+        rec.onerror = (ev: any) => {
+          const errCode = ev.error || ''
+          if (errCode === 'not-allowed' || errCode === 'service-not-allowed') {
+            toast({
+              title: 'Permissão de microfone negada',
+              description:
+                'O acesso ao microfone foi negado. Habilite nas configurações do navegador.',
+              variant: 'destructive',
+            })
+          } else if (errCode === 'no-speech') {
+            // Silêncio temporário — não é erro fatal, apenas notifica se fechar
+          } else if (errCode === 'network') {
+            toast({
+              title: 'Erro de conexão no reconhecimento de voz',
+              description:
+                'O serviço de reconhecimento do navegador não conseguiu se conectar. Tentando gravador de áudio...',
+              variant: 'destructive',
+            })
+            // Fallback para gravação via MediaRecorder
+            pararOuvir()
+            iniciarGravacaoMediaRecorder()
+            return
+          } else {
+            toast({
+              title: 'Erro no reconhecimento de voz',
+              description: `Código: ${errCode || 'desconhecido'}.`,
+              variant: 'destructive',
+            })
+          }
+          setOuvindo(false)
+        }
+
+        rec.onend = () => {
+          setOuvindo(false)
+        }
+
+        recRef.current = rec
+        rec.start()
+        return
+      } catch (err: any) {
+        // Falha ao instanciar ou iniciar Web Speech API: tenta MediaRecorder
+        console.warn('SpeechRecognition falhou ao iniciar, usando fallback MediaRecorder:', err)
+      }
+    }
+
+    // Caminho 2: Fallback gracioso com MediaRecorder + backend de transcrição
+    if (typeof MediaRecorder !== 'undefined') {
+      await iniciarGravacaoMediaRecorder()
+      return
+    }
+
+    // Caminho 3: Nenhuma API de áudio suportada
+    toast({
+      title: 'Navegador incompatível',
+      description:
+        'Seu navegador não suporta Web Speech API nem gravação de mídia. Recomendamos o Google Chrome, Edge ou Safari atualizados.',
+      variant: 'destructive',
+    })
   }
 
   const estruturarVoz = async () => {
@@ -842,7 +1110,15 @@ export default function TarefasKanbanPage() {
       )}
 
       {/* Dialog nova/editar (+50% de largura: max-w-md 448px -> max-w-2xl 672px) */}
-      <Dialog open={dialog} onOpenChange={setDialog}>
+      <Dialog
+        open={dialog}
+        onOpenChange={(aberto) => {
+          if (!aberto && ouvindo) {
+            pararOuvir()
+          }
+          setDialog(aberto)
+        }}
+      >
         <DialogContent className="bg-white sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-gray-900">
@@ -855,6 +1131,16 @@ export default function TarefasKanbanPage() {
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
                   <Mic className="h-3.5 w-3.5" /> Abrir por áudio
+                  {ouvindo && (
+                    <span className="ml-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded animate-pulse">
+                      ● Gravando...
+                    </span>
+                  )}
+                  {processandoAudio && (
+                    <span className="ml-1.5 inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Transcrevendo...
+                    </span>
+                  )}
                 </span>
                 <div className="flex items-center gap-2">
                   <Button
@@ -862,20 +1148,25 @@ export default function TarefasKanbanPage() {
                     variant="outline"
                     size="sm"
                     onClick={toggleOuvir}
-                    className={cn('h-8', ouvindo && 'bg-red-50 text-red-700 border-red-200')}
+                    disabled={processandoAudio}
+                    className={cn(
+                      'h-8 font-medium transition-colors',
+                      ouvindo &&
+                        'bg-red-50 text-red-700 border-red-300 hover:bg-red-100 ring-2 ring-red-200',
+                    )}
                   >
                     {ouvindo ? (
-                      <X className="h-3.5 w-3.5 mr-1" />
+                      <X className="h-3.5 w-3.5 mr-1 text-red-600" />
                     ) : (
-                      <Mic className="h-3.5 w-3.5 mr-1" />
+                      <Mic className="h-3.5 w-3.5 mr-1 text-[#1B5E20]" />
                     )}
-                    {ouvindo ? 'Parar' : 'Ouvir'}
+                    {ouvindo ? 'Parar gravação' : 'Ouvir'}
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     onClick={estruturarVoz}
-                    disabled={estruturando || !transcricao.trim()}
+                    disabled={estruturando || processandoAudio || !transcricao.trim()}
                     className="h-8 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
                   >
                     {estruturando ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : null}
@@ -883,12 +1174,27 @@ export default function TarefasKanbanPage() {
                   </Button>
                 </div>
               </div>
-              {(transcricao || ouvindo) && (
-                <p className="text-[11px] text-gray-600 italic">
-                  {ouvindo && <span className="text-red-600 font-bold mr-1">● REC</span>}
-                  {transcricao ||
-                    'ouvindo... fale o chamado (ex.: "preciso que o João resolva a entrega da semana que vem, é urgente")'}
-                </p>
+              {(transcricao || ouvindo || processandoAudio) && (
+                <div className="text-[11px] text-gray-700 bg-white/70 rounded p-2 border border-emerald-100">
+                  {ouvindo && (
+                    <p className="text-red-600 font-semibold flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full bg-red-600 animate-ping inline-block" />
+                      Captando áudio em tempo real... Fale os detalhes da tarefa e clique em "Parar
+                      gravação".
+                    </p>
+                  )}
+                  {processandoAudio && (
+                    <p className="text-amber-700 italic">
+                      Transcrevendo áudio via IA... Aguarde alguns instantes.
+                    </p>
+                  )}
+                  {transcricao && (
+                    <div className="mt-1">
+                      <span className="font-semibold text-emerald-900 mr-1">Transcrição:</span>
+                      <span className="text-gray-800 italic">"{transcricao}"</span>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
@@ -905,12 +1211,12 @@ export default function TarefasKanbanPage() {
               />
             </div>
 
-            {/* Linha 1 após Título: EMPRESA (ESCOPO) e RESPONSÁVEL */}
+            {/* Linha 1 após Título: EMPRESA e RESPONSÁVEL */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {/* 1. EMPRESA (ESCOPO) */}
+              {/* 1. EMPRESA */}
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Empresa (escopo)
+                  Empresa
                 </Label>
                 <Select
                   value={form.empresa || ' '}
@@ -1144,7 +1450,14 @@ export default function TarefasKanbanPage() {
             </div>
           </div>
           <DialogFooter className="pt-2">
-            <Button variant="outline" onClick={() => setDialog(false)} className="h-9">
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (ouvindo) pararOuvir()
+                setDialog(false)
+              }}
+              className="h-9"
+            >
               Cancelar
             </Button>
             <Button
