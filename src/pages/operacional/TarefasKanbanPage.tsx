@@ -14,6 +14,7 @@ import {
   Paperclip,
   Trash2,
   Leaf,
+  Pencil,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -77,6 +78,7 @@ export default function TarefasKanbanPage() {
   const [excluindoEmAndamento, setExcluindoEmAndamento] = useState(false)
   const [form, setForm] = useState<any>({})
   const [salvando, setSalvando] = useState(false)
+  const [dialogErro, setDialogErro] = useState('')
   const [detalhe, setDetalhe] = useState<any | null>(null)
   const [novoChat, setNovoChat] = useState('')
   const [chatAnexo, setChatAnexo] = useState<File | null>(null)
@@ -167,10 +169,43 @@ export default function TarefasKanbanPage() {
       descricao: '',
       vinculo_tipo: '',
       vinculo_id: '',
-      empresa: '',
+      empresa: empresaFiltroAtiva !== 'todas' ? empresaFiltroAtiva : '',
       parceiro_ids: [],
     })
+    setDialogErro('')
     setEditando(null)
+    setDialog(true)
+  }
+
+  const abrirEditar = (t: any) => {
+    let parceiroIds: string[] = []
+    try {
+      parceiroIds = Array.isArray(t.parceiros) ? t.parceiros : JSON.parse(t.parceiros || '[]')
+    } catch (_) {
+      parceiroIds = []
+    }
+    setForm({
+      titulo: t.titulo || '',
+      responsavel: t.responsavel || '',
+      prazo: t.prazo ? String(t.prazo).slice(0, 10) : '',
+      prioridade_p:
+        t.prioridade_p || (t.prioridade === 'alta' ? 'P1' : t.prioridade === 'baixa' ? 'P3' : 'P2'),
+      status_kanban:
+        t.status_kanban ||
+        (t.status === 'concluida'
+          ? 'concluido'
+          : t.status === 'em_andamento'
+            ? 'em_andamento'
+            : 'a_fazer'),
+      descricao: t.descricao || '',
+      vinculo_tipo: t.vinculo_tipo || '',
+      vinculo_id: t.vinculo_id || '',
+      empresa: t.empresa || '',
+      parceiro_ids: parceiroIds,
+    })
+    setDialogErro('')
+    setEditando(t)
+    setDetalhe(null)
     setDialog(true)
   }
 
@@ -620,24 +655,65 @@ export default function TarefasKanbanPage() {
   }
 
   const salvar = async () => {
-    // T2b: parceiro(s) responsável(is) OBRIGATÓRIO(S)
-    if (!form.parceiro_ids || form.parceiro_ids.length === 0) {
-      setErro('Vincule pelo menos um parceiro/contato responsável antes de salvar.')
+    setDialogErro('')
+    // Validação de título
+    if (!form.titulo || !form.titulo.trim()) {
+      setDialogErro('Por favor, informe o título da tarefa.')
+      toast({
+        title: 'Título obrigatório',
+        description: 'Preencha o campo Título antes de salvar.',
+        variant: 'destructive',
+      })
       return
     }
+
+    // T2b: parceiro(s) responsável(is)
+    // Se nenhum parceiro foi explicitamente selecionado no dropdown multi-select mas há um responsável preenchido:
+    let idsParceiros: string[] = Array.isArray(form.parceiro_ids) ? [...form.parceiro_ids] : []
+    if (idsParceiros.length === 0 && form.responsavel) {
+      const respTrim = String(form.responsavel).trim().toLowerCase()
+      const match = parceiros.find(
+        (p) =>
+          String(p.nome || '')
+            .trim()
+            .toLowerCase() === respTrim ||
+          respTrim.includes(
+            String(p.nome || '')
+              .trim()
+              .toLowerCase(),
+          ),
+      )
+      if (match) {
+        idsParceiros = [match.id]
+      }
+    }
+
+    // Se ainda assim não houver parceiro selecionado:
+    if (idsParceiros.length === 0) {
+      const msgAviso =
+        'Vincule pelo menos um parceiro/contato responsável no campo abaixo antes de salvar.'
+      setDialogErro(msgAviso)
+      toast({
+        title: 'Parceiro/Contato obrigatório',
+        description: msgAviso,
+        variant: 'destructive',
+      })
+      return
+    }
+
     setSalvando(true)
     try {
       const dados: any = {
-        titulo: form.titulo,
-        responsavel: form.responsavel,
+        titulo: form.titulo.trim(),
+        responsavel: form.responsavel || '',
         prazo: form.prazo ? form.prazo + ' 00:00:00.000Z' : '',
-        prioridade_p: form.prioridade_p,
-        status_kanban: form.status_kanban,
-        descricao: form.descricao,
+        prioridade_p: form.prioridade_p || 'P2',
+        status_kanban: form.status_kanban || 'a_fazer',
+        descricao: form.descricao || '',
         vinculo_tipo: form.vinculo_tipo || '',
         vinculo_id: form.vinculo_id || '',
         empresa: form.empresa || '',
-        parceiros: JSON.stringify(form.parceiro_ids || []),
+        parceiros: JSON.stringify(idsParceiros),
         prioridade:
           form.prioridade_p === 'P1' ? 'alta' : form.prioridade_p === 'P2' ? 'media' : 'baixa',
         status:
@@ -647,15 +723,38 @@ export default function TarefasKanbanPage() {
               ? 'em_andamento'
               : 'pendente',
       }
-      if (editando) await pb.collection('tarefas').update(editando.id, dados)
-      else {
+      if (editando) {
+        await pb.collection('tarefas').update(editando.id, dados)
+        toast({
+          title: 'Tarefa atualizada',
+          description: `A tarefa "${dados.titulo}" foi salva com sucesso.`,
+        })
+      } else {
         dados.criado_por = user?.email || ''
         await pb.collection('tarefas').create(dados)
+        toast({
+          title: 'Tarefa criada com sucesso',
+          description: `A tarefa "${dados.titulo}" foi adicionada ao Kanban.`,
+        })
       }
       setDialog(false)
+      setDialogErro('')
       await carregar()
-    } catch (e) {
-      setErro(String(e))
+    } catch (e: any) {
+      console.error('Erro ao salvar tarefa:', e)
+      const errDetalhe =
+        e?.response?.message ||
+        (e?.response?.data ? JSON.stringify(e.response.data) : '') ||
+        e?.message ||
+        String(e)
+      const msgAmigavel = `Falha ao salvar tarefa: ${errDetalhe}`
+      setDialogErro(msgAmigavel)
+      setErro(msgAmigavel)
+      toast({
+        title: 'Erro ao salvar tarefa',
+        description: msgAmigavel,
+        variant: 'destructive',
+      })
     } finally {
       setSalvando(false)
     }
@@ -939,6 +1038,17 @@ export default function TarefasKanbanPage() {
                             t.status_kanban !== 'concluido' && (
                               <span className="text-[9px] font-bold text-red-600">ATRASADA</span>
                             )}
+                          <button
+                            type="button"
+                            title="Editar tarefa"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              abrirEditar(t)
+                            }}
+                            className="p-1 rounded-md text-gray-400 hover:text-[#1B5E20] hover:bg-emerald-50 transition-colors"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
                           <button
                             type="button"
                             title="Excluir tarefa"
@@ -1264,19 +1374,20 @@ export default function TarefasKanbanPage() {
                   </SelectTrigger>
                   <SelectContent className="max-h-56">
                     <SelectItem value=" ">Não definido</SelectItem>
-                    {parceiros.map((p) => (
-                      <SelectItem key={p.id} value={p.nome}>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-gray-900">{p.nome}</span>
-                          <span className="text-[10px] text-gray-400">
-                            (
-                            {p.empresa ||
-                              (Array.isArray(p.empresas) ? p.empresas.join(', ') : p.tipo)}
-                            )
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
+                    {parceiros.map((p) => {
+                      const empRotulo =
+                        p.empresa || (Array.isArray(p.empresas) ? p.empresas.join(', ') : p.tipo)
+                      return (
+                        <SelectItem key={p.id} value={p.nome}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-900">{p.nome}</span>
+                            {empRotulo ? (
+                              <span className="text-[10px] text-gray-400">({empRotulo})</span>
+                            ) : null}
+                          </div>
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -1389,13 +1500,18 @@ export default function TarefasKanbanPage() {
               />
             </div>
 
-            {/* e4: Apenas o dropdown para vincular parceiros, SEM a caixa/quadro auxiliar abaixo */}
+            {/* e4: Dropdown para vincular parceiros com tags/badges visíveis */}
             <div className="grid gap-1.5">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Parceiros/contatos responsáveis * (obrigatório)
                 </Label>
-                <span className="text-[11px] text-[#1B5E20] font-semibold">
+                <span
+                  className={cn(
+                    'text-[11px] font-semibold',
+                    (form.parceiro_ids || []).length > 0 ? 'text-[#1B5E20]' : 'text-amber-600',
+                  )}
+                >
                   {(form.parceiro_ids || []).length} selecionado(s)
                 </span>
               </div>
@@ -1417,7 +1533,7 @@ export default function TarefasKanbanPage() {
                 }}
               >
                 <SelectTrigger className="h-10 bg-gray-50 text-xs">
-                  <SelectValue placeholder="Selecione um parceiro cadastrado para adicionar/remover..." />
+                  <SelectValue placeholder="Selecione um parceiro cadastrado para alternar seleção..." />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
                   <SelectItem value="placeholder" disabled>
@@ -1447,7 +1563,45 @@ export default function TarefasKanbanPage() {
                   })}
                 </SelectContent>
               </Select>
+
+              {/* Badges dos parceiros selecionados com remoção direta */}
+              {(form.parceiro_ids || []).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {(form.parceiro_ids || []).map((pid: string) => {
+                    const pObj = parceiros.find((p) => p.id === pid)
+                    return (
+                      <span
+                        key={pid}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200"
+                      >
+                        {pObj?.nome || pid}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForm((f: any) => ({
+                              ...f,
+                              parceiro_ids: (f.parceiro_ids || []).filter((x: string) => x !== pid),
+                            }))
+                          }}
+                          className="hover:text-emerald-950 p-0.5 rounded-full"
+                          title="Remover"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
             </div>
+
+            {/* Alerta de erro de validação dentro do diálogo */}
+            {dialogErro && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-red-500" />
+                <span>{dialogErro}</span>
+              </div>
+            )}
           </div>
           <DialogFooter className="pt-2">
             <Button
@@ -1455,14 +1609,16 @@ export default function TarefasKanbanPage() {
               onClick={() => {
                 if (ouvindo) pararOuvir()
                 setDialog(false)
+                setDialogErro('')
               }}
               className="h-9"
             >
               Cancelar
             </Button>
             <Button
+              type="button"
               onClick={salvar}
-              disabled={salvando || !form.titulo}
+              disabled={salvando}
               className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs"
             >
               {salvando ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Salvar
@@ -1478,6 +1634,15 @@ export default function TarefasKanbanPage() {
             <DialogTitle className="flex items-center justify-between">
               <span>{detalhe?.titulo}</span>
               <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => abrirEditar(detalhe)}
+                  className="h-8"
+                  title="Editar tarefa"
+                >
+                  <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
