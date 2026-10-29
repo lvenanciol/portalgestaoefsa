@@ -1512,7 +1512,7 @@ export default function TarefasKanbanPage() {
         </div>
       )}
 
-      {/* Dialog nova/editar (+50% de largura: max-w-md 448px -> max-w-2xl 672px) */}
+      {/* Dialog nova/editar (+50% anterior + 20% atual: 672px -> ~806px: max-w-[806px]) */}
       <Dialog
         open={dialog}
         onOpenChange={(aberto) => {
@@ -1522,7 +1522,7 @@ export default function TarefasKanbanPage() {
           setDialog(aberto)
         }}
       >
-        <DialogContent className="bg-white sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-white w-full sm:max-w-[806px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-gray-900">
               {editando ? 'Editar' : 'Nova'} tarefa
@@ -1706,21 +1706,21 @@ export default function TarefasKanbanPage() {
               </div>
             </div>
 
-            {/* Linha 2 após Título: VÍNCULO e PRAZO */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {/* 3. VÍNCULO */}
-              <div className="grid gap-1.5">
+            {/* Linha de metadados: VÍNCULO (ORIGEM), PRAZO, PRIORIDADE e STATUS na proporção do conteúdo */}
+            <div className="flex flex-wrap items-end gap-3.5">
+              {/* 3. VÍNCULO (ORIGEM) */}
+              <div className="grid gap-1.5 w-full sm:w-auto">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Vínculo (origem)
                 </Label>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                   <Select
                     value={form.vinculo_tipo || ''}
                     onValueChange={(v) =>
                       setForm({ ...form, vinculo_tipo: v, vinculo_id: v ? form.vinculo_id : '' })
                     }
                   >
-                    <SelectTrigger className="h-10 bg-gray-50 flex-1">
+                    <SelectTrigger className="h-10 bg-gray-50 w-full sm:w-36">
                       <SelectValue placeholder="Nenhum" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1735,14 +1735,14 @@ export default function TarefasKanbanPage() {
                       value={form.vinculo_id || ''}
                       onChange={(e) => setForm({ ...form, vinculo_id: e.target.value })}
                       placeholder="ID (opcional)"
-                      className="h-10 bg-gray-50 w-28 text-xs"
+                      className="h-10 bg-gray-50 w-24 text-xs"
                     />
                   )}
                 </div>
               </div>
 
               {/* 4. PRAZO */}
-              <div className="grid gap-1.5">
+              <div className="grid gap-1.5 w-full sm:w-auto">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Prazo
                 </Label>
@@ -1750,15 +1750,12 @@ export default function TarefasKanbanPage() {
                   type="date"
                   value={form.prazo || ''}
                   onChange={(e) => setForm({ ...form, prazo: e.target.value })}
-                  className="h-10 bg-gray-50"
+                  className="h-10 bg-gray-50 w-full sm:w-[150px]"
                 />
               </div>
-            </div>
 
-            {/* Linha 3 após Título: PRIORIDADE e STATUS (antiga COLUNA) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {/* 5. PRIORIDADE */}
-              <div className="grid gap-1.5">
+              <div className="grid gap-1.5 w-full sm:w-auto">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Prioridade
                 </Label>
@@ -1766,7 +1763,7 @@ export default function TarefasKanbanPage() {
                   value={form.prioridade_p || 'P2'}
                   onValueChange={(v) => setForm({ ...form, prioridade_p: v })}
                 >
-                  <SelectTrigger className="h-10 bg-gray-50">
+                  <SelectTrigger className="h-10 bg-gray-50 w-full sm:w-36">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1777,8 +1774,8 @@ export default function TarefasKanbanPage() {
                 </Select>
               </div>
 
-              {/* 6. STATUS (renomeado de "Coluna") */}
-              <div className="grid gap-1.5">
+              {/* 6. STATUS */}
+              <div className="grid gap-1.5 w-full sm:w-auto">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Status
                 </Label>
@@ -1786,7 +1783,7 @@ export default function TarefasKanbanPage() {
                   value={form.status_kanban || 'a_fazer'}
                   onValueChange={(v) => setForm({ ...form, status_kanban: v })}
                 >
-                  <SelectTrigger className="h-10 bg-gray-50">
+                  <SelectTrigger className="h-10 bg-gray-50 w-full sm:w-44">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
