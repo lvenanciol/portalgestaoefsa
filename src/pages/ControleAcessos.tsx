@@ -479,7 +479,7 @@ export default function ControleAcessos() {
           }
         }}
       >
-        <DialogContent className="bg-white max-w-lg">
+        <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{dialogEditar ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle>
           </DialogHeader>
@@ -676,7 +676,7 @@ export default function ControleAcessos() {
 
       {/* Dialog Botões por grupo (Fase 9) */}
       <Dialog open={!!dialogBotoes} onOpenChange={(o) => !o && setDialogBotoes(null)}>
-        <DialogContent className="bg-white max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span className="flex items-center gap-2">

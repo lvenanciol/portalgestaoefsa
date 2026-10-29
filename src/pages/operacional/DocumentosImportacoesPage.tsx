@@ -1096,7 +1096,7 @@ export default function DocumentosImportacoesPage() {
 
       {/* Dialog Parecer IA (análise do arquivo) */}
       <Dialog open={!!parecerIA} onOpenChange={(o) => !o && setParecerIA(null)}>
-        <DialogContent className="bg-white max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span className="flex items-center gap-2">

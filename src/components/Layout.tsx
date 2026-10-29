@@ -33,8 +33,8 @@ function MainArea() {
       {/* Topbar sticky no topo */}
       <Topbar />
 
-      {/* Conteúdo rolável da página */}
-      <main className="flex-1 p-4 md:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+      {/* Conteúdo rolável da página — largura total do viewport com padding lateral para telas ultrawide */}
+      <main className="flex-1 p-4 md:p-6 lg:p-8 w-full max-w-none">
         <Outlet />
       </main>
     </div>

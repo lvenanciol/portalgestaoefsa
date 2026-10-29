@@ -391,7 +391,7 @@ export default function CrudPage({ config }: { config: CrudConfig }) {
 
       {/* Dialog criar/editar */}
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
-        <DialogContent className="bg-white max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editando ? 'Editar' : 'Novo'} — {config.titulo}

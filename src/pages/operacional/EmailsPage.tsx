@@ -769,7 +769,7 @@ export default function EmailsPage() {
 
       {/* Dialog compositor */}
       <Dialog open={dialog} onOpenChange={setDialog}>
-        <DialogContent className="bg-white max-w-2xl">
+        <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Send className="h-4 w-4 text-[#1B5E20]" /> Novo e-mail

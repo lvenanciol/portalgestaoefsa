@@ -1512,7 +1512,7 @@ export default function TarefasKanbanPage() {
         </div>
       )}
 
-      {/* Dialog nova/editar (+50% anterior + 20% atual: 672px -> ~806px: max-w-[806px]) */}
+      {/* Dialog nova/editar tarefa — ampliado para max-w-4xl (95vw) para usabilidade em telas grandes */}
       <Dialog
         open={dialog}
         onOpenChange={(aberto) => {
@@ -1522,7 +1522,7 @@ export default function TarefasKanbanPage() {
           setDialog(aberto)
         }}
       >
-        <DialogContent className="bg-white w-full sm:max-w-[806px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-gray-900">
               {editando ? 'Editar' : 'Nova'} tarefa
@@ -2121,9 +2121,9 @@ export default function TarefasKanbanPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Detalhe da tarefa */}
+      {/* Detalhe da tarefa — ampliado para max-w-2xl para visualização confortável de histórico e subtarefas */}
       <Dialog open={!!detalhe} onOpenChange={(o) => !o && setDetalhe(null)}>
-        <DialogContent className="bg-white max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>{detalhe?.titulo}</span>

@@ -699,7 +699,7 @@ export default function PowerBiPage() {
           </div>
         </div>
       ) : (
-        <div className="max-w-2xl space-y-4">
+        <div className="max-w-4xl space-y-4">
           <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs">
             <h2 className="text-sm font-bold text-gray-900 mb-2">Conectar um relatório</h2>
             <p className="text-[12px] text-gray-600 leading-relaxed mb-3">

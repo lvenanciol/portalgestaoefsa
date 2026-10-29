@@ -139,7 +139,7 @@ export default function ImportarDemonstrativos() {
   }
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="space-y-5 w-full max-w-5xl">
       <div className="flex items-center gap-2.5">
         <div className="h-9 w-9 rounded-lg bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-[#1B5E20]">
           <Upload className="h-4 w-4" />

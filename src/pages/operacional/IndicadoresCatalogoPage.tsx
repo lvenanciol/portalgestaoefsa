@@ -489,7 +489,7 @@ export default function IndicadoresCatalogoPage() {
 
       {/* Dialog parecer IA */}
       <Dialog open={!!detalhe} onOpenChange={(o) => !o && setDetalhe(null)}>
-        <DialogContent className="bg-white max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <span>Parecer IA — {detalhe?.nome}</span>

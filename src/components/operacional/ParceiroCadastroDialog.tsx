@@ -278,7 +278,7 @@ export function ParceiroCadastroDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-white max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-4xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editando ? 'Editar' : 'Novo'} parceiro/contato</DialogTitle>
         </DialogHeader>

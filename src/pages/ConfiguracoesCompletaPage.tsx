@@ -356,7 +356,7 @@ export default function ConfiguracoesCompletaPage() {
   }
 
   return (
-    <div className="space-y-5 pb-8 max-w-4xl">
+    <div className="space-y-5 pb-8 w-full max-w-none">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-gray-200/80">
         <div>
           <h1 className="text-2xl lg:text-[26px] font-bold text-gray-900 tracking-tight flex items-center gap-2.5">

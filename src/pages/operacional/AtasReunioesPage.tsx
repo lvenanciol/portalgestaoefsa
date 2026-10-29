@@ -510,7 +510,7 @@ export default function AtasReunioesPage() {
 
       {/* Dialog nova/editar ata */}
       <Dialog open={dialog} onOpenChange={setDialog}>
-        <DialogContent className="bg-white max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             {/* TX-a v2 (22/10): botões IA/áudio/upload AO LADO DO TÍTULO da
                 tela "Nova ata" — removidos dos outros locais */}

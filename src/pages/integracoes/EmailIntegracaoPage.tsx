@@ -334,7 +334,7 @@ export default function EmailIntegracaoPage() {
 
       {/* T0b: dialog do e-mail aberto */}
       <Dialog open={!!aberta} onOpenChange={(o) => !o && setAberta(null)}>
-        <DialogContent className="bg-white max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-start justify-between gap-3">
               <span className="text-[15px]">{aberta?.assunto}</span>
