@@ -15,7 +15,17 @@ import {
   Trash2,
   Leaf,
   Pencil,
+  List,
+  Users as UsersIcon,
+  FilterX,
+  UploadCloud,
+  FileText,
+  Image as ImageIcon,
+  Check,
 } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Calendar as CalendarPicker } from '@/components/ui/calendar'
+import { TarefasListaView } from '@/components/operacional/TarefasListaView'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useApp } from '@/context/AppContext'
@@ -71,13 +81,22 @@ export default function TarefasKanbanPage() {
   const [itens, setItens] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
-  const [vista, setVista] = useState<'kanban' | 'calendario'>('kanban')
+  const [vista, setVista] = useState<'lista' | 'kanban' | 'calendario'>('kanban')
   const [dialog, setDialog] = useState(false)
   const [editando, setEditando] = useState<any | null>(null)
   const [excluindoTarefa, setExcluindoTarefa] = useState<any | null>(null)
   const [excluindoEmAndamento, setExcluindoEmAndamento] = useState(false)
   const [form, setForm] = useState<any>({})
+  const [arquivosNovos, setArquivosNovos] = useState<File[]>([])
+  const [anexosExistentes, setAnexosExistentes] = useState<string[]>([])
   const [salvando, setSalvando] = useState(false)
+
+  // Filtros de cabeçalho: Período da agenda (dataRange) e Parceiros & Contatos (multisseleção)
+  const [filtroPeriodo, setFiltroPeriodo] = useState<{ from?: Date; to?: Date } | undefined>(
+    undefined,
+  )
+  const [filtroParceiros, setFiltroParceiros] = useState<string[]>([])
+  const [parceiros, setParceiros] = useState<any[]>([])
   const [dialogErro, setDialogErro] = useState('')
   const [detalhe, setDetalhe] = useState<any | null>(null)
   const [novoChat, setNovoChat] = useState('')
@@ -118,17 +137,57 @@ export default function TarefasKanbanPage() {
     return 'todas'
   }, [filtroEmpresa, selectedCompany, empresas])
 
-  // Itens filtrados pela empresa selecionada (ou todas)
+  // Itens filtrados pela empresa selecionada (ou todas), período da agenda e parceiros/contatos
   const itensFiltrados = useMemo(() => {
-    if (!empresaFiltroAtiva || empresaFiltroAtiva === 'todas') {
-      return itens
-    }
     const norm = (s: any) =>
       String(s || '')
         .trim()
         .toLowerCase()
-    return itens.filter((t) => norm(t.empresa) === norm(empresaFiltroAtiva))
-  }, [itens, empresaFiltroAtiva])
+
+    return itens.filter((t) => {
+      // 1. Filtro de Empresa (inclui tratamento para empresa "CPF" e "todas")
+      if (empresaFiltroAtiva && empresaFiltroAtiva !== 'todas') {
+        if (norm(t.empresa) !== norm(empresaFiltroAtiva)) {
+          return false
+        }
+      }
+
+      // 2. Filtro de Período da Agenda (prazo da tarefa entre from e to)
+      if (filtroPeriodo?.from || filtroPeriodo?.to) {
+        if (!t.prazo) return false
+        const prazoStr = String(t.prazo).slice(0, 10)
+        if (filtroPeriodo.from) {
+          const fromStr = filtroPeriodo.from.toISOString().slice(0, 10)
+          if (prazoStr < fromStr) return false
+        }
+        if (filtroPeriodo.to) {
+          const toStr = filtroPeriodo.to.toISOString().slice(0, 10)
+          if (prazoStr > toStr) return false
+        }
+      }
+
+      // 3. Filtro de Parceiros & Contatos (responsável OU parceiros vinculados)
+      if (filtroParceiros.length > 0) {
+        let tParceiroIds: string[] = []
+        try {
+          tParceiroIds = Array.isArray(t.parceiros) ? t.parceiros : JSON.parse(t.parceiros || '[]')
+        } catch (_) {
+          tParceiroIds = []
+        }
+
+        const respTrim = norm(t.responsavel)
+        const match = filtroParceiros.some((pid) => {
+          if (tParceiroIds.includes(pid)) return true
+          const pObj = parceiros.find((p) => p.id === pid)
+          if (pObj && pObj.nome && norm(pObj.nome) === respTrim) return true
+          return false
+        })
+        if (!match) return false
+      }
+
+      return true
+    })
+  }, [itens, empresaFiltroAtiva, filtroPeriodo, filtroParceiros, parceiros])
 
   const hoje = new Date().toISOString().slice(0, 10)
   const atrasadas = itensFiltrados.filter(
@@ -172,6 +231,8 @@ export default function TarefasKanbanPage() {
       empresa: empresaFiltroAtiva !== 'todas' ? empresaFiltroAtiva : '',
       parceiro_ids: [],
     })
+    setArquivosNovos([])
+    setAnexosExistentes([])
     setDialogErro('')
     setEditando(null)
     setDialog(true)
@@ -184,6 +245,7 @@ export default function TarefasKanbanPage() {
     } catch (_) {
       parceiroIds = []
     }
+    const listaExistente: string[] = Array.isArray(t.anexos) ? t.anexos : t.anexos ? [t.anexos] : []
     setForm({
       titulo: t.titulo || '',
       responsavel: t.responsavel || '',
@@ -203,6 +265,8 @@ export default function TarefasKanbanPage() {
       empresa: t.empresa || '',
       parceiro_ids: parceiroIds,
     })
+    setArquivosNovos([])
+    setAnexosExistentes(listaExistente)
     setDialogErro('')
     setEditando(t)
     setDetalhe(null)
@@ -210,7 +274,6 @@ export default function TarefasKanbanPage() {
   }
 
   // T2a: abertura de chamado por ÁUDIO — Web Speech API com fallback gracioso MediaRecorder
-  const [parceiros, setParceiros] = useState<any[]>([])
   const [ouvindo, setOuvindo] = useState(false)
   const [processandoAudio, setProcessandoAudio] = useState(false)
   const [transcricao, setTranscricao] = useState('')
@@ -703,42 +766,70 @@ export default function TarefasKanbanPage() {
 
     setSalvando(true)
     try {
-      const dados: any = {
-        titulo: form.titulo.trim(),
-        responsavel: form.responsavel || '',
-        prazo: form.prazo ? form.prazo + ' 00:00:00.000Z' : '',
-        prioridade_p: form.prioridade_p || 'P2',
-        status_kanban: form.status_kanban || 'a_fazer',
-        descricao: form.descricao || '',
-        vinculo_tipo: form.vinculo_tipo || '',
-        vinculo_id: form.vinculo_id || '',
-        empresa: form.empresa || '',
-        parceiros: JSON.stringify(idsParceiros),
-        prioridade:
-          form.prioridade_p === 'P1' ? 'alta' : form.prioridade_p === 'P2' ? 'media' : 'baixa',
-        status:
-          form.status_kanban === 'concluido'
-            ? 'concluida'
-            : form.status_kanban === 'em_andamento'
-              ? 'em_andamento'
-              : 'pendente',
+      const fd = new FormData()
+      fd.append('titulo', form.titulo.trim())
+      fd.append('responsavel', form.responsavel || '')
+      if (form.prazo) {
+        fd.append('prazo', form.prazo + ' 00:00:00.000Z')
+      } else {
+        fd.append('prazo', '')
       }
+      fd.append('prioridade_p', form.prioridade_p || 'P2')
+      fd.append('status_kanban', form.status_kanban || 'a_fazer')
+      fd.append('descricao', form.descricao || '')
+      fd.append('vinculo_tipo', form.vinculo_tipo || '')
+      fd.append('vinculo_id', form.vinculo_id || '')
+      fd.append('empresa', form.empresa || '')
+      fd.append('parceiros', JSON.stringify(idsParceiros))
+      fd.append(
+        'prioridade',
+        form.prioridade_p === 'P1' ? 'alta' : form.prioridade_p === 'P2' ? 'media' : 'baixa',
+      )
+      fd.append(
+        'status',
+        form.status_kanban === 'concluido'
+          ? 'concluida'
+          : form.status_kanban === 'em_andamento'
+            ? 'em_andamento'
+            : 'pendente',
+      )
+
       if (editando) {
-        await pb.collection('tarefas').update(editando.id, dados)
+        // Se editando, manter apenas os anexos já existentes que não foram removidos pelo usuário
+        const originais: string[] = Array.isArray(editando.anexos)
+          ? editando.anexos
+          : editando.anexos
+            ? [editando.anexos]
+            : []
+        const removidos = originais.filter((nome) => !anexosExistentes.includes(nome))
+        for (const rem of removidos) {
+          fd.append('anexos-', rem)
+        }
+      }
+
+      // Adiciona novos arquivos selecionados
+      for (const arq of arquivosNovos) {
+        fd.append('anexos', arq)
+      }
+
+      if (editando) {
+        await pb.collection('tarefas').update(editando.id, fd)
         toast({
           title: 'Tarefa atualizada',
-          description: `A tarefa "${dados.titulo}" foi salva com sucesso.`,
+          description: `A tarefa "${form.titulo.trim()}" foi salva com sucesso.`,
         })
       } else {
-        dados.criado_por = user?.email || ''
-        await pb.collection('tarefas').create(dados)
+        fd.append('criado_por', user?.email || '')
+        await pb.collection('tarefas').create(fd)
         toast({
           title: 'Tarefa criada com sucesso',
-          description: `A tarefa "${dados.titulo}" foi adicionada ao Kanban.`,
+          description: `A tarefa "${form.titulo.trim()}" foi adicionada com sucesso.`,
         })
       }
       setDialog(false)
       setDialogErro('')
+      setArquivosNovos([])
+      setAnexosExistentes([])
       await carregar()
     } catch (e: any) {
       console.error('Erro ao salvar tarefa:', e)
@@ -873,34 +964,185 @@ export default function TarefasKanbanPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5">
+          {/* Toggles de visualização: Lista (à esquerda do Kanban), Kanban e Calendário */}
+          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-xs">
+            <button
+              type="button"
+              onClick={() => setVista('lista')}
+              className={cn(
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors',
+                vista === 'lista'
+                  ? 'bg-[#1B5E20] text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900',
+              )}
+            >
+              <List className="h-3.5 w-3.5" />
+              Lista
+            </button>
             <button
               type="button"
               onClick={() => setVista('kanban')}
               className={cn(
-                'px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors',
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors',
                 vista === 'kanban'
-                  ? 'bg-[#1B5E20] text-white'
+                  ? 'bg-[#1B5E20] text-white shadow-xs'
                   : 'text-gray-600 hover:text-gray-900',
               )}
             >
+              <Kanban className="h-3.5 w-3.5" />
               Kanban
             </button>
             <button
               type="button"
               onClick={() => setVista('calendario')}
               className={cn(
-                'px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors',
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors',
                 vista === 'calendario'
-                  ? 'bg-[#1B5E20] text-white'
+                  ? 'bg-[#1B5E20] text-white shadow-xs'
                   : 'text-gray-600 hover:text-gray-900',
               )}
             >
+              <Calendar className="h-3.5 w-3.5" />
               Calendário
             </button>
           </div>
 
-          {/* Dropdown "empresa" posicionado à direita do botão "calendário" */}
+          {/* Filtro 1: Período da Agenda por clique e arrasto (range picker popup) */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  'h-9 text-xs font-medium bg-white border-gray-200 shadow-xs flex items-center gap-1.5',
+                  (filtroPeriodo?.from || filtroPeriodo?.to) &&
+                    'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50 font-semibold',
+                )}
+                title="Filtrar tarefas pelo prazo da agenda"
+              >
+                <Calendar className="h-3.5 w-3.5 text-[#1B5E20]" />
+                {filtroPeriodo?.from ? (
+                  filtroPeriodo.to ? (
+                    <span>
+                      {filtroPeriodo.from.toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                      })}{' '}
+                      —{' '}
+                      {filtroPeriodo.to.toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                      })}
+                    </span>
+                  ) : (
+                    <span>
+                      A partir de{' '}
+                      {filtroPeriodo.from.toLocaleDateString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                      })}
+                    </span>
+                  )
+                ) : (
+                  <span>Período da agenda</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0 bg-white" align="start">
+              <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-gray-900">Período da Agenda</div>
+                  <div className="text-[11px] text-gray-500">
+                    Clique e arraste ou selecione início e fim
+                  </div>
+                </div>
+                {filtroPeriodo?.from && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setFiltroPeriodo(undefined)}
+                    className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    Limpar
+                  </Button>
+                )}
+              </div>
+              <CalendarPicker
+                mode="range"
+                selected={filtroPeriodo as any}
+                onSelect={(range: any) => setFiltroPeriodo(range)}
+                numberOfMonths={1}
+                className="rounded-md"
+              />
+            </PopoverContent>
+          </Popover>
+
+          {/* Filtro 2: Dropdown multisseleção "Parceiros & Contatos" */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  'h-9 text-xs font-medium bg-white border-gray-200 shadow-xs flex items-center gap-1.5',
+                  filtroParceiros.length > 0 &&
+                    'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50 font-semibold',
+                )}
+              >
+                <UsersIcon className="h-3.5 w-3.5 text-[#1B5E20]" />
+                <span>
+                  {filtroParceiros.length === 0
+                    ? 'Parceiros & Contatos'
+                    : `${filtroParceiros.length} parceiro(s)`}
+                </span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-2 bg-white" align="start">
+              <div className="flex items-center justify-between pb-2 border-b border-gray-100 px-1">
+                <span className="text-xs font-bold text-gray-800">Parceiros & Contatos</span>
+                {filtroParceiros.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFiltroParceiros([])}
+                    className="text-[11px] text-red-600 hover:underline font-medium"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+              <div className="max-h-56 overflow-y-auto space-y-1 py-1.5">
+                {parceiros.length === 0 ? (
+                  <p className="text-[11px] text-gray-400 text-center py-2">
+                    Nenhum parceiro cadastrado.
+                  </p>
+                ) : (
+                  parceiros.map((p) => {
+                    const sel = filtroParceiros.includes(p.id)
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setFiltroParceiros((prev) =>
+                            prev.includes(p.id) ? prev.filter((x) => x !== p.id) : [...prev, p.id],
+                          )
+                        }}
+                        className={cn(
+                          'w-full flex items-center justify-between px-2 py-1.5 rounded-md text-left text-xs transition-colors',
+                          sel
+                            ? 'bg-emerald-50 text-[#1B5E20] font-semibold'
+                            : 'hover:bg-gray-100 text-gray-700',
+                        )}
+                      >
+                        <span className="truncate mr-2">{p.nome}</span>
+                        {sel ? <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" /> : null}
+                      </button>
+                    )
+                  })
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Dropdown "empresa" posicionado à direita dos filtros (com item 'CPF' exclusivo aqui) */}
           <Select value={empresaFiltroAtiva} onValueChange={(v) => setFiltroEmpresa(v)}>
             <SelectTrigger
               className="h-9 w-[190px] bg-white border-gray-200 text-xs font-medium text-gray-700 shadow-xs focus:ring-[#1B5E20]"
@@ -928,8 +1170,36 @@ export default function TarefasKanbanPage() {
                   </div>
                 </SelectItem>
               ))}
+              {/* Opção SOMENTE neste filtro do cabeçalho de Tarefas */}
+              <SelectItem value="CPF">
+                <div className="flex items-center gap-2 font-medium">
+                  <span className="h-2 w-2 rounded-full bg-amber-500" />
+                  <span>CPF</span>
+                </div>
+              </SelectItem>
             </SelectContent>
           </Select>
+
+          {/* Botão para limpar filtros ativos se algum estiver ativo */}
+          {(filtroPeriodo?.from ||
+            filtroPeriodo?.to ||
+            filtroParceiros.length > 0 ||
+            empresaFiltroAtiva !== 'todas') && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setFiltroPeriodo(undefined)
+                setFiltroParceiros([])
+                setFiltroEmpresa('todas')
+              }}
+              className="h-9 px-2 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 gap-1"
+              title="Limpar todos os filtros ativos"
+            >
+              <FilterX className="h-3.5 w-3.5" />
+              Limpar filtros
+            </Button>
+          )}
 
           <Button
             onClick={abrirNova}
@@ -1000,7 +1270,18 @@ export default function TarefasKanbanPage() {
         </div>
       </div>
 
-      {/* Kanban */}
+      {/* Vista: Lista (Tabela com colunas ordenáveis ao clique, reorganizáveis e redimensionáveis por arrasto) */}
+      {vista === 'lista' && (
+        <TarefasListaView
+          itens={itensFiltrados}
+          onAbrirDetalhe={abrirDetalhe}
+          onAbrirEditar={abrirEditar}
+          onExcluir={(t) => setExcluindoTarefa(t)}
+          obterIconeEmpresa={obterIconeEmpresa}
+        />
+      )}
+
+      {/* Vista: Kanban */}
       {vista === 'kanban' && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
           {COLUNAS.map((col) => {
@@ -1017,102 +1298,117 @@ export default function TarefasKanbanPage() {
                   <span className="text-[11px] font-bold text-gray-400">{cards.length}</span>
                 </div>
                 <div className="space-y-2">
-                  {cards.map((t) => (
-                    <div
-                      key={t.id}
-                      className="bg-white rounded-lg border border-gray-100 p-3 shadow-xs hover:shadow-md transition-shadow cursor-pointer"
-                      onClick={() => abrirDetalhe(t)}
-                    >
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span
-                          className={cn(
-                            'text-[9px] font-bold px-1.5 py-0.5 rounded',
-                            PRIO_COR[t.prioridade_p || 'P3'],
-                          )}
-                        >
-                          {t.prioridade_p || 'P3'}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          {t.prazo &&
-                            String(t.prazo).slice(0, 10) < hoje &&
-                            t.status_kanban !== 'concluido' && (
-                              <span className="text-[9px] font-bold text-red-600">ATRASADA</span>
+                  {cards.map((t) => {
+                    const anexosCount = Array.isArray(t.anexos) ? t.anexos.length : t.anexos ? 1 : 0
+
+                    return (
+                      <div
+                        key={t.id}
+                        className="bg-white rounded-lg border border-gray-100 p-3 shadow-xs hover:shadow-md transition-shadow cursor-pointer"
+                        onClick={() => abrirDetalhe(t)}
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span
+                            className={cn(
+                              'text-[9px] font-bold px-1.5 py-0.5 rounded',
+                              PRIO_COR[t.prioridade_p || 'P3'],
                             )}
-                          <button
-                            type="button"
-                            title="Editar tarefa"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              abrirEditar(t)
-                            }}
-                            className="p-1 rounded-md text-gray-400 hover:text-[#1B5E20] hover:bg-emerald-50 transition-colors"
                           >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            title="Excluir tarefa"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setExcluindoTarefa(t)
-                            }}
-                            className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                            {t.prioridade_p || 'P3'}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {t.prazo &&
+                              String(t.prazo).slice(0, 10) < hoje &&
+                              t.status_kanban !== 'concluido' && (
+                                <span className="text-[9px] font-bold text-red-600">ATRASADA</span>
+                              )}
+                            <button
+                              type="button"
+                              title="Editar tarefa"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                abrirEditar(t)
+                              }}
+                              className="p-1 rounded-md text-gray-400 hover:text-[#1B5E20] hover:bg-emerald-50 transition-colors"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              title="Excluir tarefa"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setExcluindoTarefa(t)
+                              }}
+                              className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="text-[13px] font-semibold text-gray-900 leading-snug">
+                          {t.titulo}
+                        </div>
+                        {t.vinculo_tipo && (
+                          <span className="inline-flex mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {t.vinculo_tipo === 'ata'
+                              ? 'de Ata'
+                              : t.vinculo_tipo === 'projeto'
+                                ? 'de Projeto'
+                                : t.vinculo_tipo}
+                          </span>
+                        )}
+                        <div className="flex items-center justify-between mt-2 text-[10px] text-gray-400">
+                          <span>{t.responsavel || '—'}</span>
+                          <span className="tabular-nums">{fmtData(t.prazo)}</span>
+                        </div>
+                        {/* Chips de subtarefas, comentários e anexos */}
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          {(() => {
+                            const subs = Array.isArray(t.subtarefas)
+                              ? t.subtarefas
+                              : (() => {
+                                  try {
+                                    return JSON.parse(t.subtarefas || '[]')
+                                  } catch (_) {
+                                    return []
+                                  }
+                                })()
+                            return subs.length ? (
+                              <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                                <ListChecks className="h-3 w-3" />
+                                {subs.filter((s: any) => s.ok).length}/{subs.length}
+                              </div>
+                            ) : null
+                          })()}
+                          {(() => {
+                            const coms = Array.isArray(t.comentarios)
+                              ? t.comentarios
+                              : (() => {
+                                  try {
+                                    return JSON.parse(t.comentarios || '[]')
+                                  } catch (_) {
+                                    return []
+                                  }
+                                })()
+                            return coms.length ? (
+                              <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                                <MessageSquare className="h-3 w-3" /> {coms.length}
+                              </div>
+                            ) : null
+                          })()}
+                          {anexosCount > 0 && (
+                            <div
+                              className="flex items-center gap-1 text-[10px] text-[#1B5E20] font-medium bg-emerald-50 px-1 py-0.2 rounded"
+                              title={`${anexosCount} arquivo(s) anexado(s)`}
+                            >
+                              <Paperclip className="h-3 w-3" /> {anexosCount}
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <div className="text-[13px] font-semibold text-gray-900 leading-snug">
-                        {t.titulo}
-                      </div>
-                      {t.vinculo_tipo && (
-                        <span className="inline-flex mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {t.vinculo_tipo === 'ata'
-                            ? 'de Ata'
-                            : t.vinculo_tipo === 'projeto'
-                              ? 'de Projeto'
-                              : t.vinculo_tipo}
-                        </span>
-                      )}
-                      <div className="flex items-center justify-between mt-2 text-[10px] text-gray-400">
-                        <span>{t.responsavel || '—'}</span>
-                        <span className="tabular-nums">{fmtData(t.prazo)}</span>
-                      </div>
-                      {(() => {
-                        const subs = Array.isArray(t.subtarefas)
-                          ? t.subtarefas
-                          : (() => {
-                              try {
-                                return JSON.parse(t.subtarefas || '[]')
-                              } catch (_) {
-                                return []
-                              }
-                            })()
-                        return subs.length ? (
-                          <div className="flex items-center gap-1 mt-1.5 text-[10px] text-gray-500">
-                            <ListChecks className="h-3 w-3" />
-                            {subs.filter((s: any) => s.ok).length}/{subs.length} subtarefas
-                          </div>
-                        ) : null
-                      })()}
-                      {(() => {
-                        const coms = Array.isArray(t.comentarios)
-                          ? t.comentarios
-                          : (() => {
-                              try {
-                                return JSON.parse(t.comentarios || '[]')
-                              } catch (_) {
-                                return []
-                              }
-                            })()
-                        return coms.length ? (
-                          <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-500">
-                            <MessageSquare className="h-3 w-3" /> {coms.length}
-                          </div>
-                        ) : null
-                      })()}
-                    </div>
-                  ))}
+                    )
+                  })}
                   {cards.length === 0 && (
                     <p className="text-[11px] text-gray-400 text-center py-4">Vazio</p>
                   )}
@@ -1595,6 +1891,94 @@ export default function TarefasKanbanPage() {
               )}
             </div>
 
+            {/* Campo ANEXAR ARQUIVOS E MÍDIAS */}
+            <div className="grid gap-2 border-t border-gray-100 pt-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5 text-[#1B5E20]" />
+                  Anexar Arquivos e Mídias
+                </Label>
+                <span className="text-[11px] text-gray-400">
+                  {anexosExistentes.length + arquivosNovos.length} anexo(s)
+                </span>
+              </div>
+
+              {/* Botão de seleção de arquivos */}
+              <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 hover:border-[#1B5E20] hover:bg-emerald-50/20 rounded-lg p-3 cursor-pointer transition-colors text-center">
+                <UploadCloud className="h-5 w-5 text-gray-400 mb-1" />
+                <span className="text-xs font-semibold text-gray-700">
+                  Clique para selecionar fotos, vídeos, PDFs ou documentos
+                </span>
+                <span className="text-[10px] text-gray-400 mt-0.5">
+                  Imagens, PDFs, planilhas, mídias e documentos em geral (até 50MB cada)
+                </span>
+                <input
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    const fl = Array.from(e.target.files || [])
+                    if (fl.length > 0) {
+                      setArquivosNovos((prev) => [...prev, ...fl])
+                    }
+                    e.target.value = ''
+                  }}
+                />
+              </label>
+
+              {/* Chips/Cards de anexos (existentes no PocketBase e novos selecionados) */}
+              {(anexosExistentes.length > 0 || arquivosNovos.length > 0) && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {/* Anexos já salvos no PocketBase */}
+                  {anexosExistentes.map((nome, idx) => (
+                    <div
+                      key={`existente-${idx}`}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-emerald-50 text-emerald-900 border border-emerald-200"
+                    >
+                      <Paperclip className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
+                      <span className="max-w-[180px] truncate font-medium" title={nome}>
+                        {nome}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAnexosExistentes((prev) => prev.filter((_, i) => i !== idx))
+                        }
+                        className="text-emerald-700 hover:text-red-600 p-0.5 rounded-full ml-1"
+                        title="Remover anexo antes de salvar"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+
+                  {/* Anexos novos a salvar */}
+                  {arquivosNovos.map((arq, idx) => (
+                    <div
+                      key={`novo-${idx}`}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-amber-50 text-amber-900 border border-amber-200"
+                    >
+                      <UploadCloud className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                      <span className="max-w-[180px] truncate font-medium" title={arq.name}>
+                        {arq.name}
+                      </span>
+                      <span className="text-[10px] text-amber-700">
+                        ({(arq.size / 1024).toFixed(0)} KB)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setArquivosNovos((prev) => prev.filter((_, i) => i !== idx))}
+                        className="text-amber-700 hover:text-red-600 p-0.5 rounded-full ml-1"
+                        title="Remover anexo antes de salvar"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Alerta de erro de validação dentro do diálogo */}
             {dialogErro && (
               <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
@@ -1682,6 +2066,62 @@ export default function TarefasKanbanPage() {
             <span>· prazo {fmtData(detalhe?.prazo)}</span>
           </div>
           {detalhe?.descricao && <p className="text-[13px] text-gray-700">{detalhe.descricao}</p>}
+
+          {/* Anexos persistidos da tarefa (clique para abrir/visualizar) */}
+          {(() => {
+            const anexosLista: string[] = Array.isArray(detalhe?.anexos)
+              ? detalhe.anexos
+              : detalhe?.anexos
+                ? [detalhe.anexos]
+                : []
+
+            if (anexosLista.length === 0) return null
+
+            return (
+              <div className="grid gap-1.5 p-3 rounded-lg border border-gray-200 bg-gray-50/70">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-600 flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5 text-[#1B5E20]" />
+                  Anexos da Tarefa ({anexosLista.length})
+                </Label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  {anexosLista.map((nome, i) => {
+                    const url = pb.files.getURL(detalhe, nome)
+                    const ext = nome.split('.').pop()?.toLowerCase() || ''
+                    const ehImg = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)
+
+                    return (
+                      <a
+                        key={i}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 p-2 rounded-lg bg-white border border-gray-200 hover:border-[#1B5E20] hover:shadow-xs transition-all group"
+                        title="Clique para abrir e visualizar anexo"
+                      >
+                        {ehImg ? (
+                          <img
+                            src={url}
+                            alt={nome}
+                            className="h-8 w-8 rounded object-cover shrink-0 border border-gray-100"
+                          />
+                        ) : (
+                          <div className="h-8 w-8 rounded bg-emerald-50 text-[#1B5E20] flex items-center justify-center shrink-0 font-bold text-[10px]">
+                            {ext.slice(0, 4).toUpperCase() || 'FILE'}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-semibold text-gray-800 group-hover:text-[#1B5E20] truncate">
+                            {nome}
+                          </div>
+                          <div className="text-[10px] text-gray-400">Clique para abrir ↗</div>
+                        </div>
+                      </a>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* mover coluna */}
           <div className="grid gap-1.5">

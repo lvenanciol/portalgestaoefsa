@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-28T13:57:24.739Z",
+  "generatedAt": "2026-10-29T09:35:23.620Z",
   "collections": [
     {
       "name": "users",
@@ -773,6 +773,12 @@
         {
           "name": "parceiros",
           "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "anexos",
+          "type": "file",
           "required": false,
           "system": false
         }
