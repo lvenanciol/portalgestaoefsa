@@ -35,49 +35,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import {
+  ParceiroCadastroDialog,
+  TIPOS_PARCEIRO as TIPOS,
+} from '@/components/operacional/ParceiroCadastroDialog'
 
 // Ajustes PGE — T3: tela central de Parceiros/Contatos, usada em todo o
 // sistema (tarefas obrigatórias, compartilhar WhatsApp/e-mail). Vínculo a
 // CENTRO DE RESULTADO do Sankhya (TTRBC) via dropdown busca/filtro
 // (hook /backend/v1/sankhya/centros-resultado, cache 24h).
 
-const TIPOS = ['Parceiro', 'Contato', 'Fornecedor', 'Cliente']
 const EMPRESAS = ['Extrafruti', 'Casafruti', 'FoldBox']
-
-const fmtBRL = (v: any) => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-
-// T3h (21/10): MÁSCARAS de documento e telefone (Parceiros).
-// Documento: detecta CPF (11 dígitos) vs CNPJ (14) pela QUANTIDADE digitada —
-// máscara progressiva enquanto digita. Telefone: (27) 99999-9999 (cel) ou
-// (27) 3333-3334 (fixo, 8 dígitos). Guarda COM máscara (padrão dos e-mails/PDF).
-const soDigitos = (v: string) => String(v || '').replace(/\D/g, '')
-
-const mascaraDocumento = (v: string): string => {
-  const d = soDigitos(v).slice(0, 14)
-  if (d.length <= 11) {
-    // CPF: 000.000.000-00
-    return d
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
-  }
-  // CNPJ: 00.000.000/0000-00
-  return d
-    .replace(/(\d{2})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1/$2')
-    .replace(/(\d{4})(\d{1,2})$/, '$1-$2')
-}
-
-const mascaraTelefone = (v: string): string => {
-  const d = soDigitos(v).slice(0, 11)
-  if (d.length <= 10) {
-    // fixo ou cel antigo: (27) 3333-3334 / (27) 9999-9999
-    return d.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{4})(\d{1,4})$/, '$1-$2')
-  }
-  // celular 9 dígitos: (27) 99999-9999
-  return d.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d{1,4})$/, '$1-$2')
-}
 
 export default function ParceirosPage() {
   const { user } = useAuth()
@@ -90,31 +58,8 @@ export default function ParceirosPage() {
   const [fEmpresa, setFEmpresa] = useState('todas')
   const [dialog, setDialog] = useState(false)
   const [editando, setEditando] = useState<any | null>(null)
-  const [form, setForm] = useState<any>({})
-  const [salvando, setSalvando] = useState(false)
   const [excluindo, setExcluindo] = useState<any | null>(null)
   const [logos, setLogos] = useState<any[]>([])
-  // centros de resultado (Sankhya)
-  const [centros, setCentros] = useState<any[]>([])
-  const [centroBusca, setCentroBusca] = useState('')
-  // T3: erro real do endpoint (ex.: grant Oracle pendente) — exibido no dialog
-  const [centrosErro, setCentrosErro] = useState('')
-  // T3c: autocomplete inline — lista carregada 1x (cache 24h no hook) e filtro
-  // LOCAL enquanto digita; dropdown aberto = lista carregada + campo focado
-  const [centrosCarregados, setCentrosCarregados] = useState(false)
-  // T3g: dropdown recolhe ao selecionar / clicar fora
-  const [dropAberto, setDropAberto] = useState(false)
-  const centrosFiltrados = useMemo(() => {
-    const q = (form.centro_resultado || '').trim().toLowerCase()
-    if (!q) return centros
-    return centros.filter(
-      (c) =>
-        (c.descricao || '').toLowerCase().includes(q) ||
-        String(c.codigo || '')
-          .toLowerCase()
-          .includes(q),
-    )
-  }, [centros, form.centro_resultado])
 
   const carregar = async () => {
     setLoading(true)
@@ -217,31 +162,6 @@ export default function ParceirosPage() {
     return lista.filter(Boolean)
   }
 
-  const buscarCentros = async (q: string) => {
-    setCentrosErro('')
-    try {
-      const r = (await pb.send(
-        '/backend/v1/sankhya/centros-resultado?busca=' + encodeURIComponent(q),
-        { method: 'GET' },
-      )) as any
-      setCentros(r.itens || [])
-      setCentrosCarregados(true)
-      // T3: endpoint ok mas sem itens → mostra o motivo (fonte/erro)
-      if (!(r.itens || []).length) {
-        setCentrosErro(
-          r.erro || (r.fonte === 'cache' ? 'Cache vazio — tente novamente em instantes.' : ''),
-        )
-      }
-    } catch (e: any) {
-      setCentros([])
-      setCentrosCarregados(true)
-      setCentrosErro(
-        String(e?.response?.message || e?.message || e).slice(0, 200) ||
-          'Falha ao consultar o Sankhya.',
-      )
-    }
-  }
-
   const filtrados = itens.filter((i) => {
     if (
       busca &&
@@ -257,71 +177,13 @@ export default function ParceirosPage() {
   })
 
   const abrirNovo = () => {
-    setForm({
-      nome: '',
-      tipo: 'Parceiro',
-      empresa: 'Extrafruti',
-      empresas: ['Extrafruti'],
-      documento: '',
-      email: '',
-      whatsapp: '',
-      telefone: '',
-      cargo: '',
-      centro_resultado: '',
-      centro_resultado_codigo: '',
-      observacao: '',
-      ativo: true,
-    })
     setEditando(null)
     setDialog(true)
   }
 
   const abrirEditar = (p: any) => {
-    const listaEmpresasP = obterEmpresasParceiro(p)
-    setForm({
-      ...p,
-      empresas: listaEmpresasP.length > 0 ? listaEmpresasP : [p.empresa || 'Extrafruti'],
-      empresa: listaEmpresasP[0] || p.empresa || 'Extrafruti',
-    })
     setEditando(p)
     setDialog(true)
-  }
-
-  const salvar = async () => {
-    setSalvando(true)
-    try {
-      const empresasSalvas =
-        Array.isArray(form.empresas) && form.empresas.length > 0
-          ? form.empresas
-          : [form.empresa || 'Extrafruti']
-
-      const dados: any = {
-        nome: form.nome,
-        tipo: form.tipo,
-        empresa: empresasSalvas[0] || 'Extrafruti', // mantém compatibilidade com campo legado
-        empresas: JSON.stringify(empresasSalvas), // suporta múltiplas empresas
-        documento: form.documento,
-        email: form.email,
-        whatsapp: form.whatsapp,
-        telefone: form.telefone,
-        cargo: form.cargo,
-        centro_resultado: form.centro_resultado || '',
-        centro_resultado_codigo: form.centro_resultado_codigo || '',
-        observacao: form.observacao,
-        ativo: !!form.ativo,
-      }
-      if (editando) await pb.collection('parceiros').update(editando.id, dados)
-      else {
-        dados.criado_por = user?.email || ''
-        await pb.collection('parceiros').create(dados)
-      }
-      setDialog(false)
-      await carregar()
-    } catch (e) {
-      setErro(String(e))
-    } finally {
-      setSalvando(false)
-    }
   }
 
   const excluir = async () => {
@@ -545,311 +407,13 @@ export default function ParceirosPage() {
         </table>
       </div>
 
-      {/* Dialog criar/editar */}
-      <Dialog open={dialog} onOpenChange={setDialog}>
-        <DialogContent className="bg-white max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editando ? 'Editar' : 'Novo'} parceiro/contato</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Nome *
-                </Label>
-                <Input
-                  value={form.nome || ''}
-                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Tipo
-                </Label>
-                <Select
-                  value={form.tipo || 'Parceiro'}
-                  onValueChange={(v) => setForm({ ...form, tipo: v })}
-                >
-                  <SelectTrigger className="h-10 bg-gray-50">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TIPOS.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            {/* TAREFA CONT: Seleção de MAIS DE UMA empresa com ícone ao lado do nome */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                    Empresas do Parceiro * (múltipla escolha)
-                  </Label>
-                  <span className="text-[11px] text-[#1B5E20] font-semibold">
-                    {(form.empresas || []).length} selecionada(s)
-                  </span>
-                </div>
-                {/* Dropdown com ícone ao lado do nome da empresa para alternar seleção */}
-                <Select
-                  value="placeholder"
-                  onValueChange={(val) => {
-                    if (val === 'placeholder') return
-                    setForm((f: any) => {
-                      const cur = Array.isArray(f.empresas)
-                        ? f.empresas
-                        : [f.empresa || 'Extrafruti']
-                      const exists = cur.includes(val)
-                      // Se desmarcar a única, mantém ao menos uma
-                      if (exists && cur.length === 1) return f
-                      const novas = exists ? cur.filter((x: string) => x !== val) : [...cur, val]
-                      return {
-                        ...f,
-                        empresas: novas,
-                        empresa: novas[0] || val,
-                      }
-                    })
-                  }}
-                >
-                  <SelectTrigger className="h-10 bg-gray-50">
-                    <SelectValue placeholder="Adicionar/remover empresa..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="placeholder" disabled>
-                      Selecione uma empresa para alternar vínculo
-                    </SelectItem>
-                    {listaEmpresas.map((e) => {
-                      const sel = (form.empresas || []).includes(e)
-                      return (
-                        <SelectItem key={e} value={e}>
-                          <div className="flex items-center justify-between gap-3 w-full">
-                            <div className="flex items-center gap-2">
-                              {obterIconeEmpresa(e)}
-                              <span
-                                className={cn(
-                                  'text-xs',
-                                  sel ? 'font-bold text-[#1B5E20]' : 'text-gray-800',
-                                )}
-                              >
-                                {e}
-                              </span>
-                            </div>
-                            {sel && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
-                          </div>
-                        </SelectItem>
-                      )
-                    })}
-                  </SelectContent>
-                </Select>
-
-                {/* Badges/Tags clicáveis com os ícones das empresas */}
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                  {listaEmpresas.map((e) => {
-                    const sel = (form.empresas || []).includes(e)
-                    return (
-                      <button
-                        key={e}
-                        type="button"
-                        onClick={() => {
-                          setForm((f: any) => {
-                            const cur = Array.isArray(f.empresas)
-                              ? f.empresas
-                              : [f.empresa || 'Extrafruti']
-                            const exists = cur.includes(e)
-                            if (exists && cur.length === 1) return f
-                            const novas = exists ? cur.filter((x: string) => x !== e) : [...cur, e]
-                            return {
-                              ...f,
-                              empresas: novas,
-                              empresa: novas[0] || e,
-                            }
-                          })
-                        }}
-                        className={cn(
-                          'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all cursor-pointer',
-                          sel
-                            ? 'bg-emerald-50 text-[#1B5E20] border-emerald-300 shadow-2xs'
-                            : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-800',
-                        )}
-                      >
-                        {obterIconeEmpresa(e)}
-                        <span>{e}</span>
-                        {sel ? (
-                          <Check className="h-3 w-3 ml-0.5 text-[#1B5E20]" />
-                        ) : (
-                          <Plus className="h-3 w-3 ml-0.5 text-gray-400" />
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  CPF/CNPJ
-                </Label>
-                <Input
-                  value={form.documento || ''}
-                  onChange={(e) =>
-                    setForm({ ...form, documento: mascaraDocumento(e.target.value) })
-                  }
-                  className="h-10 bg-gray-50"
-                  placeholder="000.000.000-00 ou 00.000.000/0000-00"
-                  inputMode="numeric"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  E-mail
-                </Label>
-                <Input
-                  value={form.email || ''}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  {/* T3b: WhatsApp e Telefone UNIFICADOS (grava nos 2 campos) */}
-                  WhatsApp / Telefone
-                </Label>
-                <Input
-                  value={form.whatsapp || form.telefone || ''}
-                  onChange={(e) => {
-                    const m = mascaraTelefone(e.target.value)
-                    setForm({ ...form, whatsapp: m, telefone: m })
-                  }}
-                  className="h-10 bg-gray-50"
-                  placeholder="(27) 99999-9999"
-                  inputMode="tel"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Cargo
-                </Label>
-                <Input
-                  value={form.cargo || ''}
-                  onChange={(e) => setForm({ ...form, cargo: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-            </div>
-            {/* T3c (21/10): AUTOCOMPLETE INLINE — filtra enquanto digita (cache 24h
-                do hook, sem bater no ERP a cada tecla) e seleciona no clique, SEM
-                2º dialog (ele derrubava o dialog de edição ao fechar — Radix).
-                T3g: dropdown RECOLHE ao selecionar (estado dropAberto) e ao
-                clicar fora (onBlur com relção ao container). */}
-            <div
-              className="grid gap-1.5 relative"
-              onBlur={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropAberto(false)
-              }}
-            >
-              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Centro de resultado (Sankhya)
-              </Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  value={form.centro_resultado || ''}
-                  onChange={(e) => {
-                    setForm({
-                      ...form,
-                      centro_resultado: e.target.value,
-                      centro_resultado_codigo: '',
-                    })
-                    setCentroBusca(e.target.value)
-                    setDropAberto(true)
-                    if (!centrosCarregados) buscarCentros('')
-                  }}
-                  onFocus={() => {
-                    setDropAberto(true)
-                    if (!centrosCarregados) buscarCentros('')
-                  }}
-                  placeholder="digite para filtrar os centros..."
-                  className="h-10 bg-gray-50 flex-1"
-                />
-                {form.centro_resultado && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setForm({ ...form, centro_resultado: '', centro_resultado_codigo: '' })
-                    }
-                    className="p-2 text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-              {centrosCarregados && dropAberto && (
-                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-                  {centrosFiltrados.length > 0 ? (
-                    centrosFiltrados.map((c) => (
-                      <button
-                        key={c.codigo}
-                        type="button"
-                        onClick={() => {
-                          setForm({
-                            ...form,
-                            centro_resultado: c.descricao,
-                            centro_resultado_codigo: c.codigo,
-                          })
-                          setDropAberto(false)
-                        }}
-                        className="block w-full text-left px-3 py-2 rounded-lg hover:bg-emerald-50 text-[12px]"
-                      >
-                        <span className="font-semibold text-gray-800">{c.descricao}</span>
-                        <span className="ml-2 text-gray-400 tabular-nums">{c.codigo}</span>
-                      </button>
-                    ))
-                  ) : (
-                    <p className="text-center text-[12px] text-gray-400 py-4">
-                      {centrosErro || 'Nenhum centro encontrado.'}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="grid gap-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Observação
-              </Label>
-              <Textarea
-                value={form.observacao || ''}
-                onChange={(e) => setForm({ ...form, observacao: e.target.value })}
-                rows={2}
-              />
-            </div>
-            <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-100">
-              <span className="text-[12px] text-gray-700">Ativo</span>
-              <Switch
-                checked={!!form.ativo}
-                onCheckedChange={(v) => setForm({ ...form, ativo: v })}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialog(false)} className="h-9">
-              Cancelar
-            </Button>
-            <Button
-              onClick={salvar}
-              disabled={salvando || !form.nome}
-              className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
-            >
-              {salvando ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Dialog criar/editar parceiro (reutilizável) */}
+      <ParceiroCadastroDialog
+        open={dialog}
+        onOpenChange={setDialog}
+        editando={editando}
+        onSalvo={carregar}
+      />
 
       {/* Confirmar exclusão */}
       <Dialog open={!!excluindo} onOpenChange={(o) => !o && setExcluindo(null)}>

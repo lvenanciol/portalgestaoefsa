@@ -22,10 +22,13 @@ import {
   FileText,
   Image as ImageIcon,
   Check,
+  Eye,
+  Download,
 } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar as CalendarPicker } from '@/components/ui/calendar'
 import { TarefasListaView } from '@/components/operacional/TarefasListaView'
+import { ParceiroCadastroDialog } from '@/components/operacional/ParceiroCadastroDialog'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useApp } from '@/context/AppContext'
@@ -99,6 +102,7 @@ export default function TarefasKanbanPage() {
   const [parceiros, setParceiros] = useState<any[]>([])
   const [dialogErro, setDialogErro] = useState('')
   const [detalhe, setDetalhe] = useState<any | null>(null)
+  const [novoParceiroModalAberto, setNovoParceiroModalAberto] = useState(false)
   const [novoChat, setNovoChat] = useState('')
   const [chatAnexo, setChatAnexo] = useState<File | null>(null)
   const [chatMsgs, setChatMsgs] = useState<any[]>([])
@@ -1142,7 +1146,7 @@ export default function TarefasKanbanPage() {
             </PopoverContent>
           </Popover>
 
-          {/* Dropdown "empresa" posicionado à direita dos filtros (com item 'CPF' exclusivo aqui) */}
+          {/* Dropdown "empresa" posicionado à direita dos filtros */}
           <Select value={empresaFiltroAtiva} onValueChange={(v) => setFiltroEmpresa(v)}>
             <SelectTrigger
               className="h-9 w-[190px] bg-white border-gray-200 text-xs font-medium text-gray-700 shadow-xs focus:ring-[#1B5E20]"
@@ -1170,13 +1174,6 @@ export default function TarefasKanbanPage() {
                   </div>
                 </SelectItem>
               ))}
-              {/* Opção SOMENTE neste filtro do cabeçalho de Tarefas */}
-              <SelectItem value="CPF">
-                <div className="flex items-center gap-2 font-medium">
-                  <span className="h-2 w-2 rounded-full bg-amber-500" />
-                  <span>CPF</span>
-                </div>
-              </SelectItem>
             </SelectContent>
           </Select>
 
@@ -1641,6 +1638,13 @@ export default function TarefasKanbanPage() {
                         </div>
                       </SelectItem>
                     ))}
+                    {/* Item exclusivo no dropdown Empresa do diálogo de nova/editar tarefa */}
+                    <SelectItem value="CPF">
+                      <div className="flex items-center gap-2 font-medium">
+                        <span className="h-2 w-2 rounded-full bg-amber-500" />
+                        <span>CPF</span>
+                      </div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1653,6 +1657,10 @@ export default function TarefasKanbanPage() {
                 <Select
                   value={form.responsavel || ' '}
                   onValueChange={(v) => {
+                    if (v === '__cadastrar_novo__') {
+                      setNovoParceiroModalAberto(true)
+                      return
+                    }
                     const novoNome = v === ' ' ? '' : v
                     setForm((f: any) => {
                       const pMatch = parceiros.find((p) => p.nome === novoNome)
@@ -1669,6 +1677,15 @@ export default function TarefasKanbanPage() {
                     <SelectValue placeholder="Selecione o parceiro responsável..." />
                   </SelectTrigger>
                   <SelectContent className="max-h-56">
+                    <SelectItem
+                      value="__cadastrar_novo__"
+                      className="font-semibold text-[#1B5E20] bg-emerald-50/70 border-b border-emerald-100 focus:bg-emerald-100 focus:text-[#0F3D13] cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2 text-[#1B5E20]">
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>Cadastrar novo</span>
+                      </div>
+                    </SelectItem>
                     <SelectItem value=" ">Não definido</SelectItem>
                     {parceiros.map((p) => {
                       const empRotulo =
@@ -1815,6 +1832,10 @@ export default function TarefasKanbanPage() {
                 value="placeholder"
                 onValueChange={(val) => {
                   if (val === 'placeholder') return
+                  if (val === '__cadastrar_novo__') {
+                    setNovoParceiroModalAberto(true)
+                    return
+                  }
                   setForm((f: any) => {
                     const cur = f.parceiro_ids || []
                     const exists = cur.includes(val)
@@ -1832,6 +1853,16 @@ export default function TarefasKanbanPage() {
                   <SelectValue placeholder="Selecione um parceiro cadastrado para alternar seleção..." />
                 </SelectTrigger>
                 <SelectContent className="max-h-60">
+                  {/* Primeiro item de seleção: Cadastrar novo */}
+                  <SelectItem
+                    value="__cadastrar_novo__"
+                    className="font-semibold text-[#1B5E20] bg-emerald-50/70 border-b border-emerald-100 focus:bg-emerald-100 focus:text-[#0F3D13] cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2 text-[#1B5E20]">
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Cadastrar novo</span>
+                    </div>
+                  </SelectItem>
                   <SelectItem value="placeholder" disabled>
                     Selecione um parceiro cadastrado para alternar seleção
                   </SelectItem>
@@ -1926,55 +1957,137 @@ export default function TarefasKanbanPage() {
                 />
               </label>
 
-              {/* Chips/Cards de anexos (existentes no PocketBase e novos selecionados) */}
+              {/* Chips/Cards de anexos (existentes no PocketBase e novos selecionados) com botões de ação para Visualizar e Baixar */}
               {(anexosExistentes.length > 0 || arquivosNovos.length > 0) && (
                 <div className="flex flex-wrap gap-2 pt-1">
-                  {/* Anexos já salvos no PocketBase */}
-                  {anexosExistentes.map((nome, idx) => (
-                    <div
-                      key={`existente-${idx}`}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-emerald-50 text-emerald-900 border border-emerald-200"
-                    >
-                      <Paperclip className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
-                      <span className="max-w-[180px] truncate font-medium" title={nome}>
-                        {nome}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAnexosExistentes((prev) => prev.filter((_, i) => i !== idx))
-                        }
-                        className="text-emerald-700 hover:text-red-600 p-0.5 rounded-full ml-1"
-                        title="Remover anexo antes de salvar"
+                  {/* Anexos já salvos no PocketBase (com botão de ação para abrir/visualizar e baixar) */}
+                  {anexosExistentes.map((nome, idx) => {
+                    const urlArquivo = editando ? pb.files.getURL(editando, nome) : ''
+                    return (
+                      <div
+                        key={`existente-${idx}`}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-emerald-50 text-emerald-900 border border-emerald-200 shadow-2xs"
                       >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
+                        <Paperclip className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
+                        <span className="max-w-[160px] truncate font-medium" title={nome}>
+                          {nome}
+                        </span>
 
-                  {/* Anexos novos a salvar */}
-                  {arquivosNovos.map((arq, idx) => (
-                    <div
-                      key={`novo-${idx}`}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-amber-50 text-amber-900 border border-amber-200"
-                    >
-                      <UploadCloud className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                      <span className="max-w-[180px] truncate font-medium" title={arq.name}>
-                        {arq.name}
-                      </span>
-                      <span className="text-[10px] text-amber-700">
-                        ({(arq.size / 1024).toFixed(0)} KB)
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setArquivosNovos((prev) => prev.filter((_, i) => i !== idx))}
-                        className="text-amber-700 hover:text-red-600 p-0.5 rounded-full ml-1"
-                        title="Remover anexo antes de salvar"
+                        {/* Botão de ação: Visualizar / Abrir */}
+                        {urlArquivo && (
+                          <a
+                            href={urlArquivo}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1 rounded text-[#1B5E20] hover:bg-emerald-100 transition-colors inline-flex items-center"
+                            title="Visualizar anexo em nova aba"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+
+                        {/* Botão de ação: Download */}
+                        {urlArquivo && (
+                          <a
+                            href={urlArquivo}
+                            download={nome}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="p-1 rounded text-[#1B5E20] hover:bg-emerald-100 transition-colors inline-flex items-center"
+                            title="Baixar anexo"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+
+                        {/* Botão de remoção do anexo */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAnexosExistentes((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="text-emerald-700 hover:text-red-600 p-0.5 rounded-full ml-0.5"
+                          title="Remover anexo antes de salvar"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )
+                  })}
+
+                  {/* Anexos novos a salvar (com botão de ação para visualizar e baixar via Object URL) */}
+                  {arquivosNovos.map((arq, idx) => {
+                    const abrirPreviewNovo = () => {
+                      try {
+                        const objUrl = URL.createObjectURL(arq)
+                        window.open(objUrl, '_blank')
+                      } catch (err) {
+                        console.error('Falha ao abrir preview do arquivo novo:', err)
+                      }
+                    }
+
+                    const baixarArquivoNovo = () => {
+                      try {
+                        const objUrl = URL.createObjectURL(arq)
+                        const a = document.createElement('a')
+                        a.href = objUrl
+                        a.download = arq.name
+                        document.body.appendChild(a)
+                        a.click()
+                        document.body.removeChild(a)
+                        setTimeout(() => URL.revokeObjectURL(objUrl), 1000)
+                      } catch (err) {
+                        console.error('Falha ao baixar arquivo novo:', err)
+                      }
+                    }
+
+                    return (
+                      <div
+                        key={`novo-${idx}`}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs"
                       >
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  ))}
+                        <UploadCloud className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                        <span className="max-w-[150px] truncate font-medium" title={arq.name}>
+                          {arq.name}
+                        </span>
+                        <span className="text-[10px] text-amber-700">
+                          ({(arq.size / 1024).toFixed(0)} KB)
+                        </span>
+
+                        {/* Botão de ação: Visualizar (prévia do arquivo selecionado) */}
+                        <button
+                          type="button"
+                          onClick={abrirPreviewNovo}
+                          className="p-1 rounded text-amber-800 hover:bg-amber-100 transition-colors inline-flex items-center"
+                          title="Visualizar anexo antes de salvar"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+
+                        {/* Botão de ação: Baixar */}
+                        <button
+                          type="button"
+                          onClick={baixarArquivoNovo}
+                          className="p-1 rounded text-amber-800 hover:bg-amber-100 transition-colors inline-flex items-center"
+                          title="Baixar arquivo selecionado"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </button>
+
+                        {/* Botão de remoção */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setArquivosNovos((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="text-amber-700 hover:text-red-600 p-0.5 rounded-full ml-0.5"
+                          title="Remover anexo antes de salvar"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -2317,6 +2430,35 @@ export default function TarefasKanbanPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Diálogo unificado de Cadastro de Novo Parceiro (mesmo de Parceiros & Contatos) */}
+      <ParceiroCadastroDialog
+        open={novoParceiroModalAberto}
+        onOpenChange={setNovoParceiroModalAberto}
+        empresaPadrao={form.empresa || empresaFiltroAtiva}
+        onSalvo={async (novoParceiro) => {
+          // Atualiza lista de parceiros em memória
+          await carregarParceiros()
+          if (novoParceiro && novoParceiro.id) {
+            // Seleciona automaticamente o novo parceiro criado
+            setForm((f: any) => {
+              const curIds = f.parceiro_ids || []
+              const novosIds = curIds.includes(novoParceiro.id)
+                ? curIds
+                : [...curIds, novoParceiro.id]
+              return {
+                ...f,
+                parceiro_ids: novosIds,
+                responsavel: f.responsavel ? f.responsavel : novoParceiro.nome,
+              }
+            })
+            toast({
+              title: 'Parceiro cadastrado e selecionado',
+              description: `"${novoParceiro.nome}" foi vinculado automaticamente à tarefa.`,
+            })
+          }
+        }}
+      />
 
       {/* T2c: Compartilhar tarefa com parceiro (WhatsApp / e-mail) */}
       <Dialog open={!!compartilhar} onOpenChange={(o) => !o && setCompartilhar(null)}>
