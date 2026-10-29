@@ -28,7 +28,7 @@ import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
 import { carregarPermissoes, menuVisivel, Permissoes } from '@/services/permissoes-service'
 // Versão real do app — atualizada a cada apply_changes (mesma do package.json)
-const pkgVersion = '0.0.173'
+const pkgVersion = '0.0.174'
 import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
 import { idiomaSalvo, traduzir } from '@/lib/i18n'

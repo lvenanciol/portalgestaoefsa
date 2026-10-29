@@ -1706,21 +1706,21 @@ export default function TarefasKanbanPage() {
               </div>
             </div>
 
-            {/* Linha de metadados: VÍNCULO (ORIGEM), PRAZO, PRIORIDADE e STATUS na proporção do conteúdo */}
-            <div className="flex flex-wrap items-end gap-3.5">
-              {/* 3. VÍNCULO (ORIGEM) */}
-              <div className="grid gap-1.5 w-full sm:w-auto">
+            {/* Linha de metadados: VÍNCULO (ORIGEM), PRAZO, PRIORIDADE e STATUS proporcionais ao conteúdo preenchendo 100% da linha */}
+            <div className="flex flex-wrap items-end gap-3.5 w-full">
+              {/* 3. VÍNCULO (ORIGEM) - conteúdo mais extenso (tipo + ID opcional): peso flex 3.2 */}
+              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[3.2] min-w-[170px]">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Vínculo (origem)
                 </Label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 w-full">
                   <Select
                     value={form.vinculo_tipo || ''}
                     onValueChange={(v) =>
                       setForm({ ...form, vinculo_tipo: v, vinculo_id: v ? form.vinculo_id : '' })
                     }
                   >
-                    <SelectTrigger className="h-10 bg-gray-50 w-full sm:w-36">
+                    <SelectTrigger className="h-10 bg-gray-50 w-full flex-1">
                       <SelectValue placeholder="Nenhum" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1735,14 +1735,14 @@ export default function TarefasKanbanPage() {
                       value={form.vinculo_id || ''}
                       onChange={(e) => setForm({ ...form, vinculo_id: e.target.value })}
                       placeholder="ID (opcional)"
-                      className="h-10 bg-gray-50 w-24 text-xs"
+                      className="h-10 bg-gray-50 w-24 shrink-0 text-xs"
                     />
                   )}
                 </div>
               </div>
 
-              {/* 4. PRAZO */}
-              <div className="grid gap-1.5 w-full sm:w-auto">
+              {/* 4. PRAZO - data formatada dd/mm/aaaa: peso flex 2.2 */}
+              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[2.2] min-w-[130px]">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Prazo
                 </Label>
@@ -1750,12 +1750,12 @@ export default function TarefasKanbanPage() {
                   type="date"
                   value={form.prazo || ''}
                   onChange={(e) => setForm({ ...form, prazo: e.target.value })}
-                  className="h-10 bg-gray-50 w-full sm:w-[150px]"
+                  className="h-10 bg-gray-50 w-full"
                 />
               </div>
 
-              {/* 5. PRIORIDADE */}
-              <div className="grid gap-1.5 w-full sm:w-auto">
+              {/* 5. PRIORIDADE - rótulos médios (P1/P2/P3): peso flex 2.2 */}
+              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[2.2] min-w-[130px]">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Prioridade
                 </Label>
@@ -1763,7 +1763,7 @@ export default function TarefasKanbanPage() {
                   value={form.prioridade_p || 'P2'}
                   onValueChange={(v) => setForm({ ...form, prioridade_p: v })}
                 >
-                  <SelectTrigger className="h-10 bg-gray-50 w-full sm:w-36">
+                  <SelectTrigger className="h-10 bg-gray-50 w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1774,8 +1774,8 @@ export default function TarefasKanbanPage() {
                 </Select>
               </div>
 
-              {/* 6. STATUS */}
-              <div className="grid gap-1.5 w-full sm:w-auto">
+              {/* 6. STATUS - rótulos mais longos (Em Andamento, Concluído, etc.): peso flex 2.6 */}
+              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[2.6] min-w-[145px]">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Status
                 </Label>
@@ -1783,7 +1783,7 @@ export default function TarefasKanbanPage() {
                   value={form.status_kanban || 'a_fazer'}
                   onValueChange={(v) => setForm({ ...form, status_kanban: v })}
                 >
-                  <SelectTrigger className="h-10 bg-gray-50 w-full sm:w-44">
+                  <SelectTrigger className="h-10 bg-gray-50 w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
