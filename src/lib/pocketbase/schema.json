@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-01T12:36:34.523Z",
+  "generatedAt": "2026-11-01T12:59:44.505Z",
   "collections": [
     {
       "name": "users",
@@ -82,6 +82,12 @@
           "required": false,
           "system": false,
           "collectionRef": "unidades"
+        },
+        {
+          "name": "notificacoes_desativadas",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -2299,6 +2305,100 @@
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_email_assin_prov ON email_assinaturas (provedor)"]
+    },
+    {
+      "name": "notificacoes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (usuario_id = @request.auth.id || usuario_email = @request.auth.email)",
+        "view": "@request.auth.id != '' && (usuario_id = @request.auth.id || usuario_email = @request.auth.email)",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && (usuario_id = @request.auth.id || usuario_email = @request.auth.email)",
+        "delete": "@request.auth.id != '' && (usuario_id = @request.auth.id || usuario_email = @request.auth.email)"
+      },
+      "fields": [
+        {
+          "name": "usuario_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "usuario_email",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "titulo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "mensagem",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["tarefa_status", "tarefa_atribuicao", "tarefa_triagem", "sistema"]
+        },
+        {
+          "name": "tarefa_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "rota",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "autor_nome",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "autor_email",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "lida",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_notif_usuario ON notificacoes (usuario_id, lida, created DESC)",
+        "CREATE INDEX idx_notif_email ON notificacoes (usuario_email, lida, created DESC)",
+        "CREATE INDEX idx_notif_tarefa ON notificacoes (tarefa_id)"
+      ]
     }
   ]
 }

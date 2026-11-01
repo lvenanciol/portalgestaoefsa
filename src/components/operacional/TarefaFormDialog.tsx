@@ -31,6 +31,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
 import { toast } from '@/hooks/use-toast'
+import { limparTextoResponsavel } from '@/lib/responsavel-utils'
 
 export interface TarefaFormData {
   titulo: string
@@ -1367,10 +1368,11 @@ export function TarefaFormDialog({
                     {parceiros.map((p) => {
                       const empRotulo =
                         p.empresa || (Array.isArray(p.empresas) ? p.empresas.join(', ') : p.tipo)
+                      const nomeLimpo = limparTextoResponsavel(p.nome)
                       return (
                         <SelectItem key={p.id} value={p.nome}>
                           <div className="flex items-center gap-2">
-                            <span className="font-medium text-gray-900">{p.nome}</span>
+                            <span className="font-medium text-gray-900">{nomeLimpo || p.nome}</span>
                             {empRotulo ? (
                               <span className="text-[10px] text-gray-400">({empRotulo})</span>
                             ) : null}

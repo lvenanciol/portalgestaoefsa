@@ -34,6 +34,7 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
 import { EmpresaIcon } from '@/components/common/EmpresaIcon'
+import { limparTextoResponsavel, obterIniciaisResponsavel } from '@/lib/responsavel-utils'
 
 export interface TarefaDetalheModalProps {
   detalhe: any | null
@@ -61,10 +62,7 @@ const ETAPAS = [
 ]
 
 function getIniciais(nome?: string): string {
-  if (!nome || !nome.trim()) return '—'
-  const parts = nome.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+  return obterIniciaisResponsavel(nome)
 }
 
 function fmtDataCurta(s?: string): string {
@@ -170,7 +168,9 @@ export function TarefaDetalheModal({
   const etapaAtualObj = ETAPAS.find((e) => e.key === statusAtual) || ETAPAS[0]
 
   const nomeEmpresa = detalhe.empresa || 'Geral'
-  const responsavelNome = detalhe.responsavel || 'Não definido'
+  const responsavelNome = detalhe.responsavel
+    ? limparTextoResponsavel(detalhe.responsavel)
+    : 'Não definido'
   const iniciaisResp = getIniciais(responsavelNome)
   const vinculoLabel =
     detalhe.vinculo_tipo && detalhe.vinculo_id

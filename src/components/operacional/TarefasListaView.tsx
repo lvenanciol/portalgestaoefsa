@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { EmpresaIcon } from '@/components/common/EmpresaIcon'
+import { limparTextoResponsavel, obterIniciaisResponsavel } from '@/lib/responsavel-utils'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -66,10 +67,13 @@ const fmtDataCurta = (s?: string) => {
 }
 
 const obterIniciais = (nome?: string) => {
-  if (!nome) return '—'
-  const partes = nome.trim().split(/\s+/)
-  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase()
-  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase()
+  return obterIniciaisResponsavel(nome)
+}
+
+const PRIO_LABEL: Record<string, string> = {
+  P1: 'Alta',
+  P2: 'Normal',
+  P3: 'Baixa',
 }
 
 export function TarefasListaView({
@@ -154,19 +158,21 @@ export function TarefasListaView({
                   </div>
                 ) : (
                   <>
-                    {/* CABEÇALHO DE COLUNAS: Tarefa / Detalhes | Responsável | Empresa | Prazo | Ações */}
+                    {/* CABEÇALHO DE COLUNAS: Tarefa | Prioridade | Responsável | Empresa | Prazo | Ações */}
                     <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-2 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200/70 select-none">
-                      <div className="col-span-5">Tarefa</div>
+                      <div className="col-span-4">Tarefa</div>
+                      <div className="col-span-2">Prioridade</div>
                       <div className="col-span-2">Responsável</div>
                       <div className="col-span-2">Empresa</div>
                       <div className="col-span-1">Prazo</div>
-                      <div className="col-span-2 text-right">Status / Ações</div>
+                      <div className="col-span-1 text-right">Ações</div>
                     </div>
 
                     <div className="space-y-2">
                       {tarefasDoGrupo.map((t) => {
                         const prio = (t.prioridade_p || 'P2').toUpperCase()
                         const prioStyle = PRIO_STYLES[prio] || PRIO_STYLES.P2
+                        const prioTexto = PRIO_LABEL[prio] || 'Normal'
                         const prazoIso = t.prazo ? String(t.prazo).slice(0, 10) : ''
                         const atrasada =
                           prazoIso && prazoIso < hoje && t.status_kanban !== 'concluido'
@@ -189,6 +195,8 @@ export function TarefasListaView({
                                     : 'triagem')),
                           )?.label || 'Triagem'
 
+                        const responsavelLimpo = limparTextoResponsavel(t.responsavel)
+
                         return (
                           <div
                             key={t.id}
@@ -197,18 +205,8 @@ export function TarefasListaView({
                           >
                             {/* LAYOUT EM GRID EM TELAS GRANDES (LG+), FLEX EM TELAS MENORES */}
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
-                              {/* COLUNA 1: Prioridade + Título + Vínculo (5 colunas) */}
-                              <div className="lg:col-span-5 flex items-start gap-3 min-w-0">
-                                <span
-                                  className={cn(
-                                    'shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-md border mt-0.5',
-                                    prioStyle.bg,
-                                    prioStyle.text,
-                                    prioStyle.border,
-                                  )}
-                                >
-                                  {prio}
-                                </span>
+                              {/* COLUNA 1: Título + Vínculo (4 colunas) */}
+                              <div className="lg:col-span-4 flex items-start gap-2.5 min-w-0">
                                 <div className="min-w-0 flex-1">
                                   <h3 className="text-xs sm:text-[13px] font-bold text-gray-900 group-hover:text-[#1B5E20] transition-colors truncate leading-tight">
                                     {t.titulo}
@@ -229,21 +227,41 @@ export function TarefasListaView({
                                 </div>
                               </div>
 
-                              {/* COLUNA 2: Responsável (avatar + nome) (2 colunas) */}
+                              {/* COLUNA 2: Prioridade (coluna após Tarefa: P1 Alta / P2 Normal / P3 Baixa) (2 colunas) */}
+                              <div className="lg:col-span-2 flex items-center gap-1.5 text-xs min-w-0">
+                                <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
+                                  Prioridade:
+                                </span>
+                                <span
+                                  className={cn(
+                                    'inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-md border',
+                                    prioStyle.bg,
+                                    prioStyle.text,
+                                    prioStyle.border,
+                                  )}
+                                  title={`${prio} — ${prioTexto}`}
+                                >
+                                  <span className="font-bold">{prio}</span>
+                                  <span className="text-gray-400">·</span>
+                                  <span>{prioTexto}</span>
+                                </span>
+                              </div>
+
+                              {/* COLUNA 3: Responsável (avatar + nome limpo) (2 colunas) */}
                               <div className="lg:col-span-2 flex items-center gap-1.5 text-xs text-gray-700 min-w-0">
                                 <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
                                   Resp:
                                 </span>
-                                {t.responsavel ? (
+                                {responsavelLimpo ? (
                                   <div className="inline-flex items-center gap-1.5 min-w-0 truncate">
                                     <span className="h-5 w-5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-[9px] font-bold flex items-center justify-center shrink-0">
-                                      {obterIniciais(t.responsavel)}
+                                      {obterIniciais(responsavelLimpo)}
                                     </span>
                                     <span
                                       className="font-medium truncate text-gray-800"
-                                      title={t.responsavel}
+                                      title={responsavelLimpo}
                                     >
-                                      {t.responsavel}
+                                      {responsavelLimpo}
                                     </span>
                                   </div>
                                 ) : (
@@ -297,10 +315,10 @@ export function TarefasListaView({
                                 </div>
                               </div>
 
-                              {/* COLUNA 5: Recorrência, Anexos, Seletor de Status e Menu ⋯ (2 colunas / direita) */}
+                              {/* COLUNA 6: Recorrência, Anexos, Seletor de Status e Menu ⋯ (1 coluna / direita) */}
                               <div
                                 onClick={(e) => e.stopPropagation()}
-                                className="lg:col-span-2 flex items-center justify-between lg:justify-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-100 flex-wrap"
+                                className="lg:col-span-1 flex items-center justify-between lg:justify-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-100 flex-wrap"
                               >
                                 {/* Indicação de recorrência quando houver */}
                                 {t.recorrencia && t.recorrencia !== 'Nenhuma' ? (

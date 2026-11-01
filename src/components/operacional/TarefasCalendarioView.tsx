@@ -14,6 +14,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import { cn } from '@/lib/utils'
+import {
+  limparTextoResponsavel,
+  obterIniciaisResponsavel,
+  extrairNomeSemTag,
+} from '@/lib/responsavel-utils'
 
 export interface TarefasCalendarioViewProps {
   itens: any[] // tarefas filtradas
@@ -84,13 +89,7 @@ function getAvatarColor(name: string): string {
 }
 
 function getIniciais(nome?: string): string {
-  if (!nome) return '?'
-  return nome
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w[0].toUpperCase())
-    .join('')
+  return obterIniciaisResponsavel(nome)
 }
 
 function formatarDataBR(iso?: string): string {
@@ -229,7 +228,8 @@ export function TarefasCalendarioView({
   const cargaPorPessoa = useMemo(() => {
     const mapa = new Map<string, number>()
     tarefasDaSemana.forEach((t) => {
-      const resp = (t.responsavel || '').trim() || 'Sem responsável'
+      const respLimpo = limparTextoResponsavel(t.responsavel)
+      const resp = respLimpo || 'Sem responsável'
       mapa.set(resp, (mapa.get(resp) || 0) + 1)
     })
 
@@ -261,7 +261,7 @@ export function TarefasCalendarioView({
   // Lista de avatares com resumo no topo do navegador
   const responsaveisAtivos = useMemo(() => {
     const nomes = Array.from(
-      new Set(tarefasDaSemana.map((t) => (t.responsavel || '').trim()).filter(Boolean)),
+      new Set(tarefasDaSemana.map((t) => limparTextoResponsavel(t.responsavel)).filter(Boolean)),
     )
     return nomes.slice(0, 5)
   }, [tarefasDaSemana])
@@ -272,7 +272,7 @@ export function TarefasCalendarioView({
       const prazoIso = t.prazo ? String(t.prazo).slice(0, 10) : ''
       if (prazoIso !== diaIso) return false
       if (filtroResponsavel) {
-        const resp = (t.responsavel || '').trim() || 'Sem responsável'
+        const resp = limparTextoResponsavel(t.responsavel) || 'Sem responsável'
         if (resp !== filtroResponsavel) return false
       }
       return true
@@ -611,10 +611,10 @@ export function TarefasCalendarioView({
                             {/* Base do cartão: Responsável com Avatar + Recorrência + Anexos */}
                             <div className="flex items-center justify-between gap-1 pt-1 border-t border-gray-100/80 mt-0.5">
                               {/* Responsável com avatar */}
-                              {t.responsavel ? (
+                              {t.responsavel && limparTextoResponsavel(t.responsavel) ? (
                                 <div
                                   className="inline-flex items-center gap-1 min-w-0"
-                                  title={`Responsável: ${t.responsavel}`}
+                                  title={`Responsável: ${limparTextoResponsavel(t.responsavel)}`}
                                 >
                                   <div
                                     className={cn(
@@ -624,8 +624,9 @@ export function TarefasCalendarioView({
                                   >
                                     {iniciais}
                                   </div>
-                                  <span className="text-[10px] font-medium text-gray-700 truncate max-w-[65px]">
-                                    {t.responsavel.split(' ')[0]}
+                                  <span className="text-[10px] font-medium text-gray-700 truncate max-w-[80px]">
+                                    {extrairNomeSemTag(t.responsavel).split(' ')[0] ||
+                                      limparTextoResponsavel(t.responsavel)}
                                   </span>
                                 </div>
                               ) : (

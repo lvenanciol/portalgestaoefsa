@@ -16,6 +16,9 @@ import {
   Loader2,
   Zap,
   LayoutDashboard,
+  CheckCircle2,
+  BellOff,
+  ExternalLink,
 } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
@@ -220,6 +223,58 @@ export function Topbar() {
   const { toggleSidebar, sidebarCollapsed, toggleSidebarCollapsed, criticalAlerts } = useApp()
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+
+  // Notificações reais da collection 'notificacoes'
+  const [notificacoes, setNotificacoes] = useState<any[]>([])
+  const [abaNotif, setAbaNotif] = useState<'todas' | 'alertas'>('todas')
+
+  const carregarNotificacoes = async () => {
+    if (!user) return
+    try {
+      const filtro = `usuario_id = "${user.id}" || usuario_email = "${user.email}"`
+      const res = await pb.collection('notificacoes').getList(1, 40, {
+        filter: filtro,
+        sort: '-created',
+      })
+      setNotificacoes(res.items || [])
+    } catch (_) {
+      setNotificacoes([])
+    }
+  }
+
+  useEffect(() => {
+    carregarNotificacoes()
+  }, [user])
+
+  useRealtime('notificacoes', () => {
+    carregarNotificacoes()
+  })
+
+  const naoLidas = notificacoes.filter((n) => !n.lida)
+
+  const marcarComoLida = async (n: any) => {
+    try {
+      await pb.collection('notificacoes').update(n.id, { lida: true })
+      setNotificacoes((prev) =>
+        prev.map((item) => (item.id === n.id ? { ...item, lida: true } : item)),
+      )
+    } catch {
+      /* intentionally ignored */
+    }
+  }
+
+  const marcarTodasLidas = async () => {
+    const pendentes = notificacoes.filter((n) => !n.lida)
+    for (const p of pendentes) {
+      try {
+        await pb.collection('notificacoes').update(p.id, { lida: true })
+      } catch {
+        /* intentionally ignored */
+      }
+    }
+    setNotificacoes((prev) => prev.map((item) => ({ ...item, lida: true })))
+  }
+
   // T2: alertas ocultados pelo usuário (persistido em localStorage)
   const [ocultados, setOcultados] = useState<string[]>(() => {
     try {
@@ -561,12 +616,12 @@ export function Topbar() {
             <button
               type="button"
               className="relative p-2 rounded-full text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-colors focus:outline-none"
-              aria-label="Ver alertas"
+              aria-label="Ver notificações e alertas"
             >
               <Bell className="h-5 w-5" />
-              {alertasVisiveis.length > 0 && (
+              {naoLidas.length + alertasVisiveis.length > 0 && (
                 <span className="absolute top-1 right-1 flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                  {alertasVisiveis.length}
+                  {naoLidas.length + alertasVisiveis.length}
                 </span>
               )}
             </button>
@@ -574,72 +629,198 @@ export function Topbar() {
 
           <PopoverContent
             align="end"
-            className="w-80 md:w-96 p-0 bg-white rounded-xl shadow-xl border border-gray-200"
+            className="w-80 sm:w-96 p-0 bg-white rounded-xl shadow-xl border border-gray-200"
           >
-            <div className="p-3.5 border-b border-gray-100 flex items-center justify-between bg-gray-50/60 rounded-t-xl">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-red-600" />
-                <span className="font-semibold text-xs text-gray-900">
-                  Alertas Críticos ({alertasVisiveis.length})
-                </span>
+            {/* Cabeçalho com Abas: Notificações (Tarefas) e Alertas Críticos */}
+            <div className="p-2 border-b border-gray-100 bg-gray-50/80 rounded-t-xl flex items-center justify-between">
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setAbaNotif('todas')}
+                  className={cn(
+                    'px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5',
+                    abaNotif === 'todas'
+                      ? 'bg-white text-gray-900 shadow-2xs border border-gray-200/80'
+                      : 'text-gray-500 hover:text-gray-800',
+                  )}
+                >
+                  <span>Tarefas</span>
+                  {naoLidas.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-[#1B5E20] text-white">
+                      {naoLidas.length}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAbaNotif('alertas')}
+                  className={cn(
+                    'px-2.5 py-1 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5',
+                    abaNotif === 'alertas'
+                      ? 'bg-white text-gray-900 shadow-2xs border border-gray-200/80'
+                      : 'text-gray-500 hover:text-gray-800',
+                  )}
+                >
+                  <span>Alertas</span>
+                  {alertasVisiveis.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-red-600 text-white">
+                      {alertasVisiveis.length}
+                    </span>
+                  )}
+                </button>
               </div>
+
+              {abaNotif === 'todas' && naoLidas.length > 0 && (
+                <button
+                  type="button"
+                  onClick={marcarTodasLidas}
+                  className="text-[11px] font-medium text-[#1B5E20] hover:underline px-1"
+                >
+                  Marcar lidas
+                </button>
+              )}
             </div>
-            <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
-              {alertasVisiveis.map((alert) => (
-                <div key={alert.id} className="p-3 hover:bg-gray-50 transition-colors text-left">
-                  <div className="flex items-start gap-2.5">
-                    <span
+
+            {/* ABA: TAREFAS / NOTIFICAÇÕES */}
+            {abaNotif === 'todas' && (
+              <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+                {notificacoes.map((n) => {
+                  const dataBR = n.created
+                    ? new Date(n.created).toLocaleString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : ''
+
+                  return (
+                    <div
+                      key={n.id}
+                      onClick={() => {
+                        if (!n.lida) marcarComoLida(n)
+                        if (n.rota) navigate(n.rota)
+                      }}
                       className={cn(
-                        'mt-1 w-2 h-2 rounded-full shrink-0',
-                        alert.severity === 'critical' ? 'bg-red-500' : 'bg-amber-500',
+                        'p-3 hover:bg-gray-50 transition-colors text-left cursor-pointer',
+                        !n.lida ? 'bg-emerald-50/40' : 'bg-white',
                       )}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-xs font-semibold text-gray-900 truncate">
-                          {alert.title}
-                        </span>
-                        {alert.detail && (
-                          <span className="text-[10px] text-gray-400 shrink-0 flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {alert.detail}
-                          </span>
-                        )}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <span
+                          className={cn(
+                            'mt-1.5 w-2 h-2 rounded-full shrink-0',
+                            !n.lida ? 'bg-[#1B5E20]' : 'bg-gray-300',
+                          )}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <span
+                              className={cn(
+                                'text-xs truncate',
+                                !n.lida ? 'font-bold text-gray-900' : 'font-medium text-gray-700',
+                              )}
+                            >
+                              {n.titulo}
+                            </span>
+                            <span className="text-[10px] text-gray-400 shrink-0">{dataBR}</span>
+                          </div>
+                          <p className="text-[11px] text-gray-600 line-clamp-2 mt-0.5 leading-snug">
+                            {n.mensagem}
+                          </p>
+                          <div className="flex items-center justify-between gap-2 mt-1.5">
+                            <span className="text-[10px] text-gray-400 flex items-center gap-1 truncate">
+                              Por {n.autor_nome || 'Sistema'}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {!n.lida && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    marcarComoLida(n)
+                                  }}
+                                  className="text-[11px] text-emerald-800 font-semibold hover:underline"
+                                >
+                                  Lida
+                                </button>
+                              )}
+                              <span className="text-[11px] font-semibold text-[#1B5E20] hover:underline flex items-center gap-0.5">
+                                Abrir <ExternalLink className="h-3 w-3" />
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-[11px] text-gray-600 line-clamp-2 mt-0.5">
-                        {alert.description}
-                      </p>
-                      {/* T2: Acessar (abre a tela de origem) + Ocultar (remove do sino) */}
-                      <div className="flex items-center gap-3 mt-1.5">
-                        {alert.rota && (
+                    </div>
+                  )
+                })}
+                {notificacoes.length === 0 && (
+                  <p className="text-center text-[12px] text-gray-400 py-8">
+                    Nenhuma notificação recente de tarefas.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* ABA: ALERTAS CRÍTICOS */}
+            {abaNotif === 'alertas' && (
+              <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+                {alertasVisiveis.map((alert) => (
+                  <div key={alert.id} className="p-3 hover:bg-gray-50 transition-colors text-left">
+                    <div className="flex items-start gap-2.5">
+                      <span
+                        className={cn(
+                          'mt-1 w-2 h-2 rounded-full shrink-0',
+                          alert.severity === 'critical' ? 'bg-red-500' : 'bg-amber-500',
+                        )}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-xs font-semibold text-gray-900 truncate">
+                            {alert.title}
+                          </span>
+                          {alert.detail && (
+                            <span className="text-[10px] text-gray-400 shrink-0 flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {alert.detail}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-600 line-clamp-2 mt-0.5">
+                          {alert.description}
+                        </p>
+                        <div className="flex items-center gap-3 mt-1.5">
+                          {alert.rota && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigate(alert.rota!)
+                              }}
+                              className="text-[11px] font-semibold text-[#1B5E20] hover:underline"
+                            >
+                              Acessar
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => {
-                              navigate(alert.rota!)
-                            }}
-                            className="text-[11px] font-semibold text-[#1B5E20] hover:underline"
+                            onClick={() => ocultarAlerta(alert.id)}
+                            className="text-[11px] text-gray-400 hover:text-gray-600 hover:underline"
                           >
-                            Acessar
+                            Ocultar
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => ocultarAlerta(alert.id)}
-                          className="text-[11px] text-gray-400 hover:text-gray-600 hover:underline"
-                        >
-                          Ocultar
-                        </button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
-              {alertasVisiveis.length === 0 && (
-                <p className="text-center text-[12px] text-gray-400 py-8">
-                  Nenhum alerta ativo — os ocultados podem voltar ao serem reavaliados.
-                </p>
-              )}
-            </div>{' '}
+                ))}
+                {alertasVisiveis.length === 0 && (
+                  <p className="text-center text-[12px] text-gray-400 py-8">
+                    Nenhum alerta ativo — os ocultados podem voltar ao serem reavaliados.
+                  </p>
+                )}
+              </div>
+            )}
           </PopoverContent>
         </Popover>
 
@@ -711,6 +892,7 @@ function PerfilDialog({
   const { empresas } = useApp()
   const [telefone, setTelefone] = useState('')
   const [cargo, setCargo] = useState('')
+  const [notificacoesDesativadas, setNotificacoesDesativadas] = useState(false)
   const [senhaAtual, setSenhaAtual] = useState('')
   const [novaSenha, setNovaSenha] = useState('')
   const [confirmar, setConfirmar] = useState('')
@@ -721,6 +903,7 @@ function PerfilDialog({
     if (open && user) {
       setTelefone(user.telefone || '')
       setCargo(user.cargo || '')
+      setNotificacoesDesativadas(!!user.notificacoes_desativadas)
       setSenhaAtual('')
       setNovaSenha('')
       setConfirmar('')
@@ -733,7 +916,11 @@ function PerfilDialog({
     if (!user) return
     setSalvandoPerfil(true)
     try {
-      await pb.collection('users').update(user.id, { telefone, cargo })
+      await pb.collection('users').update(user.id, {
+        telefone,
+        cargo,
+        notificacoes_desativadas: notificacoesDesativadas,
+      })
       toast({ title: 'Perfil salvo', description: 'Dados atualizados com sucesso.' })
       onOpenChange(false)
     } catch (e) {
@@ -856,6 +1043,44 @@ function PerfilDialog({
               <Input value={empresaNome} readOnly className="h-10 bg-gray-100 text-gray-600" />
             </div>
           )}
+
+          {/* Preferência de Notificações de Tarefas */}
+          <div className="p-3 rounded-lg border border-gray-200 bg-gray-50/70 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <div className="text-xs font-semibold text-gray-900 flex items-center gap-1.5">
+                  <Bell className="h-3.5 w-3.5 text-[#1B5E20]" />
+                  <span>Notificações de Tarefas</span>
+                </div>
+                <p className="text-[11px] text-gray-500">
+                  Avisos de status e atribuição no cabeçalho
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNotificacoesDesativadas((v) => !v)}
+                className={cn(
+                  'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none',
+                  !notificacoesDesativadas ? 'bg-[#1B5E20]' : 'bg-gray-300',
+                )}
+                role="switch"
+                aria-checked={!notificacoesDesativadas}
+              >
+                <span
+                  className={cn(
+                    'pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out',
+                    !notificacoesDesativadas ? 'translate-x-4' : 'translate-x-0',
+                  )}
+                />
+              </button>
+            </div>
+            {notificacoesDesativadas && (
+              <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
+                <BellOff className="h-3 w-3 shrink-0" />
+                Você não receberá avisos quando for atribuído a tarefas ou quando o status mudar.
+              </p>
+            )}
+          </div>
 
           <Button
             onClick={salvarPerfil}

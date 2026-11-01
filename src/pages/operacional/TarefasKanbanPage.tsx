@@ -71,6 +71,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { limparTextoResponsavel, obterIniciaisResponsavel } from '@/lib/responsavel-utils'
 
 // Fase 7 (prompt-mestre) — Tarefas & Agenda: kanban 4 colunas (A Fazer,
 // Em Andamento, Bloqueado, Concluído), prioridade P1-P3, subtarefas,
@@ -1573,16 +1574,12 @@ export default function TarefasKanbanPage() {
                         : t.anexos
                           ? 1
                           : 0
-                      const semResponsavel = !t.responsavel || !t.responsavel.trim()
+                      const responsavelLimpo = limparTextoResponsavel(t.responsavel)
+                      const semResponsavel = !responsavelLimpo
                       const semPrazo = !t.prazo || !t.prazo.trim()
                       const temRecorrencia = t.recorrencia && t.recorrencia !== 'Nenhuma'
 
-                      const iniciaisResponsavel = (t.responsavel || '')
-                        .split(' ')
-                        .filter(Boolean)
-                        .slice(0, 2)
-                        .map((w: string) => w[0].toUpperCase())
-                        .join('')
+                      const iniciaisResponsavel = obterIniciaisResponsavel(responsavelLimpo)
 
                       return (
                         <div
@@ -1699,8 +1696,11 @@ export default function TarefasKanbanPage() {
                                 <div className="w-5 h-5 rounded-full bg-emerald-700 text-white font-bold text-[9px] flex items-center justify-center shrink-0 shadow-2xs">
                                   {iniciaisResponsavel || 'U'}
                                 </div>
-                                <span className="text-gray-700 font-medium truncate max-w-[120px]">
-                                  {t.responsavel}
+                                <span
+                                  className="text-gray-700 font-medium truncate max-w-[120px]"
+                                  title={responsavelLimpo}
+                                >
+                                  {responsavelLimpo}
                                 </span>
                               </div>
                             )}
