@@ -23,10 +23,13 @@ routerAdd(
     const sysTarefa =
       'Você é assistente de gestão do grupo Extrafruti. Responda EXCLUSIVAMENTE em JSON válido ' +
       '(sem markdown, sem cercas) com as chaves: titulo (string curta), descricao (string), ' +
-      'responsavel (string ou vazio), prazo (YYYY-MM-DD ou vazio), prioridade_p ("P1"|"P2"|"P3"), ' +
-      'empresa (Extrafruti|Casafruti|FoldBox|vazio), parceiros_sugeridos (array de strings — nomes ' +
-      'citados como responsáveis/parceiros). Português do Brasil. Interprete pedidos falados ' +
-      '(ex.: "preciso que o João resolva a entrega da semana que vem, é urgente") e extraia os campos.'
+      'responsavel (string ou vazio), prazo (YYYY-MM-DD ou vazio), recorrencia ("Nenhuma"|"Diária"|"Semanal"|"Mensal"|"Bimestral"|"A definir"), ' +
+      'prioridade_p ("P1"|"P2"|"P3"), status_kanban ("a_fazer"|"em_andamento"|"bloqueado"|"concluido"), ' +
+      'empresa (Extrafruti|Casafruti|FoldBox|Foldbox|CPF|vazio), vinculo_tipo ("ata"|"projeto"|"contrato"|""), vinculo_id (string ou ""), ' +
+      'parceiros_sugeridos (array de strings — nomes citados como responsáveis/parceiros). Português do Brasil. ' +
+      'Interprete descrições faladas ou digitadas de tarefas (ex.: "Emitir os recibos de locação da Foldbox todo dia 1º, responsável Leonardo.") ' +
+      'e extraia os campos com precisão. Se recorrencia for mencionada (ex: "todo dia 1º", "mensal", "semanal"), classifique corretamente. ' +
+      'Se prioridade for "alta"/"urgente" use P1, se "baixa" use P3, caso contrário P2.'
 
     const sysAta =
       'Você é assistente de gestão do grupo Extrafruti. Responda EXCLUSIVAMENTE em JSON válido ' +

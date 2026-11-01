@@ -38,6 +38,7 @@ import { Calendar as CalendarPicker } from '@/components/ui/calendar'
 import { TarefasListaView } from '@/components/operacional/TarefasListaView'
 import { ParceiroCadastroDialog } from '@/components/operacional/ParceiroCadastroDialog'
 import { TarefaDetalheModal } from '@/components/operacional/TarefaDetalheModal'
+import { TarefaFormDialog } from '@/components/operacional/TarefaFormDialog'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useApp } from '@/context/AppContext'
@@ -732,7 +733,7 @@ export default function TarefasKanbanPage() {
     setCompartilhar({ tarefa: t, parceiros: vinc, parceiroId: vinc[0]?.id })
   }
 
-  const salvar = async () => {
+  const salvar = async (isRascunho = false) => {
     setDialogErro('')
     // Validação de título
     if (!form.titulo || !form.titulo.trim()) {
@@ -766,8 +767,8 @@ export default function TarefasKanbanPage() {
       }
     }
 
-    // Se ainda assim não houver parceiro selecionado:
-    if (idsParceiros.length === 0) {
+    // Se não for rascunho, exige parceiro responsável obrigatório
+    if (!isRascunho && idsParceiros.length === 0) {
       const msgAviso =
         'Vincule pelo menos um parceiro/contato responsável no campo abaixo antes de salvar.'
       setDialogErro(msgAviso)
@@ -831,15 +832,15 @@ export default function TarefasKanbanPage() {
       if (editando) {
         await pb.collection('tarefas').update(editando.id, fd)
         toast({
-          title: 'Tarefa atualizada',
+          title: isRascunho ? 'Rascunho salvo' : 'Tarefa atualizada',
           description: `A tarefa "${form.titulo.trim()}" foi salva com sucesso.`,
         })
       } else {
         fd.append('criado_por', user?.email || '')
         await pb.collection('tarefas').create(fd)
         toast({
-          title: 'Tarefa criada com sucesso',
-          description: `A tarefa "${form.titulo.trim()}" foi adicionada com sucesso.`,
+          title: isRascunho ? 'Rascunho salvo' : 'Tarefa criada com sucesso',
+          description: `A tarefa "${form.titulo.trim()}" foi ${isRascunho ? 'salva como rascunho' : 'adicionada'} com sucesso.`,
         })
       }
       setDialog(false)
@@ -1532,8 +1533,8 @@ export default function TarefasKanbanPage() {
         </div>
       )}
 
-      {/* Dialog nova/editar tarefa — ampliado para max-w-4xl (95vw) para usabilidade em telas grandes */}
-      <Dialog
+      {/* Diálogo unificado Nova/Editar Tarefa — Modelo "IA primeiro" fiel ao mockup visual */}
+      <TarefaFormDialog
         open={dialog}
         onOpenChange={(aberto) => {
           if (!aberto && ouvindo) {
@@ -1541,628 +1542,22 @@ export default function TarefasKanbanPage() {
           }
           setDialog(aberto)
         }}
-      >
-        <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold text-gray-900">
-              {editando ? 'Editar' : 'Nova'} tarefa
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 pt-1">
-            {/* T2a: abertura por áudio */}
-            <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/50 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
-                  <Mic className="h-3.5 w-3.5" /> Abrir por áudio
-                  {ouvindo && (
-                    <span className="ml-1.5 inline-flex items-center gap-1 text-[10px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded animate-pulse">
-                      ● Gravando...
-                    </span>
-                  )}
-                  {processandoAudio && (
-                    <span className="ml-1.5 inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">
-                      <Loader2 className="h-3 w-3 animate-spin" /> Transcrevendo...
-                    </span>
-                  )}
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={toggleOuvir}
-                    disabled={processandoAudio}
-                    className={cn(
-                      'h-8 font-medium transition-colors',
-                      ouvindo &&
-                        'bg-red-50 text-red-700 border-red-300 hover:bg-red-100 ring-2 ring-red-200',
-                    )}
-                  >
-                    {ouvindo ? (
-                      <X className="h-3.5 w-3.5 mr-1 text-red-600" />
-                    ) : (
-                      <Mic className="h-3.5 w-3.5 mr-1 text-[#1B5E20]" />
-                    )}
-                    {ouvindo ? 'Parar gravação' : 'Ouvir'}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={estruturarVoz}
-                    disabled={estruturando || processandoAudio || !transcricao.trim()}
-                    className="h-8 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
-                  >
-                    {estruturando ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : null}
-                    Preencher com IA
-                  </Button>
-                </div>
-              </div>
-              {(transcricao || ouvindo || processandoAudio) && (
-                <div className="text-[11px] text-gray-700 bg-white/70 rounded p-2 border border-emerald-100">
-                  {ouvindo && (
-                    <p className="text-red-600 font-semibold flex items-center gap-1.5">
-                      <span className="h-2 w-2 rounded-full bg-red-600 animate-ping inline-block" />
-                      Captando áudio em tempo real... Fale os detalhes da tarefa e clique em "Parar
-                      gravação".
-                    </p>
-                  )}
-                  {processandoAudio && (
-                    <p className="text-amber-700 italic">
-                      Transcrevendo áudio via IA... Aguarde alguns instantes.
-                    </p>
-                  )}
-                  {transcricao && (
-                    <div className="mt-1">
-                      <span className="font-semibold text-emerald-900 mr-1">Transcrição:</span>
-                      <span className="text-gray-800 italic">"{transcricao}"</span>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Campo Título */}
-            <div className="grid gap-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Título *
-              </Label>
-              <Input
-                value={form.titulo || ''}
-                onChange={(e) => setForm({ ...form, titulo: e.target.value })}
-                placeholder="Ex.: Alinhar faturamento mensal..."
-                className="h-10 bg-gray-50"
-              />
-            </div>
-
-            {/* Linha 1 após Título: EMPRESA, RESPONSÁVEL (largura ajustada ao conteúdo máximo) e VÍNCULO (ORIGEM) à direita */}
-            <div className="flex flex-wrap items-end gap-3.5 w-full">
-              {/* 1. EMPRESA - largura reduzida ajustada ao conteúdo máximo */}
-              <div className="grid gap-1.5 w-full sm:w-[190px] shrink-0">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Empresa
-                </Label>
-                <Select
-                  value={form.empresa || ' '}
-                  onValueChange={(v) => setForm({ ...form, empresa: v === ' ' ? '' : v })}
-                >
-                  <SelectTrigger className="h-10 bg-gray-50 w-full">
-                    <SelectValue placeholder="Selecione a empresa..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value=" ">Todas / Grupo Consolidado</SelectItem>
-                    {empresas.map((e) => (
-                      <SelectItem key={e.id} value={e.nome}>
-                        <div className="flex items-center gap-2">
-                          {obterIconeEmpresa(e.nome)}
-                          <span>{e.nome}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                    {/* Item exclusivo no dropdown Empresa do diálogo de nova/editar tarefa */}
-                    <SelectItem value="CPF">
-                      <div className="flex items-center gap-2 font-medium">
-                        <span className="h-2 w-2 rounded-full bg-amber-500" />
-                        <span>CPF</span>
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* 2. RESPONSÁVEL - largura reduzida ajustada ao conteúdo máximo */}
-              <div className="grid gap-1.5 w-full sm:w-[220px] shrink-0">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Responsável
-                </Label>
-                <Select
-                  value={form.responsavel || ' '}
-                  onValueChange={(v) => {
-                    if (v === '__cadastrar_novo__') {
-                      setNovoParceiroModalAberto(true)
-                      return
-                    }
-                    const novoNome = v === ' ' ? '' : v
-                    setForm((f: any) => {
-                      const pMatch = parceiros.find((p) => p.nome === novoNome)
-                      const curParceiros = f.parceiro_ids || []
-                      const novosParceiros =
-                        pMatch && !curParceiros.includes(pMatch.id)
-                          ? [...curParceiros, pMatch.id]
-                          : curParceiros
-                      return { ...f, responsavel: novoNome, parceiro_ids: novosParceiros }
-                    })
-                  }}
-                >
-                  <SelectTrigger className="h-10 bg-gray-50 w-full">
-                    <SelectValue placeholder="Selecione o responsável..." />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-56">
-                    <SelectItem
-                      value="__cadastrar_novo__"
-                      className="font-semibold text-[#1B5E20] bg-emerald-50/70 border-b border-emerald-100 focus:bg-emerald-100 focus:text-[#0F3D13] cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2 text-[#1B5E20]">
-                        <Plus className="h-3.5 w-3.5" />
-                        <span>Cadastrar novo</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value=" ">Não definido</SelectItem>
-                    {parceiros.map((p) => {
-                      const empRotulo =
-                        p.empresa || (Array.isArray(p.empresas) ? p.empresas.join(', ') : p.tipo)
-                      return (
-                        <SelectItem key={p.id} value={p.nome}>
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-gray-900">{p.nome}</span>
-                            {empRotulo ? (
-                              <span className="text-[10px] text-gray-400">({empRotulo})</span>
-                            ) : null}
-                          </div>
-                        </SelectItem>
-                      )
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* 3. VÍNCULO (ORIGEM) - movido para a direita do Responsável na mesma linha */}
-              <div className="grid gap-1.5 w-full sm:flex-1 min-w-[200px]">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Vínculo (origem)
-                </Label>
-                <div className="flex items-center gap-2 w-full">
-                  <Select
-                    value={form.vinculo_tipo || ''}
-                    onValueChange={(v) =>
-                      setForm({ ...form, vinculo_tipo: v, vinculo_id: v ? form.vinculo_id : '' })
-                    }
-                  >
-                    <SelectTrigger className="h-10 bg-gray-50 w-full flex-1">
-                      <SelectValue placeholder="Nenhum" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value=" ">Nenhum</SelectItem>
-                      <SelectItem value="ata">Ata</SelectItem>
-                      <SelectItem value="projeto">Projeto</SelectItem>
-                      <SelectItem value="contrato">Contrato</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {form.vinculo_tipo && form.vinculo_tipo !== ' ' && (
-                    <Input
-                      value={form.vinculo_id || ''}
-                      onChange={(e) => setForm({ ...form, vinculo_id: e.target.value })}
-                      placeholder="ID (opcional)"
-                      className="h-10 bg-gray-50 w-24 shrink-0 text-xs"
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Linha de metadados: PRAZO, RECORRÊNCIA (à direita do Prazo), PRIORIDADE e STATUS */}
-            <div className="flex flex-wrap items-end gap-3.5 w-full">
-              {/* 4. PRAZO - data formatada dd/mm/aaaa */}
-              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[2.2] min-w-[130px]">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Prazo
-                </Label>
-                <Input
-                  type="date"
-                  value={form.prazo || ''}
-                  onChange={(e) => setForm({ ...form, prazo: e.target.value })}
-                  className="h-10 bg-gray-50 w-full"
-                />
-              </div>
-
-              {/* RECORRÊNCIA - à direita do campo Prazo (Nenhuma, Diária, Semanal, Mensal, Bimestral, A definir) */}
-              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[2.4] min-w-[140px]">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center gap-1">
-                  <Repeat className="h-3 w-3 text-[#1B5E20]" /> Recorrência
-                </Label>
-                <Select
-                  value={form.recorrencia || 'Nenhuma'}
-                  onValueChange={(v) => setForm({ ...form, recorrencia: v })}
-                >
-                  <SelectTrigger className="h-10 bg-gray-50 w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Nenhuma">Nenhuma</SelectItem>
-                    <SelectItem value="Diária">Diária</SelectItem>
-                    <SelectItem value="Semanal">Semanal</SelectItem>
-                    <SelectItem value="Mensal">Mensal</SelectItem>
-                    <SelectItem value="Bimestral">Bimestral</SelectItem>
-                    <SelectItem value="A definir">A definir</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* 5. PRIORIDADE */}
-              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[2] min-w-[120px]">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Prioridade
-                </Label>
-                <Select
-                  value={form.prioridade_p || 'P2'}
-                  onValueChange={(v) => setForm({ ...form, prioridade_p: v })}
-                >
-                  <SelectTrigger className="h-10 bg-gray-50 w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="P1">P1 — Crítica</SelectItem>
-                    <SelectItem value="P2">P2 — Normal</SelectItem>
-                    <SelectItem value="P3">P3 — Baixa</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* 6. STATUS */}
-              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[2.4] min-w-[135px]">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Status
-                </Label>
-                <Select
-                  value={form.status_kanban || 'a_fazer'}
-                  onValueChange={(v) => setForm({ ...form, status_kanban: v })}
-                >
-                  <SelectTrigger className="h-10 bg-gray-50 w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COLUNAS.map((c) => (
-                      <SelectItem key={c.key} value={c.key}>
-                        {c.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Descrição */}
-            <div className="grid gap-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Descrição
-              </Label>
-              <Textarea
-                value={form.descricao || ''}
-                onChange={(e) => setForm({ ...form, descricao: e.target.value })}
-                rows={2}
-                placeholder="Detalhes ou orientações sobre a tarefa..."
-              />
-            </div>
-
-            {/* e4: Dropdown para vincular parceiros com tags/badges visíveis */}
-            <div className="grid gap-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Parceiros/contatos responsáveis * (obrigatório)
-                </Label>
-                <span
-                  className={cn(
-                    'text-[11px] font-semibold',
-                    (form.parceiro_ids || []).length > 0 ? 'text-[#1B5E20]' : 'text-amber-600',
-                  )}
-                >
-                  {(form.parceiro_ids || []).length} selecionado(s)
-                </span>
-              </div>
-              <Select
-                value="placeholder"
-                onValueChange={(val) => {
-                  if (val === 'placeholder') return
-                  if (val === '__cadastrar_novo__') {
-                    setNovoParceiroModalAberto(true)
-                    return
-                  }
-                  setForm((f: any) => {
-                    const cur = f.parceiro_ids || []
-                    const exists = cur.includes(val)
-                    const novoIds = exists ? cur.filter((x: string) => x !== val) : [...cur, val]
-                    const pObj = parceiros.find((p) => p.id === val)
-                    return {
-                      ...f,
-                      parceiro_ids: novoIds,
-                      responsavel: !f.responsavel && pObj ? pObj.nome : f.responsavel,
-                    }
-                  })
-                }}
-              >
-                <SelectTrigger className="h-10 bg-gray-50 text-xs">
-                  <SelectValue placeholder="Selecione um parceiro cadastrado para alternar seleção..." />
-                </SelectTrigger>
-                <SelectContent className="max-h-60">
-                  {/* Primeiro item de seleção: Cadastrar novo */}
-                  <SelectItem
-                    value="__cadastrar_novo__"
-                    className="font-semibold text-[#1B5E20] bg-emerald-50/70 border-b border-emerald-100 focus:bg-emerald-100 focus:text-[#0F3D13] cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2 text-[#1B5E20]">
-                      <Plus className="h-3.5 w-3.5" />
-                      <span>Cadastrar novo</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="placeholder" disabled>
-                    Selecione um parceiro cadastrado para alternar seleção
-                  </SelectItem>
-                  {parceiros.map((p) => {
-                    const sel = (form.parceiro_ids || []).includes(p.id)
-                    const empRotulo =
-                      p.empresa || (Array.isArray(p.empresas) ? p.empresas.join(', ') : '')
-                    return (
-                      <SelectItem key={p.id} value={p.id}>
-                        <div className="flex items-center justify-between gap-3 w-full">
-                          <span
-                            className={cn(
-                              'text-xs',
-                              sel ? 'font-bold text-[#1B5E20]' : 'text-gray-700',
-                            )}
-                          >
-                            {p.nome}
-                          </span>
-                          <span className="text-[10px] text-gray-400">
-                            {sel ? '✓ Selecionado' : empRotulo ? `(${empRotulo})` : `(${p.tipo})`}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
-
-              {/* Badges dos parceiros selecionados com remoção direta */}
-              {(form.parceiro_ids || []).length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {(form.parceiro_ids || []).map((pid: string) => {
-                    const pObj = parceiros.find((p) => p.id === pid)
-                    return (
-                      <span
-                        key={pid}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200"
-                      >
-                        {pObj?.nome || pid}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setForm((f: any) => ({
-                              ...f,
-                              parceiro_ids: (f.parceiro_ids || []).filter((x: string) => x !== pid),
-                            }))
-                          }}
-                          className="hover:text-emerald-950 p-0.5 rounded-full"
-                          title="Remover"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Campo ANEXAR ARQUIVOS E MÍDIAS */}
-            <div className="grid gap-2 border-t border-gray-100 pt-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
-                  <Paperclip className="h-3.5 w-3.5 text-[#1B5E20]" />
-                  Anexar Arquivos e Mídias
-                </Label>
-                <span className="text-[11px] text-gray-400">
-                  {anexosExistentes.length + arquivosNovos.length} anexo(s)
-                </span>
-              </div>
-
-              {/* Botão de seleção de arquivos */}
-              <label className="flex flex-col items-center justify-center border-2 border-dashed border-gray-200 hover:border-[#1B5E20] hover:bg-emerald-50/20 rounded-lg p-3 cursor-pointer transition-colors text-center">
-                <UploadCloud className="h-5 w-5 text-gray-400 mb-1" />
-                <span className="text-xs font-semibold text-gray-700">
-                  Clique para selecionar fotos, vídeos, PDFs ou documentos
-                </span>
-                <span className="text-[10px] text-gray-400 mt-0.5">
-                  Imagens, PDFs, planilhas, mídias e documentos em geral (até 50MB cada)
-                </span>
-                <input
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    const fl = Array.from(e.target.files || [])
-                    if (fl.length > 0) {
-                      setArquivosNovos((prev) => [...prev, ...fl])
-                    }
-                    e.target.value = ''
-                  }}
-                />
-              </label>
-
-              {/* Chips/Cards de anexos (existentes no PocketBase e novos selecionados) com botões de ação para Visualizar e Baixar */}
-              {(anexosExistentes.length > 0 || arquivosNovos.length > 0) && (
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {/* Anexos já salvos no PocketBase (com botão de ação para abrir/visualizar e baixar) */}
-                  {anexosExistentes.map((nome, idx) => {
-                    const urlArquivo = editando ? pb.files.getURL(editando, nome) : ''
-                    return (
-                      <div
-                        key={`existente-${idx}`}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-emerald-50 text-emerald-900 border border-emerald-200 shadow-2xs"
-                      >
-                        <Paperclip className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
-                        <span className="max-w-[160px] truncate font-medium" title={nome}>
-                          {nome}
-                        </span>
-
-                        {/* Botão de ação: Visualizar / Abrir */}
-                        {urlArquivo && (
-                          <a
-                            href={urlArquivo}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-1 rounded text-[#1B5E20] hover:bg-emerald-100 transition-colors inline-flex items-center"
-                            title="Visualizar anexo em nova aba"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                          </a>
-                        )}
-
-                        {/* Botão de ação: Download */}
-                        {urlArquivo && (
-                          <a
-                            href={urlArquivo}
-                            download={nome}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-1 rounded text-[#1B5E20] hover:bg-emerald-100 transition-colors inline-flex items-center"
-                            title="Baixar anexo"
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                          </a>
-                        )}
-
-                        {/* Botão de remoção do anexo */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setAnexosExistentes((prev) => prev.filter((_, i) => i !== idx))
-                          }
-                          className="text-emerald-700 hover:text-red-600 p-0.5 rounded-full ml-0.5"
-                          title="Remover anexo antes de salvar"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )
-                  })}
-
-                  {/* Anexos novos a salvar (com botão de ação para visualizar e baixar via Object URL) */}
-                  {arquivosNovos.map((arq, idx) => {
-                    const abrirPreviewNovo = () => {
-                      try {
-                        const objUrl = URL.createObjectURL(arq)
-                        window.open(objUrl, '_blank')
-                      } catch (err) {
-                        console.error('Falha ao abrir preview do arquivo novo:', err)
-                      }
-                    }
-
-                    const baixarArquivoNovo = () => {
-                      try {
-                        const objUrl = URL.createObjectURL(arq)
-                        const a = document.createElement('a')
-                        a.href = objUrl
-                        a.download = arq.name
-                        document.body.appendChild(a)
-                        a.click()
-                        document.body.removeChild(a)
-                        setTimeout(() => URL.revokeObjectURL(objUrl), 1000)
-                      } catch (err) {
-                        console.error('Falha ao baixar arquivo novo:', err)
-                      }
-                    }
-
-                    return (
-                      <div
-                        key={`novo-${idx}`}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs"
-                      >
-                        <UploadCloud className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                        <span className="max-w-[150px] truncate font-medium" title={arq.name}>
-                          {arq.name}
-                        </span>
-                        <span className="text-[10px] text-amber-700">
-                          ({(arq.size / 1024).toFixed(0)} KB)
-                        </span>
-
-                        {/* Botão de ação: Visualizar (prévia do arquivo selecionado) */}
-                        <button
-                          type="button"
-                          onClick={abrirPreviewNovo}
-                          className="p-1 rounded text-amber-800 hover:bg-amber-100 transition-colors inline-flex items-center"
-                          title="Visualizar anexo antes de salvar"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                        </button>
-
-                        {/* Botão de ação: Baixar */}
-                        <button
-                          type="button"
-                          onClick={baixarArquivoNovo}
-                          className="p-1 rounded text-amber-800 hover:bg-amber-100 transition-colors inline-flex items-center"
-                          title="Baixar arquivo selecionado"
-                        >
-                          <Download className="h-3.5 w-3.5" />
-                        </button>
-
-                        {/* Botão de remoção */}
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setArquivosNovos((prev) => prev.filter((_, i) => i !== idx))
-                          }
-                          className="text-amber-700 hover:text-red-600 p-0.5 rounded-full ml-0.5"
-                          title="Remover anexo antes de salvar"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Alerta de erro de validação dentro do diálogo */}
-            {dialogErro && (
-              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-red-500" />
-                <span>{dialogErro}</span>
-              </div>
-            )}
-          </div>
-          <DialogFooter className="pt-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                if (ouvindo) pararOuvir()
-                setDialog(false)
-                setDialogErro('')
-              }}
-              className="h-9"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              onClick={salvar}
-              disabled={salvando}
-              className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs"
-            >
-              {salvando ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        editando={editando}
+        form={form}
+        setForm={setForm}
+        empresas={empresas}
+        parceiros={parceiros}
+        obterIconeEmpresa={obterIconeEmpresa}
+        onAbrirNovoParceiro={() => setNovoParceiroModalAberto(true)}
+        arquivosNovos={arquivosNovos}
+        setArquivosNovos={setArquivosNovos}
+        anexosExistentes={anexosExistentes}
+        setAnexosExistentes={setAnexosExistentes}
+        dialogErro={dialogErro}
+        setDialogErro={setDialogErro}
+        salvando={salvando}
+        onSalvar={salvar}
+      />
 
       {/* Detalhe da tarefa — Versão A: Layout 3 Zonas fiel ao mockup */}
       <TarefaDetalheModal
