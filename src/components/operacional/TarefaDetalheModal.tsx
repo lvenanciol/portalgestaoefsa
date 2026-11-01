@@ -33,6 +33,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
+import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 
 export interface TarefaDetalheModalProps {
   detalhe: any | null
@@ -200,7 +201,12 @@ export function TarefaDetalheModal({
                   Tarefas
                 </span>
                 <span className="text-gray-300">/</span>
-                <span className="text-gray-700 font-semibold truncate">{nomeEmpresa}</span>
+                <span className="inline-flex items-center gap-1.5 text-gray-700 font-semibold truncate">
+                  {detalhe.empresa ? (
+                    <EmpresaIcon nome={detalhe.empresa} className="h-3.5 w-3.5 shrink-0" />
+                  ) : null}
+                  <span className="truncate">{nomeEmpresa}</span>
+                </span>
               </div>
               <h2
                 className="text-lg sm:text-xl font-bold text-gray-900 tracking-tight truncate leading-tight"
@@ -622,9 +628,12 @@ export function TarefaDetalheModal({
                   <button
                     type="button"
                     onClick={() => onEditar(detalhe)}
-                    className="flex items-center gap-1 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline max-w-[170px] truncate"
+                    className="flex items-center gap-1.5 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline max-w-[170px] truncate"
                     title="Editar empresa"
                   >
+                    {detalhe.empresa ? (
+                      <EmpresaIcon nome={detalhe.empresa} className="h-3.5 w-3.5 shrink-0" />
+                    ) : null}
                     <span className="truncate">{nomeEmpresa}</span>
                     <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
                   </button>

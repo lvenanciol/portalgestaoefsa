@@ -393,55 +393,9 @@ export default function TarefasKanbanPage() {
     }
   }
 
-  const carregarLogos = async () => {
-    try {
-      const r = await pb.collection('logomarcas').getFullList()
-      setLogos(r as any[])
-    } catch (_) {
-      setLogos([])
-    }
-  }
-
   useEffect(() => {
     carregarParceiros()
-    carregarLogos()
   }, [])
-
-  const obterIconeEmpresa = (nomeEmpresa: string) => {
-    if (!nomeEmpresa) return null
-    const norm = (s: any) =>
-      String(s || '')
-        .trim()
-        .toLowerCase()
-    const logoRec = logos.find((l) => norm(l.empresa) === norm(nomeEmpresa))
-    const empRec = empresas.find((e) => norm(e.nome) === norm(nomeEmpresa))
-    const cor = logoRec?.cor || empRec?.cor || '#1B5E20'
-    const sigla =
-      logoRec?.sigla ||
-      (empRec ? empRec.nome.slice(0, 2).toUpperCase() : nomeEmpresa.slice(0, 2).toUpperCase())
-
-    const urlImagem = (rec: any, campo: string) => {
-      if (!rec || !rec[campo]) return ''
-      return pb.files.getURL(rec, rec[campo])
-    }
-    const urlEmb = urlImagem(logoRec, 'emblema')
-    const urlLogo = urlImagem(logoRec, 'logo')
-
-    if (urlEmb) {
-      return <img src={urlEmb} alt={nomeEmpresa} className="h-4 w-4 object-contain rounded-xs" />
-    }
-    if (urlLogo) {
-      return <img src={urlLogo} alt={nomeEmpresa} className="h-4 w-4 object-contain rounded-xs" />
-    }
-    return (
-      <span
-        className="h-4 w-4 rounded-xs text-[8px] font-bold text-white flex items-center justify-center shrink-0"
-        style={{ backgroundColor: cor }}
-      >
-        {sigla}
-      </span>
-    )
-  }
 
   const confirmarExclusao = async () => {
     if (!excluindoTarefa) return
