@@ -43,6 +43,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar as CalendarPicker } from '@/components/ui/calendar'
 import { TarefasListaView } from '@/components/operacional/TarefasListaView'
+import { TarefasCalendarioView } from '@/components/operacional/TarefasCalendarioView'
 import { ParceiroCadastroDialog } from '@/components/operacional/ParceiroCadastroDialog'
 import { TarefaDetalheModal } from '@/components/operacional/TarefaDetalheModal'
 import { TarefaFormDialog } from '@/components/operacional/TarefaFormDialog'
@@ -1794,104 +1795,17 @@ export default function TarefasKanbanPage() {
         </div>
       )}
 
-      {/* Calendário */}
+      {/* Calendário: Reestruturado com visão padrão Semanal (7 colunas), cartões compactos, atrasadas destacadas, navegador com extenso e painel lateral com totais da semana e carga por pessoa */}
       {vista === 'calendario' && (
-        <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-[#1B5E20]" />
-              <span className="text-sm font-bold text-gray-900">{mesRef}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8"
-                onClick={() => {
-                  const [y, m] = mesRef.split('-').map(Number)
-                  const d = new Date(y, m - 2, 1)
-                  setMesRef(d.toISOString().slice(0, 7))
-                }}
-              >
-                ←
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8"
-                onClick={() => {
-                  const [y, m] = mesRef.split('-').map(Number)
-                  const d = new Date(y, m, 1)
-                  setMesRef(d.toISOString().slice(0, 7))
-                }}
-              >
-                →
-              </Button>
-            </div>
-          </div>
-          <div className="grid grid-cols-7 gap-1.5">
-            {['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'].map((d) => (
-              <div
-                key={d}
-                className="text-[10px] font-bold uppercase tracking-wider text-gray-400 text-center py-1"
-              >
-                {d}
-              </div>
-            ))}
-            {diasMes.map((dia, i) => (
-              <div
-                key={i}
-                className={cn(
-                  'min-h-[72px] rounded-lg border p-1.5',
-                  dia ? 'border-gray-100 bg-white' : 'border-transparent bg-transparent',
-                )}
-              >
-                {dia && (
-                  <>
-                    <div
-                      className={cn(
-                        'text-[10px] font-bold tabular-nums mb-1',
-                        dia === hoje ? 'text-[#1B5E20]' : 'text-gray-400',
-                      )}
-                    >
-                      {parseInt(dia.slice(8), 10)}
-                    </div>
-                    <div className="space-y-1">
-                      {tarefasPorDia(dia)
-                        .slice(0, 2)
-                        .map((t) => (
-                          <button
-                            key={t.id}
-                            type="button"
-                            onClick={() => abrirDetalhe(t)}
-                            className={cn(
-                              'w-full text-left text-[9px] font-semibold px-1 py-0.5 rounded truncate flex items-center gap-1',
-                              t.status_kanban === 'concluido'
-                                ? 'bg-gray-100 text-gray-500'
-                                : String(t.prazo).slice(0, 10) < hoje
-                                  ? 'bg-red-50 text-red-700'
-                                  : 'bg-emerald-50 text-emerald-700',
-                            )}
-                            title={`${t.titulo} (${t.empresa || 'Sem empresa'})`}
-                          >
-                            {t.empresa && (
-                              <EmpresaIcon nome={t.empresa} className="h-2.5 w-2.5 shrink-0" />
-                            )}
-                            <span className="truncate">{t.titulo}</span>
-                          </button>
-                        ))}
-                      {tarefasPorDia(dia).length > 2 && (
-                        <div className="text-[9px] text-gray-400">
-                          +{tarefasPorDia(dia).length - 2} mais
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
+        <TarefasCalendarioView
+          itens={itensLista}
+          hoje={hoje}
+          onAbrirDetalhe={abrirDetalhe}
+          onAbrirNova={abrirNova}
+          mesRef={mesRef}
+          setMesRef={setMesRef}
+          diasMes={diasMes}
+        />
       )}
 
       {/* Diálogo unificado Nova/Editar Tarefa — Modelo "IA primeiro" fiel ao mockup visual */}
