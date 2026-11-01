@@ -733,7 +733,7 @@ export default function TarefasKanbanPage() {
     setCompartilhar({ tarefa: t, parceiros: vinc, parceiroId: vinc[0]?.id })
   }
 
-  const salvar = async (isRascunho = false) => {
+  const salvar = async (isRascunho = false, fraseCapturaIa?: string) => {
     setDialogErro('')
     // Validação de título
     if (!form.titulo || !form.titulo.trim()) {
@@ -829,7 +829,9 @@ export default function TarefasKanbanPage() {
         fd.append('anexos', arq)
       }
 
+      let tarefaGravadaId = ''
       if (editando) {
+        tarefaGravadaId = editando.id
         await pb.collection('tarefas').update(editando.id, fd)
         toast({
           title: isRascunho ? 'Rascunho salvo' : 'Tarefa atualizada',
@@ -837,12 +839,42 @@ export default function TarefasKanbanPage() {
         })
       } else {
         fd.append('criado_por', user?.email || '')
-        await pb.collection('tarefas').create(fd)
+        const novaTarefa = await pb.collection('tarefas').create(fd)
+        tarefaGravadaId = novaTarefa.id
         toast({
           title: isRascunho ? 'Rascunho salvo' : 'Tarefa criada com sucesso',
           description: `A tarefa "${form.titulo.trim()}" foi ${isRascunho ? 'salva como rascunho' : 'adicionada'} com sucesso.`,
         })
       }
+
+      // Se a tarefa foi montada com apoio da captura por IA, registrar no histórico da tarefa
+      if (fraseCapturaIa && fraseCapturaIa.trim() && tarefaGravadaId) {
+        try {
+          const textoHistorico = `Tarefa criada via captura por IA: «${fraseCapturaIa.trim()}»`
+          const chatFd = new FormData()
+          chatFd.append('tarefa_id', tarefaGravadaId)
+          chatFd.append('autor', user?.email || 'Assistente IA')
+          chatFd.append('autor_tipo', 'ia')
+          chatFd.append('texto', textoHistorico)
+          await pb.collection('tarefas_chat').create(chatFd)
+        } catch (chatErr) {
+          console.warn('Não foi possível gravar no tarefas_chat (best-effort):', chatErr)
+        }
+
+        try {
+          await pb.send('/backend/v1/auditoria', {
+            method: 'POST',
+            body: JSON.stringify({
+              acao: 'ia_captura_tarefa',
+              modulo: 'tarefas',
+              detalhe: `Tarefa "${form.titulo.trim()}" montada via captura por IA: «${fraseCapturaIa.trim()}»`,
+            }),
+          })
+        } catch (_) {
+          /* best-effort */
+        }
+      }
+
       setDialog(false)
       setDialogErro('')
       setArquivosNovos([])

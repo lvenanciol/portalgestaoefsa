@@ -63,7 +63,7 @@ export interface TarefaFormDialogProps {
   dialogErro: string
   setDialogErro: (msg: string) => void
   salvando: boolean
-  onSalvar: (isRascunho?: boolean) => Promise<void>
+  onSalvar: (isRascunho?: boolean, fraseCapturaIa?: string) => Promise<void>
 }
 
 export function TarefaFormDialog({
@@ -89,6 +89,35 @@ export function TarefaFormDialog({
   const [iaPrompt, setIaPrompt] = useState('')
   const [gerandoIa, setGerandoIa] = useState(false)
   const [iaAnexandoArquivo, setIaAnexandoArquivo] = useState(false)
+  const [fraseIaAplicada, setFraseIaAplicada] = useState('')
+
+  // Estado de feedback / desfazer pós-captura
+  const [estadoCaptura, setEstadoCaptura] = useState<{
+    status: 'ocioso' | 'sucesso' | 'falha' | 'parcial'
+    mensagem: string
+    camposPreenchidosQtd: number
+    pendencias: string[]
+    naoEncontrados: string[]
+  }>({
+    status: 'ocioso',
+    mensagem: '',
+    camposPreenchidosQtd: 0,
+    pendencias: [],
+    naoEncontrados: [],
+  })
+
+  // Snapshot do formulário anterior para permitir DESFAZER
+  const formSnapshotAnteriorRef = useRef<TarefaFormData | null>(null)
+
+  // Destaque visual temporário nos campos preenchidos pela IA
+  const [camposDestacados, setCamposDestacados] = useState<{
+    [campo: string]: boolean
+  }>({})
+  const timerDestaqueRef = useRef<any>(null)
+
+  // Refs para dar foco ao primeiro campo obrigatório pendente
+  const inputTituloRef = useRef<HTMLInputElement | null>(null)
+  const triggerParceiroRef = useRef<HTMLButtonElement | null>(null)
 
   // Áudio
   const [ouvindo, setOuvindo] = useState(false)
@@ -109,6 +138,8 @@ export function TarefaFormDialog({
   const [camposSinalizados, setCamposSinalizados] = useState<{
     titulo?: boolean
     parceiros?: boolean
+    empresaNaoReconhecida?: string
+    responsavelNaoReconhecido?: string
   }>({})
 
   // Limpa estados ao fechar ou reabrir
@@ -116,6 +147,17 @@ export function TarefaFormDialog({
     if (!open) {
       pararOuvir()
       setIaPrompt('')
+      setFraseIaAplicada('')
+      setEstadoCaptura({
+        status: 'ocioso',
+        mensagem: '',
+        camposPreenchidosQtd: 0,
+        pendencias: [],
+        naoEncontrados: [],
+      })
+      formSnapshotAnteriorRef.current = null
+      setCamposDestacados({})
+      if (timerDestaqueRef.current) clearTimeout(timerDestaqueRef.current)
       setCamposSinalizados({})
       setExpandirAnexos(false)
     }
@@ -437,9 +479,33 @@ export function TarefaFormDialog({
     }
   }
 
+  // Função para DESFAZER o preenchimento da IA e restaurar o estado anterior
+  const desfazerCapturaIa = () => {
+    if (formSnapshotAnteriorRef.current) {
+      setForm(formSnapshotAnteriorRef.current)
+      formSnapshotAnteriorRef.current = null
+    }
+    setCamposDestacados({})
+    if (timerDestaqueRef.current) clearTimeout(timerDestaqueRef.current)
+    setEstadoCaptura({
+      status: 'ocioso',
+      mensagem: '',
+      camposPreenchidosQtd: 0,
+      pendencias: [],
+      naoEncontrados: [],
+    })
+    setCamposSinalizados({})
+    setFraseIaAplicada('')
+    toast({
+      title: 'Captura por IA desfeita',
+      description: 'O formulário foi restaurado ao estado anterior à captura.',
+    })
+  }
+
   // Ação principal de IA: "Gerar tarefa"
   const gerarTarefaComIa = async () => {
-    if (!iaPrompt.trim()) {
+    const fraseCaptura = iaPrompt.trim()
+    if (!fraseCaptura) {
       toast({
         title: 'Descreva a tarefa',
         description: 'Digite uma frase ou dite por áudio antes de clicar em Gerar tarefa.',
@@ -450,122 +516,307 @@ export function TarefaFormDialog({
 
     setGerandoIa(true)
     setDialogErro('')
+
+    // Salva snapshot do formulário antes da captura para permitir DESFAZER
+    formSnapshotAnteriorRef.current = {
+      ...form,
+      parceiro_ids: [...(form.parceiro_ids || [])],
+    }
+
     try {
+      const hojeISO = new Date().toISOString().slice(0, 10)
       const r = (await pb.send('/backend/v1/ia/estruturar-voz', {
         method: 'POST',
-        body: JSON.stringify({ alvo: 'tarefa', texto: iaPrompt }),
+        body: JSON.stringify({
+          alvo: 'tarefa',
+          texto: fraseCaptura,
+          data_referencia: hojeISO,
+        }),
       })) as any
 
       const e = r.estrutura || {}
 
-      // Mapeamento de empresa sugerida
+      // Mapeamento com correspondência confiável de Empresa
       let empresaFinal = form.empresa
+      let empresaMudou = false
+      let empresaNaoReconhecida = ''
       if (e.empresa) {
         const empNome = String(e.empresa).trim().toLowerCase()
-        const matchEmp = empresas.find(
-          (emp) => emp.nome.toLowerCase() === empNome || emp.nome.toLowerCase().includes(empNome),
-        )
+        const matchEmp = empresas.find((emp) => {
+          const nomeE = emp.nome.toLowerCase()
+          return nomeE === empNome || nomeE.replace(/\s+/g, '') === empNome.replace(/\s+/g, '')
+        })
         if (matchEmp) {
           empresaFinal = matchEmp.nome
+          empresaMudou = true
         } else if (empNome === 'cpf') {
           empresaFinal = 'CPF'
-        } else if (e.empresa) {
-          empresaFinal = e.empresa
+          empresaMudou = true
+        } else {
+          // Empresa citada mas não tem correspondência confiável nos cadastros
+          empresaNaoReconhecida = String(e.empresa)
         }
+      } else if (e.empresa_nao_encontrada) {
+        empresaNaoReconhecida = String(e.empresa_nao_encontrada)
       }
 
-      // Mapeamento de responsável e parceiros sugeridos
-      let respFinal = e.responsavel || form.responsavel || ''
-      const novosParceiroIds: string[] = [...(form.parceiro_ids || [])]
+      // Mapeamento com correspondência confiável de Parceiro/Responsável
+      // Preencher APENAS com correspondência confiável nos cadastros existentes.
+      let respFinal = form.responsavel || ''
+      let respMudou = false
+      let novosParceiroIds: string[] = [...(form.parceiro_ids || [])]
+      let parceiroMudou = false
+      let responsavelNaoReconhecido = ''
 
-      const nomesSugeridos: string[] = [
-        ...(Array.isArray(e.parceiros_sugeridos) ? e.parceiros_sugeridos : []),
-        ...(e.responsavel ? [e.responsavel] : []),
-      ]
+      const nomesParaBuscar: string[] = [
+        ...(e.responsavel ? [String(e.responsavel).trim()] : []),
+        ...(Array.isArray(e.parceiros_sugeridos)
+          ? e.parceiros_sugeridos.map((x: any) => String(x).trim())
+          : []),
+      ].filter(Boolean)
 
-      for (const nomeSug of nomesSugeridos) {
-        const nNorm = String(nomeSug || '')
-          .trim()
+      for (const nomeBruto of nomesParaBuscar) {
+        const nNorm = nomeBruto
           .toLowerCase()
-        if (!nNorm) continue
-        const matchParceiro = parceiros.find((p) => {
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+        const match = parceiros.find((p) => {
           const pNorm = String(p.nome || '')
-            .trim()
             .toLowerCase()
-          return pNorm === nNorm || pNorm.includes(nNorm) || nNorm.includes(pNorm)
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+          // Match exato ou partes de nome relevantes
+          if (pNorm === nNorm) return true
+          const tokensN = nNorm.split(/\s+/).filter((t: string) => t.length > 2)
+          const tokensP = pNorm.split(/\s+/).filter((t: string) => t.length > 2)
+          // Se pelo menos um token exclusivo de nome coincide (ex.: "Leonardo" com "LEONARDO VENANCIO LOURENCO")
+          const intersecao = tokensN.filter((t: string) => tokensP.includes(t))
+          return intersecao.length > 0
         })
-        if (matchParceiro) {
-          if (!novosParceiroIds.includes(matchParceiro.id)) {
-            novosParceiroIds.push(matchParceiro.id)
+
+        if (match) {
+          if (!respFinal || !respMudou) {
+            respFinal = match.nome
+            respMudou = true
           }
-          if (!respFinal) {
-            respFinal = matchParceiro.nome
+          if (!novosParceiroIds.includes(match.id)) {
+            novosParceiroIds.push(match.id)
+            parceiroMudou = true
           }
+        } else {
+          responsavelNaoReconhecido = nomeBruto
         }
       }
 
-      // Prioridade mapeada (P1, P2, P3)
-      let prioridadeFinal: 'P1' | 'P2' | 'P3' = 'P2'
+      // Se a IA reportou pessoas não encontradas
+      if (Array.isArray(e.pessoas_nao_encontradas) && e.pessoas_nao_encontradas.length > 0) {
+        responsavelNaoReconhecido = e.pessoas_nao_encontradas.join(', ')
+      }
+
+      // Prioridade
+      let prioridadeFinal = form.prioridade_p || 'P2'
+      let prioridadeMudou = false
       if (e.prioridade_p === 'P1' || e.prioridade_p === 'P3' || e.prioridade_p === 'P2') {
         prioridadeFinal = e.prioridade_p
+        prioridadeMudou = true
       }
 
-      // Status kanban
+      // Status
       let statusFinal = form.status_kanban || 'a_fazer'
+      let statusMudou = false
       if (e.status_kanban) {
         statusFinal = e.status_kanban
+        statusMudou = true
       }
 
       // Recorrência
       let recorrenciaFinal = form.recorrencia || 'Nenhuma'
+      let recorrenciaMudou = false
       if (e.recorrencia) {
-        recorrenciaFinal = e.recorrencia
+        const recFormat = String(e.recorrencia).trim()
+        const opcoesRec = ['Nenhuma', 'Diária', 'Semanal', 'Mensal', 'Bimestral', 'A definir']
+        const recMatch = opcoesRec.find((op) => op.toLowerCase() === recFormat.toLowerCase())
+        if (recMatch) {
+          recorrenciaFinal = recMatch
+          recorrenciaMudou = true
+        }
+      }
+
+      // Prazo
+      let prazoFinal = form.prazo || ''
+      let prazoMudou = false
+      if (e.prazo && /^\d{4}-\d{2}-\d{2}$/.test(String(e.prazo).slice(0, 10))) {
+        prazoFinal = String(e.prazo).slice(0, 10)
+        prazoMudou = true
+      }
+
+      // Título
+      let tituloFinal = form.titulo
+      let tituloMudou = false
+      if (e.titulo && String(e.titulo).trim()) {
+        tituloFinal = String(e.titulo).trim()
+        tituloMudou = true
+      }
+
+      // Descrição
+      let descFinal = form.descricao
+      let descMudou = false
+      if (e.descricao && String(e.descricao).trim()) {
+        descFinal = String(e.descricao).trim()
+        descMudou = true
       }
 
       const novoForm: TarefaFormData = {
         ...form,
-        titulo: e.titulo ? String(e.titulo).trim() : form.titulo,
-        descricao: e.descricao ? String(e.descricao).trim() : form.descricao,
+        titulo: tituloFinal,
+        descricao: descFinal,
         responsavel: respFinal,
-        prazo: e.prazo ? String(e.prazo).slice(0, 10) : form.prazo,
+        prazo: prazoFinal,
         recorrencia: recorrenciaFinal,
         prioridade_p: prioridadeFinal,
         status_kanban: statusFinal,
         empresa: empresaFinal,
-        vinculo_tipo: e.vinculo_tipo !== undefined ? e.vinculo_tipo : form.vinculo_tipo,
-        vinculo_id: e.vinculo_id !== undefined ? e.vinculo_id : form.vinculo_id,
+        vinculo_tipo:
+          e.vinculo_tipo !== undefined && e.vinculo_tipo !== ''
+            ? e.vinculo_tipo
+            : form.vinculo_tipo,
+        vinculo_id:
+          e.vinculo_id !== undefined && e.vinculo_id !== '' ? e.vinculo_id : form.vinculo_id,
         parceiro_ids: novosParceiroIds,
       }
 
       setForm(novoForm)
+      setFraseIaAplicada(fraseCaptura)
 
-      // Checa campos obrigatórios: Título e Parceiros
-      const faltamObrigatorios: { titulo?: boolean; parceiros?: boolean } = {}
+      // Contagem e identificação de campos preenchidos pela IA nesta rodada
+      const camposPreenchidosMap: { [campo: string]: boolean } = {}
+      let qtdPreenchidos = 0
+
+      if (tituloMudou) {
+        camposPreenchidosMap.titulo = true
+        qtdPreenchidos++
+      }
+      if (empresaMudou) {
+        camposPreenchidosMap.empresa = true
+        qtdPreenchidos++
+      }
+      if (respMudou) {
+        camposPreenchidosMap.responsavel = true
+        qtdPreenchidos++
+      }
+      if (parceiroMudou) {
+        camposPreenchidosMap.parceiros = true
+        qtdPreenchidos++
+      }
+      if (prazoMudou) {
+        camposPreenchidosMap.prazo = true
+        qtdPreenchidos++
+      }
+      if (recorrenciaMudou) {
+        camposPreenchidosMap.recorrencia = true
+        qtdPreenchidos++
+      }
+      if (prioridadeMudou) {
+        camposPreenchidosMap.prioridade = true
+        qtdPreenchidos++
+      }
+      if (statusMudou) {
+        camposPreenchidosMap.status = true
+        qtdPreenchidos++
+      }
+      if (descMudou) {
+        camposPreenchidosMap.descricao = true
+        qtdPreenchidos++
+      }
+
+      // Destaque visual temporário nos campos preenchidos
+      setCamposDestacados(camposPreenchidosMap)
+      if (timerDestaqueRef.current) clearTimeout(timerDestaqueRef.current)
+      timerDestaqueRef.current = setTimeout(() => {
+        setCamposDestacados({})
+      }, 5000)
+
+      // Verificação de campos obrigatórios: Título e Parceiros/Contatos Responsáveis
+      const pendenciasObrigatorias: string[] = []
+      const faltamObrigatorios: {
+        titulo?: boolean
+        parceiros?: boolean
+        empresaNaoReconhecida?: string
+        responsavelNaoReconhecido?: string
+      } = {}
+
       if (!novoForm.titulo || !novoForm.titulo.trim()) {
         faltamObrigatorios.titulo = true
+        pendenciasObrigatorias.push('Título')
       }
       if (!novoForm.parceiro_ids || novoForm.parceiro_ids.length === 0) {
         faltamObrigatorios.parceiros = true
+        pendenciasObrigatorias.push('Parceiro/Contato Responsável')
       }
+
+      const naoEncontradosLista: string[] = []
+      if (empresaNaoReconhecida) {
+        faltamObrigatorios.empresaNaoReconhecida = empresaNaoReconhecida
+        naoEncontradosLista.push(`Empresa "${empresaNaoReconhecida}" não cadastrada`)
+      }
+      if (
+        responsavelNaoReconhecido &&
+        (!novoForm.parceiro_ids || novoForm.parceiro_ids.length === 0)
+      ) {
+        faltamObrigatorios.responsavelNaoReconhecido = responsavelNaoReconhecido
+        naoEncontradosLista.push(`Pessoa "${responsavelNaoReconhecido}" não cadastrada`)
+      }
+
       setCamposSinalizados(faltamObrigatorios)
 
-      if (faltamObrigatorios.titulo || faltamObrigatorios.parceiros) {
+      // Foco automático no primeiro campo obrigatório pendente
+      setTimeout(() => {
+        if (faltamObrigatorios.titulo && inputTituloRef.current) {
+          inputTituloRef.current.focus()
+          inputTituloRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        } else if (faltamObrigatorios.parceiros && triggerParceiroRef.current) {
+          triggerParceiroRef.current.focus()
+          triggerParceiroRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        }
+      }, 100)
+
+      const ehParcial = pendenciasObrigatorias.length > 0 || naoEncontradosLista.length > 0
+
+      setEstadoCaptura({
+        status: ehParcial ? 'parcial' : 'sucesso',
+        mensagem: ehParcial
+          ? `${qtdPreenchidos} campo(s) preenchido(s). Pendências: ${[...pendenciasObrigatorias, ...naoEncontradosLista].join(', ')}.`
+          : `${qtdPreenchidos} campo(s) preenchido(s) com sucesso a partir da frase.`,
+        camposPreenchidosQtd: qtdPreenchidos,
+        pendencias: pendenciasObrigatorias,
+        naoEncontrados: naoEncontradosLista,
+      })
+
+      if (ehParcial) {
         toast({
-          title: 'Tarefa gerada com campos pendentes',
-          description:
-            'A IA preencheu os dados disponíveis. Complete os campos obrigatórios destacados antes de salvar.',
+          title: 'IA: Captura parcial',
+          description: `${qtdPreenchidos} campo(s) preenchido(s). Conclua os campos obrigatórios destacados.`,
         })
       } else {
         toast({
-          title: 'Tarefa gerada com sucesso!',
-          description: 'Os campos foram preenchidos pela IA e estão prontos para conferência.',
+          title: 'IA: Tarefa estruturada com sucesso',
+          description: `${qtdPreenchidos} campos preenchidos. Revise e clique em Criar tarefa quando pronto.`,
         })
       }
     } catch (e: any) {
       console.error('Erro ao gerar tarefa com IA:', e)
+      setEstadoCaptura({
+        status: 'falha',
+        mensagem:
+          'Não foi possível interpretar a frase pela IA. Sua descrição foi mantida no campo e você pode preencher o formulário manualmente.',
+        camposPreenchidosQtd: 0,
+        pendencias: [],
+        naoEncontrados: [],
+      })
       toast({
         title: 'Não foi possível estruturar via IA',
-        description: 'Você pode preencher o formulário manualmente abaixo sem bloqueio.',
+        description:
+          'Sua frase foi preservada no campo. O formulário manual segue funcionando normalmente.',
         variant: 'destructive',
       })
     } finally {
@@ -670,12 +921,12 @@ export function TarefaFormDialog({
                 </label>
               </div>
 
-              {/* Botão principal verde: Gerar tarefa */}
+              {/* Botão principal verde: Gerar tarefa (desabilitado com campo vazio ou processando) */}
               <Button
                 type="button"
                 onClick={gerarTarefaComIa}
-                disabled={gerandoIa || processandoAudio}
-                className="h-9 px-4 text-xs font-bold rounded-full bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs flex items-center justify-center gap-1.5 shrink-0"
+                disabled={!iaPrompt.trim() || gerandoIa || processandoAudio}
+                className="h-9 px-4 text-xs font-bold rounded-full bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {gerandoIa ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -685,6 +936,61 @@ export function TarefaFormDialog({
                 <span>{gerandoIa ? 'Gerando tarefa...' : 'Gerar tarefa'}</span>
               </Button>
             </div>
+
+            {/* Banner de Feedback da Captura com contagem de campos, pendências e opção de DESFAZER */}
+            {estadoCaptura.status !== 'ocioso' && (
+              <div
+                className={cn(
+                  'rounded-lg p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition-all border',
+                  estadoCaptura.status === 'sucesso' &&
+                    'bg-emerald-50/90 text-emerald-900 border-emerald-300',
+                  estadoCaptura.status === 'parcial' &&
+                    'bg-amber-50/90 text-amber-900 border-amber-300',
+                  estadoCaptura.status === 'falha' && 'bg-red-50/90 text-red-900 border-red-300',
+                )}
+              >
+                <div className="flex items-start gap-2">
+                  {estadoCaptura.status === 'sucesso' && (
+                    <Sparkles className="h-4 w-4 text-[#1B5E20] shrink-0 mt-0.5" />
+                  )}
+                  {estadoCaptura.status === 'parcial' && (
+                    <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  )}
+                  {estadoCaptura.status === 'falha' && (
+                    <AlertTriangle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                  )}
+                  <div>
+                    <p className="font-semibold">{estadoCaptura.mensagem}</p>
+                    {estadoCaptura.pendencias.length > 0 && (
+                      <p className="text-[11px] opacity-90 mt-0.5">
+                        Campos pendentes de conferência/preenchimento:{' '}
+                        <strong>{estadoCaptura.pendencias.join(', ')}</strong>
+                      </p>
+                    )}
+                    {estadoCaptura.naoEncontrados.length > 0 && (
+                      <p className="text-[11px] opacity-90 mt-0.5">
+                        Não reconhecidos no cadastro:{' '}
+                        <em>{estadoCaptura.naoEncontrados.join(', ')}</em> (o sistema não cria
+                        registros automaticamente).
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Opção de DESFAZER que restaura o formulário ao estado anterior à captura */}
+                {formSnapshotAnteriorRef.current && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={desfazerCapturaIa}
+                    className="h-7 text-xs font-semibold shrink-0 bg-white hover:bg-gray-100 border-gray-300 shadow-2xs"
+                  >
+                    Desfazer captura
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* ============================================================== */}
@@ -707,13 +1013,19 @@ export function TarefaFormDialog({
             <div className="space-y-1.5">
               <Label
                 className={cn(
-                  'text-xs font-bold uppercase tracking-wider',
+                  'text-xs font-bold uppercase tracking-wider flex items-center justify-between',
                   camposSinalizados.titulo ? 'text-red-600' : 'text-gray-500',
                 )}
               >
-                Título *
+                <span>Título *</span>
+                {camposDestacados.titulo && (
+                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-xs animate-pulse">
+                    Preenchido por IA
+                  </span>
+                )}
               </Label>
               <Input
+                ref={inputTituloRef}
                 value={form.titulo || ''}
                 onChange={(e) => {
                   setForm({ ...form, titulo: e.target.value })
@@ -723,8 +1035,10 @@ export function TarefaFormDialog({
                 }}
                 placeholder="Ex.: Emitir recibos de locação"
                 className={cn(
-                  'h-11 text-base font-semibold text-gray-900 bg-gray-50/70 border-gray-200 focus-visible:ring-[#1B5E20] focus-visible:border-[#1B5E20]',
-                  camposSinalizados.titulo && 'border-red-400 bg-red-50/40 ring-1 ring-red-300',
+                  'h-11 text-base font-semibold text-gray-900 bg-gray-50/70 border-gray-200 focus-visible:ring-[#1B5E20] focus-visible:border-[#1B5E20] transition-all',
+                  camposSinalizados.titulo && 'border-red-400 bg-red-50/40 ring-2 ring-red-300',
+                  camposDestacados.titulo &&
+                    'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
                 )}
               />
               {camposSinalizados.titulo && (
@@ -739,14 +1053,35 @@ export function TarefaFormDialog({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {/* EMPRESA */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Empresa
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center justify-between">
+                  <span>Empresa</span>
+                  {camposDestacados.empresa && (
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-xs animate-pulse">
+                      Preenchido por IA
+                    </span>
+                  )}
                 </Label>
                 <Select
                   value={form.empresa || ' '}
-                  onValueChange={(v) => setForm({ ...form, empresa: v === ' ' ? '' : v })}
+                  onValueChange={(v) => {
+                    setForm({ ...form, empresa: v === ' ' ? '' : v })
+                    if (camposSinalizados.empresaNaoReconhecida) {
+                      setCamposSinalizados((prev) => ({
+                        ...prev,
+                        empresaNaoReconhecida: undefined,
+                      }))
+                    }
+                  }}
                 >
-                  <SelectTrigger className="h-10 bg-gray-50/80 border-gray-200">
+                  <SelectTrigger
+                    className={cn(
+                      'h-10 bg-gray-50/80 border-gray-200 transition-all',
+                      camposDestacados.empresa &&
+                        'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
+                      camposSinalizados.empresaNaoReconhecida &&
+                        'border-amber-400 bg-amber-50/50 ring-1 ring-amber-300',
+                    )}
+                  >
                     <SelectValue placeholder="Selecione a empresa..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -768,12 +1103,23 @@ export function TarefaFormDialog({
                     </SelectItem>
                   </SelectContent>
                 </Select>
+                {camposSinalizados.empresaNaoReconhecida && (
+                  <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                    Empresa "{camposSinalizados.empresaNaoReconhecida}" não encontrada no cadastro.
+                  </p>
+                )}
               </div>
 
               {/* RESPONSÁVEL */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Responsável
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center justify-between">
+                  <span>Responsável</span>
+                  {camposDestacados.responsavel && (
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-xs animate-pulse">
+                      Preenchido por IA
+                    </span>
+                  )}
                 </Label>
                 <Select
                   value={form.responsavel || ' '}
@@ -792,9 +1138,23 @@ export function TarefaFormDialog({
                           : curParceiros
                       return { ...f, responsavel: novoNome, parceiro_ids: novosParceiros }
                     })
+                    if (camposSinalizados.responsavelNaoReconhecido) {
+                      setCamposSinalizados((prev) => ({
+                        ...prev,
+                        responsavelNaoReconhecido: undefined,
+                      }))
+                    }
                   }}
                 >
-                  <SelectTrigger className="h-10 bg-gray-50/80 border-gray-200">
+                  <SelectTrigger
+                    className={cn(
+                      'h-10 bg-gray-50/80 border-gray-200 transition-all',
+                      camposDestacados.responsavel &&
+                        'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
+                      camposSinalizados.responsavelNaoReconhecido &&
+                        'border-amber-400 bg-amber-50/50 ring-1 ring-amber-300',
+                    )}
+                  >
                     <SelectValue placeholder="Não definido" />
                   </SelectTrigger>
                   <SelectContent className="max-h-56">
@@ -824,6 +1184,13 @@ export function TarefaFormDialog({
                     })}
                   </SelectContent>
                 </Select>
+                {camposSinalizados.responsavelNaoReconhecido && (
+                  <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3 shrink-0" />"
+                    {camposSinalizados.responsavelNaoReconhecido}" não encontrado no cadastro de
+                    parceiros.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -831,29 +1198,53 @@ export function TarefaFormDialog({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {/* PRAZO */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
-                  <CalendarIcon className="h-3.5 w-3.5 text-gray-400" />
-                  Prazo
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <CalendarIcon className="h-3.5 w-3.5 text-gray-400" />
+                    Prazo
+                  </span>
+                  {camposDestacados.prazo && (
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-xs animate-pulse">
+                      Preenchido por IA
+                    </span>
+                  )}
                 </Label>
                 <Input
                   type="date"
                   value={form.prazo || ''}
                   onChange={(e) => setForm({ ...form, prazo: e.target.value })}
-                  className="h-10 bg-gray-50/80 border-gray-200"
+                  className={cn(
+                    'h-10 bg-gray-50/80 border-gray-200 transition-all',
+                    camposDestacados.prazo &&
+                      'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
+                  )}
                 />
               </div>
 
               {/* RECORRÊNCIA */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
-                  <Repeat className="h-3.5 w-3.5 text-[#1B5E20]" />
-                  Recorrência
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Repeat className="h-3.5 w-3.5 text-[#1B5E20]" />
+                    Recorrência
+                  </span>
+                  {camposDestacados.recorrencia && (
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-xs animate-pulse">
+                      Preenchido por IA
+                    </span>
+                  )}
                 </Label>
                 <Select
                   value={form.recorrencia || 'Nenhuma'}
                   onValueChange={(v) => setForm({ ...form, recorrencia: v })}
                 >
-                  <SelectTrigger className="h-10 bg-gray-50/80 border-gray-200">
+                  <SelectTrigger
+                    className={cn(
+                      'h-10 bg-gray-50/80 border-gray-200 transition-all',
+                      camposDestacados.recorrencia &&
+                        'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
+                    )}
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -872,10 +1263,21 @@ export function TarefaFormDialog({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {/* PRIORIDADE */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Prioridade
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center justify-between">
+                  <span>Prioridade</span>
+                  {camposDestacados.prioridade && (
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-xs animate-pulse">
+                      Preenchido por IA
+                    </span>
+                  )}
                 </Label>
-                <div className="grid grid-cols-3 gap-1 bg-gray-100/90 p-1 rounded-lg border border-gray-200/80">
+                <div
+                  className={cn(
+                    'grid grid-cols-3 gap-1 bg-gray-100/90 p-1 rounded-lg border border-gray-200/80 transition-all',
+                    camposDestacados.prioridade &&
+                      'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
+                  )}
+                >
                   <button
                     type="button"
                     onClick={() => setForm({ ...form, prioridade_p: 'P3' })}
@@ -917,14 +1319,25 @@ export function TarefaFormDialog({
 
               {/* STATUS */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Status
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center justify-between">
+                  <span>Status</span>
+                  {camposDestacados.status && (
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-xs animate-pulse">
+                      Preenchido por IA
+                    </span>
+                  )}
                 </Label>
                 <Select
                   value={form.status_kanban || 'a_fazer'}
                   onValueChange={(v) => setForm({ ...form, status_kanban: v })}
                 >
-                  <SelectTrigger className="h-10 bg-gray-50/80 border-gray-200">
+                  <SelectTrigger
+                    className={cn(
+                      'h-10 bg-gray-50/80 border-gray-200 transition-all',
+                      camposDestacados.status &&
+                        'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
+                    )}
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -979,11 +1392,16 @@ export function TarefaFormDialog({
               <div className="flex items-center justify-between">
                 <Label
                   className={cn(
-                    'text-xs font-bold uppercase tracking-wider',
+                    'text-xs font-bold uppercase tracking-wider flex items-center gap-2',
                     camposSinalizados.parceiros ? 'text-red-600' : 'text-gray-500',
                   )}
                 >
-                  Parceiros/Contatos Responsáveis *
+                  <span>Parceiros/Contatos Responsáveis *</span>
+                  {camposDestacados.parceiros && (
+                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-xs animate-pulse">
+                      Preenchido por IA
+                    </span>
+                  )}
                 </Label>
                 <span
                   className={cn(
@@ -999,12 +1417,15 @@ export function TarefaFormDialog({
               <Popover open={popoverParceiroAberto} onOpenChange={setPopoverParceiroAberto}>
                 <PopoverTrigger asChild>
                   <Button
+                    ref={triggerParceiroRef}
                     variant="outline"
                     role="combobox"
                     className={cn(
-                      'w-full justify-between h-10 bg-gray-50/80 border-gray-200 font-normal text-xs text-gray-700 hover:bg-gray-100/60',
+                      'w-full justify-between h-10 bg-gray-50/80 border-gray-200 font-normal text-xs text-gray-700 hover:bg-gray-100/60 transition-all',
                       camposSinalizados.parceiros &&
-                        'border-red-400 bg-red-50/40 ring-1 ring-red-300',
+                        'border-red-400 bg-red-50/40 ring-2 ring-red-300',
+                      camposDestacados.parceiros &&
+                        'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
                     )}
                   >
                     <span className="truncate">
@@ -1151,15 +1572,24 @@ export function TarefaFormDialog({
 
             {/* 4) DESCRIÇÃO com altura reduzida (~3 linhas) */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Descrição
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center justify-between">
+                <span>Descrição</span>
+                {camposDestacados.descricao && (
+                  <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-xs animate-pulse">
+                    Preenchido por IA
+                  </span>
+                )}
               </Label>
               <Textarea
                 value={form.descricao || ''}
                 onChange={(e) => setForm({ ...form, descricao: e.target.value })}
                 rows={3}
                 placeholder="Detalhes ou orientações sobre a tarefa..."
-                className="bg-gray-50/80 border-gray-200 text-xs sm:text-sm resize-none"
+                className={cn(
+                  'bg-gray-50/80 border-gray-200 text-xs sm:text-sm resize-none transition-all',
+                  camposDestacados.descricao &&
+                    'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
+                )}
               />
             </div>
 
@@ -1343,7 +1773,7 @@ export function TarefaFormDialog({
           {/* Lado esquerdo: Salvar rascunho */}
           <button
             type="button"
-            onClick={() => onSalvar(true)}
+            onClick={() => onSalvar(true, fraseIaAplicada)}
             disabled={salvando}
             className="text-xs sm:text-[13px] font-medium text-gray-500 hover:text-gray-800 transition-colors underline-offset-2 hover:underline disabled:opacity-50"
           >
@@ -1368,7 +1798,7 @@ export function TarefaFormDialog({
 
             <Button
               type="button"
-              onClick={() => onSalvar(false)}
+              onClick={() => onSalvar(false, fraseIaAplicada)}
               disabled={salvando}
               className="h-9 px-5 text-xs font-bold bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs flex items-center gap-1.5"
             >
