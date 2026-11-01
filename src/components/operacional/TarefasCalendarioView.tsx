@@ -625,8 +625,7 @@ export function TarefasCalendarioView({
                                     {iniciais}
                                   </div>
                                   <span className="text-[10px] font-medium text-gray-700 truncate max-w-[80px]">
-                                    {extrairNomeSemTag(t.responsavel).split(' ')[0] ||
-                                      limparTextoResponsavel(t.responsavel)}
+                                    {limparTextoResponsavel(t.responsavel)}
                                   </span>
                                 </div>
                               ) : (

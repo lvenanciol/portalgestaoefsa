@@ -171,7 +171,7 @@ export function TarefaDetalheModal({
   const responsavelNome = detalhe.responsavel
     ? limparTextoResponsavel(detalhe.responsavel)
     : 'Não definido'
-  const iniciaisResp = getIniciais(responsavelNome)
+  const iniciaisResp = detalhe.responsavel ? getIniciais(detalhe.responsavel) : '—'
   const vinculoLabel =
     detalhe.vinculo_tipo && detalhe.vinculo_id
       ? `${detalhe.vinculo_tipo}: ${detalhe.vinculo_id}`

@@ -1,31 +1,54 @@
 /**
  * Utilitários para formatação e limpeza de nomes de responsáveis no Portal PGE.
  *
- * Evita sujeira de texto em avatares e labels quando nomes possuem tags de cargo
- * entre colchetes, como "[ CEO ] LÉO" ou "[ FBX ] Tiago".
+ * Remove sujeiras de prefixos duplicados/corrompidos (ex: "[L [ CEO ] LÉO")
+ * e remove completamente a tag de cargo entre colchetes (ex: "[ CEO ] LÉO" -> "LÉO",
+ * "[ SUP ] Luke" -> "Luke", "[ FBX ] Tiago" -> "Tiago"), exibindo SOMENTE o nome
+ * do responsável em todas as visões (Lista, Board, Calendário, Detalhe, Seletores).
  */
 
 /**
- * Limpa prefixos/fragmentos duplicados ou corrompidos de responsável.
- * Exemplo: "[L [ CEO ] LÉO" -> "[ CEO ] LÉO"
- *          "LÉO" -> "LÉO"
- *          "[ CEO ] LÉO" -> "[ CEO ] LÉO"
+ * Limpa o texto do responsável removendo fragmentos corrompidos e eliminando
+ * completamente a tag de cargo entre colchetes (ex.: "[ CEO ]", "[ SUP ]").
+ * Mantém exclusivamente o nome real da pessoa.
+ *
+ * Exemplos:
+ *  - "[L [ CEO ] LÉO" -> "LÉO"
+ *  - "[ CEO ] LÉO"     -> "LÉO"
+ *  - "[ SUP ] Luke"    -> "Luke"
+ *  - "[ FBX ] Tiago"   -> "Tiago"
+ *  - "Pedro Mariano"   -> "Pedro Mariano"
  */
 export function limparTextoResponsavel(nome?: string): string {
   if (!nome) return ''
   let s = String(nome).trim()
 
-  // Se houver sujeira antes do primeiro colchete válido (ex: "[L [ CEO ] LÉO" ou "L [ CEO ]")
-  // Procura padrão [ TAG ] Resto
-  const matchTag = s.match(/\[\s*[^\]]+\s*\]\s*.*$/)
-  if (matchTag && matchTag.index && matchTag.index > 0) {
-    s = s.slice(matchTag.index)
+  // Remove sujeiras preliminares como "[L [" ou letras soltas antes de colchetes
+  // Procura o último início de tag antes do nome ou remove prefixos quebrados
+  s = s.replace(/^(\[\s*[A-Za-z0-9_À-ÿ]+\s*\[)/, '[')
+
+  // Se houver qualquer tag entre colchetes no início (ex: "[ CEO ]", "[ SUP ]", "[ FBX ]", etc.)
+  // ou sujeiras como "[L [ CEO ] LÉO" ou "L [ CEO ] LÉO"
+  // Remove repetidamente tags entre colchetes e sujeiras no início até sobrar apenas o nome
+  while (
+    /^\[\s*[^\]]+\s*\]/.test(s) ||
+    /^[A-Za-z0-9_À-ÿ]\s*\[\s*[^\]]+\s*\]/.test(s) ||
+    /^\[\s*[A-Za-z0-9_À-ÿ]+\s*\[/.test(s)
+  ) {
+    s = s
+      .replace(/^\[\s*[^\]]+\s*\]\s*/, '')
+      .replace(/^[A-Za-z0-9_À-ÿ]\s*\[\s*[^\]]+\s*\]\s*/, '')
+      .replace(/^\[\s*[A-Za-z0-9_À-ÿ]+\s*\[\s*/, '[')
+      .trim()
   }
 
-  // Remove múltiplos colchetes aninhados ou aberturas soltas no início como "[L ["
-  s = s.replace(/^(\[\s*[A-Za-z0-9_]+\s*\[)/, '[')
+  // Também limpa caso haja tag solta com colchetes (ex.: qualquer [ TAG ] residual em qualquer posição inicial)
+  s = s.replace(/^\[\s*[^\]]+\s*\]\s*/, '').trim()
 
-  return s.trim()
+  // Remove qualquer fragmento solto residual de colchetes se houver no início
+  s = s.replace(/^\[+/, '').replace(/^\]+/, '').trim()
+
+  return s
 }
 
 /**
@@ -35,16 +58,13 @@ export function limparTextoResponsavel(nome?: string): string {
  *     "Pedro Mariano" -> "Pedro Mariano"
  */
 export function extrairNomeSemTag(nome?: string): string {
-  const limpo = limparTextoResponsavel(nome)
-  if (!limpo) return ''
-  const semTag = limpo.replace(/^\[[^\]]+\]\s*/, '').trim()
-  return semTag || limpo
+  return limparTextoResponsavel(nome)
 }
 
 /**
  * Obtém 1 ou 2 letras limpas para o avatar, desconsiderando a tag de cargo entre colchetes.
- * Ex: "[ CEO ] LÉO" -> "LE" ou "L" (não "[L" ou "[C")
- *     "[ FBX ] Tiago" -> "TI" ou "T"
+ * Ex: "[ CEO ] LÉO" -> "LÉ" (ou "L") (nunca "[L" ou "[C")
+ *     "[ FBX ] Tiago" -> "TI"
  *     "Pedro Mariano" -> "PM"
  */
 export function obterIniciaisResponsavel(nome?: string): string {

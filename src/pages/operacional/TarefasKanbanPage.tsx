@@ -1693,8 +1693,8 @@ export default function TarefasKanbanPage() {
                               </div>
                             ) : (
                               <div className="inline-flex items-center gap-1.5 min-w-0">
-                                <div className="w-5 h-5 rounded-full bg-emerald-700 text-white font-bold text-[9px] flex items-center justify-center shrink-0 shadow-2xs">
-                                  {iniciaisResponsavel || 'U'}
+                                <div className="w-5 h-5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 font-bold text-[9px] flex items-center justify-center shrink-0">
+                                  {iniciaisResponsavel || '—'}
                                 </div>
                                 <span
                                   className="text-gray-700 font-medium truncate max-w-[120px]"
@@ -1969,11 +1969,14 @@ export default function TarefasKanbanPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {compartilhar.parceiros.map((p: any) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.nome} {p.whatsapp ? '(WA)' : ''} {p.email ? '(e-mail)' : ''}
-                      </SelectItem>
-                    ))}
+                    {compartilhar.parceiros.map((p: any) => {
+                      const nomeLimpo = limparTextoResponsavel(p.nome) || p.nome
+                      return (
+                        <SelectItem key={p.id} value={p.id}>
+                          {nomeLimpo} {p.whatsapp ? '(WA)' : ''} {p.email ? '(e-mail)' : ''}
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>

@@ -1689,10 +1689,11 @@ export function TarefaFormDialog({
                                   const novoIds = exists
                                     ? cur.filter((x: string) => x !== p.id)
                                     : [...cur, p.id]
+                                  const nomeLimpoParceiro = limparTextoResponsavel(p.nome)
                                   return {
                                     ...f,
                                     parceiro_ids: novoIds,
-                                    responsavel: !f.responsavel ? p.nome : f.responsavel,
+                                    responsavel: !f.responsavel ? nomeLimpoParceiro : f.responsavel,
                                   }
                                 })
                                 if (camposSinalizados.parceiros) {
@@ -1717,7 +1718,9 @@ export function TarefaFormDialog({
                                 >
                                   {sel ? '✓' : ''}
                                 </span>
-                                <span className="truncate">{p.nome}</span>
+                                <span className="truncate">
+                                  {limparTextoResponsavel(p.nome) || p.nome}
+                                </span>
                               </div>
                               <span className="text-[10px] text-gray-400 shrink-0 ml-2">
                                 {empRotulo ? `(${empRotulo})` : `(${p.tipo})`}
@@ -1741,7 +1744,7 @@ export function TarefaFormDialog({
                         key={pid}
                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200"
                       >
-                        {pObj?.nome || pid}
+                        {pObj?.nome ? limparTextoResponsavel(pObj.nome) : pid}
                         <button
                           type="button"
                           onClick={() => {
