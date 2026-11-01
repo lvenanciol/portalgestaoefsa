@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { EmpresaIcon } from '@/components/common/EmpresaIcon'
-import { limparTextoResponsavel, obterIniciaisResponsavel } from '@/lib/responsavel-utils'
+import { limparTextoResponsavel } from '@/lib/responsavel-utils'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -64,10 +64,6 @@ const fmtDataCurta = (s?: string) => {
   if (!s) return '—'
   const d = String(s).slice(0, 10).split('-')
   return d.length === 3 ? `${d[2]}/${d[1]}` : s
-}
-
-const obterIniciais = (nome?: string) => {
-  return obterIniciaisResponsavel(nome)
 }
 
 const PRIO_LABEL: Record<string, string> = {
@@ -247,23 +243,18 @@ export function TarefasListaView({
                                 </span>
                               </div>
 
-                              {/* COLUNA 3: Responsável (avatar + nome limpo) (2 colunas) */}
+                              {/* COLUNA 3: Responsável (somente texto com tag de cargo + nome, sem avatar circular de iniciais) (2 colunas) */}
                               <div className="lg:col-span-2 flex items-center gap-1.5 text-xs text-gray-700 min-w-0">
                                 <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
                                   Resp:
                                 </span>
                                 {responsavelLimpo ? (
-                                  <div className="inline-flex items-center gap-1.5 min-w-0 truncate">
-                                    <span className="h-5 w-5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-[9px] font-bold flex items-center justify-center shrink-0">
-                                      {obterIniciais(responsavelLimpo)}
-                                    </span>
-                                    <span
-                                      className="font-medium truncate text-gray-800"
-                                      title={responsavelLimpo}
-                                    >
-                                      {responsavelLimpo}
-                                    </span>
-                                  </div>
+                                  <span
+                                    className="font-medium truncate text-gray-800"
+                                    title={responsavelLimpo}
+                                  >
+                                    {responsavelLimpo}
+                                  </span>
                                 ) : (
                                   <span className="text-gray-400 italic text-xs">
                                     Sem responsável
