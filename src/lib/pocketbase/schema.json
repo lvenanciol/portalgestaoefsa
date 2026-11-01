@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-29T16:18:50.217Z",
+  "generatedAt": "2026-11-01T09:33:08.412Z",
   "collections": [
     {
       "name": "users",
@@ -781,6 +781,13 @@
           "type": "file",
           "required": false,
           "system": false
+        },
+        {
+          "name": "recorrencia",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Nenhuma", "Diária", "Semanal", "Mensal", "Bimestral", "A definir"]
         }
       ],
       "indexes": ["CREATE INDEX idx_tarefas_status ON tarefas (status)"]

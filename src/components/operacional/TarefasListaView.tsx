@@ -10,6 +10,7 @@ import {
   Calendar,
   AlertCircle,
   ListChecks,
+  Repeat,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
@@ -403,7 +404,7 @@ export function TarefasListaView({
                           )}
 
                           {col.id === 'prazo' && (
-                            <div className="flex items-center gap-1 tabular-nums">
+                            <div className="flex items-center gap-1.5 tabular-nums">
                               <Calendar className="h-3 w-3 text-gray-400 shrink-0" />
                               <span
                                 className={cn(
@@ -413,6 +414,15 @@ export function TarefasListaView({
                               >
                                 {fmtData(t.prazo)}
                               </span>
+                              {t.recorrencia && t.recorrencia !== 'Nenhuma' && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1 py-0.2 rounded bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                  title={`Recorrência: ${t.recorrencia}`}
+                                >
+                                  <Repeat className="h-2.5 w-2.5" />
+                                  <span>{t.recorrencia}</span>
+                                </span>
+                              )}
                             </div>
                           )}
 

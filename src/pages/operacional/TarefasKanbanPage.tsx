@@ -24,7 +24,15 @@ import {
   Check,
   Eye,
   Download,
+  ChevronDown,
+  Repeat,
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar as CalendarPicker } from '@/components/ui/calendar'
 import { TarefasListaView } from '@/components/operacional/TarefasListaView'
@@ -84,7 +92,7 @@ export default function TarefasKanbanPage() {
   const [itens, setItens] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
-  const [vista, setVista] = useState<'lista' | 'kanban' | 'calendario'>('kanban')
+  const [vista, setVista] = useState<'lista' | 'kanban' | 'calendario'>('lista')
   const [dialog, setDialog] = useState(false)
   const [editando, setEditando] = useState<any | null>(null)
   const [excluindoTarefa, setExcluindoTarefa] = useState<any | null>(null)
@@ -227,6 +235,7 @@ export default function TarefasKanbanPage() {
       titulo: '',
       responsavel: '',
       prazo: '',
+      recorrencia: 'Nenhuma',
       prioridade_p: 'P2',
       status_kanban: 'a_fazer',
       descricao: '',
@@ -254,6 +263,7 @@ export default function TarefasKanbanPage() {
       titulo: t.titulo || '',
       responsavel: t.responsavel || '',
       prazo: t.prazo ? String(t.prazo).slice(0, 10) : '',
+      recorrencia: t.recorrencia || 'Nenhuma',
       prioridade_p:
         t.prioridade_p || (t.prioridade === 'alta' ? 'P1' : t.prioridade === 'baixa' ? 'P3' : 'P2'),
       status_kanban:
@@ -778,6 +788,7 @@ export default function TarefasKanbanPage() {
       } else {
         fd.append('prazo', '')
       }
+      fd.append('recorrencia', form.recorrencia || 'Nenhuma')
       fd.append('prioridade_p', form.prioridade_p || 'P2')
       fd.append('status_kanban', form.status_kanban || 'a_fazer')
       fd.append('descricao', form.descricao || '')
@@ -968,48 +979,56 @@ export default function TarefasKanbanPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Toggles de visualização: Lista (à esquerda do Kanban), Kanban e Calendário */}
-          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-xs">
-            <button
-              type="button"
-              onClick={() => setVista('lista')}
-              className={cn(
-                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors',
-                vista === 'lista'
-                  ? 'bg-[#1B5E20] text-white shadow-xs'
-                  : 'text-gray-600 hover:text-gray-900',
-              )}
-            >
-              <List className="h-3.5 w-3.5" />
-              Lista
-            </button>
-            <button
-              type="button"
-              onClick={() => setVista('kanban')}
-              className={cn(
-                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors',
-                vista === 'kanban'
-                  ? 'bg-[#1B5E20] text-white shadow-xs'
-                  : 'text-gray-600 hover:text-gray-900',
-              )}
-            >
-              <Kanban className="h-3.5 w-3.5" />
-              Kanban
-            </button>
-            <button
-              type="button"
-              onClick={() => setVista('calendario')}
-              className={cn(
-                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-semibold transition-colors',
-                vista === 'calendario'
-                  ? 'bg-[#1B5E20] text-white shadow-xs'
-                  : 'text-gray-600 hover:text-gray-900',
-              )}
-            >
-              <Calendar className="h-3.5 w-3.5" />
-              Calendário
-            </button>
-          </div>
+          {/* Controle unificado de visualização: Lista (default), Kanban e Calendário agrupados em dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="h-9 px-3 text-xs font-semibold bg-white border-gray-200 text-gray-800 hover:text-[#1B5E20] hover:border-emerald-300 shadow-xs flex items-center gap-1.5"
+                title="Alternar modo de visualização das tarefas"
+              >
+                {vista === 'lista' && <List className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                {vista === 'kanban' && <Kanban className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                {vista === 'calendario' && <Calendar className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                <span>
+                  {vista === 'lista' ? 'Lista' : vista === 'kanban' ? 'Kanban' : 'Calendário'}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 text-gray-400 ml-0.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-40 bg-white">
+              <DropdownMenuItem
+                onClick={() => setVista('lista')}
+                className={cn(
+                  'flex items-center gap-2 text-xs font-medium cursor-pointer',
+                  vista === 'lista' && 'bg-emerald-50 text-[#1B5E20] font-bold',
+                )}
+              >
+                <List className="h-3.5 w-3.5 text-[#1B5E20]" />
+                <span>Lista</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setVista('kanban')}
+                className={cn(
+                  'flex items-center gap-2 text-xs font-medium cursor-pointer',
+                  vista === 'kanban' && 'bg-emerald-50 text-[#1B5E20] font-bold',
+                )}
+              >
+                <Kanban className="h-3.5 w-3.5 text-[#1B5E20]" />
+                <span>Kanban</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setVista('calendario')}
+                className={cn(
+                  'flex items-center gap-2 text-xs font-medium cursor-pointer',
+                  vista === 'calendario' && 'bg-emerald-50 text-[#1B5E20] font-bold',
+                )}
+              >
+                <Calendar className="h-3.5 w-3.5 text-[#1B5E20]" />
+                <span>Calendário</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Filtro 1: Período da Agenda por clique e arrasto (range picker popup) */}
           <Popover>
@@ -1200,7 +1219,7 @@ export default function TarefasKanbanPage() {
 
           <Button
             onClick={abrirNova}
-            className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs"
+            className="h-9 px-3.5 text-xs font-semibold bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs flex items-center gap-1.5"
           >
             <Plus className="h-4 w-4 mr-1" /> Nova tarefa
           </Button>
@@ -1614,10 +1633,10 @@ export default function TarefasKanbanPage() {
               />
             </div>
 
-            {/* Linha 1 após Título: EMPRESA e RESPONSÁVEL */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {/* 1. EMPRESA */}
-              <div className="grid gap-1.5">
+            {/* Linha 1 após Título: EMPRESA, RESPONSÁVEL (largura ajustada ao conteúdo máximo) e VÍNCULO (ORIGEM) à direita */}
+            <div className="flex flex-wrap items-end gap-3.5 w-full">
+              {/* 1. EMPRESA - largura reduzida ajustada ao conteúdo máximo */}
+              <div className="grid gap-1.5 w-full sm:w-[190px] shrink-0">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Empresa
                 </Label>
@@ -1625,7 +1644,7 @@ export default function TarefasKanbanPage() {
                   value={form.empresa || ' '}
                   onValueChange={(v) => setForm({ ...form, empresa: v === ' ' ? '' : v })}
                 >
-                  <SelectTrigger className="h-10 bg-gray-50">
+                  <SelectTrigger className="h-10 bg-gray-50 w-full">
                     <SelectValue placeholder="Selecione a empresa..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -1649,8 +1668,8 @@ export default function TarefasKanbanPage() {
                 </Select>
               </div>
 
-              {/* 2. RESPONSÁVEL */}
-              <div className="grid gap-1.5">
+              {/* 2. RESPONSÁVEL - largura reduzida ajustada ao conteúdo máximo */}
+              <div className="grid gap-1.5 w-full sm:w-[220px] shrink-0">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Responsável
                 </Label>
@@ -1673,8 +1692,8 @@ export default function TarefasKanbanPage() {
                     })
                   }}
                 >
-                  <SelectTrigger className="h-10 bg-gray-50">
-                    <SelectValue placeholder="Selecione o parceiro responsável..." />
+                  <SelectTrigger className="h-10 bg-gray-50 w-full">
+                    <SelectValue placeholder="Selecione o responsável..." />
                   </SelectTrigger>
                   <SelectContent className="max-h-56">
                     <SelectItem
@@ -1704,12 +1723,9 @@ export default function TarefasKanbanPage() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
 
-            {/* Linha de metadados: VÍNCULO (ORIGEM), PRAZO, PRIORIDADE e STATUS proporcionais ao conteúdo preenchendo 100% da linha */}
-            <div className="flex flex-wrap items-end gap-3.5 w-full">
-              {/* 3. VÍNCULO (ORIGEM) - conteúdo mais extenso (tipo + ID opcional): peso flex 3.2 */}
-              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[3.2] min-w-[170px]">
+              {/* 3. VÍNCULO (ORIGEM) - movido para a direita do Responsável na mesma linha */}
+              <div className="grid gap-1.5 w-full sm:flex-1 min-w-[200px]">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Vínculo (origem)
                 </Label>
@@ -1740,8 +1756,11 @@ export default function TarefasKanbanPage() {
                   )}
                 </div>
               </div>
+            </div>
 
-              {/* 4. PRAZO - data formatada dd/mm/aaaa: peso flex 2.2 */}
+            {/* Linha de metadados: PRAZO, RECORRÊNCIA (à direita do Prazo), PRIORIDADE e STATUS */}
+            <div className="flex flex-wrap items-end gap-3.5 w-full">
+              {/* 4. PRAZO - data formatada dd/mm/aaaa */}
               <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[2.2] min-w-[130px]">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Prazo
@@ -1754,8 +1773,31 @@ export default function TarefasKanbanPage() {
                 />
               </div>
 
-              {/* 5. PRIORIDADE - rótulos médios (P1/P2/P3): peso flex 2.2 */}
-              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[2.2] min-w-[130px]">
+              {/* RECORRÊNCIA - à direita do campo Prazo (Nenhuma, Diária, Semanal, Mensal, Bimestral, A definir) */}
+              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[2.4] min-w-[140px]">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center gap-1">
+                  <Repeat className="h-3 w-3 text-[#1B5E20]" /> Recorrência
+                </Label>
+                <Select
+                  value={form.recorrencia || 'Nenhuma'}
+                  onValueChange={(v) => setForm({ ...form, recorrencia: v })}
+                >
+                  <SelectTrigger className="h-10 bg-gray-50 w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Nenhuma">Nenhuma</SelectItem>
+                    <SelectItem value="Diária">Diária</SelectItem>
+                    <SelectItem value="Semanal">Semanal</SelectItem>
+                    <SelectItem value="Mensal">Mensal</SelectItem>
+                    <SelectItem value="Bimestral">Bimestral</SelectItem>
+                    <SelectItem value="A definir">A definir</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* 5. PRIORIDADE */}
+              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[2] min-w-[120px]">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Prioridade
                 </Label>
@@ -1774,8 +1816,8 @@ export default function TarefasKanbanPage() {
                 </Select>
               </div>
 
-              {/* 6. STATUS - rótulos mais longos (Em Andamento, Concluído, etc.): peso flex 2.6 */}
-              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[2.6] min-w-[145px]">
+              {/* 6. STATUS */}
+              <div className="grid gap-1.5 w-full sm:w-auto sm:flex-[2.4] min-w-[135px]">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                   Status
                 </Label>
@@ -2174,6 +2216,12 @@ export default function TarefasKanbanPage() {
             </span>
             <span>{detalhe?.responsavel || '—'}</span>
             <span>· prazo {fmtData(detalhe?.prazo)}</span>
+            {detalhe?.recorrencia && detalhe.recorrencia !== 'Nenhuma' && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                <Repeat className="h-2.5 w-2.5" />
+                {detalhe.recorrencia}
+              </span>
+            )}
           </div>
           {detalhe?.descricao && <p className="text-[13px] text-gray-700">{detalhe.descricao}</p>}
 
