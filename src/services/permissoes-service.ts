@@ -77,6 +77,7 @@ export const MENU_MODULOS: Record<string, string> = {
   '/atas': 'atas-reunioes',
   '/emails': 'emails',
   '/contratos': 'contratos',
+  '/parceiros': 'parceiros',
   '/power-bi': 'power-bi',
   '/ia': 'ia-gemini',
   '/menus': 'arvore-menus',

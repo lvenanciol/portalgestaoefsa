@@ -70,6 +70,7 @@ const navSections: NavSection[] = [
     items: [
       { label: 'E-mails', rota: '/emails', icon: Mail },
       { label: 'Contratos', rota: '/contratos', icon: FileCheck2 },
+      { label: 'Parceiros & Contatos', rota: '/parceiros', icon: Users },
     ],
   },
   {
@@ -372,6 +373,7 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
                     '/atas': 'atas',
                     '/emails': 'emails',
                     '/contratos': 'contratos',
+                    '/parceiros': 'parceiros',
                     '/power-bi': 'powerbi',
                     '/ia': 'ia',
                     '/menus': 'menus',

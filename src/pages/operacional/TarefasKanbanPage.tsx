@@ -26,6 +26,7 @@ import {
   Download,
   ChevronDown,
   Repeat,
+  Search,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -95,6 +96,10 @@ export default function TarefasKanbanPage() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
   const [vista, setVista] = useState<'lista' | 'kanban' | 'calendario'>('lista')
+  const [filtroRapido, setFiltroRapido] = useState<
+    'todos' | 'hoje' | 'semana' | 'atrasadas' | 'minhas' | 'sem_responsavel' | 'em_andamento'
+  >('todos')
+  const [buscaTexto, setBuscaTexto] = useState('')
   const [dialog, setDialog] = useState(false)
   const [editando, setEditando] = useState<any | null>(null)
   const [excluindoTarefa, setExcluindoTarefa] = useState<any | null>(null)
@@ -204,6 +209,83 @@ export default function TarefasKanbanPage() {
   }, [itens, empresaFiltroAtiva, filtroPeriodo, filtroParceiros, parceiros])
 
   const hoje = new Date().toISOString().slice(0, 10)
+
+  // Início e fim da semana corrente (segunda a domingo)
+  const [inicioSemanaStr, fimSemanaStr] = useMemo(() => {
+    const d = new Date()
+    const day = d.getDay()
+    const diffToSegunda = (day + 6) % 7
+    const seg = new Date(d)
+    seg.setDate(d.getDate() - diffToSegunda)
+    const dom = new Date(seg)
+    dom.setDate(seg.getDate() + 6)
+    return [seg.toISOString().slice(0, 10), dom.toISOString().slice(0, 10)]
+  }, [])
+
+  // Contadores globais do conjunto filtrado por empresa / período
+  const contadores = useMemo(() => {
+    const totalHoje = itensFiltrados.filter(
+      (t) => t.prazo && String(t.prazo).slice(0, 10) === hoje,
+    ).length
+    const totalAtrasadas = itensFiltrados.filter(
+      (t) => t.status_kanban !== 'concluido' && t.prazo && String(t.prazo).slice(0, 10) < hoje,
+    ).length
+    const totalSemResp = itensFiltrados.filter(
+      (t) => !t.responsavel || !String(t.responsavel).trim(),
+    ).length
+    const totalEmAndamento = itensFiltrados.filter((t) => t.status_kanban === 'em_andamento').length
+
+    return {
+      hoje: totalHoje,
+      atrasadas: totalAtrasadas,
+      semResponsavel: totalSemResp,
+      emAndamento: totalEmAndamento,
+    }
+  }, [itensFiltrados, hoje])
+
+  // Itens para a lista após aplicar busca por texto e filtro rápido
+  const itensLista = useMemo(() => {
+    return itensFiltrados.filter((t) => {
+      // Filtro de busca por texto
+      if (buscaTexto.trim()) {
+        const q = buscaTexto.trim().toLowerCase()
+        const matchTitulo = String(t.titulo || '')
+          .toLowerCase()
+          .includes(q)
+        const matchResp = String(t.responsavel || '')
+          .toLowerCase()
+          .includes(q)
+        const matchEmp = String(t.empresa || '')
+          .toLowerCase()
+          .includes(q)
+        const matchDesc = String(t.descricao || '')
+          .toLowerCase()
+          .includes(q)
+        if (!matchTitulo && !matchResp && !matchEmp && !matchDesc) return false
+      }
+
+      // Filtro rápido
+      const prazoStr = t.prazo ? String(t.prazo).slice(0, 10) : ''
+      if (filtroRapido === 'hoje') {
+        if (prazoStr !== hoje) return false
+      } else if (filtroRapido === 'semana') {
+        if (!prazoStr || prazoStr < inicioSemanaStr || prazoStr > fimSemanaStr) return false
+      } else if (filtroRapido === 'atrasadas') {
+        if (!prazoStr || prazoStr >= hoje || t.status_kanban === 'concluido') return false
+      } else if (filtroRapido === 'minhas') {
+        const uNome = (user?.name || '').trim().toLowerCase()
+        const resp = (t.responsavel || '').trim().toLowerCase()
+        if (!uNome || !resp || !resp.includes(uNome.split(' ')[0])) return false
+      } else if (filtroRapido === 'sem_responsavel') {
+        if (t.responsavel && String(t.responsavel).trim()) return false
+      } else if (filtroRapido === 'em_andamento') {
+        if (t.status_kanban !== 'em_andamento') return false
+      }
+
+      return true
+    })
+  }, [itensFiltrados, buscaTexto, filtroRapido, hoje, inicioSemanaStr, fimSemanaStr, user])
+
   const atrasadas = itensFiltrados.filter(
     (t) => t.status_kanban !== 'concluido' && t.prazo && String(t.prazo).slice(0, 10) < hoje,
   )
@@ -1002,261 +1084,163 @@ export default function TarefasKanbanPage() {
   }
 
   return (
-    <div className="space-y-5 pb-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-gray-200/80">
+    <div className="space-y-4 pb-8">
+      {/* BARRA SUPERIOR: Título + Grupo Esquerdo (Segmented: Lista, Board, Calendário) + Divisória + Grupo Direito (Período, Empresa, Nova Tarefa) */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-gray-200/80">
         <div>
-          <h1 className="text-2xl lg:text-[26px] font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
-            <Kanban className="h-6 w-6 text-[#1B5E20]" /> Tarefas & Agenda
+          <h1 className="text-2xl lg:text-[26px] font-bold text-gray-900 tracking-tight flex items-center gap-2">
+            <span className="text-[#1B5E20] text-xl font-bold tracking-tight select-none">|'|</span>{' '}
+            Tarefas & Agenda
           </h1>
           <p className="text-xs sm:text-[13px] text-gray-500 mt-0.5">
-            Kanban do time com prioridades, subtarefas e calendário
+            Suas tarefas do dia, por status
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Controle unificado de visualização: Lista (default), Kanban e Calendário agrupados em dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                className="h-9 px-3 text-xs font-semibold bg-white border-gray-200 text-gray-800 hover:text-[#1B5E20] hover:border-emerald-300 shadow-xs flex items-center gap-1.5"
-                title="Alternar modo de visualização das tarefas"
-              >
-                {vista === 'lista' && <List className="h-3.5 w-3.5 text-[#1B5E20]" />}
-                {vista === 'kanban' && <Kanban className="h-3.5 w-3.5 text-[#1B5E20]" />}
-                {vista === 'calendario' && <Calendar className="h-3.5 w-3.5 text-[#1B5E20]" />}
-                <span>
-                  {vista === 'lista' ? 'Lista' : vista === 'kanban' ? 'Kanban' : 'Calendário'}
-                </span>
-                <ChevronDown className="h-3.5 w-3.5 text-gray-400 ml-0.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-40 bg-white">
-              <DropdownMenuItem
-                onClick={() => setVista('lista')}
-                className={cn(
-                  'flex items-center gap-2 text-xs font-medium cursor-pointer',
-                  vista === 'lista' && 'bg-emerald-50 text-[#1B5E20] font-bold',
-                )}
-              >
-                <List className="h-3.5 w-3.5 text-[#1B5E20]" />
-                <span>Lista</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => setVista('kanban')}
-                className={cn(
-                  'flex items-center gap-2 text-xs font-medium cursor-pointer',
-                  vista === 'kanban' && 'bg-emerald-50 text-[#1B5E20] font-bold',
-                )}
-              >
-                <Kanban className="h-3.5 w-3.5 text-[#1B5E20]" />
-                <span>Kanban</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => setVista('calendario')}
-                className={cn(
-                  'flex items-center gap-2 text-xs font-medium cursor-pointer',
-                  vista === 'calendario' && 'bg-emerald-50 text-[#1B5E20] font-bold',
-                )}
-              >
-                <Calendar className="h-3.5 w-3.5 text-[#1B5E20]" />
-                <span>Calendário</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
 
-          {/* Filtro 1: Período da Agenda por clique e arrasto (range picker popup) */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  'h-9 text-xs font-medium bg-white border-gray-200 shadow-xs flex items-center gap-1.5',
-                  (filtroPeriodo?.from || filtroPeriodo?.to) &&
-                    'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50 font-semibold',
-                )}
-                title="Filtrar tarefas pelo prazo da agenda"
-              >
-                <Calendar className="h-3.5 w-3.5 text-[#1B5E20]" />
-                {filtroPeriodo?.from ? (
-                  filtroPeriodo.to ? (
-                    <span>
-                      {filtroPeriodo.from.toLocaleDateString('pt-BR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                      })}{' '}
-                      —{' '}
-                      {filtroPeriodo.to.toLocaleDateString('pt-BR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                      })}
-                    </span>
-                  ) : (
-                    <span>
-                      A partir de{' '}
-                      {filtroPeriodo.from.toLocaleDateString('pt-BR', {
-                        day: '2-digit',
-                        month: '2-digit',
-                      })}
-                    </span>
-                  )
-                ) : (
-                  <span>Período da agenda</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 bg-white" align="start">
-              <div className="p-3 border-b border-gray-100 flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-bold text-gray-900">Período da Agenda</div>
-                  <div className="text-[11px] text-gray-500">
-                    Clique e arraste ou selecione início e fim
-                  </div>
-                </div>
-                {filtroPeriodo?.from && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setFiltroPeriodo(undefined)}
-                    className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    Limpar
-                  </Button>
-                )}
-              </div>
-              <CalendarPicker
-                mode="range"
-                selected={filtroPeriodo as any}
-                onSelect={(range: any) => setFiltroPeriodo(range)}
-                numberOfMonths={1}
-                className="rounded-md"
-              />
-            </PopoverContent>
-          </Popover>
-
-          {/* Filtro 2: Dropdown multisseleção "Parceiros & Contatos" */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  'h-9 text-xs font-medium bg-white border-gray-200 shadow-xs flex items-center gap-1.5',
-                  filtroParceiros.length > 0 &&
-                    'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50 font-semibold',
-                )}
-              >
-                <UsersIcon className="h-3.5 w-3.5 text-[#1B5E20]" />
-                <span>
-                  {filtroParceiros.length === 0
-                    ? 'Parceiros & Contatos'
-                    : `${filtroParceiros.length} parceiro(s)`}
-                </span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-64 p-2 bg-white" align="start">
-              <div className="flex items-center justify-between pb-2 border-b border-gray-100 px-1">
-                <span className="text-xs font-bold text-gray-800">Parceiros & Contatos</span>
-                {filtroParceiros.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setFiltroParceiros([])}
-                    className="text-[11px] text-red-600 hover:underline font-medium"
-                  >
-                    Limpar
-                  </button>
-                )}
-              </div>
-              <div className="max-h-56 overflow-y-auto space-y-1 py-1.5">
-                {parceiros.length === 0 ? (
-                  <p className="text-[11px] text-gray-400 text-center py-2">
-                    Nenhum parceiro cadastrado.
-                  </p>
-                ) : (
-                  parceiros.map((p) => {
-                    const sel = filtroParceiros.includes(p.id)
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => {
-                          setFiltroParceiros((prev) =>
-                            prev.includes(p.id) ? prev.filter((x) => x !== p.id) : [...prev, p.id],
-                          )
-                        }}
-                        className={cn(
-                          'w-full flex items-center justify-between px-2 py-1.5 rounded-md text-left text-xs transition-colors',
-                          sel
-                            ? 'bg-emerald-50 text-[#1B5E20] font-semibold'
-                            : 'hover:bg-gray-100 text-gray-700',
-                        )}
-                      >
-                        <span className="truncate mr-2">{p.nome}</span>
-                        {sel ? <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" /> : null}
-                      </button>
-                    )
-                  })
-                )}
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          {/* Dropdown "empresa" posicionado à direita dos filtros */}
-          <Select value={empresaFiltroAtiva} onValueChange={(v) => setFiltroEmpresa(v)}>
-            <SelectTrigger
-              className="h-9 w-[190px] bg-white border-gray-200 text-xs font-medium text-gray-700 shadow-xs focus:ring-[#1B5E20]"
-              aria-label="Filtrar por empresa"
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Grupo 1: Controle segmentado com as três visões — Lista, Board e Calendário */}
+          <div className="inline-flex items-center p-1 rounded-full bg-gray-100/90 border border-gray-200/70 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setVista('lista')}
+              className={cn(
+                'px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-150',
+                vista === 'lista'
+                  ? 'bg-[#1B5E20] text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/60',
+              )}
             >
-              <div className="flex items-center gap-1.5 truncate">
-                <span className="text-gray-400 font-normal">Empresa:</span>
-                <span className="truncate font-semibold text-gray-800">
-                  {empresaFiltroAtiva === 'todas' ? 'Todas as empresas' : empresaFiltroAtiva}
-                </span>
-              </div>
-            </SelectTrigger>
-            <SelectContent align="end" className="w-[210px]">
-              <SelectItem value="todas">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-gray-400" />
-                  <span>Todas as empresas</span>
+              Lista
+            </button>
+            <button
+              type="button"
+              onClick={() => setVista('kanban')}
+              className={cn(
+                'px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-150',
+                vista === 'kanban'
+                  ? 'bg-[#1B5E20] text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/60',
+              )}
+            >
+              Board
+            </button>
+            <button
+              type="button"
+              onClick={() => setVista('calendario')}
+              className={cn(
+                'px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-150',
+                vista === 'calendario'
+                  ? 'bg-[#1B5E20] text-white shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/60',
+              )}
+            >
+              Calendário
+            </button>
+          </div>
+
+          {/* Divisória fina vertical */}
+          <div className="hidden sm:block h-6 w-[1px] bg-gray-200" />
+
+          {/* Grupo 2: Seletor de período, Filtro de empresa e Botão "Nova tarefa" */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Seletor de período */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={cn(
+                    'h-9 px-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-2xs inline-flex items-center gap-2 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20',
+                    (filtroPeriodo?.from || filtroPeriodo?.to) &&
+                      'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50',
+                  )}
+                  title="Seletor de período"
+                >
+                  <Calendar className="h-3.5 w-3.5 text-gray-500" />
+                  <span>
+                    {filtroPeriodo?.from
+                      ? filtroPeriodo.to
+                        ? `${filtroPeriodo.from.toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                          })} — ${filtroPeriodo.to.toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                          })}`
+                        : `A partir de ${filtroPeriodo.from.toLocaleDateString('pt-BR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                          })}`
+                      : 'Out/2026'}
+                  </span>
+                  <ChevronDown className="h-3 w-3 text-gray-400" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0 bg-white" align="end">
+                <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-gray-900">Período</div>
+                    <div className="text-[11px] text-gray-500">Selecione início e fim</div>
+                  </div>
+                  {filtroPeriodo?.from && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setFiltroPeriodo(undefined)}
+                      className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      Limpar
+                    </Button>
+                  )}
                 </div>
-              </SelectItem>
-              {empresas.map((e) => (
-                <SelectItem key={e.id} value={e.nome}>
+                <CalendarPicker
+                  mode="range"
+                  selected={filtroPeriodo as any}
+                  onSelect={(range: any) => setFiltroPeriodo(range)}
+                  numberOfMonths={1}
+                  className="rounded-md"
+                />
+              </PopoverContent>
+            </Popover>
+
+            {/* Filtro de empresa */}
+            <Select value={empresaFiltroAtiva} onValueChange={(v) => setFiltroEmpresa(v)}>
+              <SelectTrigger
+                className="h-9 min-w-[170px] bg-white border-gray-200 text-xs font-semibold text-gray-800 shadow-2xs focus:ring-[#1B5E20] rounded-lg"
+                aria-label="Filtro de empresa"
+              >
+                <div className="flex items-center gap-2 truncate">
+                  <UsersIcon className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                  <span className="truncate">
+                    {empresaFiltroAtiva === 'todas' ? 'Todas as empresas' : empresaFiltroAtiva}
+                  </span>
+                </div>
+              </SelectTrigger>
+              <SelectContent align="end" className="w-[210px] bg-white">
+                <SelectItem value="todas">
                   <div className="flex items-center gap-2">
-                    {obterIconeEmpresa(e.nome)}
-                    <span>{e.nome}</span>
+                    <span className="h-2 w-2 rounded-full bg-gray-400" />
+                    <span>Todas as empresas</span>
                   </div>
                 </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                {empresas.map((e) => (
+                  <SelectItem key={e.id} value={e.nome}>
+                    <div className="flex items-center gap-2">
+                      {obterIconeEmpresa(e.nome)}
+                      <span>{e.nome}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          {/* Botão para limpar filtros ativos se algum estiver ativo */}
-          {(filtroPeriodo?.from ||
-            filtroPeriodo?.to ||
-            filtroParceiros.length > 0 ||
-            empresaFiltroAtiva !== 'todas') && (
+            {/* Botão Nova tarefa */}
             <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setFiltroPeriodo(undefined)
-                setFiltroParceiros([])
-                setFiltroEmpresa('todas')
-              }}
-              className="h-9 px-2 text-xs text-gray-500 hover:text-red-600 hover:bg-red-50 gap-1"
-              title="Limpar todos os filtros ativos"
+              onClick={abrirNova}
+              className="h-9 px-3.5 text-xs font-semibold bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs rounded-lg flex items-center gap-1.5"
             >
-              <FilterX className="h-3.5 w-3.5" />
-              Limpar filtros
+              <Plus className="h-4 w-4" /> Nova tarefa
             </Button>
-          )}
-
-          <Button
-            onClick={abrirNova}
-            className="h-9 px-3.5 text-xs font-semibold bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs flex items-center gap-1.5"
-          >
-            <Plus className="h-4 w-4 mr-1" /> Nova tarefa
-          </Button>
+          </div>
         </div>
       </div>
 
@@ -1266,67 +1250,241 @@ export default function TarefasKanbanPage() {
         </div>
       )}
 
-      {/* Widgets: compromissos de hoje + atrasos */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
-            Compromissos de hoje
+      {/* Na visão LISTA: Faixa Única de Contadores Discretos + Linha de Busca e Filtros Rápidos */}
+      {vista === 'lista' ? (
+        <div className="space-y-3">
+          {/* FAIXA DE CONTADORES: Hoje, Atrasadas, Sem responsável, Em andamento */}
+          <div className="flex items-center gap-3 text-xs text-gray-600 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setFiltroRapido((f) => (f === 'hoje' ? 'todos' : 'hoje'))}
+              className={cn(
+                'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
+                filtroRapido === 'hoje' && 'font-bold text-[#1B5E20] bg-emerald-50',
+              )}
+            >
+              <span>Hoje</span>
+              <strong className="text-gray-900 font-semibold">{contadores.hoje}</strong>
+            </button>
+            <span className="text-gray-300">·</span>
+            <button
+              type="button"
+              onClick={() => setFiltroRapido((f) => (f === 'atrasadas' ? 'todos' : 'atrasadas'))}
+              className={cn(
+                'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
+                filtroRapido === 'atrasadas' && 'font-bold text-red-700 bg-red-50',
+              )}
+            >
+              <span>Atrasadas</span>
+              <strong
+                className={cn(
+                  'font-semibold',
+                  contadores.atrasadas > 0 ? 'text-red-600 font-bold' : 'text-gray-900',
+                )}
+              >
+                {contadores.atrasadas}
+              </strong>
+            </button>
+            <span className="text-gray-300">·</span>
+            <button
+              type="button"
+              onClick={() =>
+                setFiltroRapido((f) => (f === 'sem_responsavel' ? 'todos' : 'sem_responsavel'))
+              }
+              className={cn(
+                'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
+                filtroRapido === 'sem_responsavel' && 'font-bold text-[#1B5E20] bg-emerald-50',
+              )}
+            >
+              <span>Sem responsável</span>
+              <strong className="text-gray-900 font-semibold">{contadores.semResponsavel}</strong>
+            </button>
+            <span className="text-gray-300">·</span>
+            <button
+              type="button"
+              onClick={() =>
+                setFiltroRapido((f) => (f === 'em_andamento' ? 'todos' : 'em_andamento'))
+              }
+              className={cn(
+                'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
+                filtroRapido === 'em_andamento' && 'font-bold text-[#1B5E20] bg-emerald-50',
+              )}
+            >
+              <span>Em andamento</span>
+              <strong className="text-gray-900 font-semibold">{contadores.emAndamento}</strong>
+            </button>
           </div>
-          {deHoje.length === 0 ? (
-            <p className="text-[12px] text-gray-400">Nenhum compromisso para hoje.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {deHoje.map((t) => (
+
+          {/* BUSCA E FILTROS RÁPIDOS */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
+              {/* Campo de busca por texto */}
+              <div className="relative w-full sm:w-72 lg:w-80">
+                <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={buscaTexto}
+                  onChange={(e) => setBuscaTexto(e.target.value)}
+                  placeholder="Buscar tarefa..."
+                  className="w-full h-9 pl-9 pr-8 text-xs bg-white border border-gray-200 rounded-full text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20 focus:border-[#1B5E20]/40 transition-colors shadow-2xs"
+                />
+                {buscaTexto && (
+                  <button
+                    type="button"
+                    onClick={() => setBuscaTexto('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    title="Limpar busca"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Filtros rápidos em etiquetas clicáveis: Todos, Hoje, Semana, Atrasadas, Minhas */}
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <button
-                  key={t.id}
                   type="button"
-                  onClick={() => abrirDetalhe(t)}
-                  className="block w-full text-left text-[13px] font-medium text-gray-800 hover:text-[#1B5E20] truncate"
+                  onClick={() => setFiltroRapido('todos')}
+                  className={cn(
+                    'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
+                    filtroRapido === 'todos'
+                      ? 'bg-[#1B5E20] text-white shadow-xs'
+                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
+                  )}
                 >
-                  · {t.titulo} <span className="text-gray-400">({t.responsavel})</span>
+                  Todos
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setFiltroRapido('hoje')}
+                  className={cn(
+                    'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
+                    filtroRapido === 'hoje'
+                      ? 'bg-[#1B5E20] text-white shadow-xs'
+                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
+                  )}
+                >
+                  Hoje
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroRapido('semana')}
+                  className={cn(
+                    'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
+                    filtroRapido === 'semana'
+                      ? 'bg-[#1B5E20] text-white shadow-xs'
+                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
+                  )}
+                >
+                  Semana
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroRapido('atrasadas')}
+                  className={cn(
+                    'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
+                    filtroRapido === 'atrasadas'
+                      ? 'bg-[#1B5E20] text-white shadow-xs'
+                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
+                  )}
+                >
+                  Atrasadas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroRapido('minhas')}
+                  className={cn(
+                    'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
+                    filtroRapido === 'minhas'
+                      ? 'bg-[#1B5E20] text-white shadow-xs'
+                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
+                  )}
+                >
+                  Minhas
+                </button>
+              </div>
             </div>
-          )}
-        </div>
-        <div
-          className={cn(
-            'bg-white rounded-xl border p-4 shadow-xs',
-            atrasadas.length ? 'border-red-200' : 'border-[#E5E7EB]',
-          )}
-        >
-          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center gap-1.5">
-            <AlertTriangle
-              className={cn('h-3.5 w-3.5', atrasadas.length ? 'text-red-500' : 'text-gray-300')}
-            />
-            Atrasadas ({atrasadas.length})
+
+            {/* Ação de limpar filtros se ativos */}
+            {(buscaTexto || filtroRapido !== 'todos') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setBuscaTexto('')
+                  setFiltroRapido('todos')
+                }}
+                className="text-xs text-gray-500 hover:text-red-600 font-medium inline-flex items-center gap-1 self-start sm:self-auto"
+              >
+                <X className="h-3 w-3" /> Limpar filtros
+              </button>
+            )}
           </div>
-          {atrasadas.length === 0 ? (
-            <p className="text-[12px] text-gray-400">Nada atrasado. 👍</p>
-          ) : (
-            <div className="space-y-1.5">
-              {atrasadas.slice(0, 4).map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => abrirDetalhe(t)}
-                  className="block w-full text-left text-[13px] font-medium text-red-700 hover:underline truncate"
-                >
-                  · {t.titulo} <span className="text-red-400">{fmtData(t.prazo)}</span>
-                </button>
-              ))}
-            </div>
-          )}
         </div>
-      </div>
+      ) : (
+        /* Nas outras visões (Kanban e Calendário): mantém os cartões originais de compromissos de hoje e atrasadas */
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
+              Compromissos de hoje
+            </div>
+            {deHoje.length === 0 ? (
+              <p className="text-[12px] text-gray-400">Nenhum compromisso para hoje.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {deHoje.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => abrirDetalhe(t)}
+                    className="block w-full text-left text-[13px] font-medium text-gray-800 hover:text-[#1B5E20] truncate"
+                  >
+                    · {t.titulo} <span className="text-gray-400">({t.responsavel})</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div
+            className={cn(
+              'bg-white rounded-xl border p-4 shadow-xs',
+              atrasadas.length ? 'border-red-200' : 'border-[#E5E7EB]',
+            )}
+          >
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center gap-1.5">
+              <AlertTriangle
+                className={cn('h-3.5 w-3.5', atrasadas.length ? 'text-red-500' : 'text-gray-300')}
+              />
+              Atrasadas ({atrasadas.length})
+            </div>
+            {atrasadas.length === 0 ? (
+              <p className="text-[12px] text-gray-400">Nada atrasado. 👍</p>
+            ) : (
+              <div className="space-y-1.5">
+                {atrasadas.slice(0, 4).map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => abrirDetalhe(t)}
+                    className="block w-full text-left text-[13px] font-medium text-red-700 hover:underline truncate"
+                  >
+                    · {t.titulo} <span className="text-red-400">{fmtData(t.prazo)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Vista: Lista (Tabela com colunas ordenáveis ao clique, reorganizáveis e redimensionáveis por arrasto) */}
       {vista === 'lista' && (
         <TarefasListaView
-          itens={itensFiltrados}
+          itens={itensLista}
           onAbrirDetalhe={abrirDetalhe}
           onAbrirEditar={abrirEditar}
           onExcluir={(t) => setExcluindoTarefa(t)}
+          onMoverStatus={mover}
+          onAbrirNova={abrirNova}
           obterIconeEmpresa={obterIconeEmpresa}
         />
       )}
