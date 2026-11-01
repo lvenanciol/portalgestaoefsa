@@ -119,13 +119,22 @@ export function TarefaFormDialog({
   const inputTituloRef = useRef<HTMLInputElement | null>(null)
   const triggerParceiroRef = useRef<HTMLButtonElement | null>(null)
 
-  // Áudio
+  // Áudio: constantes de duração (60s limite com aviso aos 50s / 10s restantes)
+  const DURACAO_MAX_AUDIO_S = 60
+  const AVISO_PREVIO_AUDIO_S = 50
+
   const [ouvindo, setOuvindo] = useState(false)
+  const [tempoGravacaoS, setTempoGravacaoS] = useState(0)
   const [processandoAudio, setProcessandoAudio] = useState(false)
+  const [erroPermissaoMic, setErroPermissaoMic] = useState(false)
+
   const recRef = useRef<any>(null)
   const mediaRecRef = useRef<MediaRecorder | null>(null)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const mediaChunksRef = useRef<Blob[]>([])
+  const cancelandoAudioRef = useRef<boolean>(false)
+  const cronometroIntervalRef = useRef<any>(null)
+  const autoEncerramentoDisparadoRef = useRef<boolean>(false)
 
   // Busca e dropdown de Parceiros
   const [buscaParceiro, setBuscaParceiro] = useState('')
@@ -142,29 +151,17 @@ export function TarefaFormDialog({
     responsavelNaoReconhecido?: string
   }>({})
 
-  // Limpa estados ao fechar ou reabrir
-  useEffect(() => {
-    if (!open) {
-      pararOuvir()
-      setIaPrompt('')
-      setFraseIaAplicada('')
-      setEstadoCaptura({
-        status: 'ocioso',
-        mensagem: '',
-        camposPreenchidosQtd: 0,
-        pendencias: [],
-        naoEncontrados: [],
-      })
-      formSnapshotAnteriorRef.current = null
-      setCamposDestacados({})
-      if (timerDestaqueRef.current) clearTimeout(timerDestaqueRef.current)
-      setCamposSinalizados({})
-      setExpandirAnexos(false)
+  // Limpa timer do cronômetro
+  const limparCronometro = () => {
+    if (cronometroIntervalRef.current) {
+      clearInterval(cronometroIntervalRef.current)
+      cronometroIntervalRef.current = null
     }
-  }, [open])
+  }
 
-  // Parar áudio
+  // Parar áudio e liberar microfone com segurança
   const pararOuvir = () => {
+    limparCronometro()
     try {
       if (recRef.current) {
         recRef.current.onend = null
@@ -186,10 +183,102 @@ export function TarefaFormDialog({
       mediaStreamRef.current = null
     }
     setOuvindo(false)
+    setTempoGravacaoS(0)
+  }
+
+  // Cancelar gravação explicitamente sem enviar nada
+  const cancelarGravacaoAudio = () => {
+    cancelandoAudioRef.current = true
+    mediaChunksRef.current = []
+    pararOuvir()
+    setTimeout(() => {
+      cancelandoAudioRef.current = false
+    }, 100)
+    toast({
+      title: 'Gravação cancelada',
+      description: 'O áudio foi descartado sem enviar para transcrição.',
+    })
+  }
+
+  // Tratamento dedicado para permissão de microfone negada
+  const tratarPermissaoMicNegada = () => {
+    setErroPermissaoMic(true)
+    setOuvindo(false)
+    limparCronometro()
+    toast({
+      title: 'Permissão de microfone negada',
+      description:
+        'Acesso ao microfone bloqueado no navegador. Libere no ícone de cadeado ou digite diretamente no campo.',
+      variant: 'destructive',
+    })
+  }
+
+  // Limpa estados ao fechar ou reabrir
+  useEffect(() => {
+    if (!open) {
+      // Ao fechar o modal durante a gravação, descarta com segurança e libera hardware
+      cancelandoAudioRef.current = true
+      mediaChunksRef.current = []
+      pararOuvir()
+      cancelandoAudioRef.current = false
+      setErroPermissaoMic(false)
+      setIaPrompt('')
+      setFraseIaAplicada('')
+      setEstadoCaptura({
+        status: 'ocioso',
+        mensagem: '',
+        camposPreenchidosQtd: 0,
+        pendencias: [],
+        naoEncontrados: [],
+      })
+      formSnapshotAnteriorRef.current = null
+      setCamposDestacados({})
+      if (timerDestaqueRef.current) clearTimeout(timerDestaqueRef.current)
+      setCamposSinalizados({})
+      setExpandirAnexos(false)
+    }
+  }, [open])
+
+  // Cleanup adicional caso o componente seja desmontado (ex: navegação de rota)
+  useEffect(() => {
+    return () => {
+      cancelandoAudioRef.current = true
+      mediaChunksRef.current = []
+      pararOuvir()
+    }
+  }, [])
+
+  // Inicia cronômetro com monitoramento de tempo decorrido, aviso aos 50s e auto-encerramento aos 60s
+  const iniciarCronometro = () => {
+    limparCronometro()
+    setTempoGravacaoS(0)
+    autoEncerramentoDisparadoRef.current = false
+    const inicio = Date.now()
+
+    cronometroIntervalRef.current = setInterval(() => {
+      const decorrido = Math.floor((Date.now() - inicio) / 1000)
+      setTempoGravacaoS(decorrido)
+
+      // Auto-encerramento ao atingir o limite de 60s
+      if (decorrido >= DURACAO_MAX_AUDIO_S && !autoEncerramentoDisparadoRef.current) {
+        autoEncerramentoDisparadoRef.current = true
+        limparCronometro()
+        toast({
+          title: 'Limite de áudio atingido (60s)',
+          description: 'A gravação foi encerrada e está sendo processada para transcrição.',
+        })
+        pararOuvir()
+      }
+    }, 1000)
   }
 
   // Transcrever áudio via backend
   const transcreverAudioBlob = async (blob: Blob) => {
+    // Se a gravação foi cancelada pelo usuário ou descarte de fechamento, não envia
+    if (cancelandoAudioRef.current) {
+      return
+    }
+
     setProcessandoAudio(true)
     try {
       const reader = new FileReader()
@@ -229,7 +318,7 @@ export function TarefaFormDialog({
         title: 'Falha na transcrição do áudio',
         description: msg.includes('GEMINI_API_KEY')
           ? 'Chave GEMINI_API_KEY não configurada. Use o reconhecimento nativo do navegador ou digite a tarefa.'
-          : 'Não foi possível transcrever o áudio gravado.',
+          : 'Não foi possível transcrever o áudio gravado. Você pode digitar diretamente no campo.',
         variant: 'destructive',
       })
     } finally {
@@ -256,15 +345,20 @@ export function TarefaFormDialog({
       mediaChunksRef.current = []
 
       mr.ondataavailable = (ev) => {
-        if (ev.data && ev.data.size > 0) {
+        if (ev.data && ev.data.size > 0 && !cancelandoAudioRef.current) {
           mediaChunksRef.current.push(ev.data)
         }
       }
 
       mr.onstop = async () => {
+        limparCronometro()
         if (mediaStreamRef.current) {
           mediaStreamRef.current.getTracks().forEach((t) => t.stop())
           mediaStreamRef.current = null
+        }
+        if (cancelandoAudioRef.current) {
+          mediaChunksRef.current = []
+          return
         }
         const mime = mr.mimeType || 'audio/webm'
         const audioBlob = new Blob(mediaChunksRef.current, { type: mime })
@@ -274,7 +368,9 @@ export function TarefaFormDialog({
       }
 
       mr.onerror = (ev: any) => {
+        limparCronometro()
         setOuvindo(false)
+        setTempoGravacaoS(0)
         toast({
           title: 'Erro na gravação',
           description: String(ev?.error || 'Falha no gravador de áudio.'),
@@ -282,26 +378,28 @@ export function TarefaFormDialog({
         })
       }
 
+      cancelandoAudioRef.current = false
       mr.start()
       mediaRecRef.current = mr
       setOuvindo(true)
+      setErroPermissaoMic(false)
+      iniciarCronometro()
       toast({
         title: 'Gravando áudio...',
-        description: 'Fale sua tarefa. Ao terminar, clique em "Parar gravação".',
+        description:
+          'Fale sua tarefa. Toque no microfone para parar e transcrever ou em Cancelar para descartar.',
       })
     } catch (err: any) {
+      limparCronometro()
+      setTempoGravacaoS(0)
       const name = err?.name || ''
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        toast({
-          title: 'Permissão de microfone negada',
-          description:
-            'Permita o acesso ao microfone nas permissões do navegador (ícone de cadeado).',
-          variant: 'destructive',
-        })
+        tratarPermissaoMicNegada()
       } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
         toast({
           title: 'Nenhum microfone encontrado',
-          description: 'Conecte um microfone ao dispositivo para gravar.',
+          description:
+            'Conecte um microfone ao dispositivo para gravar ou digite diretamente a tarefa.',
           variant: 'destructive',
         })
       } else {
@@ -316,10 +414,13 @@ export function TarefaFormDialog({
 
   // Alternar gravação por voz
   const toggleOuvir = async () => {
+    // Regra: tocar no microfone durante uma gravação encerra e envia
     if (ouvindo) {
       pararOuvir()
       return
     }
+
+    setErroPermissaoMic(false)
 
     const SR =
       (typeof window !== 'undefined' &&
@@ -334,18 +435,13 @@ export function TarefaFormDialog({
         } catch (err: any) {
           const name = err?.name || ''
           if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-            toast({
-              title: 'Permissão de microfone negada',
-              description:
-                'Permita o acesso ao microfone nas configurações do navegador (ícone de cadeado).',
-              variant: 'destructive',
-            })
+            tratarPermissaoMicNegada()
             return
           }
           if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
             toast({
               title: 'Nenhum microfone encontrado',
-              description: 'Conecte um microfone para gravar.',
+              description: 'Conecte um microfone para gravar ou digite a tarefa manualmente.',
               variant: 'destructive',
             })
             return
@@ -361,13 +457,18 @@ export function TarefaFormDialog({
 
         rec.onstart = () => {
           setOuvindo(true)
+          setErroPermissaoMic(false)
+          cancelandoAudioRef.current = false
+          iniciarCronometro()
           toast({
             title: 'Gravando voz...',
-            description: 'Fale sua tarefa. O texto será reconhecido automaticamente no campo.',
+            description:
+              'Fale sua tarefa. O texto será reconhecido em tempo real no campo de texto.',
           })
         }
 
         rec.onresult = (ev: any) => {
+          if (cancelandoAudioRef.current) return
           let tFinal = ''
           let tInterim = ''
           for (let i = 0; i < ev.results.length; i++) {
@@ -385,13 +486,10 @@ export function TarefaFormDialog({
         }
 
         rec.onerror = (ev: any) => {
+          limparCronometro()
           const errCode = ev.error || ''
           if (errCode === 'not-allowed' || errCode === 'service-not-allowed') {
-            toast({
-              title: 'Permissão de microfone negada',
-              description: 'O acesso ao microfone foi negado nas configurações.',
-              variant: 'destructive',
-            })
+            tratarPermissaoMicNegada()
           } else if (errCode === 'network') {
             toast({
               title: 'Erro de conexão no reconhecimento de voz',
@@ -404,15 +502,18 @@ export function TarefaFormDialog({
           } else if (errCode !== 'no-speech') {
             toast({
               title: 'Erro no reconhecimento de voz',
-              description: `Código: ${errCode || 'desconhecido'}.`,
+              description: `Código: ${errCode || 'desconhecido'}. Você pode digitar a tarefa manualmente.`,
               variant: 'destructive',
             })
           }
           setOuvindo(false)
+          setTempoGravacaoS(0)
         }
 
         rec.onend = () => {
+          limparCronometro()
           setOuvindo(false)
+          setTempoGravacaoS(0)
         }
 
         recRef.current = rec
@@ -430,7 +531,8 @@ export function TarefaFormDialog({
 
     toast({
       title: 'Navegador incompatível',
-      description: 'Seu navegador não suporta Web Speech API nem gravação de mídia.',
+      description:
+        'Seu navegador não suporta captura de áudio. Por favor, digite a tarefa no campo.',
       variant: 'destructive',
     })
   }
@@ -856,26 +958,100 @@ export function TarefaFormDialog({
           {/* 1) BLOCO DE CAPTURA IA NO TOPO (Elemento principal da tela) */}
           {/* ============================================================== */}
           <div className="rounded-xl border border-emerald-200/90 bg-[#F1F8F4] p-4.5 sm:p-5 shadow-2xs space-y-3">
-            {/* Rótulo com ícone */}
-            <div className="flex items-center gap-1.5 text-[#1B5E20] font-bold text-[13px]">
-              <Sparkles className="h-4 w-4 text-[#1B5E20]" />
-              <span>Criar com IA</span>
+            {/* Rótulo com ícone e status de áudio com cronômetro em segundos */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 text-[#1B5E20] font-bold text-[13px] flex-wrap">
+                <Sparkles className="h-4 w-4 text-[#1B5E20]" />
+                <span>Criar com IA</span>
+                {ouvindo && (
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full transition-colors',
+                      tempoGravacaoS >= AVISO_PREVIO_AUDIO_S
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
+                        : 'bg-red-100/90 text-red-700 border border-red-200',
+                    )}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-red-600 animate-ping" />
+                    <span>
+                      Gravando: {tempoGravacaoS}s / {DURACAO_MAX_AUDIO_S}s
+                    </span>
+                  </span>
+                )}
+                {processandoAudio && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Transcrevendo...
+                  </span>
+                )}
+                {iaAnexandoArquivo && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Lendo arquivo...
+                  </span>
+                )}
+              </div>
+
+              {/* Botão Cancelar visível no topo durante gravação */}
               {ouvindo && (
-                <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-semibold text-red-600 bg-red-100/90 px-2 py-0.5 rounded-full animate-pulse">
-                  ● Gravando áudio...
-                </span>
-              )}
-              {processandoAudio && (
-                <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
-                  <Loader2 className="h-3 w-3 animate-spin" /> Transcrevendo...
-                </span>
-              )}
-              {iaAnexandoArquivo && (
-                <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
-                  <Loader2 className="h-3 w-3 animate-spin" /> Lendo arquivo...
-                </span>
+                <button
+                  type="button"
+                  onClick={cancelarGravacaoAudio}
+                  className="text-[11px] font-medium text-gray-500 hover:text-red-700 underline underline-offset-2 flex items-center gap-1 transition-colors"
+                >
+                  <X className="h-3 w-3" /> Descartar áudio
+                </button>
               )}
             </div>
+
+            {/* Aviso prévio pouco antes do limite de duração (50s a 60s) */}
+            {ouvindo && tempoGravacaoS >= AVISO_PREVIO_AUDIO_S && (
+              <div className="rounded-md bg-amber-50 border border-amber-300/80 px-3 py-1.5 text-xs text-amber-900 flex items-center justify-between gap-2 animate-fadeIn">
+                <span className="flex items-center gap-1.5 font-medium">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                  Atenção: limite de áudio próximo ({DURACAO_MAX_AUDIO_S - tempoGravacaoS}s
+                  restantes). Ao atingir 60s, o áudio será enviado automaticamente.
+                </span>
+                <button
+                  type="button"
+                  onClick={toggleOuvir}
+                  className="text-[11px] font-bold text-amber-900 underline hover:text-amber-950 shrink-0"
+                >
+                  Concluir agora
+                </button>
+              </div>
+            )}
+
+            {/* Mensagem amigável dedicada para permissão de microfone negada */}
+            {erroPermissaoMic && !ouvindo && (
+              <div className="rounded-lg bg-amber-50/90 border border-amber-300 p-3 text-xs text-amber-900 flex flex-col sm:flex-row sm:items-start justify-between gap-2.5">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-gray-900">
+                      Permissão do microfone bloqueada no navegador
+                    </p>
+                    <p className="text-[11px] text-gray-700 leading-relaxed">
+                      Para ditar por voz, clique no{' '}
+                      <strong>ícone de cadeado / configurações de site</strong> ao lado da barra de
+                      endereço do navegador, altere <em>Microfone</em> para{' '}
+                      <strong>Permitir</strong> e recarregue a página.
+                    </p>
+                    <p className="text-[11px] font-medium text-emerald-900">
+                      💡 Você pode continuar criando tarefas normalmente digitando a descrição no
+                      campo abaixo e clicando em <strong>Gerar tarefa</strong>.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setErroPermissaoMic(false)}
+                  className="h-7 text-xs text-gray-500 hover:text-gray-800 self-end sm:self-start shrink-0"
+                >
+                  Entendi
+                </Button>
+              </div>
+            )}
 
             {/* Campo de texto amplo com instrução exata */}
             <Textarea
@@ -886,10 +1062,10 @@ export function TarefaFormDialog({
               className="w-full bg-white border border-emerald-200/80 focus-visible:ring-[#1B5E20] focus-visible:border-[#1B5E20] rounded-lg text-sm text-gray-800 placeholder:text-gray-400 resize-none shadow-2xs"
             />
 
-            {/* Rodapé do bloco: 3 botões alinhados (Ditar por áudio, Anexar arquivo e Gerar tarefa) */}
+            {/* Rodapé do bloco: botões alinhados com suporte a cancelar durante gravação */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-0.5">
               <div className="flex items-center gap-2 flex-wrap">
-                {/* Botão: Ditar por áudio */}
+                {/* Botão: Ditar por áudio (ou Parar e transcrever quando gravando) */}
                 <Button
                   type="button"
                   variant="outline"
@@ -901,9 +1077,29 @@ export function TarefaFormDialog({
                       'bg-red-50 text-red-700 border-red-300 hover:bg-red-100 ring-2 ring-red-200',
                   )}
                 >
-                  <Mic className={cn('h-3.5 w-3.5', ouvindo ? 'text-red-600' : 'text-[#1B5E20]')} />
-                  <span>{ouvindo ? 'Parar gravação' : 'Ditar por áudio'}</span>
+                  <Mic
+                    className={cn(
+                      'h-3.5 w-3.5',
+                      ouvindo ? 'text-red-600 animate-pulse' : 'text-[#1B5E20]',
+                    )}
+                  />
+                  <span>
+                    {ouvindo ? `Parar e transcrever (${tempoGravacaoS}s)` : 'Ditar por áudio'}
+                  </span>
                 </Button>
+
+                {/* Botão de Cancelar durante a gravação (descarta áudio sem enviar nada) */}
+                {ouvindo && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={cancelarGravacaoAudio}
+                    className="h-9 px-3 text-xs font-medium rounded-full text-red-700 hover:bg-red-100/80 hover:text-red-800 transition-colors flex items-center gap-1"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    <span>Cancelar</span>
+                  </Button>
+                )}
 
                 {/* Botão: Anexar arquivo (alimenta prompt IA e adiciona aos anexos) */}
                 <label className="h-9 px-3.5 text-xs font-semibold rounded-full border border-emerald-300 bg-white text-[#1B5E20] hover:bg-emerald-50 hover:text-[#0F3D13] transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs">
@@ -925,7 +1121,7 @@ export function TarefaFormDialog({
               <Button
                 type="button"
                 onClick={gerarTarefaComIa}
-                disabled={!iaPrompt.trim() || gerandoIa || processandoAudio}
+                disabled={!iaPrompt.trim() || gerandoIa || processandoAudio || ouvindo}
                 className="h-9 px-4 text-xs font-bold rounded-full bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs flex items-center justify-center gap-1.5 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {gerandoIa ? (
