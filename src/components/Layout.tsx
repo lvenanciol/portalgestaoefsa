@@ -2,15 +2,18 @@ import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
 import { AppProvider, useApp } from '@/context/AppContext'
+import { EmpresaLogosProvider } from '@/components/common/EmpresaIcon'
 import { cn } from '@/lib/utils'
 
 export default function Layout() {
   return (
     <AppProvider>
-      <div className="min-h-screen bg-[#F3F4F6] text-[#111827] flex">
-        <SidebarWithCollapse />
-        <MainArea />
-      </div>
+      <EmpresaLogosProvider>
+        <div className="min-h-screen bg-[#F3F4F6] text-[#111827] flex">
+          <SidebarWithCollapse />
+          <MainArea />
+        </div>
+      </EmpresaLogosProvider>
     </AppProvider>
   )
 }

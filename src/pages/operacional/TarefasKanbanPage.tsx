@@ -40,6 +40,7 @@ import { TarefasListaView } from '@/components/operacional/TarefasListaView'
 import { ParceiroCadastroDialog } from '@/components/operacional/ParceiroCadastroDialog'
 import { TarefaDetalheModal } from '@/components/operacional/TarefaDetalheModal'
 import { TarefaFormDialog } from '@/components/operacional/TarefaFormDialog'
+import { EmpresaIcon, useEmpresaLogos } from '@/components/common/EmpresaIcon'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useApp } from '@/context/AppContext'
@@ -124,7 +125,7 @@ export default function TarefasKanbanPage() {
   const [chatErro, setChatErro] = useState('')
   const [novaSub, setNovaSub] = useState('')
   const [mesRef, setMesRef] = useState(() => new Date().toISOString().slice(0, 7))
-  const [logos, setLogos] = useState<any[]>([])
+  const { obterIconeEmpresa } = useEmpresaLogos()
 
   const carregar = async () => {
     setLoading(true)
@@ -1085,8 +1086,8 @@ export default function TarefasKanbanPage() {
 
   return (
     <div className="space-y-4 pb-8">
-      {/* BARRA SUPERIOR: Título + Grupo Esquerdo (Segmented: Lista, Board, Calendário) + Divisória + Grupo Direito (Período, Empresa, Nova Tarefa) */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-3 border-b border-gray-200/80">
+      {/* BARRA SUPERIOR: Título + Botão Nova Tarefa */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-200/80">
         <div>
           <h1 className="text-2xl lg:text-[26px] font-bold text-gray-900 tracking-tight flex items-center gap-2">
             <span className="text-[#1B5E20] text-xl font-bold tracking-tight select-none">|'|</span>{' '}
@@ -1097,59 +1098,241 @@ export default function TarefasKanbanPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Grupo 1: Controle segmentado com as três visões — Lista, Board e Calendário */}
-          <div className="inline-flex items-center p-1 rounded-full bg-gray-100/90 border border-gray-200/70 shadow-2xs">
-            <button
-              type="button"
-              onClick={() => setVista('lista')}
-              className={cn(
-                'px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-150',
-                vista === 'lista'
-                  ? 'bg-[#1B5E20] text-white shadow-xs'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/60',
-              )}
-            >
-              Lista
-            </button>
-            <button
-              type="button"
-              onClick={() => setVista('kanban')}
-              className={cn(
-                'px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-150',
-                vista === 'kanban'
-                  ? 'bg-[#1B5E20] text-white shadow-xs'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/60',
-              )}
-            >
-              Board
-            </button>
-            <button
-              type="button"
-              onClick={() => setVista('calendario')}
-              className={cn(
-                'px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-150',
-                vista === 'calendario'
-                  ? 'bg-[#1B5E20] text-white shadow-xs'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-white/60',
-              )}
-            >
-              Calendário
-            </button>
-          </div>
+        {/* Botão Nova tarefa (permanece na posição de ação principal superior) */}
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <Button
+            onClick={abrirNova}
+            className="h-9 px-3.5 text-xs font-semibold bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs rounded-lg flex items-center gap-1.5"
+          >
+            <Plus className="h-4 w-4" /> Nova tarefa
+          </Button>
+        </div>
+      </div>
 
-          {/* Divisória fina vertical */}
-          <div className="hidden sm:block h-6 w-[1px] bg-gray-200" />
+      {erro && (
+        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
+          {erro}
+        </div>
+      )}
 
-          {/* Grupo 2: Seletor de período, Filtro de empresa e Botão "Nova tarefa" */}
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Seletor de período */}
+      {/* BARRA UNIFICADA DE FILTROS E VISÃO (comum a todas as visões para permitir alternar entre Lista, Board e Calendário) */}
+      <div className="space-y-3">
+        {/* FAIXA DE CONTADORES: Hoje, Atrasadas, Sem responsável, Em andamento */}
+        <div className="flex items-center gap-3 text-xs text-gray-600 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setFiltroRapido((f) => (f === 'hoje' ? 'todos' : 'hoje'))}
+            className={cn(
+              'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
+              filtroRapido === 'hoje' && 'font-bold text-[#1B5E20] bg-emerald-50',
+            )}
+          >
+            <span>Hoje</span>
+            <strong className="text-gray-900 font-semibold">{contadores.hoje}</strong>
+          </button>
+          <span className="text-gray-300">·</span>
+          <button
+            type="button"
+            onClick={() => setFiltroRapido((f) => (f === 'atrasadas' ? 'todos' : 'atrasadas'))}
+            className={cn(
+              'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
+              filtroRapido === 'atrasadas' && 'font-bold text-red-700 bg-red-50',
+            )}
+          >
+            <span>Atrasadas</span>
+            <strong
+              className={cn(
+                'font-semibold',
+                contadores.atrasadas > 0 ? 'text-red-600 font-bold' : 'text-gray-900',
+              )}
+            >
+              {contadores.atrasadas}
+            </strong>
+          </button>
+          <span className="text-gray-300">·</span>
+          <button
+            type="button"
+            onClick={() =>
+              setFiltroRapido((f) => (f === 'sem_responsavel' ? 'todos' : 'sem_responsavel'))
+            }
+            className={cn(
+              'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
+              filtroRapido === 'sem_responsavel' && 'font-bold text-[#1B5E20] bg-emerald-50',
+            )}
+          >
+            <span>Sem responsável</span>
+            <strong className="text-gray-900 font-semibold">{contadores.semResponsavel}</strong>
+          </button>
+          <span className="text-gray-300">·</span>
+          <button
+            type="button"
+            onClick={() =>
+              setFiltroRapido((f) => (f === 'em_andamento' ? 'todos' : 'em_andamento'))
+            }
+            className={cn(
+              'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
+              filtroRapido === 'em_andamento' && 'font-bold text-[#1B5E20] bg-emerald-50',
+            )}
+          >
+            <span>Em andamento</span>
+            <strong className="text-gray-900 font-semibold">{contadores.emAndamento}</strong>
+          </button>
+        </div>
+
+        {/* BUSCA E FILTROS RÁPIDOS */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap flex-1 min-w-0">
+            {/* Campo de busca por texto */}
+            <div className="relative w-full sm:w-64 lg:w-72">
+              <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={buscaTexto}
+                onChange={(e) => setBuscaTexto(e.target.value)}
+                placeholder="Buscar tarefa..."
+                className="w-full h-9 pl-9 pr-8 text-xs bg-white border border-gray-200 rounded-full text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20 focus:border-[#1B5E20]/40 transition-colors shadow-2xs"
+              />
+              {buscaTexto && (
+                <button
+                  type="button"
+                  onClick={() => setBuscaTexto('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  title="Limpar busca"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Filtros rápidos em etiquetas clicáveis: Todos, Hoje, Semana, Atrasadas, Minhas */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setFiltroRapido('todos')}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
+                  filtroRapido === 'todos'
+                    ? 'bg-[#1B5E20] text-white shadow-xs'
+                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
+                )}
+              >
+                Todos
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroRapido('hoje')}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
+                  filtroRapido === 'hoje'
+                    ? 'bg-[#1B5E20] text-white shadow-xs'
+                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
+                )}
+              >
+                Hoje
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroRapido('semana')}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
+                  filtroRapido === 'semana'
+                    ? 'bg-[#1B5E20] text-white shadow-xs'
+                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
+                )}
+              >
+                Semana
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroRapido('atrasadas')}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
+                  filtroRapido === 'atrasadas'
+                    ? 'bg-[#1B5E20] text-white shadow-xs'
+                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
+                )}
+              >
+                Atrasadas
+              </button>
+              <button
+                type="button"
+                onClick={() => setFiltroRapido('minhas')}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
+                  filtroRapido === 'minhas'
+                    ? 'bg-[#1B5E20] text-white shadow-xs'
+                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
+                )}
+              >
+                Minhas
+              </button>
+            </div>
+
+            {/* Botão Agrupado de Visão: Lista ▾ (default), Board, Calendário — imediatamente à direita de "Minhas" */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="h-8 px-3 rounded-full border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-2xs inline-flex items-center gap-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20"
+                  title="Selecionar visualização"
+                >
+                  <List className="h-3.5 w-3.5 text-[#1B5E20]" />
+                  <span>
+                    {vista === 'lista' ? 'Lista' : vista === 'kanban' ? 'Board' : 'Calendário'}
+                  </span>
+                  <ChevronDown className="h-3 w-3 text-gray-400" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-40 bg-white">
+                <DropdownMenuItem
+                  onClick={() => setVista('lista')}
+                  className={cn(
+                    'flex items-center justify-between text-xs font-medium cursor-pointer',
+                    vista === 'lista' && 'bg-emerald-50 text-[#1B5E20] font-bold',
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <List className="h-3.5 w-3.5" />
+                    <span>Lista</span>
+                  </div>
+                  {vista === 'lista' && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setVista('kanban')}
+                  className={cn(
+                    'flex items-center justify-between text-xs font-medium cursor-pointer',
+                    vista === 'kanban' && 'bg-emerald-50 text-[#1B5E20] font-bold',
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <Kanban className="h-3.5 w-3.5" />
+                    <span>Board</span>
+                  </div>
+                  {vista === 'kanban' && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setVista('calendario')}
+                  className={cn(
+                    'flex items-center justify-between text-xs font-medium cursor-pointer',
+                    vista === 'calendario' && 'bg-emerald-50 text-[#1B5E20] font-bold',
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-3.5 w-3.5" />
+                    <span>Calendário</span>
+                  </div>
+                  {vista === 'calendario' && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Seletor de período — imediatamente à direita do botão de visão */}
             <Popover>
               <PopoverTrigger asChild>
                 <button
                   type="button"
                   className={cn(
-                    'h-9 px-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-2xs inline-flex items-center gap-2 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20',
+                    'h-8 px-3 rounded-full border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-2xs inline-flex items-center gap-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20',
                     (filtroPeriodo?.from || filtroPeriodo?.to) &&
                       'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50',
                   )}
@@ -1170,12 +1353,12 @@ export default function TarefasKanbanPage() {
                             day: '2-digit',
                             month: '2-digit',
                           })}`
-                      : 'Out/2026'}
+                      : 'Período'}
                   </span>
                   <ChevronDown className="h-3 w-3 text-gray-400" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 bg-white" align="end">
+              <PopoverContent className="w-auto p-0 bg-white" align="start">
                 <div className="p-3 border-b border-gray-100 flex items-center justify-between">
                   <div>
                     <div className="text-xs font-bold text-gray-900">Período</div>
@@ -1202,20 +1385,24 @@ export default function TarefasKanbanPage() {
               </PopoverContent>
             </Popover>
 
-            {/* Filtro de empresa */}
+            {/* Seletor de empresa — imediatamente à direita de período */}
             <Select value={empresaFiltroAtiva} onValueChange={(v) => setFiltroEmpresa(v)}>
               <SelectTrigger
-                className="h-9 min-w-[170px] bg-white border-gray-200 text-xs font-semibold text-gray-800 shadow-2xs focus:ring-[#1B5E20] rounded-lg"
+                className="h-8 min-w-[160px] max-w-[220px] bg-white border-gray-200 text-xs font-semibold text-gray-800 shadow-2xs focus:ring-[#1B5E20] rounded-full"
                 aria-label="Filtro de empresa"
               >
-                <div className="flex items-center gap-2 truncate">
-                  <UsersIcon className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                <div className="flex items-center gap-1.5 truncate">
+                  {empresaFiltroAtiva !== 'todas' ? (
+                    <EmpresaIcon nome={empresaFiltroAtiva} className="h-3.5 w-3.5" />
+                  ) : (
+                    <UsersIcon className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                  )}
                   <span className="truncate">
                     {empresaFiltroAtiva === 'todas' ? 'Todas as empresas' : empresaFiltroAtiva}
                   </span>
                 </div>
               </SelectTrigger>
-              <SelectContent align="end" className="w-[210px] bg-white">
+              <SelectContent align="start" className="w-[210px] bg-white">
                 <SelectItem value="todas">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-gray-400" />
@@ -1225,203 +1412,38 @@ export default function TarefasKanbanPage() {
                 {empresas.map((e) => (
                   <SelectItem key={e.id} value={e.nome}>
                     <div className="flex items-center gap-2">
-                      {obterIconeEmpresa(e.nome)}
+                      <EmpresaIcon nome={e.nome} className="h-4 w-4" />
                       <span>{e.nome}</span>
                     </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-
-            {/* Botão Nova tarefa */}
-            <Button
-              onClick={abrirNova}
-              className="h-9 px-3.5 text-xs font-semibold bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs rounded-lg flex items-center gap-1.5"
-            >
-              <Plus className="h-4 w-4" /> Nova tarefa
-            </Button>
           </div>
+
+          {/* Ação de limpar filtros se ativos */}
+          {(buscaTexto ||
+            filtroRapido !== 'todos' ||
+            filtroPeriodo?.from ||
+            empresaFiltroAtiva !== 'todas') && (
+            <button
+              type="button"
+              onClick={() => {
+                setBuscaTexto('')
+                setFiltroRapido('todos')
+                setFiltroPeriodo(undefined)
+                setFiltroEmpresa('todas')
+              }}
+              className="text-xs text-gray-500 hover:text-red-600 font-medium inline-flex items-center gap-1 self-start sm:self-auto shrink-0"
+            >
+              <X className="h-3 w-3" /> Limpar filtros
+            </button>
+          )}
         </div>
       </div>
 
-      {erro && (
-        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-[12px] text-red-700">
-          {erro}
-        </div>
-      )}
-
-      {/* Na visão LISTA: Faixa Única de Contadores Discretos + Linha de Busca e Filtros Rápidos */}
-      {vista === 'lista' ? (
-        <div className="space-y-3">
-          {/* FAIXA DE CONTADORES: Hoje, Atrasadas, Sem responsável, Em andamento */}
-          <div className="flex items-center gap-3 text-xs text-gray-600 flex-wrap">
-            <button
-              type="button"
-              onClick={() => setFiltroRapido((f) => (f === 'hoje' ? 'todos' : 'hoje'))}
-              className={cn(
-                'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
-                filtroRapido === 'hoje' && 'font-bold text-[#1B5E20] bg-emerald-50',
-              )}
-            >
-              <span>Hoje</span>
-              <strong className="text-gray-900 font-semibold">{contadores.hoje}</strong>
-            </button>
-            <span className="text-gray-300">·</span>
-            <button
-              type="button"
-              onClick={() => setFiltroRapido((f) => (f === 'atrasadas' ? 'todos' : 'atrasadas'))}
-              className={cn(
-                'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
-                filtroRapido === 'atrasadas' && 'font-bold text-red-700 bg-red-50',
-              )}
-            >
-              <span>Atrasadas</span>
-              <strong
-                className={cn(
-                  'font-semibold',
-                  contadores.atrasadas > 0 ? 'text-red-600 font-bold' : 'text-gray-900',
-                )}
-              >
-                {contadores.atrasadas}
-              </strong>
-            </button>
-            <span className="text-gray-300">·</span>
-            <button
-              type="button"
-              onClick={() =>
-                setFiltroRapido((f) => (f === 'sem_responsavel' ? 'todos' : 'sem_responsavel'))
-              }
-              className={cn(
-                'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
-                filtroRapido === 'sem_responsavel' && 'font-bold text-[#1B5E20] bg-emerald-50',
-              )}
-            >
-              <span>Sem responsável</span>
-              <strong className="text-gray-900 font-semibold">{contadores.semResponsavel}</strong>
-            </button>
-            <span className="text-gray-300">·</span>
-            <button
-              type="button"
-              onClick={() =>
-                setFiltroRapido((f) => (f === 'em_andamento' ? 'todos' : 'em_andamento'))
-              }
-              className={cn(
-                'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
-                filtroRapido === 'em_andamento' && 'font-bold text-[#1B5E20] bg-emerald-50',
-              )}
-            >
-              <span>Em andamento</span>
-              <strong className="text-gray-900 font-semibold">{contadores.emAndamento}</strong>
-            </button>
-          </div>
-
-          {/* BUSCA E FILTROS RÁPIDOS */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
-              {/* Campo de busca por texto */}
-              <div className="relative w-full sm:w-72 lg:w-80">
-                <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  value={buscaTexto}
-                  onChange={(e) => setBuscaTexto(e.target.value)}
-                  placeholder="Buscar tarefa..."
-                  className="w-full h-9 pl-9 pr-8 text-xs bg-white border border-gray-200 rounded-full text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20 focus:border-[#1B5E20]/40 transition-colors shadow-2xs"
-                />
-                {buscaTexto && (
-                  <button
-                    type="button"
-                    onClick={() => setBuscaTexto('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    title="Limpar busca"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-
-              {/* Filtros rápidos em etiquetas clicáveis: Todos, Hoje, Semana, Atrasadas, Minhas */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => setFiltroRapido('todos')}
-                  className={cn(
-                    'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
-                    filtroRapido === 'todos'
-                      ? 'bg-[#1B5E20] text-white shadow-xs'
-                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-                  )}
-                >
-                  Todos
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFiltroRapido('hoje')}
-                  className={cn(
-                    'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
-                    filtroRapido === 'hoje'
-                      ? 'bg-[#1B5E20] text-white shadow-xs'
-                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-                  )}
-                >
-                  Hoje
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFiltroRapido('semana')}
-                  className={cn(
-                    'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
-                    filtroRapido === 'semana'
-                      ? 'bg-[#1B5E20] text-white shadow-xs'
-                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-                  )}
-                >
-                  Semana
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFiltroRapido('atrasadas')}
-                  className={cn(
-                    'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
-                    filtroRapido === 'atrasadas'
-                      ? 'bg-[#1B5E20] text-white shadow-xs'
-                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-                  )}
-                >
-                  Atrasadas
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFiltroRapido('minhas')}
-                  className={cn(
-                    'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
-                    filtroRapido === 'minhas'
-                      ? 'bg-[#1B5E20] text-white shadow-xs'
-                      : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-                  )}
-                >
-                  Minhas
-                </button>
-              </div>
-            </div>
-
-            {/* Ação de limpar filtros se ativos */}
-            {(buscaTexto || filtroRapido !== 'todos') && (
-              <button
-                type="button"
-                onClick={() => {
-                  setBuscaTexto('')
-                  setFiltroRapido('todos')
-                }}
-                className="text-xs text-gray-500 hover:text-red-600 font-medium inline-flex items-center gap-1 self-start sm:self-auto"
-              >
-                <X className="h-3 w-3" /> Limpar filtros
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        /* Nas outras visões (Kanban e Calendário): mantém os cartões originais de compromissos de hoje e atrasadas */
+      {/* Nas outras visões (Kanban e Calendário): mantém os cartões de compromissos de hoje e atrasadas */}
+      {vista !== 'lista' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs">
             <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
@@ -1566,9 +1588,20 @@ export default function TarefasKanbanPage() {
                                 : t.vinculo_tipo}
                           </span>
                         )}
-                        <div className="flex items-center justify-between mt-2 text-[10px] text-gray-400">
-                          <span>{t.responsavel || '—'}</span>
-                          <span className="tabular-nums">{fmtData(t.prazo)}</span>
+                        {/* Linha com empresa (com ícone) e responsável */}
+                        <div className="flex items-center justify-between mt-2 text-[10px] text-gray-500 gap-2">
+                          <div className="flex items-center gap-1 min-w-0 truncate">
+                            {t.empresa && (
+                              <EmpresaIcon nome={t.empresa} className="h-3 w-3 shrink-0" />
+                            )}
+                            <span className="truncate font-medium text-gray-600">
+                              {t.empresa || '—'}
+                            </span>
+                          </div>
+                          <span className="text-gray-400 truncate">{t.responsavel || '—'}</span>
+                        </div>
+                        <div className="flex items-center justify-end mt-1 text-[10px] text-gray-400 tabular-nums">
+                          <span>{fmtData(t.prazo)}</span>
                         </div>
                         {/* Chips de subtarefas, comentários e anexos */}
                         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -1698,15 +1731,19 @@ export default function TarefasKanbanPage() {
                             type="button"
                             onClick={() => abrirDetalhe(t)}
                             className={cn(
-                              'block w-full text-left text-[9px] font-semibold px-1 py-0.5 rounded truncate',
+                              'w-full text-left text-[9px] font-semibold px-1 py-0.5 rounded truncate flex items-center gap-1',
                               t.status_kanban === 'concluido'
                                 ? 'bg-gray-100 text-gray-500'
                                 : String(t.prazo).slice(0, 10) < hoje
                                   ? 'bg-red-50 text-red-700'
                                   : 'bg-emerald-50 text-emerald-700',
                             )}
+                            title={`${t.titulo} (${t.empresa || 'Sem empresa'})`}
                           >
-                            {t.titulo}
+                            {t.empresa && (
+                              <EmpresaIcon nome={t.empresa} className="h-2.5 w-2.5 shrink-0" />
+                            )}
+                            <span className="truncate">{t.titulo}</span>
                           </button>
                         ))}
                       {tarefasPorDia(dia).length > 2 && (

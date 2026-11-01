@@ -13,6 +13,7 @@ import {
   Check,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -28,7 +29,7 @@ export interface TarefasListaProps {
   onExcluir: (t: any) => void
   onMoverStatus?: (t: any, novoStatus: string) => Promise<void> | void
   onAbrirNova?: () => void
-  obterIconeEmpresa: (emp: string) => React.ReactNode
+  obterIconeEmpresa?: (emp: string) => React.ReactNode
 }
 
 interface GrupoStatusDef {
@@ -141,7 +142,7 @@ export function TarefasListaView({
 
             {/* Conteúdo do Grupo */}
             {aberto && (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {count === 0 ? (
                   /* Indicação discreta de grupo vazio */
                   <div className="flex items-center justify-center py-6 px-4 bg-gray-50/60 rounded-xl border border-dashed border-gray-200 text-xs text-gray-400 gap-2">
@@ -149,218 +150,249 @@ export function TarefasListaView({
                     <span>Nenhuma tarefa {grupo.label.toLowerCase()}</span>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    {tarefasDoGrupo.map((t) => {
-                      const prio = (t.prioridade_p || 'P2').toUpperCase()
-                      const prioStyle = PRIO_STYLES[prio] || PRIO_STYLES.P2
-                      const prazoIso = t.prazo ? String(t.prazo).slice(0, 10) : ''
-                      const atrasada =
-                        prazoIso && prazoIso < hoje && t.status_kanban !== 'concluido'
-                      const anexosLista: string[] = Array.isArray(t.anexos)
-                        ? t.anexos
-                        : t.anexos
-                          ? [t.anexos]
-                          : []
-                      const totalAnexos = anexosLista.length
+                  <>
+                    {/* CABEÇALHO DE COLUNAS: Tarefa / Detalhes | Responsável | Empresa | Prazo | Ações */}
+                    <div className="hidden lg:grid grid-cols-12 gap-3 px-4 py-2 text-[11px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-200/70 select-none">
+                      <div className="col-span-5">Tarefa</div>
+                      <div className="col-span-2">Responsável</div>
+                      <div className="col-span-2">Empresa</div>
+                      <div className="col-span-1">Prazo</div>
+                      <div className="col-span-2 text-right">Status / Ações</div>
+                    </div>
 
-                      const statusAtual =
-                        STATUS_OPCOES.find(
-                          (s) =>
-                            s.key ===
-                            (t.status_kanban ||
-                              (t.status === 'concluida'
-                                ? 'concluido'
-                                : t.status === 'em_andamento'
-                                  ? 'em_andamento'
-                                  : 'a_fazer')),
-                        )?.label || 'A Fazer'
+                    <div className="space-y-2">
+                      {tarefasDoGrupo.map((t) => {
+                        const prio = (t.prioridade_p || 'P2').toUpperCase()
+                        const prioStyle = PRIO_STYLES[prio] || PRIO_STYLES.P2
+                        const prazoIso = t.prazo ? String(t.prazo).slice(0, 10) : ''
+                        const atrasada =
+                          prazoIso && prazoIso < hoje && t.status_kanban !== 'concluido'
+                        const anexosLista: string[] = Array.isArray(t.anexos)
+                          ? t.anexos
+                          : t.anexos
+                            ? [t.anexos]
+                            : []
+                        const totalAnexos = anexosLista.length
 
-                      return (
-                        <div
-                          key={t.id}
-                          onClick={() => onAbrirDetalhe(t)}
-                          className="bg-white rounded-xl border border-gray-200/90 hover:border-emerald-300/80 hover:shadow-xs p-3 sm:py-3.5 sm:px-4 cursor-pointer transition-all duration-150 group"
-                        >
-                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5">
-                            {/* NÍVEL PRINCIPAL (À ESQUERDA) */}
-                            <div className="flex items-start gap-3 min-w-0 flex-1">
-                              {/* Etiqueta de prioridade arredondada */}
-                              <span
-                                className={cn(
-                                  'shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-md border mt-0.5',
-                                  prioStyle.bg,
-                                  prioStyle.text,
-                                  prioStyle.border,
-                                )}
-                              >
-                                {prio}
-                              </span>
+                        const statusAtual =
+                          STATUS_OPCOES.find(
+                            (s) =>
+                              s.key ===
+                              (t.status_kanban ||
+                                (t.status === 'concluida'
+                                  ? 'concluido'
+                                  : t.status === 'em_andamento'
+                                    ? 'em_andamento'
+                                    : 'a_fazer')),
+                          )?.label || 'A Fazer'
 
-                              {/* Título e Metadados */}
-                              <div className="min-w-0 flex-1">
-                                <h3 className="text-xs sm:text-[13px] font-bold text-gray-900 group-hover:text-[#1B5E20] transition-colors truncate leading-tight">
-                                  {t.titulo}
-                                </h3>
-
-                                <div className="flex items-center gap-1.5 text-[11px] text-gray-500 mt-1 flex-wrap">
-                                  {/* Responsável com avatar circular e nome */}
-                                  {t.responsavel ? (
-                                    <div className="inline-flex items-center gap-1 text-gray-600">
-                                      <span className="h-4 w-4 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-[9px] font-bold flex items-center justify-center shrink-0">
-                                        {obterIniciais(t.responsavel)}
-                                      </span>
-                                      <span className="font-medium text-gray-700 truncate max-w-[120px]">
-                                        {t.responsavel}
-                                      </span>
-                                    </div>
-                                  ) : (
-                                    <span className="text-gray-400 italic">Sem responsável</span>
+                        return (
+                          <div
+                            key={t.id}
+                            onClick={() => onAbrirDetalhe(t)}
+                            className="bg-white rounded-xl border border-gray-200/90 hover:border-emerald-300/80 hover:shadow-xs p-3 sm:py-3 sm:px-4 cursor-pointer transition-all duration-150 group"
+                          >
+                            {/* LAYOUT EM GRID EM TELAS GRANDES (LG+), FLEX EM TELAS MENORES */}
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center">
+                              {/* COLUNA 1: Prioridade + Título + Vínculo (5 colunas) */}
+                              <div className="lg:col-span-5 flex items-start gap-3 min-w-0">
+                                <span
+                                  className={cn(
+                                    'shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-md border mt-0.5',
+                                    prioStyle.bg,
+                                    prioStyle.text,
+                                    prioStyle.border,
                                   )}
-
-                                  <span className="text-gray-300">·</span>
-
-                                  {/* Nome da empresa */}
-                                  <span className="font-medium text-gray-600 truncate max-w-[140px]">
-                                    {t.empresa || 'Sem empresa'}
-                                  </span>
-
-                                  {/* Etiqueta de vínculo quando houver */}
+                                >
+                                  {prio}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <h3 className="text-xs sm:text-[13px] font-bold text-gray-900 group-hover:text-[#1B5E20] transition-colors truncate leading-tight">
+                                    {t.titulo}
+                                  </h3>
                                   {t.vinculo_tipo && (
-                                    <>
-                                      <span className="text-gray-300">·</span>
+                                    <div className="mt-1">
                                       <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
                                         {t.vinculo_tipo === 'ata'
-                                          ? 'ata'
+                                          ? 'de ata'
                                           : t.vinculo_tipo === 'projeto'
-                                            ? 'projeto'
+                                            ? 'de projeto'
                                             : t.vinculo_tipo === 'contrato'
-                                              ? 'contrato'
+                                              ? 'de contrato'
                                               : t.vinculo_tipo}
                                       </span>
-                                    </>
+                                    </div>
                                   )}
                                 </div>
                               </div>
-                            </div>
 
-                            {/* NÍVEL SECUNDÁRIO (ALINHADO À DIREITA / DESCE EM TELAS PEQUENAS) */}
-                            <div
-                              onClick={(e) => e.stopPropagation()}
-                              className="flex items-center justify-between md:justify-end gap-3 sm:gap-4 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-gray-100 flex-wrap"
-                            >
-                              {/* Prazo com ícone de calendário (destaque em VERMELHO quando atrasada) */}
-                              <div
-                                className={cn(
-                                  'inline-flex items-center gap-1.5 text-xs font-semibold tabular-nums',
-                                  atrasada
-                                    ? 'text-red-600 font-bold bg-red-50 border border-red-200 px-2 py-0.5 rounded-md'
-                                    : 'text-gray-600',
-                                )}
-                                title={atrasada ? 'Tarefa atrasada!' : 'Prazo de conclusão'}
-                              >
-                                <Calendar
-                                  className={cn(
-                                    'h-3.5 w-3.5',
-                                    atrasada ? 'text-red-600' : 'text-gray-400',
-                                  )}
-                                />
-                                <span>{fmtDataCurta(t.prazo)}</span>
-                              </div>
-
-                              {/* Indicação de recorrência quando houver */}
-                              {t.recorrencia && t.recorrencia !== 'Nenhuma' ? (
-                                <div
-                                  className="inline-flex items-center gap-1 text-xs text-gray-600"
-                                  title={`Recorrência: ${t.recorrencia}`}
-                                >
-                                  <Repeat className="h-3.5 w-3.5 text-gray-400" />
-                                  <span className="text-[11px] font-medium">{t.recorrencia}</span>
-                                </div>
-                              ) : (
-                                <span className="text-gray-300 text-xs hidden sm:inline select-none">
-                                  — —
+                              {/* COLUNA 2: Responsável (avatar + nome) (2 colunas) */}
+                              <div className="lg:col-span-2 flex items-center gap-1.5 text-xs text-gray-700 min-w-0">
+                                <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
+                                  Resp:
                                 </span>
-                              )}
-
-                              {/* Ícone de anexos com quantidade */}
-                              <div
-                                className={cn(
-                                  'inline-flex items-center gap-1 text-xs font-medium',
-                                  totalAnexos > 0 ? 'text-gray-700' : 'text-gray-300',
+                                {t.responsavel ? (
+                                  <div className="inline-flex items-center gap-1.5 min-w-0 truncate">
+                                    <span className="h-5 w-5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-[9px] font-bold flex items-center justify-center shrink-0">
+                                      {obterIniciais(t.responsavel)}
+                                    </span>
+                                    <span
+                                      className="font-medium truncate text-gray-800"
+                                      title={t.responsavel}
+                                    >
+                                      {t.responsavel}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 italic text-xs">
+                                    Sem responsável
+                                  </span>
                                 )}
-                                title={totalAnexos > 0 ? `${totalAnexos} anexo(s)` : 'Sem anexos'}
-                              >
-                                <Paperclip className="h-3.5 w-3.5 text-gray-400" />
-                                <span>{totalAnexos > 0 ? totalAnexos : ''}</span>
                               </div>
 
-                              {/* SELETOR DE STATUS NA LINHA */}
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="h-7 px-2.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-[11px] font-medium text-gray-700 inline-flex items-center gap-1 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1B5E20]"
-                                    title="Alterar status"
+                              {/* COLUNA 3: Empresa (ícone da empresa + nome) (2 colunas) */}
+                              <div className="lg:col-span-2 flex items-center gap-1.5 text-xs text-gray-700 min-w-0">
+                                <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
+                                  Empresa:
+                                </span>
+                                {t.empresa ? (
+                                  <div
+                                    className="inline-flex items-center gap-1.5 min-w-0 truncate"
+                                    title={t.empresa}
                                   >
-                                    <span>{statusAtual}</span>
-                                    <ChevronDown className="h-3 w-3 text-gray-400" />
-                                  </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-36 bg-white">
-                                  {STATUS_OPCOES.map((op) => {
-                                    const ativo = statusAtual === op.label
-                                    return (
-                                      <DropdownMenuItem
-                                        key={op.key}
-                                        onClick={() => onMoverStatus && onMoverStatus(t, op.key)}
-                                        className={cn(
-                                          'flex items-center justify-between text-xs font-medium cursor-pointer',
-                                          ativo && 'bg-emerald-50 text-[#1B5E20] font-bold',
-                                        )}
-                                      >
-                                        <span>{op.label}</span>
-                                        {ativo && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
-                                      </DropdownMenuItem>
-                                    )
-                                  })}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                                    <EmpresaIcon nome={t.empresa} className="h-4 w-4 shrink-0" />
+                                    <span className="font-medium truncate text-gray-800">
+                                      {t.empresa}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 italic text-xs">Sem empresa</span>
+                                )}
+                              </div>
 
-                              {/* MENU DE TRÊS PONTOS (Ações: Editar, Excluir) */}
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="h-7 w-7 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 flex items-center justify-center transition-colors"
-                                    title="Mais ações"
+                              {/* COLUNA 4: Prazo (1 coluna) */}
+                              <div className="lg:col-span-1 flex items-center gap-1.5 min-w-0">
+                                <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
+                                  Prazo:
+                                </span>
+                                <div
+                                  className={cn(
+                                    'inline-flex items-center gap-1 text-xs font-semibold tabular-nums',
+                                    atrasada
+                                      ? 'text-red-600 font-bold bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md'
+                                      : 'text-gray-600',
+                                  )}
+                                  title={atrasada ? 'Tarefa atrasada!' : 'Prazo de conclusão'}
+                                >
+                                  <Calendar
+                                    className={cn(
+                                      'h-3 w-3 shrink-0',
+                                      atrasada ? 'text-red-600' : 'text-gray-400',
+                                    )}
+                                  />
+                                  <span>{fmtDataCurta(t.prazo)}</span>
+                                </div>
+                              </div>
+
+                              {/* COLUNA 5: Recorrência, Anexos, Seletor de Status e Menu ⋯ (2 colunas / direita) */}
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="lg:col-span-2 flex items-center justify-between lg:justify-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-100 flex-wrap"
+                              >
+                                {/* Indicação de recorrência quando houver */}
+                                {t.recorrencia && t.recorrencia !== 'Nenhuma' ? (
+                                  <div
+                                    className="inline-flex items-center gap-1 text-xs text-gray-600"
+                                    title={`Recorrência: ${t.recorrencia}`}
                                   >
-                                    <MoreHorizontal className="h-4 w-4" />
-                                  </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-36 bg-white">
-                                  <DropdownMenuItem
-                                    onClick={() => onAbrirEditar(t)}
-                                    className="flex items-center gap-2 text-xs font-medium cursor-pointer"
+                                    <Repeat className="h-3.5 w-3.5 text-gray-400" />
+                                    <span className="text-[11px] font-medium hidden sm:inline">
+                                      {t.recorrencia}
+                                    </span>
+                                  </div>
+                                ) : null}
+
+                                {/* Ícone de anexos com quantidade */}
+                                {totalAnexos > 0 && (
+                                  <div
+                                    className="inline-flex items-center gap-0.5 text-xs font-medium text-gray-700"
+                                    title={`${totalAnexos} anexo(s)`}
                                   >
-                                    <Pencil className="h-3.5 w-3.5 text-gray-500" />
-                                    <span>Editar</span>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    onClick={() => onExcluir(t)}
-                                    className="flex items-center gap-2 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                                    <span>Excluir</span>
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
+                                    <Paperclip className="h-3.5 w-3.5 text-gray-400" />
+                                    <span>{totalAnexos}</span>
+                                  </div>
+                                )}
+
+                                {/* SELETOR DE STATUS NA LINHA */}
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="h-7 px-2.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-[11px] font-medium text-gray-700 inline-flex items-center gap-1 transition-colors focus:outline-none focus:ring-1 focus:ring-[#1B5E20]"
+                                      title="Alterar status"
+                                    >
+                                      <span className="truncate max-w-[85px]">{statusAtual}</span>
+                                      <ChevronDown className="h-3 w-3 text-gray-400 shrink-0" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-36 bg-white">
+                                    {STATUS_OPCOES.map((op) => {
+                                      const ativo = statusAtual === op.label
+                                      return (
+                                        <DropdownMenuItem
+                                          key={op.key}
+                                          onClick={() => onMoverStatus && onMoverStatus(t, op.key)}
+                                          className={cn(
+                                            'flex items-center justify-between text-xs font-medium cursor-pointer',
+                                            ativo && 'bg-emerald-50 text-[#1B5E20] font-bold',
+                                          )}
+                                        >
+                                          <span>{op.label}</span>
+                                          {ativo && (
+                                            <Check className="h-3.5 w-3.5 text-[#1B5E20]" />
+                                          )}
+                                        </DropdownMenuItem>
+                                      )
+                                    })}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+
+                                {/* MENU DE TRÊS PONTOS (Ações: Editar, Excluir) */}
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="h-7 w-7 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 flex items-center justify-center transition-colors"
+                                      title="Mais ações"
+                                    >
+                                      <MoreHorizontal className="h-4 w-4" />
+                                    </button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-36 bg-white">
+                                    <DropdownMenuItem
+                                      onClick={() => onAbrirEditar(t)}
+                                      className="flex items-center gap-2 text-xs font-medium cursor-pointer"
+                                    >
+                                      <Pencil className="h-3.5 w-3.5 text-gray-500" />
+                                      <span>Editar</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem
+                                      onClick={() => onExcluir(t)}
+                                      className="flex items-center gap-2 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 cursor-pointer"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                                      <span>Excluir</span>
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                        )
+                      })}
+                    </div>
+                  </>
                 )}
               </div>
             )}
