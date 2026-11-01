@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-01T11:52:10.218Z",
+  "generatedAt": "2026-11-01T12:15:58.795Z",
   "collections": [
     {
       "name": "users",
@@ -731,7 +731,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": ["a_fazer", "em_andamento", "bloqueado", "concluido"]
+          "selectValues": ["triagem", "a_fazer", "em_andamento", "bloqueado", "concluido"]
         },
         {
           "name": "prioridade_p",

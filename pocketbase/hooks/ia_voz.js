@@ -83,7 +83,7 @@ routerAdd(
       '; se não houver data ou prazo claro na frase, deixe vazio ""),\n' +
       '  "recorrencia": string (DEVE ser EXATAMENTE uma das opções: "Nenhuma", "Diária", "Semanal", "Mensal", "Bimestral", "A definir". Converta expressões como "todo dia 1º", "todo mês", "mensalmente" -> "Mensal"; "toda segunda", "semanalmente" -> "Semanal"; "todo dia", "diariamente" -> "Diária"; "a cada dois meses", "a cada quinze dias", etc. Se não houver repetição, use "Nenhuma"),\n' +
       '  "prioridade_p": "P1" | "P2" | "P3" (se mencionado "urgente"/"alta" -> "P1", se "baixa" -> "P3", padrão "P2"),\n' +
-      '  "status_kanban": "a_fazer" | "em_andamento" | "bloqueado" | "concluido" (padrão "a_fazer"),\n' +
+      '  "status_kanban": "triagem" | "a_fazer" | "em_andamento" | "bloqueado" | "concluido" (padrão "triagem"),\n' +
       '  "vinculo_tipo": "ata" | "projeto" | "contrato" | "" (se mencionado explicitamente),\n' +
       '  "vinculo_id": string (código ou id citado, se houver),\n' +
       '  "pessoas_nao_encontradas": array de strings (nomes citados na frase que NÃO foram encontrados nos cadastros de parceiros),\n' +

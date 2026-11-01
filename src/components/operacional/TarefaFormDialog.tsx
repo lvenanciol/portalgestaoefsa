@@ -724,7 +724,7 @@ export function TarefaFormDialog({
       }
 
       // Status
-      let statusFinal = form.status_kanban || 'a_fazer'
+      let statusFinal = form.status_kanban || 'triagem'
       let statusMudou = false
       if (e.status_kanban) {
         statusFinal = e.status_kanban
@@ -1524,7 +1524,7 @@ export function TarefaFormDialog({
                   )}
                 </Label>
                 <Select
-                  value={form.status_kanban || 'a_fazer'}
+                  value={form.status_kanban || 'triagem'}
                   onValueChange={(v) => setForm({ ...form, status_kanban: v })}
                 >
                   <SelectTrigger
@@ -1537,6 +1537,7 @@ export function TarefaFormDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="triagem">Triagem</SelectItem>
                     <SelectItem value="a_fazer">A Fazer</SelectItem>
                     <SelectItem value="em_andamento">Em Andamento</SelectItem>
                     <SelectItem value="bloqueado">Bloqueado</SelectItem>

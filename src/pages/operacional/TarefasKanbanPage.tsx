@@ -27,6 +27,12 @@ import {
   ChevronDown,
   Repeat,
   Search,
+  Inbox,
+  Lock,
+  Play,
+  CheckCircle2,
+  MoreHorizontal,
+  SlidersHorizontal,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -71,10 +77,11 @@ import { cn } from '@/lib/utils'
 // "Compromissos de hoje" + alertas de atraso.
 
 const COLUNAS = [
-  { key: 'a_fazer', label: 'A Fazer', cor: 'bg-gray-100 text-gray-700' },
-  { key: 'em_andamento', label: 'Em Andamento', cor: 'bg-amber-50 text-amber-700' },
-  { key: 'bloqueado', label: 'Bloqueado', cor: 'bg-red-50 text-red-700' },
-  { key: 'concluido', label: 'Concluído', cor: 'bg-emerald-50 text-emerald-700' },
+  { key: 'triagem', label: 'TRIAGEM' },
+  { key: 'a_fazer', label: 'A Fazer' },
+  { key: 'em_andamento', label: 'Em Andamento' },
+  { key: 'bloqueado', label: 'Bloqueado' },
+  { key: 'concluido', label: 'Concluído' },
 ]
 
 const PRIO_COR: Record<string, string> = {
@@ -96,7 +103,7 @@ export default function TarefasKanbanPage() {
   const [itens, setItens] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
-  const [vista, setVista] = useState<'lista' | 'kanban' | 'calendario'>('lista')
+  const [vista, setVista] = useState<'lista' | 'kanban' | 'calendario'>('kanban')
   const [filtroRapido, setFiltroRapido] = useState<
     'todos' | 'hoje' | 'semana' | 'atrasadas' | 'minhas' | 'sem_responsavel' | 'em_andamento'
   >('todos')
@@ -109,6 +116,8 @@ export default function TarefasKanbanPage() {
   const [arquivosNovos, setArquivosNovos] = useState<File[]>([])
   const [anexosExistentes, setAnexosExistentes] = useState<string[]>([])
   const [salvando, setSalvando] = useState(false)
+  const [arrastandoTarefa, setArrastandoTarefa] = useState<any | null>(null)
+  const [colunaHover, setColunaHover] = useState<string | null>(null)
 
   // Filtros de cabeçalho: Período da agenda (dataRange) e Parceiros & Contatos (multisseleção)
   const [filtroPeriodo, setFiltroPeriodo] = useState<{ from?: Date; to?: Date } | undefined>(
@@ -299,6 +308,27 @@ export default function TarefasKanbanPage() {
   }
 
   const mover = async (t: any, novo: string) => {
+    // Atualização otimista imediata para que contadores e colunas reajam na hora
+    const statusAntigo = t.status_kanban || 'triagem'
+    if (statusAntigo === novo) return
+
+    setItens((prev) =>
+      prev.map((item) =>
+        item.id === t.id
+          ? {
+              ...item,
+              status_kanban: novo,
+              status:
+                novo === 'concluido'
+                  ? 'concluida'
+                  : novo === 'em_andamento'
+                    ? 'em_andamento'
+                    : 'pendente',
+            }
+          : item,
+      ),
+    )
+
     try {
       await pb.collection('tarefas').update(t.id, {
         status_kanban: novo,
@@ -312,17 +342,18 @@ export default function TarefasKanbanPage() {
       await carregar()
     } catch (e) {
       setErro(String(e))
+      await carregar()
     }
   }
 
-  const abrirNova = () => {
+  const abrirNova = (statusPadrao: string = 'triagem') => {
     setForm({
       titulo: '',
       responsavel: '',
       prazo: '',
       recorrencia: 'Nenhuma',
       prioridade_p: 'P2',
-      status_kanban: 'a_fazer',
+      status_kanban: statusPadrao,
       descricao: '',
       vinculo_tipo: '',
       vinculo_id: '',
@@ -357,7 +388,7 @@ export default function TarefasKanbanPage() {
           ? 'concluido'
           : t.status === 'em_andamento'
             ? 'em_andamento'
-            : 'a_fazer'),
+            : 'triagem'),
       descricao: t.descricao || '',
       vinculo_tipo: t.vinculo_tipo || '',
       vinculo_id: t.vinculo_id || '',
@@ -829,7 +860,7 @@ export default function TarefasKanbanPage() {
       }
       fd.append('recorrencia', form.recorrencia || 'Nenhuma')
       fd.append('prioridade_p', form.prioridade_p || 'P2')
-      fd.append('status_kanban', form.status_kanban || 'a_fazer')
+      fd.append('status_kanban', form.status_kanban || 'triagem')
       fd.append('descricao', form.descricao || '')
       fd.append('vinculo_tipo', form.vinculo_tipo || '')
       fd.append('vinculo_id', form.vinculo_id || '')
@@ -1040,22 +1071,160 @@ export default function TarefasKanbanPage() {
 
   return (
     <div className="space-y-4 pb-8">
-      {/* BARRA SUPERIOR: Título + Botão Nova Tarefa */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-200/80">
+      {/* BARRA SUPERIOR: Título + Controle segmentado único (Lista | Board | Calendário) + Ações da direita */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-gray-200/80">
         <div>
           <h1 className="text-2xl lg:text-[26px] font-bold text-gray-900 tracking-tight flex items-center gap-2">
             <span className="text-[#1B5E20] text-xl font-bold tracking-tight select-none">|'|</span>{' '}
             Tarefas & Agenda
           </h1>
           <p className="text-xs sm:text-[13px] text-gray-500 mt-0.5">
-            Suas tarefas do dia, por status
+            Arraste os cartões para mudar a fase
           </p>
         </div>
 
-        {/* Botão Nova tarefa (permanece na posição de ação principal superior) */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        {/* Grupo da direita: Segmented Control + Período + Filtro Empresa + Nova Tarefa */}
+        <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap self-start lg:self-auto">
+          {/* Controle segmentado único: Lista | Board | Calendário */}
+          <div className="inline-flex items-center p-0.5 bg-gray-100/90 rounded-lg border border-gray-200/70 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setVista('lista')}
+              className={cn(
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all',
+                vista === 'lista'
+                  ? 'bg-white text-gray-900 shadow-xs font-bold'
+                  : 'text-gray-600 hover:text-gray-900',
+              )}
+            >
+              <List className="h-3.5 w-3.5" />
+              <span>Lista</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setVista('kanban')}
+              className={cn(
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all',
+                vista === 'kanban'
+                  ? 'bg-[#1B5E20] text-white shadow-xs font-bold'
+                  : 'text-gray-600 hover:text-gray-900',
+              )}
+            >
+              <Kanban className="h-3.5 w-3.5" />
+              <span>Board</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setVista('calendario')}
+              className={cn(
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-all',
+                vista === 'calendario'
+                  ? 'bg-white text-gray-900 shadow-xs font-bold'
+                  : 'text-gray-600 hover:text-gray-900',
+              )}
+            >
+              <Calendar className="h-3.5 w-3.5" />
+              <span>Calendário</span>
+            </button>
+          </div>
+
+          {/* Seletor de período */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  'h-9 px-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-xs font-medium text-gray-700 shadow-2xs inline-flex items-center gap-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20',
+                  (filtroPeriodo?.from || filtroPeriodo?.to) &&
+                    'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50 font-semibold',
+                )}
+                title="Seletor de período"
+              >
+                <Calendar className="h-3.5 w-3.5 text-gray-500" />
+                <span>
+                  {filtroPeriodo?.from
+                    ? filtroPeriodo.to
+                      ? `${filtroPeriodo.from.toLocaleDateString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                        })} — ${filtroPeriodo.to.toLocaleDateString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                        })}`
+                      : `A partir de ${filtroPeriodo.from.toLocaleDateString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                        })}`
+                    : 'Out/2026'}
+                </span>
+                <ChevronDown className="h-3 w-3 text-gray-400" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0 bg-white" align="end">
+              <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold text-gray-900">Período</div>
+                  <div className="text-[11px] text-gray-500">Selecione início e fim</div>
+                </div>
+                {filtroPeriodo?.from && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setFiltroPeriodo(undefined)}
+                    className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    Limpar
+                  </Button>
+                )}
+              </div>
+              <CalendarPicker
+                mode="range"
+                selected={filtroPeriodo as any}
+                onSelect={(range: any) => setFiltroPeriodo(range)}
+                numberOfMonths={1}
+                className="rounded-md"
+              />
+            </PopoverContent>
+          </Popover>
+
+          {/* Seletor de empresa */}
+          <Select value={empresaFiltroAtiva} onValueChange={(v) => setFiltroEmpresa(v)}>
+            <SelectTrigger
+              className="h-9 min-w-[160px] max-w-[210px] bg-white border-gray-200 text-xs font-medium text-gray-800 shadow-2xs focus:ring-[#1B5E20] rounded-lg"
+              aria-label="Filtro de empresa"
+            >
+              <div className="flex items-center gap-1.5 truncate">
+                {empresaFiltroAtiva !== 'todas' ? (
+                  <EmpresaIcon nome={empresaFiltroAtiva} className="h-3.5 w-3.5" />
+                ) : (
+                  <UsersIcon className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                )}
+                <span className="truncate">
+                  {empresaFiltroAtiva === 'todas' ? 'Todas as empresas' : empresaFiltroAtiva}
+                </span>
+              </div>
+            </SelectTrigger>
+            <SelectContent align="end" className="w-[210px] bg-white">
+              <SelectItem value="todas">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-gray-400" />
+                  <span>Todas as empresas</span>
+                </div>
+              </SelectItem>
+              {empresas.map((e) => (
+                <SelectItem key={e.id} value={e.nome}>
+                  <div className="flex items-center gap-2">
+                    <EmpresaIcon nome={e.nome} className="h-4 w-4" />
+                    <span>{e.nome}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Botão Nova tarefa */}
           <Button
-            onClick={abrirNova}
+            onClick={() => abrirNova('triagem')}
             className="h-9 px-3.5 text-xs font-semibold bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs rounded-lg flex items-center gap-1.5"
           >
             <Plus className="h-4 w-4" /> Nova tarefa
@@ -1069,313 +1238,142 @@ export default function TarefasKanbanPage() {
         </div>
       )}
 
-      {/* BARRA UNIFICADA DE FILTROS E VISÃO (comum a todas as visões para permitir alternar entre Lista, Board e Calendário) */}
-      <div className="space-y-3">
-        {/* FAIXA DE CONTADORES: Hoje, Atrasadas, Sem responsável, Em andamento */}
-        <div className="flex items-center gap-3 text-xs text-gray-600 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setFiltroRapido((f) => (f === 'hoje' ? 'todos' : 'hoje'))}
+      {/* FAIXA DE CONTADORES: Hoje, Atrasadas, Sem responsável, Em andamento */}
+      <div className="flex items-center gap-3 text-xs text-gray-600 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setFiltroRapido((f) => (f === 'hoje' ? 'todos' : 'hoje'))}
+          className={cn(
+            'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
+            filtroRapido === 'hoje' && 'font-bold text-[#1B5E20] bg-emerald-50',
+          )}
+        >
+          <span>Hoje</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[11px] font-bold bg-gray-100 text-gray-700">
+            {contadores.hoje}
+          </span>
+        </button>
+        <span className="text-gray-300">·</span>
+        <button
+          type="button"
+          onClick={() => setFiltroRapido((f) => (f === 'atrasadas' ? 'todos' : 'atrasadas'))}
+          className={cn(
+            'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
+            filtroRapido === 'atrasadas' && 'font-bold text-red-700 bg-red-50',
+          )}
+        >
+          <span>Atrasadas</span>
+          <span
             className={cn(
-              'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
-              filtroRapido === 'hoje' && 'font-bold text-[#1B5E20] bg-emerald-50',
+              'px-1.5 py-0.2 rounded-full text-[11px] font-bold',
+              contadores.atrasadas > 0
+                ? 'bg-red-100 text-red-700 font-bold'
+                : 'bg-gray-100 text-gray-700',
             )}
           >
-            <span>Hoje</span>
-            <strong className="text-gray-900 font-semibold">{contadores.hoje}</strong>
-          </button>
-          <span className="text-gray-300">·</span>
-          <button
-            type="button"
-            onClick={() => setFiltroRapido((f) => (f === 'atrasadas' ? 'todos' : 'atrasadas'))}
-            className={cn(
-              'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
-              filtroRapido === 'atrasadas' && 'font-bold text-red-700 bg-red-50',
+            {contadores.atrasadas}
+          </span>
+        </button>
+        <span className="text-gray-300">·</span>
+        <button
+          type="button"
+          onClick={() =>
+            setFiltroRapido((f) => (f === 'sem_responsavel' ? 'todos' : 'sem_responsavel'))
+          }
+          className={cn(
+            'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
+            filtroRapido === 'sem_responsavel' && 'font-bold text-[#1B5E20] bg-emerald-50',
+          )}
+        >
+          <span>Sem responsável</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[11px] font-bold bg-gray-100 text-gray-700">
+            {contadores.semResponsavel}
+          </span>
+        </button>
+        <span className="text-gray-300">·</span>
+        <button
+          type="button"
+          onClick={() => setFiltroRapido((f) => (f === 'em_andamento' ? 'todos' : 'em_andamento'))}
+          className={cn(
+            'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
+            filtroRapido === 'em_andamento' && 'font-bold text-[#1B5E20] bg-emerald-50',
+          )}
+        >
+          <span>Em andamento</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[11px] font-bold bg-gray-100 text-gray-700">
+            {contadores.emAndamento}
+          </span>
+        </button>
+      </div>
+
+      {/* BUSCA E FILTROS RÁPIDOS */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap flex-1 min-w-0">
+          {/* Campo de busca por texto */}
+          <div className="relative w-full sm:w-64 lg:w-72">
+            <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={buscaTexto}
+              onChange={(e) => setBuscaTexto(e.target.value)}
+              placeholder="Buscar tarefa..."
+              className="w-full h-9 pl-9 pr-8 text-xs bg-white border border-gray-200 rounded-full text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20 focus:border-[#1B5E20]/40 transition-colors shadow-2xs"
+            />
+            {buscaTexto && (
+              <button
+                type="button"
+                onClick={() => setBuscaTexto('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                title="Limpar busca"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             )}
-          >
-            <span>Atrasadas</span>
-            <strong
-              className={cn(
-                'font-semibold',
-                contadores.atrasadas > 0 ? 'text-red-600 font-bold' : 'text-gray-900',
-              )}
-            >
-              {contadores.atrasadas}
-            </strong>
-          </button>
-          <span className="text-gray-300">·</span>
-          <button
-            type="button"
-            onClick={() =>
-              setFiltroRapido((f) => (f === 'sem_responsavel' ? 'todos' : 'sem_responsavel'))
-            }
-            className={cn(
-              'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
-              filtroRapido === 'sem_responsavel' && 'font-bold text-[#1B5E20] bg-emerald-50',
-            )}
-          >
-            <span>Sem responsável</span>
-            <strong className="text-gray-900 font-semibold">{contadores.semResponsavel}</strong>
-          </button>
-          <span className="text-gray-300">·</span>
-          <button
-            type="button"
-            onClick={() =>
-              setFiltroRapido((f) => (f === 'em_andamento' ? 'todos' : 'em_andamento'))
-            }
-            className={cn(
-              'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
-              filtroRapido === 'em_andamento' && 'font-bold text-[#1B5E20] bg-emerald-50',
-            )}
-          >
-            <span>Em andamento</span>
-            <strong className="text-gray-900 font-semibold">{contadores.emAndamento}</strong>
-          </button>
-        </div>
-
-        {/* BUSCA E FILTROS RÁPIDOS */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap flex-1 min-w-0">
-            {/* Campo de busca por texto */}
-            <div className="relative w-full sm:w-64 lg:w-72">
-              <Search className="h-4 w-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={buscaTexto}
-                onChange={(e) => setBuscaTexto(e.target.value)}
-                placeholder="Buscar tarefa..."
-                className="w-full h-9 pl-9 pr-8 text-xs bg-white border border-gray-200 rounded-full text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20 focus:border-[#1B5E20]/40 transition-colors shadow-2xs"
-              />
-              {buscaTexto && (
-                <button
-                  type="button"
-                  onClick={() => setBuscaTexto('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  title="Limpar busca"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Filtros rápidos em etiquetas clicáveis: Todos, Hoje, Semana, Atrasadas, Minhas */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setFiltroRapido('todos')}
-                className={cn(
-                  'px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
-                  filtroRapido === 'todos'
-                    ? 'bg-[#1B5E20] text-white shadow-xs'
-                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-                )}
-              >
-                Todos
-              </button>
-              <button
-                type="button"
-                onClick={() => setFiltroRapido('hoje')}
-                className={cn(
-                  'px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
-                  filtroRapido === 'hoje'
-                    ? 'bg-[#1B5E20] text-white shadow-xs'
-                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-                )}
-              >
-                Hoje
-              </button>
-              <button
-                type="button"
-                onClick={() => setFiltroRapido('semana')}
-                className={cn(
-                  'px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
-                  filtroRapido === 'semana'
-                    ? 'bg-[#1B5E20] text-white shadow-xs'
-                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-                )}
-              >
-                Semana
-              </button>
-              <button
-                type="button"
-                onClick={() => setFiltroRapido('atrasadas')}
-                className={cn(
-                  'px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
-                  filtroRapido === 'atrasadas'
-                    ? 'bg-[#1B5E20] text-white shadow-xs'
-                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-                )}
-              >
-                Atrasadas
-              </button>
-              <button
-                type="button"
-                onClick={() => setFiltroRapido('minhas')}
-                className={cn(
-                  'px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
-                  filtroRapido === 'minhas'
-                    ? 'bg-[#1B5E20] text-white shadow-xs'
-                    : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-                )}
-              >
-                Minhas
-              </button>
-            </div>
-
-            {/* Botão Agrupado de Visão: Lista ▾ (default), Board, Calendário — imediatamente à direita de "Minhas" */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="h-8 px-3 rounded-full border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-2xs inline-flex items-center gap-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20"
-                  title="Selecionar visualização"
-                >
-                  <List className="h-3.5 w-3.5 text-[#1B5E20]" />
-                  <span>
-                    {vista === 'lista' ? 'Lista' : vista === 'kanban' ? 'Board' : 'Calendário'}
-                  </span>
-                  <ChevronDown className="h-3 w-3 text-gray-400" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-40 bg-white">
-                <DropdownMenuItem
-                  onClick={() => setVista('lista')}
-                  className={cn(
-                    'flex items-center justify-between text-xs font-medium cursor-pointer',
-                    vista === 'lista' && 'bg-emerald-50 text-[#1B5E20] font-bold',
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <List className="h-3.5 w-3.5" />
-                    <span>Lista</span>
-                  </div>
-                  {vista === 'lista' && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setVista('kanban')}
-                  className={cn(
-                    'flex items-center justify-between text-xs font-medium cursor-pointer',
-                    vista === 'kanban' && 'bg-emerald-50 text-[#1B5E20] font-bold',
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <Kanban className="h-3.5 w-3.5" />
-                    <span>Board</span>
-                  </div>
-                  {vista === 'kanban' && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setVista('calendario')}
-                  className={cn(
-                    'flex items-center justify-between text-xs font-medium cursor-pointer',
-                    vista === 'calendario' && 'bg-emerald-50 text-[#1B5E20] font-bold',
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <Calendar className="h-3.5 w-3.5" />
-                    <span>Calendário</span>
-                  </div>
-                  {vista === 'calendario' && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {/* Seletor de período — imediatamente à direita do botão de visão */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className={cn(
-                    'h-8 px-3 rounded-full border border-gray-200 bg-white hover:bg-gray-50 text-xs font-semibold text-gray-700 shadow-2xs inline-flex items-center gap-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20',
-                    (filtroPeriodo?.from || filtroPeriodo?.to) &&
-                      'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50',
-                  )}
-                  title="Seletor de período"
-                >
-                  <Calendar className="h-3.5 w-3.5 text-gray-500" />
-                  <span>
-                    {filtroPeriodo?.from
-                      ? filtroPeriodo.to
-                        ? `${filtroPeriodo.from.toLocaleDateString('pt-BR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                          })} — ${filtroPeriodo.to.toLocaleDateString('pt-BR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                          })}`
-                        : `A partir de ${filtroPeriodo.from.toLocaleDateString('pt-BR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                          })}`
-                      : 'Período'}
-                  </span>
-                  <ChevronDown className="h-3 w-3 text-gray-400" />
-                </button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 bg-white" align="start">
-                <div className="p-3 border-b border-gray-100 flex items-center justify-between">
-                  <div>
-                    <div className="text-xs font-bold text-gray-900">Período</div>
-                    <div className="text-[11px] text-gray-500">Selecione início e fim</div>
-                  </div>
-                  {filtroPeriodo?.from && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setFiltroPeriodo(undefined)}
-                      className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      Limpar
-                    </Button>
-                  )}
-                </div>
-                <CalendarPicker
-                  mode="range"
-                  selected={filtroPeriodo as any}
-                  onSelect={(range: any) => setFiltroPeriodo(range)}
-                  numberOfMonths={1}
-                  className="rounded-md"
-                />
-              </PopoverContent>
-            </Popover>
-
-            {/* Seletor de empresa — imediatamente à direita de período */}
-            <Select value={empresaFiltroAtiva} onValueChange={(v) => setFiltroEmpresa(v)}>
-              <SelectTrigger
-                className="h-8 min-w-[160px] max-w-[220px] bg-white border-gray-200 text-xs font-semibold text-gray-800 shadow-2xs focus:ring-[#1B5E20] rounded-full"
-                aria-label="Filtro de empresa"
-              >
-                <div className="flex items-center gap-1.5 truncate">
-                  {empresaFiltroAtiva !== 'todas' ? (
-                    <EmpresaIcon nome={empresaFiltroAtiva} className="h-3.5 w-3.5" />
-                  ) : (
-                    <UsersIcon className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                  )}
-                  <span className="truncate">
-                    {empresaFiltroAtiva === 'todas' ? 'Todas as empresas' : empresaFiltroAtiva}
-                  </span>
-                </div>
-              </SelectTrigger>
-              <SelectContent align="start" className="w-[210px] bg-white">
-                <SelectItem value="todas">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-gray-400" />
-                    <span>Todas as empresas</span>
-                  </div>
-                </SelectItem>
-                {empresas.map((e) => (
-                  <SelectItem key={e.id} value={e.nome}>
-                    <div className="flex items-center gap-2">
-                      <EmpresaIcon nome={e.nome} className="h-4 w-4" />
-                      <span>{e.nome}</span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
-          {/* Ação de limpar filtros se ativos */}
+          {/* Filtros rápidos: Todos, Meus (Minhas), P2 e P1 */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setFiltroRapido('todos')}
+              className={cn(
+                'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
+                filtroRapido === 'todos'
+                  ? 'bg-[#1B5E20] text-white shadow-xs'
+                  : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
+              )}
+            >
+              Todos
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroRapido('minhas')}
+              className={cn(
+                'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
+                filtroRapido === 'minhas'
+                  ? 'bg-[#1B5E20] text-white shadow-xs'
+                  : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
+              )}
+            >
+              Meus
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroRapido((f) => (f === 'semana' ? 'todos' : 'semana'))}
+              className={cn(
+                'px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all',
+                filtroRapido === 'semana'
+                  ? 'bg-[#1B5E20] text-white shadow-xs'
+                  : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
+              )}
+            >
+              P2 e P1
+            </button>
+          </div>
+        </div>
+
+        {/* Botão lateral de filtros adicionais / limpar */}
+        <div className="flex items-center gap-2">
           {(buscaTexto ||
             filtroRapido !== 'todos' ||
             filtroPeriodo?.from ||
@@ -1388,69 +1386,22 @@ export default function TarefasKanbanPage() {
                 setFiltroPeriodo(undefined)
                 setFiltroEmpresa('todas')
               }}
-              className="text-xs text-gray-500 hover:text-red-600 font-medium inline-flex items-center gap-1 self-start sm:self-auto shrink-0"
+              className="text-xs text-gray-500 hover:text-red-600 font-medium inline-flex items-center gap-1 shrink-0"
             >
               <X className="h-3 w-3" /> Limpar filtros
             </button>
           )}
+
+          <button
+            type="button"
+            className="h-8 px-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-xs font-medium text-gray-700 shadow-2xs inline-flex items-center gap-1.5 transition-colors"
+            title="Mais filtros"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5 text-gray-500" />
+            <span>Filtros</span>
+          </button>
         </div>
       </div>
-
-      {/* Nas outras visões (Kanban e Calendário): mantém os cartões de compromissos de hoje e atrasadas */}
-      {vista !== 'lista' && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2">
-              Compromissos de hoje
-            </div>
-            {deHoje.length === 0 ? (
-              <p className="text-[12px] text-gray-400">Nenhum compromisso para hoje.</p>
-            ) : (
-              <div className="space-y-1.5">
-                {deHoje.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => abrirDetalhe(t)}
-                    className="block w-full text-left text-[13px] font-medium text-gray-800 hover:text-[#1B5E20] truncate"
-                  >
-                    · {t.titulo} <span className="text-gray-400">({t.responsavel})</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div
-            className={cn(
-              'bg-white rounded-xl border p-4 shadow-xs',
-              atrasadas.length ? 'border-red-200' : 'border-[#E5E7EB]',
-            )}
-          >
-            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center gap-1.5">
-              <AlertTriangle
-                className={cn('h-3.5 w-3.5', atrasadas.length ? 'text-red-500' : 'text-gray-300')}
-              />
-              Atrasadas ({atrasadas.length})
-            </div>
-            {atrasadas.length === 0 ? (
-              <p className="text-[12px] text-gray-400">Nada atrasado. 👍</p>
-            ) : (
-              <div className="space-y-1.5">
-                {atrasadas.slice(0, 4).map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => abrirDetalhe(t)}
-                    className="block w-full text-left text-[13px] font-medium text-red-700 hover:underline truncate"
-                  >
-                    · {t.titulo} <span className="text-red-400">{fmtData(t.prazo)}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Vista: Lista (Tabela com colunas ordenáveis ao clique, reorganizáveis e redimensionáveis por arrasto) */}
       {vista === 'lista' && (
@@ -1465,148 +1416,372 @@ export default function TarefasKanbanPage() {
         />
       )}
 
-      {/* Vista: Kanban */}
+      {/* Vista: Kanban — 5 colunas (Triagem âmbar, A Fazer com limite 5, Em Andamento, Bloqueado vermelho, Concluído verde) */}
       {vista === 'kanban' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5 items-start">
           {COLUNAS.map((col) => {
-            const cards = itensFiltrados.filter((t) => (t.status_kanban || 'a_fazer') === col.key)
+            const isTriagem = col.key === 'triagem'
+            const isAFazer = col.key === 'a_fazer'
+            const isBloqueado = col.key === 'bloqueado'
+            const isConcluido = col.key === 'concluido'
+            const isEmAndamento = col.key === 'em_andamento'
+            const isOver = colunaHover === col.key && arrastandoTarefa?.status_kanban !== col.key
+
+            const cards = itensFiltrados.filter((t) => (t.status_kanban || 'triagem') === col.key)
+
             return (
               <div
                 key={col.key}
-                className="bg-gray-50/60 rounded-xl border border-gray-100 p-3 min-h-[300px]"
+                onDragOver={(e) => {
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (colunaHover !== col.key) setColunaHover(col.key)
+                }}
+                onDragLeave={(e) => {
+                  // Só limpa se estiver saindo da coluna de fato
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    if (colunaHover === col.key) setColunaHover(null)
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  setColunaHover(null)
+                  const id = e.dataTransfer.getData('text/plain')
+                  const tarefaArrastada = itens.find((t) => t.id === id) || arrastandoTarefa
+                  if (tarefaArrastada && tarefaArrastada.status_kanban !== col.key) {
+                    mover(tarefaArrastada, col.key)
+                  }
+                  setArrastandoTarefa(null)
+                }}
+                className={cn(
+                  'rounded-2xl transition-all flex flex-col',
+                  isTriagem
+                    ? 'bg-[#FFF9EC] border-2 border-amber-300 shadow-xs'
+                    : 'bg-gray-50/70 border border-gray-200/80',
+                  isOver && 'ring-2 ring-[#1B5E20] border-[#1B5E20] bg-emerald-50/30 shadow-md',
+                )}
               >
-                <div className="flex items-center justify-between mb-3">
-                  <span className={cn('text-[11px] font-bold px-2 py-0.5 rounded-full', col.cor)}>
-                    {col.label}
-                  </span>
-                  <span className="text-[11px] font-bold text-gray-400">{cards.length}</span>
-                </div>
-                <div className="space-y-2">
-                  {cards.map((t) => {
-                    const anexosCount = Array.isArray(t.anexos) ? t.anexos.length : t.anexos ? 1 : 0
+                {/* Cabeçalho da coluna */}
+                <div
+                  className={cn(
+                    'p-3.5 border-b',
+                    isTriagem ? 'border-amber-200/70' : 'border-gray-200/60',
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isTriagem && (
+                        <div className="w-5 h-5 rounded-md bg-amber-500/15 text-amber-700 flex items-center justify-center shrink-0">
+                          <Inbox className="h-3.5 w-3.5" />
+                        </div>
+                      )}
+                      {isAFazer && (
+                        <div className="w-5 h-5 rounded-md bg-gray-200/60 text-gray-600 flex items-center justify-center shrink-0">
+                          <FileText className="h-3.5 w-3.5" />
+                        </div>
+                      )}
+                      {isEmAndamento && (
+                        <div className="w-5 h-5 rounded-md bg-blue-100/60 text-blue-600 flex items-center justify-center shrink-0">
+                          <Play className="h-3.5 w-3.5" />
+                        </div>
+                      )}
+                      {isBloqueado && (
+                        <div className="w-5 h-5 rounded-md bg-red-100/60 text-red-600 flex items-center justify-center shrink-0">
+                          <Lock className="h-3.5 w-3.5" />
+                        </div>
+                      )}
+                      {isConcluido && (
+                        <div className="w-5 h-5 rounded-md bg-emerald-100/60 text-emerald-600 flex items-center justify-center shrink-0">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        </div>
+                      )}
 
-                    return (
-                      <div
-                        key={t.id}
-                        className="bg-white rounded-lg border border-gray-100 p-3 shadow-xs hover:shadow-md transition-shadow cursor-pointer"
-                        onClick={() => abrirDetalhe(t)}
-                      >
-                        <div className="flex items-center justify-between gap-2 mb-1">
-                          <span
-                            className={cn(
-                              'text-[9px] font-bold px-1.5 py-0.5 rounded',
-                              PRIO_COR[t.prioridade_p || 'P3'],
-                            )}
-                          >
-                            {t.prioridade_p || 'P3'}
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            {t.prazo &&
-                              String(t.prazo).slice(0, 10) < hoje &&
-                              t.status_kanban !== 'concluido' && (
-                                <span className="text-[9px] font-bold text-red-600">ATRASADA</span>
-                              )}
-                            <button
-                              type="button"
-                              title="Editar tarefa"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                abrirEditar(t)
-                              }}
-                              className="p-1 rounded-md text-gray-400 hover:text-[#1B5E20] hover:bg-emerald-50 transition-colors"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              title="Excluir tarefa"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setExcluindoTarefa(t)
-                              }}
-                              className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="text-[13px] font-semibold text-gray-900 leading-snug">
-                          {t.titulo}
-                        </div>
-                        {t.vinculo_tipo && (
-                          <span className="inline-flex mt-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            {t.vinculo_tipo === 'ata'
-                              ? 'de Ata'
-                              : t.vinculo_tipo === 'projeto'
-                                ? 'de Projeto'
-                                : t.vinculo_tipo}
-                          </span>
+                      <span
+                        className={cn(
+                          'text-xs font-bold tracking-tight truncate',
+                          isTriagem && 'text-amber-900',
+                          isAFazer && 'text-gray-800',
+                          isEmAndamento && 'text-blue-700',
+                          isBloqueado && 'text-red-700',
+                          isConcluido && 'text-emerald-700',
                         )}
-                        {/* Linha com empresa (com ícone) e responsável */}
-                        <div className="flex items-center justify-between mt-2 text-[10px] text-gray-500 gap-2">
-                          <div className="flex items-center gap-1 min-w-0 truncate">
-                            {t.empresa && (
-                              <EmpresaIcon nome={t.empresa} className="h-3 w-3 shrink-0" />
-                            )}
-                            <span className="truncate font-medium text-gray-600">
-                              {t.empresa || '—'}
-                            </span>
+                      >
+                        {col.label}
+                      </span>
+
+                      {/* Chip visual "Limite 5" na coluna A Fazer */}
+                      {isAFazer && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-gray-200/80 text-gray-600">
+                          limite 5
+                        </span>
+                      )}
+
+                      {/* Contador âmbar destacado em Triagem */}
+                      {isTriagem && (
+                        <span className="text-[11px] font-bold px-2 py-0.2 rounded-full bg-amber-500 text-white shadow-2xs">
+                          {cards.length}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Contador discreto nas outras colunas e menu opcional */}
+                    {!isTriagem && (
+                      <span className="text-xs font-bold text-gray-400 tabular-nums">
+                        {cards.length}
+                      </span>
+                    )}
+
+                    {isTriagem && (
+                      <button
+                        type="button"
+                        onClick={() => abrirNova('triagem')}
+                        className="text-amber-700/60 hover:text-amber-900 p-0.5 rounded transition-colors"
+                        title="Nova tarefa na Triagem"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Linha de apoio exclusiva da Triagem */}
+                  {isTriagem && (
+                    <p className="text-[11px] text-amber-800/80 mt-1.5 leading-tight font-medium">
+                      Tarefas novas — defina responsável e prazo
+                    </p>
+                  )}
+                </div>
+
+                {/* Lista de cartões */}
+                <div className="p-2.5 space-y-2.5 flex-1 min-h-[360px] flex flex-col justify-between">
+                  <div className="space-y-2.5">
+                    {/* Indicador visual de destino do drop no topo quando arrastando */}
+                    {isOver && (
+                      <div className="h-14 rounded-xl border-2 border-dashed border-[#1B5E20] bg-emerald-50/60 flex items-center justify-center text-xs font-semibold text-[#1B5E20] animate-pulse">
+                        Solte para mover para {col.label}
+                      </div>
+                    )}
+
+                    {cards.map((t) => {
+                      const anexosCount = Array.isArray(t.anexos)
+                        ? t.anexos.length
+                        : t.anexos
+                          ? 1
+                          : 0
+                      const semResponsavel = !t.responsavel || !t.responsavel.trim()
+                      const semPrazo = !t.prazo || !t.prazo.trim()
+                      const temRecorrencia = t.recorrencia && t.recorrencia !== 'Nenhuma'
+
+                      const iniciaisResponsavel = (t.responsavel || '')
+                        .split(' ')
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((w: string) => w[0].toUpperCase())
+                        .join('')
+
+                      return (
+                        <div
+                          key={t.id}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData('text/plain', t.id)
+                            e.dataTransfer.effectAllowed = 'move'
+                            setArrastandoTarefa(t)
+                          }}
+                          onDragEnd={() => {
+                            setArrastandoTarefa(null)
+                            setColunaHover(null)
+                          }}
+                          onClick={() => abrirDetalhe(t)}
+                          className={cn(
+                            'group bg-white rounded-xl border border-gray-200/90 p-3 shadow-xs hover:shadow-md transition-all cursor-grab active:cursor-grabbing select-none',
+                            arrastandoTarefa?.id === t.id && 'opacity-40 scale-95 border-dashed',
+                          )}
+                        >
+                          {/* 1ª Linha: Prioridade (P1/P2/P3), Empresa (com ícone EmpresaIcon) e Menu de 3 pontos */}
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span
+                                className={cn(
+                                  'text-[10px] font-bold px-1.5 py-0.5 rounded',
+                                  PRIO_COR[t.prioridade_p || 'P3'],
+                                )}
+                              >
+                                {t.prioridade_p || 'P3'}
+                              </span>
+
+                              {t.empresa ? (
+                                <div className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 truncate">
+                                  <EmpresaIcon nome={t.empresa} className="h-3 w-3 shrink-0" />
+                                  <span className="truncate">{t.empresa}</span>
+                                </div>
+                              ) : null}
+                            </div>
+
+                            {/* Menu de três pontos: Mudar Status, Editar, Excluir (sem lixeira direta no cartão) */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="p-1 rounded-md text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors opacity-70 group-hover:opacity-100 focus:opacity-100"
+                                  title="Opções do cartão"
+                                >
+                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                </button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent
+                                align="end"
+                                className="w-48 bg-white"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="px-2 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                  Mudar status
+                                </div>
+                                {COLUNAS.map((destino) => (
+                                  <DropdownMenuItem
+                                    key={destino.key}
+                                    onClick={() => mover(t, destino.key)}
+                                    className={cn(
+                                      'text-xs font-medium cursor-pointer flex items-center justify-between',
+                                      (t.status_kanban || 'triagem') === destino.key &&
+                                        'bg-emerald-50 text-[#1B5E20] font-bold',
+                                    )}
+                                  >
+                                    <span>{destino.label}</span>
+                                    {(t.status_kanban || 'triagem') === destino.key && (
+                                      <Check className="h-3 w-3 text-[#1B5E20]" />
+                                    )}
+                                  </DropdownMenuItem>
+                                ))}
+
+                                <div className="my-1 border-t border-gray-100" />
+
+                                <DropdownMenuItem
+                                  onClick={() => abrirEditar(t)}
+                                  className="text-xs font-medium cursor-pointer flex items-center gap-2 text-gray-700"
+                                >
+                                  <Pencil className="h-3.5 w-3.5 text-gray-500" />
+                                  <span>Editar tarefa</span>
+                                </DropdownMenuItem>
+
+                                <DropdownMenuItem
+                                  onClick={() => setExcluindoTarefa(t)}
+                                  className="text-xs font-medium cursor-pointer flex items-center gap-2 text-red-600 focus:text-red-700 focus:bg-red-50"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                                  <span>Excluir tarefa</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
-                          <span className="text-gray-400 truncate">{t.responsavel || '—'}</span>
-                        </div>
-                        <div className="flex items-center justify-end mt-1 text-[10px] text-gray-400 tabular-nums">
-                          <span>{fmtData(t.prazo)}</span>
-                        </div>
-                        {/* Chips de subtarefas, comentários e anexos */}
-                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                          {(() => {
-                            const subs = Array.isArray(t.subtarefas)
-                              ? t.subtarefas
-                              : (() => {
-                                  try {
-                                    return JSON.parse(t.subtarefas || '[]')
-                                  } catch (_) {
-                                    return []
-                                  }
-                                })()
-                            return subs.length ? (
-                              <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                                <ListChecks className="h-3 w-3" />
-                                {subs.filter((s: any) => s.ok).length}/{subs.length}
+
+                          {/* Título: em até 2 linhas */}
+                          <h4 className="text-[13px] font-semibold text-gray-900 leading-snug line-clamp-2 mb-2.5">
+                            {t.titulo}
+                          </h4>
+
+                          {/* Base do cartão: Responsável com avatar + Prazo com ícone de calendário */}
+                          <div className="flex items-center justify-between gap-2 text-[11px] text-gray-600 mb-1.5 flex-wrap">
+                            {/* Responsável com avatar ou aviso destacado em âmbar */}
+                            {semResponsavel ? (
+                              <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200/80 font-medium text-[11px]">
+                                <AlertTriangle className="h-3 w-3 text-amber-600 shrink-0" />
+                                <span>Sem responsável</span>
                               </div>
-                            ) : null
-                          })()}
-                          {(() => {
-                            const coms = Array.isArray(t.comentarios)
-                              ? t.comentarios
-                              : (() => {
-                                  try {
-                                    return JSON.parse(t.comentarios || '[]')
-                                  } catch (_) {
-                                    return []
-                                  }
-                                })()
-                            return coms.length ? (
-                              <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                                <MessageSquare className="h-3 w-3" /> {coms.length}
+                            ) : (
+                              <div className="inline-flex items-center gap-1.5 min-w-0">
+                                <div className="w-5 h-5 rounded-full bg-emerald-700 text-white font-bold text-[9px] flex items-center justify-center shrink-0 shadow-2xs">
+                                  {iniciaisResponsavel || 'U'}
+                                </div>
+                                <span className="text-gray-700 font-medium truncate max-w-[120px]">
+                                  {t.responsavel}
+                                </span>
                               </div>
-                            ) : null
-                          })()}
-                          {anexosCount > 0 && (
-                            <div
-                              className="flex items-center gap-1 text-[10px] text-[#1B5E20] font-medium bg-emerald-50 px-1 py-0.2 rounded"
-                              title={`${anexosCount} arquivo(s) anexado(s)`}
-                            >
-                              <Paperclip className="h-3 w-3" /> {anexosCount}
+                            )}
+
+                            {/* Prazo com ícone de calendário ou aviso destacado em âmbar */}
+                            {semPrazo ? (
+                              <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200/80 font-medium text-[11px]">
+                                <AlertTriangle className="h-3 w-3 text-amber-600 shrink-0" />
+                                <span>Sem prazo</span>
+                              </div>
+                            ) : (
+                              <div
+                                className={cn(
+                                  'inline-flex items-center gap-1 text-[11px] tabular-nums shrink-0',
+                                  String(t.prazo).slice(0, 10) < hoje &&
+                                    t.status_kanban !== 'concluido'
+                                    ? 'text-red-600 font-bold'
+                                    : 'text-gray-500 font-medium',
+                                )}
+                              >
+                                <Calendar className="h-3 w-3 text-gray-400 shrink-0" />
+                                <span>{fmtData(t.prazo)}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Linha complementar de tags: Recorrência e Anexos */}
+                          {(temRecorrencia || anexosCount > 0) && (
+                            <div className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100/80 flex-wrap">
+                              {temRecorrencia && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  <Repeat className="h-2.5 w-2.5" />
+                                  <span>{t.recorrencia}</span>
+                                </span>
+                              )}
+
+                              {anexosCount > 0 && (
+                                <span
+                                  className="inline-flex items-center gap-1 text-[10px] text-gray-500 font-medium ml-auto"
+                                  title={`${anexosCount} anexo(s)`}
+                                >
+                                  <Paperclip className="h-3 w-3 text-gray-400" />
+                                  <span>{anexosCount}</span>
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>
+                      )
+                    })}
+
+                    {/* Estado vazio discreto */}
+                    {cards.length === 0 && (
+                      <div className="rounded-xl border border-dashed border-gray-200 bg-white/60 p-6 text-center my-auto flex flex-col items-center justify-center">
+                        <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 mb-2">
+                          {isAFazer ? (
+                            <FileText className="h-4 w-4" />
+                          ) : isEmAndamento ? (
+                            <Play className="h-4 w-4" />
+                          ) : isBloqueado ? (
+                            <Lock className="h-4 w-4" />
+                          ) : isConcluido ? (
+                            <CheckCircle2 className="h-4 w-4" />
+                          ) : (
+                            <Inbox className="h-4 w-4" />
+                          )}
+                        </div>
+                        <p className="text-xs font-semibold text-gray-600">Nenhuma tarefa aqui</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">Mova cartões da triagem</p>
                       </div>
-                    )
-                  })}
-                  {cards.length === 0 && (
-                    <p className="text-[11px] text-gray-400 text-center py-4">Vazio</p>
-                  )}
+                    )}
+                  </div>
+
+                  {/* Linha "+ Adicionar tarefa" ao final de cada coluna */}
+                  <button
+                    type="button"
+                    onClick={() => abrirNova(col.key)}
+                    className={cn(
+                      'w-full py-2 px-3 rounded-xl border border-dashed text-xs font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer mt-2',
+                      isTriagem
+                        ? 'border-amber-300 text-amber-800 hover:bg-amber-100/50 hover:border-amber-400'
+                        : 'border-gray-200 text-gray-500 hover:bg-white hover:text-gray-900 hover:border-gray-300',
+                    )}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Adicionar tarefa</span>
+                  </button>
                 </div>
               </div>
             )

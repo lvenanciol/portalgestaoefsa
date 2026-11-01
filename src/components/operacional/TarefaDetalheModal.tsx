@@ -53,6 +53,7 @@ export interface TarefaDetalheModalProps {
 }
 
 const ETAPAS = [
+  { key: 'triagem', label: 'Triagem', short: 'Triagem' },
   { key: 'a_fazer', label: 'A Fazer', short: 'A Fazer' },
   { key: 'em_andamento', label: 'Em Andamento', short: 'Andamento' },
   { key: 'bloqueado', label: 'Bloqueado', short: 'Bloqueado' },
@@ -165,7 +166,7 @@ export function TarefaDetalheModal({
   const prioridadeLabel =
     prioridadeNome === 'P1' ? 'P1 — Alta' : prioridadeNome === 'P3' ? 'P3 — Baixa' : 'P2 — Normal'
 
-  const statusAtual = detalhe.status_kanban || 'a_fazer'
+  const statusAtual = detalhe.status_kanban || 'triagem'
   const etapaAtualObj = ETAPAS.find((e) => e.key === statusAtual) || ETAPAS[0]
 
   const nomeEmpresa = detalhe.empresa || 'Geral'

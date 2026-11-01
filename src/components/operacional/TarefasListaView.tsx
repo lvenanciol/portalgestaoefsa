@@ -38,6 +38,7 @@ interface GrupoStatusDef {
 }
 
 const GRUPOS_STATUS: GrupoStatusDef[] = [
+  { key: 'triagem', label: 'TRIAGEM' },
   { key: 'em_andamento', label: 'EM ANDAMENTO' },
   { key: 'a_fazer', label: 'A FAZER' },
   { key: 'bloqueado', label: 'BLOQUEADO' },
@@ -45,6 +46,7 @@ const GRUPOS_STATUS: GrupoStatusDef[] = [
 ]
 
 const STATUS_OPCOES = [
+  { key: 'triagem', label: 'Triagem' },
   { key: 'a_fazer', label: 'A Fazer' },
   { key: 'em_andamento', label: 'Em Andamento' },
   { key: 'bloqueado', label: 'Bloqueado' },
@@ -80,6 +82,7 @@ export function TarefasListaView({
 }: TarefasListaProps) {
   // Estado de grupos recolhidos (por padrão todos abertos)
   const [gruposAbertos, setGruposAbertos] = useState<Record<string, boolean>>({
+    triagem: true,
     em_andamento: true,
     a_fazer: true,
     bloqueado: true,
@@ -104,7 +107,7 @@ export function TarefasListaView({
           ? 'concluido'
           : t.status === 'em_andamento'
             ? 'em_andamento'
-            : 'a_fazer')
+            : 'triagem')
       return sk === g.key
     })
     return acc
@@ -183,8 +186,8 @@ export function TarefasListaView({
                                   ? 'concluido'
                                   : t.status === 'em_andamento'
                                     ? 'em_andamento'
-                                    : 'a_fazer')),
-                          )?.label || 'A Fazer'
+                                    : 'triagem')),
+                          )?.label || 'Triagem'
 
                         return (
                           <div
