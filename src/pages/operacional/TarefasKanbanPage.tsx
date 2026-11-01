@@ -37,6 +37,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as CalendarPicker } from '@/components/ui/calendar'
 import { TarefasListaView } from '@/components/operacional/TarefasListaView'
 import { ParceiroCadastroDialog } from '@/components/operacional/ParceiroCadastroDialog'
+import { TarefaDetalheModal } from '@/components/operacional/TarefaDetalheModal'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useApp } from '@/context/AppContext'
@@ -2163,280 +2164,43 @@ export default function TarefasKanbanPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Detalhe da tarefa — ampliado para max-w-2xl para visualização confortável de histórico e subtarefas */}
-      <Dialog open={!!detalhe} onOpenChange={(o) => !o && setDetalhe(null)}>
-        <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>{detalhe?.titulo}</span>
-              <div className="flex items-center gap-1.5">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => abrirEditar(detalhe)}
-                  className="h-8"
-                  title="Editar tarefa"
-                >
-                  <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => abrirCompartilhar(detalhe)}
-                  className="h-8"
-                >
-                  <Share2 className="h-3.5 w-3.5 mr-1" /> Compartilhar
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setExcluindoTarefa(detalhe)}
-                  className="h-8 text-red-600 hover:bg-red-50 hover:border-red-200"
-                  title="Excluir tarefa"
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-1" /> Excluir
-                </Button>
-                <button
-                  onClick={() => setDetalhe(null)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex items-center gap-2 text-[12px] text-gray-500">
-            <span
-              className={cn(
-                'text-[9px] font-bold px-1.5 py-0.5 rounded',
-                PRIO_COR[detalhe?.prioridade_p || 'P3'],
-              )}
-            >
-              {detalhe?.prioridade_p}
-            </span>
-            <span>{detalhe?.responsavel || '—'}</span>
-            <span>· prazo {fmtData(detalhe?.prazo)}</span>
-            {detalhe?.recorrencia && detalhe.recorrencia !== 'Nenhuma' && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                <Repeat className="h-2.5 w-2.5" />
-                {detalhe.recorrencia}
-              </span>
-            )}
-          </div>
-          {detalhe?.descricao && <p className="text-[13px] text-gray-700">{detalhe.descricao}</p>}
-
-          {/* Anexos persistidos da tarefa (clique para abrir/visualizar) */}
-          {(() => {
-            const anexosLista: string[] = Array.isArray(detalhe?.anexos)
-              ? detalhe.anexos
-              : detalhe?.anexos
-                ? [detalhe.anexos]
-                : []
-
-            if (anexosLista.length === 0) return null
-
-            return (
-              <div className="grid gap-1.5 p-3 rounded-lg border border-gray-200 bg-gray-50/70">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-600 flex items-center gap-1.5">
-                  <Paperclip className="h-3.5 w-3.5 text-[#1B5E20]" />
-                  Anexos da Tarefa ({anexosLista.length})
-                </Label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                  {anexosLista.map((nome, i) => {
-                    const url = pb.files.getURL(detalhe, nome)
-                    const ext = nome.split('.').pop()?.toLowerCase() || ''
-                    const ehImg = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)
-
-                    return (
-                      <a
-                        key={i}
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-2 p-2 rounded-lg bg-white border border-gray-200 hover:border-[#1B5E20] hover:shadow-xs transition-all group"
-                        title="Clique para abrir e visualizar anexo"
-                      >
-                        {ehImg ? (
-                          <img
-                            src={url}
-                            alt={nome}
-                            className="h-8 w-8 rounded object-cover shrink-0 border border-gray-100"
-                          />
-                        ) : (
-                          <div className="h-8 w-8 rounded bg-emerald-50 text-[#1B5E20] flex items-center justify-center shrink-0 font-bold text-[10px]">
-                            {ext.slice(0, 4).toUpperCase() || 'FILE'}
-                          </div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="text-xs font-semibold text-gray-800 group-hover:text-[#1B5E20] truncate">
-                            {nome}
-                          </div>
-                          <div className="text-[10px] text-gray-400">Clique para abrir ↗</div>
-                        </div>
-                      </a>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })()}
-
-          {/* mover coluna */}
-          <div className="grid gap-1.5">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Mover para
-            </Label>
-            <div className="flex flex-wrap gap-1.5">
-              {COLUNAS.map((c) => (
-                <button
-                  key={c.key}
-                  type="button"
-                  onClick={() => mover(detalhe, c.key)}
-                  className={cn(
-                    'px-2.5 py-1 rounded-md text-[11px] font-semibold border',
-                    (detalhe?.status_kanban || 'a_fazer') === c.key
-                      ? 'bg-[#1B5E20] text-white border-[#1B5E20]'
-                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50',
-                  )}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* subtarefas */}
-          <div className="grid gap-1.5">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Subtarefas
-            </Label>
-            {(() => {
-              const subs = detalhe
-                ? Array.isArray(detalhe.subtarefas)
-                  ? detalhe.subtarefas
-                  : JSON.parse(detalhe.subtarefas || '[]')
-                : []
-              return (
-                <div className="space-y-1">
-                  {subs.map((s: any, i: number) => (
-                    <label
-                      key={i}
-                      className="flex items-center gap-2 text-[13px] text-gray-700 cursor-pointer"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={!!s.ok}
-                        onChange={() => toggleSub(i)}
-                        className="h-3.5 w-3.5 accent-[#1B5E20]"
-                      />
-                      <span className={s.ok ? 'line-through text-gray-400' : ''}>{s.t}</span>
-                    </label>
-                  ))}
-                  {subs.length === 0 && <p className="text-[12px] text-gray-400">Nenhuma.</p>}
-                </div>
-              )
-            })()}
-            <div className="flex gap-2">
-              <Input
-                value={novaSub}
-                onChange={(e) => setNovaSub(e.target.value)}
-                placeholder="Nova subtarefa..."
-                className="h-9 text-xs bg-gray-50"
-              />
-              <Button variant="outline" size="sm" onClick={addSub} className="h-9">
-                +
-              </Button>
-            </div>
-          </div>
-
-          {/* T2: histórico em formato de chat com anexos */}
-          <div className="grid gap-1.5">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-              Histórico da tarefa (chat)
-            </Label>
-            <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-              {chatMsgs.map((c: any) => {
-                const meu = c.autor === (user?.email || '')
-                return (
-                  <div key={c.id} className={cn('flex', meu ? 'justify-end' : 'justify-start')}>
-                    <div
-                      className={cn(
-                        'max-w-[85%] rounded-xl px-3 py-2',
-                        meu ? 'bg-[#1B5E20] text-white' : 'bg-gray-100 text-gray-800',
-                      )}
-                    >
-                      {!meu && (
-                        <div className="text-[10px] font-bold opacity-70 mb-0.5">
-                          {c.autor}
-                          {c.autor_tipo === 'parceiro' ? ' · parceiro' : ''}
-                        </div>
-                      )}
-                      {c.texto && <div className="text-[12px] whitespace-pre-wrap">{c.texto}</div>}
-                      {c.anexo && (
-                        <a
-                          href={pb.files.getURL(c, c.anexo)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={cn(
-                            'mt-1 inline-flex items-center gap-1 text-[11px] underline',
-                            meu ? 'text-emerald-100' : 'text-emerald-700',
-                          )}
-                        >
-                          <Paperclip className="h-3 w-3" /> {String(c.anexo).slice(0, 30)}
-                        </a>
-                      )}
-                      <div className="text-[9px] opacity-60 mt-0.5">
-                        {String(c.created).slice(11, 16)}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-              {chatMsgs.length === 0 && (
-                <p className="text-[12px] text-gray-400 text-center py-3">
-                  Sem mensagens — comece o histórico abaixo.
-                </p>
-              )}
-            </div>
-            {chatErro && <p className="text-[11px] text-red-600">{chatErro}</p>}
-            <div className="flex items-center gap-2">
-              <Input
-                value={novoChat}
-                onChange={(e) => setNovoChat(e.target.value)}
-                placeholder="Mensagem ou atualização..."
-                className="h-9 text-xs bg-gray-50"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') enviarChat()
-                }}
-              />
-              <label className="h-9 w-9 shrink-0 inline-flex items-center justify-center rounded-md border border-gray-200 bg-white hover:bg-gray-50 cursor-pointer text-gray-500">
-                <Paperclip className="h-3.5 w-3.5" />
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="image/*,application/pdf,.docx,.xlsx,.txt,.csv,audio/*,video/*"
-                  onChange={(e) => setChatAnexo(e.target.files?.[0] || null)}
-                />
-              </label>
-              <Button variant="outline" size="sm" onClick={enviarChat} className="h-9">
-                Enviar
-              </Button>
-            </div>
-            {chatAnexo && (
-              <p className="text-[10px] text-gray-500 flex items-center gap-1">
-                <Paperclip className="h-3 w-3" /> {chatAnexo.name} (envia junto da mensagem)
-                <button
-                  type="button"
-                  onClick={() => setChatAnexo(null)}
-                  className="text-gray-400 hover:text-gray-600 ml-1"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </p>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Detalhe da tarefa — Versão A: Layout 3 Zonas fiel ao mockup */}
+      <TarefaDetalheModal
+        detalhe={detalhe}
+        onClose={() => setDetalhe(null)}
+        onEditar={(t) => abrirEditar(t)}
+        onCompartilhar={(t) => abrirCompartilhar(t)}
+        onExcluir={(t) => setExcluindoTarefa(t)}
+        onMover={async (t, novo) => {
+          await mover(t, novo)
+          // Atualiza o estado em memória do detalhe
+          setDetalhe((prev: any) =>
+            prev && prev.id === t.id
+              ? {
+                  ...prev,
+                  status_kanban: novo,
+                  status:
+                    novo === 'concluido'
+                      ? 'concluida'
+                      : novo === 'em_andamento'
+                        ? 'em_andamento'
+                        : 'pendente',
+                }
+              : prev,
+          )
+        }}
+        onSubtarefasAtualizadas={(upd) => {
+          setDetalhe(upd)
+          carregar()
+        }}
+        chatMsgs={chatMsgs}
+        novoChat={novoChat}
+        setNovoChat={setNovoChat}
+        chatAnexo={chatAnexo}
+        setChatAnexo={setChatAnexo}
+        enviarChat={enviarChat}
+        chatErro={chatErro}
+      />
 
       {/* Confirmação de exclusão da tarefa */}
       <Dialog open={!!excluindoTarefa} onOpenChange={(o) => !o && setExcluindoTarefa(null)}>
