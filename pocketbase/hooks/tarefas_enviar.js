@@ -487,86 +487,81 @@ routerAdd(
       const marginRight = 36
       const contentWidth = W - marginLeft - marginRight
 
-      // As fontes usam /Encoding /WinAnsiEncoding: os acentos do português existem
-      // em CP1252 e devem ser emitidos como BYTE ÚNICO (ex.: "Ã" = 0xC3), não
-      // removidos. Antes, sanitizeAscii fazia NFD + remoção de diacríticos, então
-      // "PORTAL DE GESTÃO" saía "PORTAL DE GESTAO" no PDF (o HTML mantinha o acento)
-      // — divergência visível entre e-mail e anexo.
-      const WINANSI_MAP = {
-        Á: '\xC1',
-        À: '\xC0',
-        Â: '\xC2',
-        Ã: '\xC3',
-        Ä: '\xC4',
-        É: '\xC9',
-        È: '\xC8',
-        Ê: '\xCA',
-        Ë: '\xCB',
-        Í: '\xCD',
-        Ì: '\xCC',
-        Î: '\xCE',
-        Ï: '\xCF',
-        Ó: '\xD3',
-        Ò: '\xD2',
-        Ô: '\xD4',
-        Õ: '\xD5',
-        Ö: '\xD6',
-        Ú: '\xDA',
-        Ù: '\xD9',
-        Û: '\xDB',
-        Ü: '\xDC',
-        Ç: '\xC7',
-        Ñ: '\xD1',
-        á: '\xE1',
-        à: '\xE0',
-        â: '\xE2',
-        ã: '\xE3',
-        ä: '\xE4',
-        é: '\xE9',
-        è: '\xE8',
-        ê: '\xEA',
-        ë: '\xEB',
-        í: '\xED',
-        ì: '\xEC',
-        î: '\xEE',
-        ï: '\xEF',
-        ó: '\xF3',
-        ò: '\xF2',
-        ô: '\xF4',
-        õ: '\xF5',
-        ö: '\xF6',
-        ú: '\xFA',
-        ù: '\xF9',
-        û: '\xFB',
-        ü: '\xFC',
-        ç: '\xE7',
-        ñ: '\xF1',
-        º: '\xBA',
-        ª: '\xAA',
-        '–': '\x96',
-        '—': '\x97',
-        '“': '\x93',
-        '”': '\x94',
-        '‘': '\x91',
-        '’': '\x92',
-        '•': '\x95',
+      // ACENTOS NESTE PDF — usar ESCAPE OCTAL do PDF, nunca o byte cru.
+      // O anexo é gravado por $filesystem.fileFromBytes(pdfStr), que serializa a
+      // string como UTF-8: um "Ã" literal (U+00C3) chega ao arquivo como C3 83 e
+      // o leitor, com /WinAnsiEncoding, mostra "GESTÃƒO" (comprovado no PDF real
+      // de 02/11/2026). A saída é o escape octal do próprio PDF: "\303" é um
+      // 0xC3 que o leitor decodifica DEPOIS de ler o texto, e como "\303" é
+      // composto só por caracteres ASCII (5C 33 30 33), a serialização UTF-8
+      // não altera nada. Resultado: acento correto e texto do PDF íntegro.
+      const WINANSI_OCTAL = {
+        Á: '\\301',
+        À: '\\300',
+        Â: '\\302',
+        Ã: '\\303',
+        Ä: '\\304',
+        É: '\\311',
+        È: '\\310',
+        Ê: '\\312',
+        Ë: '\\313',
+        Í: '\\315',
+        Ì: '\\314',
+        Î: '\\316',
+        Ï: '\\317',
+        Ó: '\\323',
+        Ò: '\\322',
+        Ô: '\\324',
+        Õ: '\\325',
+        Ö: '\\326',
+        Ú: '\\332',
+        Ù: '\\331',
+        Û: '\\333',
+        Ü: '\\334',
+        Ç: '\\307',
+        Ñ: '\\321',
+        á: '\\341',
+        à: '\\340',
+        â: '\\342',
+        ã: '\\343',
+        ä: '\\344',
+        é: '\\351',
+        è: '\\350',
+        ê: '\\352',
+        ë: '\\353',
+        í: '\\355',
+        ì: '\\354',
+        î: '\\356',
+        ï: '\\357',
+        ó: '\\363',
+        ò: '\\362',
+        ô: '\\364',
+        õ: '\\365',
+        ö: '\\366',
+        ú: '\\372',
+        ù: '\\371',
+        û: '\\373',
+        ü: '\\374',
+        ç: '\\347',
+        ñ: '\\361',
+        º: '\\272',
+        ª: '\\252',
       }
-      // Converte para bytes WinAnsi preservando acentos; descarta só o que não existe
-      // no CP1252 (emoji, por exemplo), evitando quebrar o stream do PDF.
+      // Devolve o texto já escapado em octal para o operador Tj. O conteúdo NÃO
+      // deve passar de novo por escapePdfStr (ele escaparia a barra invertida).
       function sanitizeAscii(s) {
         if (!s) return ''
         const str = String(s)
         let out = ''
         for (let i = 0; i < str.length; i++) {
           const ch = str.charAt(i)
-          if (WINANSI_MAP[ch] !== undefined) {
-            out += WINANSI_MAP[ch]
+          if (WINANSI_OCTAL[ch] !== undefined) {
+            out += WINANSI_OCTAL[ch]
           } else if (ch >= '\x20' && ch <= '\x7E') {
             out += ch
           } else if (ch === '\n' || ch === '\r' || ch === '\t') {
             out += ch
           } else {
-            // não representável em WinAnsi: remove o diacrítico e mantém a base
             const base = ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
             out += /^[\x20-\x7E]$/.test(base) ? base : ' '
           }
@@ -668,7 +663,13 @@ routerAdd(
       function drawText(x, y, text, size, fontName, rgb) {
         const fn = fontName || '/F1'
         const color = rgb || { r: 0.1, g: 0.1, b: 0.1 }
-        const clean = escapePdfStr(sanitizeAscii(text))
+        // ORDEM IMPORTA: sanitizeAscii JÁ devolve escapes octais (\303) e a
+        // barra invertida deles não pode ser re-escapada — por isso tratamos
+        // só os delimitadores da string PDF aqui. Texto puro nunca contém
+        // barra invertida de escape; se contiver, vira \\ antes da sanitização.
+        const clean = sanitizeAscii(String(text || '').replace(/\\/g, '\\\\'))
+          .replace(/\(/g, '\\(')
+          .replace(/\)/g, '\\)')
         let s = 'BT '
         s += color.r + ' ' + color.g + ' ' + color.b + ' rg '
         s += fn + ' ' + size + ' Tf '
@@ -1217,7 +1218,13 @@ routerAdd(
               const fileKey = lrec.baseFilesPath() + '/' + logoFile
               rdr = pbFsys.getReader(fileKey)
               if (rdr) {
-                rawBytes = toString(rdr)
+                // CRÍTICO: bytes binários NÃO podem passar por toString() — a string
+                // sai em UTF-8 e todo byte >= 0x80 vira U+FFFD. Prova: o 0x89 da
+                // assinatura PNG volta como FFFD e a logo nunca é reconhecida,
+                // caindo SEMPRE no badge textual. readerToString preserva os bytes
+                // 1:1 (string binária latin1), que é o que os parsers esperam.
+                rawBytes =
+                  typeof readerToString === 'function' ? readerToString(rdr) : toString(rdr)
               }
             } catch (errRdr) {
               console.warn('Erro ao ler bytes da logo ' + logoFile + ':', errRdr)
