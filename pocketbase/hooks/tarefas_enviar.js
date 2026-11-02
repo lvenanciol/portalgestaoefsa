@@ -6,15 +6,17 @@
 //   assunto_custom?: string
 // Para cada destinatário com e-mail válido:
 //   - Identifica as tarefas associadas a ele dentro da lista de tarefas_ids fornecidas
-//   - Se não houver associação estrita, ou se todas as tarefas selecionadas forem direcionadas
 //   - Agrupa as tarefas por empresa
 //   - Obtém a logo da empresa (de logomarcas ou logos_publicas)
 //   - Monta layout HTML profissional:
 //       * Topo com LOGO DA EMPRESA centralizada
-//       * Identidade verde #1B5E20, cantos arredondados, visual limpo
-//       * Detalhes de cada tarefa: título, descrição, prazo (em vermelho se atrasada),
-//         prioridade (P1/P2/P3), status, responsável, empresa e vínculo
-//   - Envia e-mail via $app.newMailClient()
+//       * Título dinâmico: "PAINEL DE GESTÃO {NOME DA EMPRESA}"
+//       * Bloco verde com "Acompanhamento de Tarefas" centralizado
+//       * Card de tarefa sem nome da empresa duplicado, com rótulos "Prioridade:" e "Status:"
+//       * Descrição preservando quebras de linha e formatação digitada
+//       * Remetente personalizado por empresa: {empresa_slug}@{empresa_slug}.com.br (com fallback)
+//       * Geração de PDF estruturado com o mesmo layout e anexado ao e-mail
+//   - Envia e-mail via $app.newMailClient() com attachment do PDF
 //   - Grava histórico em emails e auditoria
 
 routerAdd(
@@ -34,6 +36,452 @@ routerAdd(
     }
     if (tarefaIds.length === 0) {
       return e.badRequestError('Nenhuma tarefa selecionada/filtrada para envio.')
+    }
+
+    // --- GERADOR DE PDF 1.4 PURO INLINE (GOJA / POCKETBASE) ---
+    function gerarPdfTarefas(dados) {
+      const empPrincipal = dados.empPrincipal || 'Extrafruti'
+      const destNome = dados.destinatarioNome || 'Prezado(a)'
+      const tarefas = dados.listaTarefas || []
+
+      // Dimensões A4 em pontos (72 pt / pol)
+      const W = 595.28
+      const H = 841.89
+      const marginLeft = 36
+      const marginRight = 36
+      const contentWidth = W - marginLeft - marginRight
+
+      function sanitizeAscii(s) {
+        if (!s) return ''
+        return String(s)
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+      }
+
+      function escapePdfStr(s) {
+        return String(s || '')
+          .replace(/\\/g, '\\\\')
+          .replace(/\(/g, '\\(')
+          .replace(/\)/g, '\\)')
+      }
+
+      function wrapText(text, maxChars) {
+        const lines = []
+        const rawParagraphs = String(text || '').split(/\r?\n/)
+        for (let p = 0; p < rawParagraphs.length; p++) {
+          const pText = rawParagraphs[p]
+          if (!pText) {
+            lines.push('')
+            continue
+          }
+          const words = pText.split(/\s+/)
+          let cur = ''
+          for (let w = 0; w < words.length; w++) {
+            const word = words[w]
+            if (!word) continue
+            if ((cur + (cur ? ' ' : '') + word).length <= maxChars) {
+              cur += (cur ? ' ' : '') + word
+            } else {
+              if (cur) lines.push(cur)
+              if (word.length > maxChars) {
+                let rem = word
+                while (rem.length > maxChars) {
+                  lines.push(rem.slice(0, maxChars))
+                  rem = rem.slice(maxChars)
+                }
+                cur = rem
+              } else {
+                cur = word
+              }
+            }
+          }
+          if (cur) lines.push(cur)
+        }
+        return lines
+      }
+
+      const pagesOps = []
+      let curOps = []
+
+      function novaPagina() {
+        if (curOps.length > 0) {
+          pagesOps.push(curOps)
+        }
+        curOps = []
+      }
+
+      function drawRect(x, y, w, h, fillRgb, strokeRgb, lineWidth) {
+        let s = 'q '
+        if (lineWidth) s += lineWidth + ' w '
+        if (strokeRgb) s += strokeRgb.r + ' ' + strokeRgb.g + ' ' + strokeRgb.b + ' RG '
+        if (fillRgb) s += fillRgb.r + ' ' + fillRgb.g + ' ' + fillRgb.b + ' rg '
+        s += x.toFixed(2) + ' ' + y.toFixed(2) + ' ' + w.toFixed(2) + ' ' + h.toFixed(2) + ' re '
+        if (fillRgb && strokeRgb) s += 'B'
+        else if (fillRgb) s += 'f'
+        else if (strokeRgb) s += 'S'
+        s += ' Q'
+        curOps.push(s)
+      }
+
+      function drawText(x, y, text, size, fontName, rgb) {
+        const fn = fontName || '/F1'
+        const color = rgb || { r: 0.1, g: 0.1, b: 0.1 }
+        const clean = escapePdfStr(sanitizeAscii(text))
+        let s = 'BT '
+        s += color.r + ' ' + color.g + ' ' + color.b + ' rg '
+        s += fn + ' ' + size + ' Tf '
+        s += x.toFixed(2) + ' ' + y.toFixed(2) + ' Td '
+        s += '(' + clean + ') Tj '
+        s += 'ET'
+        curOps.push(s)
+      }
+
+      function drawLine(x1, y1, x2, y2, strokeRgb, lineWidth) {
+        const c = strokeRgb || { r: 0.8, g: 0.8, b: 0.8 }
+        const lw = lineWidth || 1
+        let s = 'q ' + lw + ' w '
+        s += c.r + ' ' + c.g + ' ' + c.b + ' RG '
+        s += x1.toFixed(2) + ' ' + y1.toFixed(2) + ' m '
+        s += x2.toFixed(2) + ' ' + y2.toFixed(2) + ' l S Q'
+        curOps.push(s)
+      }
+
+      let curY = H - 36
+
+      function desenharCabecalho() {
+        drawRect(marginLeft, curY - 38, contentWidth, 38, { r: 1, g: 1, b: 1 }, null, null)
+
+        const badgeText = empPrincipal.toUpperCase()
+        drawText(marginLeft + 10, curY - 18, badgeText, 14, '/F2', { r: 0.11, g: 0.37, b: 0.13 })
+        const subText = 'PAINEL DE GESTAO ' + empPrincipal.toUpperCase()
+        drawText(marginLeft + 10, curY - 32, subText, 8.5, '/F2', { r: 0.42, g: 0.45, b: 0.5 })
+
+        curY -= 44
+
+        const bannerH = 46
+        drawRect(
+          marginLeft,
+          curY - bannerH,
+          contentWidth,
+          bannerH,
+          { r: 0.11, g: 0.37, b: 0.13 },
+          null,
+          null,
+        )
+        const titBanner = 'Acompanhamento de Tarefas'
+        const titW = titBanner.length * 7.8
+        const titX = Math.max(marginLeft + 10, (W - titW) / 2)
+        drawText(titX, curY - 18, titBanner, 13, '/F2', { r: 1, g: 1, b: 1 })
+
+        const subBanner =
+          'Ola, ' +
+          destNome +
+          '. Segue o resumo das tarefas sob sua responsabilidade ou acompanhamento:'
+        const subW = subBanner.length * 4.6
+        const subX = Math.max(marginLeft + 10, (W - subW) / 2)
+        drawText(subX, curY - 34, subBanner, 8.5, '/F1', { r: 0.82, g: 0.98, b: 0.9 })
+
+        curY -= bannerH + 16
+      }
+
+      desenharCabecalho()
+
+      for (let idx = 0; idx < tarefas.length; idx++) {
+        const t = tarefas[idx]
+        const titulo = t.titulo || 'Sem titulo'
+        const desc = t.descricao || ''
+        const status = t.status || 'Pendente'
+        const prioLabel = t.prioLabel || 'Normal (P2)'
+        const prazo = t.prazoFormatado || 'Sem prazo'
+        const prazoAtrasado = Boolean(t.prazoAtrasado)
+        const resp = t.responsavel || 'Nao atribuido'
+        const vinculo = t.vinculoTipo || ''
+        const recorrencia = t.recorrencia || ''
+
+        const descLines = desc ? wrapText(desc, 78) : []
+        const tituloLines = wrapText(titulo, 62)
+
+        let cardH = 14 + 16 + tituloLines.length * 15 + 8
+        if (descLines.length > 0) {
+          cardH += descLines.length * 12 + 16
+        }
+        cardH += 4 * 14 + 10
+        cardH += 12
+
+        if (curY - cardH < 50) {
+          novaPagina()
+          curY = H - 36
+          desenharCabecalho()
+        }
+
+        const cardTop = curY
+        const cardBottom = curY - cardH
+
+        drawRect(
+          marginLeft,
+          cardBottom,
+          contentWidth,
+          cardH,
+          { r: 0.97, g: 0.98, b: 0.98 },
+          null,
+          null,
+        )
+        // borda cinza do card
+        drawLine(
+          marginLeft,
+          cardBottom,
+          marginLeft + contentWidth,
+          cardBottom,
+          { r: 0.89, g: 0.91, b: 0.92 },
+          0.8,
+        )
+        drawLine(
+          marginLeft,
+          cardTop,
+          marginLeft + contentWidth,
+          cardTop,
+          { r: 0.89, g: 0.91, b: 0.92 },
+          0.8,
+        )
+        drawLine(
+          marginLeft + contentWidth,
+          cardBottom,
+          marginLeft + contentWidth,
+          cardTop,
+          { r: 0.89, g: 0.91, b: 0.92 },
+          0.8,
+        )
+
+        const stripeRgb = prazoAtrasado
+          ? { r: 0.86, g: 0.15, b: 0.15 }
+          : { r: 0.11, g: 0.37, b: 0.13 }
+        drawRect(marginLeft, cardBottom, 4, cardH, stripeRgb, null, null)
+
+        let yInner = cardTop - 16
+
+        // Rótulos à esquerda da Prioridade e do Status
+        drawText(marginLeft + 12, yInner, 'Prioridade:', 8.5, '/F2', { r: 0.42, g: 0.45, b: 0.5 })
+        drawText(marginLeft + 64, yInner, prioLabel, 8.5, '/F2', { r: 0.57, g: 0.25, b: 0.05 })
+
+        drawText(marginLeft + 150, yInner, 'Status:', 8.5, '/F2', { r: 0.42, g: 0.45, b: 0.5 })
+        drawText(marginLeft + 188, yInner, status, 8.5, '/F2', { r: 0.22, g: 0.25, b: 0.32 })
+
+        yInner -= 16
+
+        for (let tl = 0; tl < tituloLines.length; tl++) {
+          drawText(marginLeft + 12, yInner, tituloLines[tl], 11, '/F2', {
+            r: 0.07,
+            g: 0.09,
+            b: 0.15,
+          })
+          yInner -= 14
+        }
+
+        if (descLines.length > 0) {
+          yInner -= 2
+          const descBoxH = descLines.length * 12 + 10
+          drawRect(
+            marginLeft + 12,
+            yInner - descBoxH + 4,
+            contentWidth - 24,
+            descBoxH,
+            { r: 1, g: 1, b: 1 },
+            null,
+            null,
+          )
+          drawLine(
+            marginLeft + 12,
+            yInner - descBoxH + 4,
+            marginLeft + contentWidth - 12,
+            yInner - descBoxH + 4,
+            { r: 0.89, g: 0.91, b: 0.92 },
+            0.5,
+          )
+          drawLine(
+            marginLeft + 12,
+            yInner + 4,
+            marginLeft + contentWidth - 12,
+            yInner + 4,
+            { r: 0.89, g: 0.91, b: 0.92 },
+            0.5,
+          )
+          drawLine(
+            marginLeft + 12,
+            yInner - descBoxH + 4,
+            marginLeft + 12,
+            yInner + 4,
+            { r: 0.89, g: 0.91, b: 0.92 },
+            0.5,
+          )
+          drawLine(
+            marginLeft + contentWidth - 12,
+            yInner - descBoxH + 4,
+            marginLeft + contentWidth - 12,
+            yInner + 4,
+            { r: 0.89, g: 0.91, b: 0.92 },
+            0.5,
+          )
+
+          let yDesc = yInner - 8
+          for (let dl = 0; dl < descLines.length; dl++) {
+            drawText(marginLeft + 18, yDesc, descLines[dl], 8.5, '/F1', {
+              r: 0.29,
+              g: 0.33,
+              b: 0.39,
+            })
+            yDesc -= 12
+          }
+          yInner -= descBoxH + 8
+        } else {
+          yInner -= 4
+        }
+
+        // Prazo
+        drawText(marginLeft + 12, yInner, 'Prazo:', 8.5, '/F2', { r: 0.42, g: 0.45, b: 0.5 })
+        if (prazoAtrasado) {
+          drawText(marginLeft + 80, yInner, prazo + ' (ATRASADA)', 8.5, '/F2', {
+            r: 0.73,
+            g: 0.11,
+            b: 0.11,
+          })
+        } else {
+          drawText(marginLeft + 80, yInner, prazo, 8.5, '/F2', { r: 0.07, g: 0.09, b: 0.15 })
+        }
+        yInner -= 13
+
+        // Responsável
+        drawText(marginLeft + 12, yInner, 'Responsavel:', 8.5, '/F2', { r: 0.42, g: 0.45, b: 0.5 })
+        drawText(marginLeft + 80, yInner, resp, 8.5, '/F1', { r: 0.15, g: 0.18, b: 0.22 })
+        yInner -= 13
+
+        // Vínculo
+        if (vinculo) {
+          drawText(marginLeft + 12, yInner, 'Vinculo:', 8.5, '/F2', { r: 0.42, g: 0.45, b: 0.5 })
+          drawText(marginLeft + 80, yInner, vinculo, 8.5, '/F1', { r: 0.15, g: 0.18, b: 0.22 })
+          yInner -= 13
+        }
+
+        // Recorrência
+        if (recorrencia && recorrencia !== 'Nenhuma') {
+          drawText(marginLeft + 12, yInner, 'Recorrencia:', 8.5, '/F2', {
+            r: 0.42,
+            g: 0.45,
+            b: 0.5,
+          })
+          drawText(marginLeft + 80, yInner, recorrencia, 8.5, '/F1', { r: 0.15, g: 0.18, b: 0.22 })
+          yInner -= 13
+        }
+
+        curY = cardBottom - 14
+      }
+
+      // Rodapé
+      drawLine(marginLeft, curY, W - marginRight, curY, { r: 0.89, g: 0.91, b: 0.92 }, 0.6)
+      curY -= 14
+      const rod1 = 'Portal de Gestao Executivo - Grupo Extrafruti * Casafruti * FoldBox'
+      drawText((W - rod1.length * 4.6) / 2, curY, rod1, 8, '/F2', { r: 0.42, g: 0.45, b: 0.5 })
+      curY -= 10
+      const rod2 = 'Documento gerado para ciencia e acompanhamento operacional.'
+      drawText((W - rod2.length * 4.2) / 2, curY, rod2, 7.5, '/F1', { r: 0.6, g: 0.64, b: 0.69 })
+
+      novaPagina()
+
+      // Montagem do arquivo PDF 1.4
+      const objects = []
+      let nextId = 1
+      function allocId() {
+        return nextId++
+      }
+
+      const catalogId = allocId()
+      const pagesId = allocId()
+      const fontRegularId = allocId()
+      const fontBoldId = allocId()
+
+      const numPages = pagesOps.length
+      const pageIds = []
+      const contentIds = []
+      for (let p = 0; p < numPages; p++) {
+        pageIds.push(allocId())
+        contentIds.push(allocId())
+      }
+
+      objects.push({ id: catalogId, body: '<< /Type /Catalog /Pages ' + pagesId + ' 0 R >>' })
+      objects.push({
+        id: pagesId,
+        body:
+          '<< /Type /Pages /Kids [' +
+          pageIds.map((id) => id + ' 0 R').join(' ') +
+          '] /Count ' +
+          numPages +
+          ' >>',
+      })
+      objects.push({
+        id: fontRegularId,
+        body: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+      })
+      objects.push({
+        id: fontBoldId,
+        body: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
+      })
+
+      for (let p = 0; p < numPages; p++) {
+        const streamContent = pagesOps[p].join('\n')
+        const streamLen = streamContent.length
+        objects.push({
+          id: pageIds[p],
+          body:
+            '<< /Type /Page /Parent ' +
+            pagesId +
+            ' 0 R /MediaBox [0 0 ' +
+            W.toFixed(2) +
+            ' ' +
+            H.toFixed(2) +
+            '] /Resources << /Font << /F1 ' +
+            fontRegularId +
+            ' 0 R /F2 ' +
+            fontBoldId +
+            ' 0 R >> >> /Contents ' +
+            contentIds[p] +
+            ' 0 R >>',
+        })
+        objects.push({
+          id: contentIds[p],
+          body: '<< /Length ' + streamLen + ' >>\nstream\n' + streamContent + '\nendstream',
+        })
+      }
+
+      objects.sort((a, b) => a.id - b.id)
+
+      let pdfStr = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n'
+      const offsets = {}
+
+      for (let o = 0; o < objects.length; o++) {
+        const obj = objects[o]
+        offsets[obj.id] = pdfStr.length
+        pdfStr += obj.id + ' 0 obj\n' + obj.body + '\nendobj\n'
+      }
+
+      const xrefOffset = pdfStr.length
+      const maxId = objects.length > 0 ? objects[objects.length - 1].id : 0
+
+      pdfStr += 'xref\n0 ' + (maxId + 1) + '\n'
+      pdfStr += '0000000000 65535 f \n'
+      for (let id = 1; id <= maxId; id++) {
+        const off = offsets[id]
+        if (off === undefined) {
+          pdfStr += '0000000000 00000 f \n'
+        } else {
+          const offStr = String(off)
+          pdfStr += '0000000000'.slice(0, 10 - offStr.length) + offStr + ' 00000 n \n'
+        }
+      }
+
+      pdfStr += 'trailer\n<< /Size ' + (maxId + 1) + ' /Root ' + catalogId + ' 0 R >>\n'
+      pdfStr += 'startxref\n' + xrefOffset + '\n%%EOF\n'
+
+      return pdfStr
     }
 
     // 1. Busca todas as tarefas pelos IDs fornecidos
@@ -132,18 +580,18 @@ routerAdd(
       const prio = String(p || '')
         .toUpperCase()
         .trim()
-      if (prio === 'P1') return '#FEE2E2' // red-100
-      if (prio === 'P2') return '#FEF3C7' // amber-100
-      return '#E0F2FE' // blue-100
+      if (prio === 'P1') return '#FEE2E2'
+      if (prio === 'P2') return '#FEF3C7'
+      return '#E0F2FE'
     }
 
     function corPrioridadeText(p) {
       const prio = String(p || '')
         .toUpperCase()
         .trim()
-      if (prio === 'P1') return '#991B1B' // red-800
-      if (prio === 'P2') return '#92400E' // amber-800
-      return '#075985' // blue-800
+      if (prio === 'P1') return '#991B1B'
+      if (prio === 'P2') return '#92400E'
+      return '#075985'
     }
 
     function escapeHtml(str) {
@@ -153,6 +601,24 @@ routerAdd(
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;')
+    }
+
+    // Item (e): Preserva formatação digitada da descrição convertendo quebras em <br/> após escape
+    function renderizarDescricaoHtml(descRaw) {
+      if (!descRaw) return ''
+      const seguro = escapeHtml(descRaw)
+      return seguro.replace(/\r?\n/g, '<br/>')
+    }
+
+    // Item (f): Deriva remetente da empresa (slug@slug.com.br)
+    function derivarRemetenteEmpresa(nomeEmpresa) {
+      const limpo = String(nomeEmpresa || 'Extrafruti')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, '')
+      const slug = limpo || 'extrafruti'
+      return slug + '@' + slug + '.com.br'
     }
 
     const reEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -176,11 +642,8 @@ routerAdd(
         continue
       }
 
-      // Filtra as tarefas pertinentes a este destinatário:
-      // Se a tarefa tem o parceiro vinculado nos parceiro_ids OU o responsável bate com o nome.
-      // Se não houver filtro restrito (ex.: usuário enviou especificamente para ele), considera as tarefas associadas
+      // Filtra as tarefas pertinentes a este destinatário
       const tarefasDest = tarefas.filter((t) => {
-        // Checa responsável
         const resp = String(t.getString('responsavel') || '')
           .trim()
           .toLowerCase()
@@ -191,7 +654,6 @@ routerAdd(
         ) {
           return true
         }
-        // Checa parceiro_id
         if (pId) {
           try {
             const rawP = t.getString('parceiros')
@@ -202,15 +664,13 @@ routerAdd(
         return false
       })
 
-      // Se não filtrou nenhuma especificamente por match de nome/id, mas o usuário selecionou este destinatário
-      // para a lista inteira de tarefas filtradas, usamos a lista de tarefas recebidas
       const listaFinalTarefas = tarefasDest.length > 0 ? tarefasDest : tarefas
 
       // Agrupa tarefas por empresa
       const gruposEmpresas = {}
       for (let tIdx = 0; tIdx < listaFinalTarefas.length; tIdx++) {
         const t = listaFinalTarefas[tIdx]
-        const empNome = String(t.getString('empresa') || '').trim() || 'Geral'
+        const empNome = String(t.getString('empresa') || '').trim() || 'Extrafruti'
         if (!gruposEmpresas[empNome]) gruposEmpresas[empNome] = []
         gruposEmpresas[empNome].push(t)
       }
@@ -227,7 +687,10 @@ routerAdd(
           listaFinalTarefas.length +
           ' tarefa(s)'
 
-      // Monta HTML completo com estilo inline legível em qualquer cliente de e-mail
+      // Item (b): Título abaixo da logomarca dinâmico por empresa
+      const tituloAbaixoLogo = 'PAINEL DE GESTÃO ' + empPrincipal.toUpperCase()
+
+      // Monta HTML completo
       let html =
         '<!DOCTYPE html><html><head><meta charset="utf-8"/><title>' +
         escapeHtml(assunto) +
@@ -237,7 +700,7 @@ routerAdd(
       html +=
         '<div style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.06);border:1px solid #e5e7eb;">'
 
-      // TOPO: LOGO CENTRALIZADA DA EMPRESA
+      // TOPO: LOGO CENTRALIZADA DA EMPRESA + TÍTULO DINÂMICO
       html +=
         '<div style="background-color:#ffffff;padding:28px 24px 20px;text-align:center;border-bottom:2px solid #f3f4f6;">'
       if (logoPrincipalInfo && logoPrincipalInfo.logoUrl) {
@@ -253,28 +716,32 @@ routerAdd(
           escapeHtml(empPrincipal) +
           '</div>'
       }
+      // Item (b): Linha abaixo da logo dinâmica: PAINEL DE GESTÃO {EMPRESA}
       html +=
-        '<div style="margin-top:10px;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Portal de Gestão Executivo</div>'
+        '<div style="margin-top:10px;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">' +
+        escapeHtml(tituloAbaixoLogo) +
+        '</div>'
       html += '</div>'
 
-      // FAIXA DE APRESENTAÇÃO
+      // FAIXA DE APRESENTAÇÃO - Item (c): Título "Acompanhamento de Tarefas" centralizado e texto alinhado
       html +=
-        '<div style="background:#1B5E20;color:#ffffff;padding:18px 24px;border-top:1px solid rgba(255,255,255,0.1);">'
+        '<div style="background:#1B5E20;color:#ffffff;padding:18px 24px;border-top:1px solid rgba(255,255,255,0.1);text-align:center;">'
       html +=
-        '<h1 style="margin:0;font-size:18px;font-weight:700;line-height:1.3;color:#ffffff;">Ciência e Acompanhamento de Tarefas</h1>'
+        '<h1 style="margin:0;font-size:18px;font-weight:700;line-height:1.3;color:#ffffff;text-align:center;">Acompanhamento de Tarefas</h1>'
       html +=
-        '<p style="margin:6px 0 0;font-size:13px;color:#d1fae5;line-height:1.4;">Olá, <strong>' +
+        '<p style="margin:6px 0 0;font-size:13px;color:#d1fae5;line-height:1.4;text-align:center;">Olá, <strong>' +
         escapeHtml(nome) +
         '</strong>. Segue o resumo das tarefas sob sua responsabilidade ou acompanhamento:</p>'
       html += '</div>'
 
-      // CORPO DO E-MAIL: LISTA DE TAREFAS AGRUPADAS POR EMPRESA
+      // CORPO DO E-MAIL: LISTA DE TAREFAS
       html += '<div style="padding:24px;">'
+
+      const tarefasParaPdf = []
 
       for (let g = 0; g < nomesEmpresas.length; g++) {
         const empNome = nomesEmpresas[g]
         const tList = gruposEmpresas[empNome]
-        const logoEmp = logosMap[empNome.toLowerCase()]
 
         if (nomesEmpresas.length > 1) {
           html +=
@@ -306,29 +773,40 @@ routerAdd(
           const vinculoTipo = t.getString('vinculo_tipo') || ''
           const recorrencia = t.getString('recorrencia') || ''
 
+          tarefasParaPdf.push({
+            titulo: titulo,
+            descricao: desc,
+            status: status,
+            prioLabel: prioLabel,
+            responsavel: resp,
+            prazoFormatado: prazoFormatado,
+            prazoAtrasado: prazoAtrasado,
+            vinculoTipo: vinculoTipo,
+            recorrencia: recorrencia,
+          })
+
           html +=
             '<div style="background:#f9fafb;border:1px solid #e5e7eb;border-left:4px solid ' +
             (prazoAtrasado ? '#dc2626' : '#1B5E20') +
             ';border-radius:10px;padding:16px;margin-bottom:16px;">'
 
-          // Header da tarefa: Prioridade badge + Empresa
-          html += '<div style="margin-bottom:8px;font-size:11px;">'
+          // Item (d): Rótulos à esquerda da Prioridade e do Status, SEM o nome da empresa duplicado
+          html += '<div style="margin-bottom:8px;font-size:11px;line-height:1.6;">'
+          html += '<span style="color:#6b7280;font-weight:600;margin-right:4px;">Prioridade:</span>'
           html +=
             '<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:' +
             prioBg +
             ';color:' +
             prioColor +
-            ';font-weight:700;margin-right:8px;">' +
+            ';font-weight:700;margin-right:12px;">' +
             escapeHtml(prioLabel) +
             '</span>'
+
+          html += '<span style="color:#6b7280;font-weight:600;margin-right:4px;">Status:</span>'
           html +=
-            '<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#e5e7eb;color:#374151;font-weight:600;margin-right:8px;">' +
+            '<span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#e5e7eb;color:#374151;font-weight:600;">' +
             escapeHtml(status) +
             '</span>'
-          if (empNome && empNome !== 'Geral') {
-            html +=
-              '<span style="color:#6b7280;font-weight:500;">· ' + escapeHtml(empNome) + '</span>'
-          }
           html += '</div>'
 
           // Título
@@ -337,11 +815,11 @@ routerAdd(
             escapeHtml(titulo) +
             '</h3>'
 
-          // Descrição (se houver)
+          // Item (e): Descrição preservando exatamente quebras de linha e formatação
           if (desc) {
             html +=
               '<div style="margin:0 0 12px;font-size:13px;line-height:1.55;color:#4b5563;white-space:pre-wrap;background:#ffffff;padding:10px 12px;border-radius:6px;border:1px solid #e5e7eb;">' +
-              escapeHtml(desc) +
+              renderizarDescricaoHtml(desc) +
               '</div>'
           }
 
@@ -392,59 +870,149 @@ routerAdd(
           }
 
           html += '</table>'
-          html += '</div>' // Fim do card da tarefa
+          html += '</div>'
         }
       }
 
-      html += '</div>' // Fim do padding
+      html += '</div>'
 
       // RODAPÉ DO LAYOUT
       html +=
         '<div style="background:#f9fafb;padding:18px 24px;border-top:1px solid #e5e7eb;text-align:center;font-size:11px;color:#9ca3af;line-height:1.5;">'
       html +=
-        '<strong style="color:#6b7280;">Portal de Gestão Executivo</strong> · Grupo Extrafruti · Casafruti · FoldBox<br/>'
+        '<strong style="color:#6b7280;">' +
+        escapeHtml(tituloAbaixoLogo) +
+        '</strong> · Grupo Extrafruti · Casafruti · FoldBox<br/>'
       html += 'Este e-mail foi gerado automaticamente para ciência e acompanhamento operacional.'
       html += '</div>'
 
       html += '</div></body></html>'
 
       // Versão texto plano alternativa
-      let textoPlano = 'CIÊNCIA E ACOMPANHAMENTO DE TAREFAS\n'
-      textoPlano += 'Portal de Gestão Executivo — ' + empPrincipal + '\n\n'
+      let textoPlano = 'ACOMPANHAMENTO DE TAREFAS\n'
+      textoPlano += tituloAbaixoLogo + '\n\n'
       textoPlano += 'Olá, ' + nome + '.\nSeguem as tarefas sob seu acompanhamento:\n\n'
       for (let i = 0; i < listaFinalTarefas.length; i++) {
         const t = listaFinalTarefas[i]
         textoPlano += i + 1 + ') ' + (t.getString('titulo') || 'Sem título') + '\n'
         textoPlano +=
+          'Prioridade: ' +
+          labelPrioridade(t.getString('prioridade_p'), t.getString('prioridade')) +
+          '\n'
+        textoPlano +=
           'Status: ' + labelStatus(t.getString('status_kanban') || t.getString('status')) + '\n'
-        textoPlano += 'Prioridade: ' + (t.getString('prioridade_p') || 'P2') + '\n'
         textoPlano += 'Prazo: ' + formatarPrazo(t.getString('prazo')) + '\n'
         textoPlano += 'Responsável: ' + (t.getString('responsavel') || '—') + '\n'
-        textoPlano += 'Empresa: ' + (t.getString('empresa') || '—') + '\n'
         if (t.getString('descricao')) {
-          textoPlano += 'Descrição: ' + t.getString('descricao') + '\n'
+          textoPlano += 'Descrição:\n' + t.getString('descricao') + '\n'
         }
         textoPlano += '-----------------------------------------\n\n'
       }
 
+      // Item (a): GERAÇÃO DO MESMO LAYOUT EM PDF PARA ANEXAR
+      let pdfFileName =
+        'Tarefas_' +
+        empPrincipal.replace(/[^a-zA-Z0-9]/g, '_') +
+        '_' +
+        hoje.replace(/-/g, '') +
+        '.pdf'
+      let pdfBytes = ''
+      try {
+        pdfBytes = gerarPdfTarefas({
+          empPrincipal: empPrincipal,
+          destinatarioNome: nome,
+          listaTarefas: tarefasParaPdf,
+          dataHoraStr: hoje,
+        })
+      } catch (errPdf) {
+        console.warn('Erro ao gerar PDF das tarefas:', errPdf)
+      }
+
+      // Item (f): Remetente derivado da empresa com fallback e log
+      const remetenteDinamico = derivarRemetenteEmpresa(empPrincipal)
+      const senderFallback = $app.settings().meta.senderAddress || 'gestao@extrafruti.com.br'
+      const senderName = 'Painel de Gestão ' + empPrincipal
+
       let statusEnvio = 'enviado'
       let erroEnvio = ''
+      let remetenteUsado = remetenteDinamico
+
+      function dispararEmail(fromAddress) {
+        let pdfReader = null
+        try {
+          const message = new MailerMessage({
+            from: { address: fromAddress, name: senderName },
+            to: [{ address: email }],
+            subject: assunto,
+            html: html,
+            text: textoPlano,
+            attachments: {},
+          })
+
+          // Anexa o PDF se tiver sido gerado com sucesso
+          if (pdfBytes && typeof $filesystem !== 'undefined' && $filesystem.fileFromBytes) {
+            try {
+              const fileObj = $filesystem.fileFromBytes(pdfBytes, pdfFileName)
+              if (fileObj && fileObj.reader) {
+                pdfReader = fileObj.reader.open()
+                message.attachments[pdfFileName] = pdfReader
+              }
+            } catch (errAnexo) {
+              console.warn('Aviso: falha ao preparar leitor de anexo PDF:', errAnexo)
+            }
+          }
+
+          $app.newMailClient().send(message)
+          return { ok: true }
+        } finally {
+          try {
+            if (pdfReader && typeof pdfReader.close === 'function') {
+              pdfReader.close()
+            }
+          } catch (_) {}
+        }
+      }
+
+      // Tenta primeiro com o From dinâmico (ex.: extrafruti@extrafruti.com.br, casafruti@casafruti.com.br)
+      console.log(
+        'Tentando envio de tarefas com From dinâmico: ' +
+          remetenteDinamico +
+          ' para ' +
+          email +
+          ' (empresa: ' +
+          empPrincipal +
+          ')',
+      )
 
       try {
-        const sender = $app.settings().meta.senderAddress || 'gestao@extrafruti.com.br'
-        const senderName = 'Portal de Gestão Executivo'
+        dispararEmail(remetenteDinamico)
+        console.log('Envio bem-sucedido com From dinâmico: ' + remetenteDinamico + ' para ' + email)
+      } catch (errPrimario) {
+        const errStr = String(errPrimario)
+        console.warn(
+          'Falha ao enviar com From dinâmico (' +
+            remetenteDinamico +
+            '): ' +
+            errStr +
+            '. Tentando fallback para ' +
+            senderFallback,
+        )
 
-        const message = new MailerMessage({
-          from: { address: sender, name: senderName },
-          to: [{ address: email }],
-          subject: assunto,
-          html: html,
-          text: textoPlano,
-        })
-        $app.newMailClient().send(message)
-      } catch (err) {
-        statusEnvio = 'erro'
-        erroEnvio = String(err).slice(0, 500)
+        // Se o From dinâmico foi recusado pelo relay de e-mail, tenta o fallback
+        if (senderFallback && senderFallback !== remetenteDinamico) {
+          try {
+            remetenteUsado = senderFallback
+            dispararEmail(senderFallback)
+            console.log('Envio bem-sucedido com From de fallback: ' + senderFallback)
+          } catch (errSecundario) {
+            statusEnvio = 'erro'
+            erroEnvio = String(errSecundario).slice(0, 500)
+            console.error('Falha no envio com From de fallback:', errSecundario)
+          }
+        } else {
+          statusEnvio = 'erro'
+          erroEnvio = errStr.slice(0, 500)
+        }
       }
 
       // Salva no histórico de emails
@@ -461,7 +1029,7 @@ routerAdd(
         $app.save(recEmail)
       } catch (_) {}
 
-      // Grava auditoria
+      // Grava auditoria com detalhes do remetente
       try {
         const aid = $security.randomString(15)
         $app
@@ -480,7 +1048,10 @@ routerAdd(
               nome +
               ' <' +
               email +
-              '>' +
+              '> de <' +
+              remetenteUsado +
+              '> com anexo PDF ' +
+              pdfFileName +
               (erroEnvio ? ' (ERRO: ' + erroEnvio.slice(0, 80) + ')' : ''),
             now: new DateTime().string(),
           })
@@ -491,6 +1062,9 @@ routerAdd(
         destinatario: nome,
         email: email,
         total_tarefas: listaFinalTarefas.length,
+        remetente_tentado: remetenteDinamico,
+        remetente_usado: remetenteUsado,
+        anexo_pdf: pdfFileName,
         ok: statusEnvio === 'enviado',
         erro: erroEnvio || undefined,
       })
