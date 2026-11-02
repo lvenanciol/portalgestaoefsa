@@ -126,12 +126,18 @@ onRecordAfterCreateSuccess(function (e) {
   }
 
   function registrarNoChat(tarefaId, texto, autorNome) {
+    var tid = String(tarefaId || '').trim()
+    if (!tid) {
+      // Não grava registro órfão se não tiver tarefa válida
+      return
+    }
     try {
       var col = $app.findCollectionByNameOrId('tarefas_chat')
       var reg = new Record(col)
-      reg.set('tarefa', tarefaId)
+      reg.set('tarefa_id', tid)
       reg.set('autor', autorNome || 'Sistema')
-      reg.set('autor_tipo', 'sistema')
+      // Schema de tarefas_chat permite apenas 'portal' | 'parceiro'
+      reg.set('autor_tipo', 'portal')
       reg.set('texto', texto)
       $app.save(reg)
     } catch (err) {
@@ -343,12 +349,16 @@ onRecordAfterUpdateSuccess(function (e) {
   }
 
   function registrarNoChat(tarefaId, texto, autorNome) {
+    var tid = String(tarefaId || '').trim()
+    if (!tid) {
+      return
+    }
     try {
       var col = $app.findCollectionByNameOrId('tarefas_chat')
       var reg = new Record(col)
-      reg.set('tarefa', tarefaId)
+      reg.set('tarefa_id', tid)
       reg.set('autor', autorNome || 'Sistema')
-      reg.set('autor_tipo', 'sistema')
+      reg.set('autor_tipo', 'portal')
       reg.set('texto', texto)
       $app.save(reg)
     } catch (err) {
