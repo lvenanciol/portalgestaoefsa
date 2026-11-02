@@ -5,6 +5,9 @@ import './main.css'
 // COR-2: aplica o idioma persistido na 1ª renderização (tradutor de DOM)
 import { idiomaSalvo, aplicarIdiomaNoDOM } from '@/lib/i18n'
 
+import { sincronizarPwaIcons } from '@/lib/pwa-icon-sync'
+
 // @skip-protected: Do not remove. Required for React rendering.
 aplicarIdiomaNoDOM(idiomaSalvo())
+sincronizarPwaIcons()
 createRoot(document.getElementById('root')!).render(<App />)

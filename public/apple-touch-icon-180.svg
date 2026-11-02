@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180">
+  <!-- Fundo sólido verde Extrafruti (sem cantos transparentes para iOS apple-touch-icon) -->
+  <rect width="180" height="180" fill="#1B5E20" />
+  
+  <!-- Círculo sutil branco central para destacar o símbolo da Extrafruti -->
+  <circle cx="90" cy="90" r="76" fill="#FFFFFF" />
+
+  <!-- Símbolo Extrafruti: maçã laranja com folha verde, texto extrafruti e bandeja/sorriso inferior -->
+  <g transform="translate(0, 0)">
+    <!-- Folha verde superior -->
+    <path
+      d="M90,45 C85,33 94,22 106,19 C108,30 102,41 90,45 Z"
+      fill="#43A047"
+    />
+
+    <!-- Arco superior da maçã (laranja Extrafruti #F37021) -->
+    <path
+      d="M48,77 C36,66 42,46 62,46 C75,46 85,56 90,64 C95,56 105,46 118,46 C138,46 144,66 132,77 L118,77 C124,69 121,58 110,58 C99,58 93,69 90,74 C87,69 81,58 70,58 C59,58 56,69 62,77 Z"
+      fill="#F37021"
+    />
+
+    <!-- Tipografia centralizada extrafruti em verde vibrante #2E7D32 -->
+    <g fill="#2E7D32" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-weight: 800;">
+      <text
+        x="90"
+        y="107"
+        font-size="22.5"
+        text-anchor="middle"
+        letter-spacing="-0.5"
+      >extrafruti</text>
+    </g>
+
+    <!-- Bandeja / Sorriso inferior da maçã (laranja Extrafruti #F37021) -->
+    <path
+      d="M54,128 C64,142 76,148 90,148 C104,148 116,142 126,128 C118,133 104,137 90,137 C76,137 62,133 54,128 Z"
+      fill="#F37021"
+    />
+  </g>
+</svg>

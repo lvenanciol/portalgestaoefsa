@@ -20,3 +20,21 @@ routerAdd(
   },
   // sem $apis.requireAuth() — público (só dados de marca, sem segredos)
 )
+
+// PWA: ícone da Extrafruti em PNG puro servido com Content-Type image/png
+// Lê os bytes diretamente do storage do PocketBase e serve sem redirect
+routerAdd('GET', '/backend/v1/public/extrafruti-icon.png', (e) => {
+  try {
+    const rec = $app.findFirstRecordByFilter('logomarcas', 'empresa ~ "Extrafruti"')
+    const fs = $app.newFilesystem()
+    const arquivo = rec.getString('emblema') || rec.getString('logo')
+    const fileKey = rec.baseFilesPath() + '/' + arquivo
+    const reader = fs.getFile(fileKey)
+    const bytes = reader.readAll()
+    reader.close()
+    fs.close()
+    return e.blob(200, 'image/png', bytes)
+  } catch (err) {
+    return e.json(500, { ok: false, erro: String(err) })
+  }
+})

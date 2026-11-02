@@ -2,14 +2,32 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Portal de Gestão Executivo: Extrafruti Group</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Portal de Gestão Executivo</title>
     <meta
       name="description"
       content="Portal de Gestão Executiva para empresas do grupo Extrafruti"
     />
     <meta name="author" content="Skip (https://goskip.dev)" />
-    <meta property="og:image" content="/og-image.png" />
+
+    <!-- Configurações PWA e iOS Standalone -->
+    <meta name="theme-color" content="#1B5E20" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Portal Extrafruti" />
+    <meta name="application-name" content="Portal de Gestão Executivo" />
+
+    <!-- Links do Web App Manifest (caminhos relativos para compatibilidade com qualquer host) -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <!-- Ícones para iOS Apple Touch Icon (180x180 sem transparência) e navegadores -->
+    <link rel="apple-touch-icon" href="./apple-touch-icon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon-180.svg" />
+    <link rel="icon" type="image/svg+xml" href="./apple-touch-icon.svg" />
+
+    <!-- Open Graph -->
+    <meta property="og:image" content="./og-image.png" />
     <meta property="og:title" content="Portal de Gestão Executivo: Extrafruti Group" />
     <meta
       property="og:description"
@@ -23,5 +41,15 @@
     <script src="https://goskip.dev/skip.js"></script>
     <!-- @skip-protected: Do not remove. App entrypoint. -->
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Registro do Service Worker mínimo para PWA
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function(err) {
+            console.debug('SW registration skipped or failed:', err);
+          });
+        });
+      }
+    </script>
   </body>
 </html>

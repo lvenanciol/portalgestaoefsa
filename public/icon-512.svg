@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Filtro de sombra sutil para profundidade premium -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.15" />
+    </filter>
+  </defs>
+
+  <!-- Fundo sólido verde institucional Extrafruti (#1B5E20) — sem transparência (perfeito para iOS) -->
+  <rect width="512" height="512" fill="#1B5E20" />
+
+  <!-- Card interno branco com cantos arredondados (squircle padrão moderno de app iOS/Android) -->
+  <rect x="36" y="36" width="440" height="440" rx="96" fill="#FFFFFF" filter="url(#shadow)" />
+
+  <!-- Símbolo Extrafruti: maçã laranja, folha verde vibrante, tipografia e bandeja -->
+  <g id="extrafruti-symbol">
+    <!-- Folha da maçã (verde Extrafruti #43A047) -->
+    <path
+      d="M256,125 C242,90 268,58 302,50 C308,82 290,115 256,125 Z"
+      fill="#43A047"
+    />
+
+    <!-- Arco superior da maçã (laranja Extrafruti #F37021) -->
+    <!-- Curva dupla que forma os dois lados superiores da maçã com entalhe central -->
+    <path
+      d="M142,216 C108,184 122,126 180,126 C218,126 244,154 256,176 C268,154 294,126 332,126 C390,126 404,184 370,216 L332,216 C346,194 338,162 310,162 C278,162 262,192 256,206 C250,192 234,162 202,162 C174,162 166,194 180,216 Z"
+      fill="#F37021"
+    />
+
+    <!-- Tipografia oficial 'extrafruti' em verde corporativo (#2E7D32) com geometria arredondada idêntica -->
+    <g fill="#2E7D32" style="font-family: -apple-system, BlinkMacSystemFont, 'Nunito', 'Comfortaa', 'Montserrat', 'Segoe UI', Roboto, sans-serif; font-weight: 800;">
+      <text
+        x="256"
+        y="306"
+        font-size="64"
+        text-anchor="middle"
+        letter-spacing="-1.5"
+      >extrafruti</text>
+    </g>
+
+    <!-- Bandeja / Sorriso inferior da maçã (laranja Extrafruti #F37021) -->
+    <!-- Elemento marcante da marca que entrega o frescor de bandeja -->
+    <path
+      d="M152,364 C178,406 214,424 256,424 C298,424 334,406 360,364 C334,378 296,392 256,392 C216,392 178,378 152,364 Z"
+      fill="#F37021"
+    />
+  </g>
+</svg>
