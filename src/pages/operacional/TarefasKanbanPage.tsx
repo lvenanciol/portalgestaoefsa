@@ -44,6 +44,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar as CalendarPicker } from '@/components/ui/calendar'
 import { TarefasListaView } from '@/components/operacional/TarefasListaView'
 import { TarefasCalendarioView } from '@/components/operacional/TarefasCalendarioView'
+import { TarefasEnviarPopover } from '@/components/operacional/TarefasEnviarPopover'
 import { ParceiroCadastroDialog } from '@/components/operacional/ParceiroCadastroDialog'
 import { TarefaDetalheModal } from '@/components/operacional/TarefaDetalheModal'
 import { TarefaFormDialog } from '@/components/operacional/TarefaFormDialog'
@@ -1380,6 +1381,13 @@ export default function TarefasKanbanPage() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* Botão Enviar (para ciência e acompanhamento) */}
+          <TarefasEnviarPopover
+            tarefasVisiveis={itensLista}
+            parceirosTodos={parceiros}
+            disabled={loading || itensLista.length === 0}
+          />
 
           {/* Botão Nova tarefa */}
           <Button
