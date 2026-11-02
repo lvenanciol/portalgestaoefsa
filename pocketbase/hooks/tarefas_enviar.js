@@ -10,7 +10,7 @@
 //   - Obtém a logo da empresa (de logomarcas ou logos_publicas)
 //   - Monta layout HTML profissional:
 //       * Topo com LOGO DA EMPRESA centralizada
-//       * Título dinâmico: "PAINEL DE GESTÃO {NOME DA EMPRESA}"
+//       * Título dinâmico: "PORTAL DE GESTÃO {NOME DA EMPRESA}"
 //       * Bloco verde com "Acompanhamento de Tarefas" centralizado
 //       * Card de tarefa sem nome da empresa duplicado, com rótulos "Prioridade:" e "Status:"
 //       * Descrição preservando quebras de linha e formatação digitada
@@ -710,7 +710,7 @@ routerAdd(
         // Altura do topo branco com logomarca e título centralizados
         // Layout espelho do topo do e-mail HTML:
         // [ Logomarca Centralizada ]
-        // PAINEL DE GESTÃO {EMPRESA}
+        // PORTAL DE GESTÃO {EMPRESA}
         // Faixa verde "Acompanhamento de Tarefas"
         const temImagemEmbutivel =
           parsedImage && (parsedImage.tipo === 'jpeg_dct' || parsedImage.tipo === 'png_flate')
@@ -1481,7 +1481,7 @@ routerAdd(
           escapeHtml(empPrincipal) +
           '</div>'
       }
-      // Item (b): Linha abaixo da logo dinâmica: PAINEL DE GESTÃO {EMPRESA}
+      // Item (b): Linha abaixo da logo dinâmica: PORTAL DE GESTÃO {EMPRESA}
       html +=
         '<div style="margin-top:10px;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">' +
         escapeHtml(tituloAbaixoLogo) +
