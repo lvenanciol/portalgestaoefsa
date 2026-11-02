@@ -29,7 +29,6 @@ function makeChunk(type, data) {
 // Fundo sólido verde #1B5E20, círculo central branco #FFFFFF, maçã #F37021, folha #43A047, texto extrafruti #2E7D32
 export function generateExtrafrutiPng(size) {
   const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-
   const ihdrData = Buffer.alloc(13)
   ihdrData.writeUInt32BE(size, 0)
   ihdrData.writeUInt32BE(size, 4)
@@ -254,19 +253,4 @@ export function generateExtrafrutiPng(size) {
   const iendChunk = makeChunk('IEND', Buffer.alloc(0))
 
   return Buffer.concat([signature, ihdrChunk, idatChunk, iendChunk])
-}
-
-const publicDir = path.resolve('public')
-const targets = [
-  { name: 'apple-touch-icon.png', size: 180 },
-  { name: 'apple-touch-icon-180.png', size: 180 },
-  { name: 'apple-touch-icon-152.png', size: 152 },
-  { name: 'icon-192.png', size: 192 },
-  { name: 'icon-512.png', size: 512 },
-]
-
-for (const t of targets) {
-  const buf = generateExtrafrutiPng(t.size)
-  fs.writeFileSync(path.join(publicDir, t.name), buf)
-  console.log('Wrote', t.name, 'bytes:', buf.length)
 }

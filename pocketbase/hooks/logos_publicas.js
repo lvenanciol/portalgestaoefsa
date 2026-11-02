@@ -40,3 +40,5 @@ routerAdd('GET', '/backend/v1/public/extrafruti-icon.png', (e) => {
     return e.json(500, { ok: false, erro: String(err) })
   }
 })
+
+
