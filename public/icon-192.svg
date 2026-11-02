@@ -1,30 +1,29 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
-  <!-- Fundo sólido verde Extrafruti (sem transparência) -->
+  <!-- Fundo sólido verde Extrafruti (sem cantos transparentes para PWA icon) -->
   <rect width="192" height="192" fill="#1B5E20" />
   
-  <!-- Círculo sutil branco central para destacar o símbolo da Extrafruti -->
-  <circle cx="96" cy="96" r="81" fill="#FFFFFF" />
+  <!-- Círculo branco central de respiro para a logomarca da Extrafruti -->
+  <circle cx="96" cy="96" r="81.6" fill="#FFFFFF" />
 
-  <!-- Símbolo Extrafruti: maçã laranja com folha verde, texto extrafruti e bandeja/sorriso inferior -->
   <g transform="translate(0, 0)">
-    <!-- Folha verde superior -->
+    <!-- Folha verde da maçã -->
     <path
-      d="M96,48 C91,35 100,23 113,20 C115,32 109,44 96,48 Z"
-      fill="#43A047"
+      d="M100.5,45.7 C98.6,41.2 102,37.1 106.5,36 C107.2,40.1 105,44.2 100.5,45.7 Z"
+      fill="#2E7D32"
     />
 
-    <!-- Arco superior da maçã (laranja Extrafruti #F37021) -->
+    <!-- Arcos superiores da maçã (laranja Extrafruti #F37021) -->
     <path
-      d="M51,82 C38,70 45,49 66,49 C80,49 91,60 96,68 C101,60 112,49 126,49 C147,49 154,70 141,82 L126,82 C132,74 129,62 117,62 C106,62 99,74 96,79 C93,74 86,62 75,62 C63,62 60,74 66,82 Z"
+      d="M51,86 C38,74 45,53 66,53 C80,53 91,64 96,72 C101,64 112,53 126,53 C147,53 154,74 141,86 L126,86 C132,77 129,66 117,66 C105,66 99,77 96,83 C93,77 87,66 75,66 C63,66 60,77 66,86 Z"
       fill="#F37021"
     />
 
-    <!-- Tipografia centralizada extrafruti em verde vibrante #2E7D32 -->
+    <!-- Tipografia centralizada extrafruti em verde institucional #2E7D32 -->
     <g fill="#2E7D32" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-weight: 800;">
       <text
         x="96"
-        y="114"
-        font-size="24"
+        y="117"
+        font-size="23.4"
         text-anchor="middle"
         letter-spacing="-0.5"
       >extrafruti</text>
@@ -32,7 +31,7 @@
 
     <!-- Bandeja / Sorriso inferior da maçã (laranja Extrafruti #F37021) -->
     <path
-      d="M58,137 C68,151 81,158 96,158 C111,158 124,151 134,137 C126,142 111,146 96,146 C81,146 66,142 58,137 Z"
+      d="M55,134 C67,152 80,157 96,157 C112,157 125,152 137,134 C128,139 113,144 96,144 C79,144 64,139 55,134 Z"
       fill="#F37021"
     />
   </g>

@@ -1,7 +1,6 @@
-// Execução da geração dos ícones PWA programáticos a partir de pwa-png-builder
 import fs from 'node:fs'
 import path from 'node:path'
-import { buildExtrafrutiPngBytes } from './src/lib/pwa-png-builder'
+import { generateExtrafrutiIconPng } from './generate-static-icons.mjs'
 
 const publicDir = path.resolve('public')
 
@@ -13,7 +12,8 @@ const targets = [
 ]
 
 for (const t of targets) {
-  const bytes = buildExtrafrutiPngBytes(t.size)
-  fs.writeFileSync(path.join(publicDir, t.name), Buffer.from(bytes))
-  console.log(`Generated ${t.name} (${t.size}x${t.size}) - ${bytes.length} bytes`)
+  const buf = generateExtrafrutiIconPng(t.size)
+  const destPath = path.join(publicDir, t.name)
+  fs.writeFileSync(destPath, buf)
+  console.log(`Gravado ${t.name}: ${buf.length} bytes`)
 }

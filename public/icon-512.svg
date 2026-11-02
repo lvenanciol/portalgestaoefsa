@@ -1,47 +1,37 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <defs>
-    <!-- Filtro de sombra sutil para profundidade premium -->
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.15" />
-    </filter>
-  </defs>
-
-  <!-- Fundo sólido verde institucional Extrafruti (#1B5E20) — sem transparência (perfeito para iOS) -->
+  <!-- Fundo sólido verde Extrafruti (sem cantos transparentes para PWA icon) -->
   <rect width="512" height="512" fill="#1B5E20" />
+  
+  <!-- Círculo branco central de respiro para a logomarca da Extrafruti -->
+  <circle cx="256" cy="256" r="217.6" fill="#FFFFFF" />
 
-  <!-- Card interno branco com cantos arredondados (squircle padrão moderno de app iOS/Android) -->
-  <rect x="36" y="36" width="440" height="440" rx="96" fill="#FFFFFF" filter="url(#shadow)" />
-
-  <!-- Símbolo Extrafruti: maçã laranja, folha verde vibrante, tipografia e bandeja -->
-  <g id="extrafruti-symbol">
-    <!-- Folha da maçã (verde Extrafruti #43A047) -->
+  <g transform="translate(0, 0)">
+    <!-- Folha verde da maçã -->
     <path
-      d="M256,125 C242,90 268,58 302,50 C308,82 290,115 256,125 Z"
-      fill="#43A047"
+      d="M268,122 C263,110 272,99 284,96 C286,107 280,118 268,122 Z"
+      fill="#2E7D32"
     />
 
-    <!-- Arco superior da maçã (laranja Extrafruti #F37021) -->
-    <!-- Curva dupla que forma os dois lados superiores da maçã com entalhe central -->
+    <!-- Arcos superiores da maçã (laranja Extrafruti #F37021) -->
     <path
-      d="M142,216 C108,184 122,126 180,126 C218,126 244,154 256,176 C268,154 294,126 332,126 C390,126 404,184 370,216 L332,216 C346,194 338,162 310,162 C278,162 262,192 256,206 C250,192 234,162 202,162 C174,162 166,194 180,216 Z"
+      d="M136,230 C102,198 119,142 176,142 C213,142 242,170 256,193 C270,170 299,142 336,142 C393,142 410,198 376,230 L336,230 C353,207 344,176 313,176 C282,176 265,207 256,222 C247,207 230,176 199,176 C168,176 159,207 176,230 Z"
       fill="#F37021"
     />
 
-    <!-- Tipografia oficial 'extrafruti' em verde corporativo (#2E7D32) com geometria arredondada idêntica -->
-    <g fill="#2E7D32" style="font-family: -apple-system, BlinkMacSystemFont, 'Nunito', 'Comfortaa', 'Montserrat', 'Segoe UI', Roboto, sans-serif; font-weight: 800;">
+    <!-- Tipografia centralizada extrafruti em verde institucional #2E7D32 -->
+    <g fill="#2E7D32" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-weight: 800;">
       <text
         x="256"
-        y="306"
-        font-size="64"
+        y="312"
+        font-size="62.5"
         text-anchor="middle"
         letter-spacing="-1.5"
       >extrafruti</text>
     </g>
 
     <!-- Bandeja / Sorriso inferior da maçã (laranja Extrafruti #F37021) -->
-    <!-- Elemento marcante da marca que entrega o frescor de bandeja -->
     <path
-      d="M152,364 C178,406 214,424 256,424 C298,424 334,406 360,364 C334,378 296,392 256,392 C216,392 178,378 152,364 Z"
+      d="M148,358 C179,406 213,420 256,420 C299,420 333,406 364,358 C341,372 301,384 256,384 C211,384 171,372 148,358 Z"
       fill="#F37021"
     />
   </g>

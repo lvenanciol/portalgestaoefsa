@@ -1,7 +1,7 @@
 // Utilitário para garantir que os ícones do PWA (apple-touch-icon 180x180, pwa 192x192, 512x512)
-// estejam sempre sincronizados com a logomarca da Extrafruti cadastrada na tela de Logomarcas
+// estejam sincronizados com a logomarca da Extrafruti cadastrada na tela de Logomarcas
 // O script roda dinamicamente no frontend ao inicializar o app, buscando a imagem do PocketBase,
-// desenhando-a num Canvas com o fundo verde institucional (#1B5E20) ou branco conforme diretriz iOS
+// desenhando-a num Canvas com o fundo verde institucional (#1B5E20)
 // (sem cantos transparentes / sem alpha) e atualizando o <link rel="apple-touch-icon"> do documento em runtime.
 
 import pb from '@/lib/pocketbase/client'
@@ -45,13 +45,17 @@ export async function sincronizarPwaIcons() {
     ctx.fillStyle = BG_COLOR
     ctx.fillRect(0, 0, APPLE_TOUCH_SIZE, APPLE_TOUCH_SIZE)
 
+    // Círculo branco de respiro
+    ctx.fillStyle = '#FFFFFF'
+    ctx.beginPath()
+    ctx.arc(APPLE_TOUCH_SIZE / 2, APPLE_TOUCH_SIZE / 2, APPLE_TOUCH_SIZE * 0.425, 0, Math.PI * 2)
+    ctx.fill()
+
     // Desenhar a logomarca da Extrafruti centralizada com margem segura
-    // A logo tem fundo transparente ou preto dependendo da versão, então desenhamos com padding
-    const padding = Math.round(APPLE_TOUCH_SIZE * 0.1) // 10% de respiro
+    const padding = Math.round(APPLE_TOUCH_SIZE * 0.12)
     const drawWidth = APPLE_TOUCH_SIZE - padding * 2
     const drawHeight = APPLE_TOUCH_SIZE - padding * 2
 
-    // Preservar aspect ratio
     const imgAspect = img.width / img.height
     let targetW = drawWidth
     let targetH = drawHeight

@@ -1,10 +1,10 @@
 /*
-  Gerador puro de PNG da marca Extrafruti.
-  Produz um arquivo binário PNG válido conforme a especificação ISO/IEC 15948:2004.
-  Sem canal alpha (Color type 2 - RGB), fundo sólido #1B5E20 (r: 27, g: 94, b: 32).
+  Gerador puro de PNG da marca Extrafruti (100% autônomo, formato binário ISO/IEC 15948:2004).
+  Produz um arquivo binário PNG válido sem canal alpha (RGB puro), fundo sólido verde #1B5E20,
+  respiro circular branco #FFFFFF e logomarca oficial Extrafruti 2026 (maçã laranja #F37021,
+  folha verde #2E7D32 e tipografia institucional 'extrafruti' em verde #2E7D32).
 */
 
-// Tabela estática de CRC32 pré-computada para cálculo rápido e sem dependências
 const CRC_TABLE = new Uint32Array(256)
 for (let n = 0; n < 256; n++) {
   let c = n
@@ -23,7 +23,6 @@ export function calcCrc32(buf: Uint8Array, offset = 0, length = buf.length - off
   return (c ^ 0xffffffff) >>> 0
 }
 
-// Adler32 para stream zlib RFC 1950
 export function calcAdler32(buf: Uint8Array): number {
   let s1 = 1
   let s2 = 0
@@ -35,13 +34,12 @@ export function calcAdler32(buf: Uint8Array): number {
   return ((s2 << 16) | s1) >>> 0
 }
 
-// Cria um chunk PNG: 4 bytes length, 4 bytes type, data bytes, 4 bytes CRC
 export function createPngChunk(type: string, data: Uint8Array): Uint8Array {
   const len = data.length
   const chunk = new Uint8Array(4 + 4 + len + 4)
   const view = new DataView(chunk.buffer)
 
-  view.setUint32(0, len, false) // Big-endian
+  view.setUint32(0, len, false)
   for (let i = 0; i < 4; i++) {
     chunk[4 + i] = type.charCodeAt(i)
   }
@@ -53,16 +51,13 @@ export function createPngChunk(type: string, data: Uint8Array): Uint8Array {
   return chunk
 }
 
-// Compressão DEFLATE simplificada com blocos não-comprimidos (RFC 1951 BTYPE=00)
-// Válida em qualquer decodificador PNG padrão (iOS, WebKit, Safari, Chrome, Android)
 export function zlibDeflateUncompressed(raw: Uint8Array): Uint8Array {
   const maxBlock = 65535
   const numBlocks = Math.ceil(raw.length / maxBlock) || 1
-  const totalLen = 2 + numBlocks * 5 + raw.length + 4 // Header (2) + blocks + adler (4)
+  const totalLen = 2 + numBlocks * 5 + raw.length + 4
   const out = new Uint8Array(totalLen)
   const view = new DataView(out.buffer)
 
-  // Zlib header: CMF = 0x78 (deflate, 32k window), FLG = 0x01 (check bits)
   out[0] = 0x78
   out[1] = 0x01
 
@@ -73,12 +68,12 @@ export function zlibDeflateUncompressed(raw: Uint8Array): Uint8Array {
     const isLast = b === numBlocks - 1
     const blockLen = Math.min(raw.length - inOffset, maxBlock)
 
-    out[outOffset] = isLast ? 0x01 : 0x00 // BFINAL (1 bit) + BTYPE (2 bits: 00)
+    out[outOffset] = isLast ? 0x01 : 0x00
     outOffset++
 
-    view.setUint16(outOffset, blockLen, true) // Little-endian LEN
+    view.setUint16(outOffset, blockLen, true)
     outOffset += 2
-    view.setUint16(outOffset, ~blockLen & 0xffff, true) // Little-endian NLEN
+    view.setUint16(outOffset, ~blockLen & 0xffff, true)
     outOffset += 2
 
     out.set(raw.subarray(inOffset, inOffset + blockLen), outOffset)
@@ -87,14 +82,12 @@ export function zlibDeflateUncompressed(raw: Uint8Array): Uint8Array {
   }
 
   const adler = calcAdler32(raw)
-  view.setUint32(outOffset, adler, false) // Big-endian Adler32
+  view.setUint32(outOffset, adler, false)
 
   return out
 }
 
-// Renderiza a imagem do ícone Extrafruti em tamanho N x N sem transparência
 export function buildExtrafrutiPngBytes(size: number): Uint8Array {
-  // Cores Extrafruti
   const BG_R = 27 // #1B5E20
   const BG_G = 94
   const BG_B = 32
@@ -107,31 +100,26 @@ export function buildExtrafrutiPngBytes(size: number): Uint8Array {
   const ORANGE_G = 112
   const ORANGE_B = 33
 
-  const LEAF_R = 67 // #43A047
-  const LEAF_G = 160
-  const LEAF_B = 71
+  const GREEN_R = 46 // #2E7D32
+  const GREEN_G = 125
+  const GREEN_B = 50
 
-  const TEXT_R = 46 // #2E7D32
-  const TEXT_G = 125
-  const TEXT_B = 50
-
-  const bytesPerLine = 1 + size * 3 // 1 byte filter (0: none) + RGB
+  const bytesPerLine = 1 + size * 3
   const rawBytes = new Uint8Array(bytesPerLine * size)
 
   const cx = size / 2
   const cy = size / 2
-  const circleRadius = size * 0.422
+  const circleRadius = size * 0.425
 
   for (let y = 0; y < size; y++) {
     const lineStart = y * bytesPerLine
-    rawBytes[lineStart] = 0 // Filter: None
+    rawBytes[lineStart] = 0
 
     for (let x = 0; x < size; x++) {
       let rSum = 0
       let gSum = 0
       let bSum = 0
 
-      // Supersampling 2x2 para antialiasing limpo
       for (let sy = 0; sy < 2; sy++) {
         for (let sx = 0; sx < 2; sx++) {
           const px = x + (sx + 0.5) / 2
@@ -153,41 +141,42 @@ export function buildExtrafrutiPngBytes(size: number): Uint8Array {
             g = WHITE_G
             b = WHITE_B
 
-            // Folha verde
-            const leafDx = nx - 280
-            const leafDy = ny - 92
-            const cosL = 0.866
-            const sinL = 0.5
+            // Folha verde superior
+            const leafDx = nx - 268
+            const leafDy = ny - 122
+            const cosL = 0.88
+            const sinL = 0.47
             const rxL = leafDx * cosL + leafDy * sinL
             const ryL = -leafDx * sinL + leafDy * cosL
-            if ((rxL * rxL) / (18 * 18) + (ryL * ryL) / (38 * 38) <= 1 && nx >= 254 && ny <= 130) {
-              r = LEAF_R
-              g = LEAF_G
-              b = LEAF_B
+            if ((rxL * rxL) / (18 * 18) + (ryL * ryL) / (38 * 38) <= 1 && nx >= 252 && ny <= 152) {
+              r = GREEN_R
+              g = GREEN_G
+              b = GREEN_B
             }
 
-            // Arcos superiores laranja da maçã
-            const leftDist = Math.sqrt((nx - 198) * (nx - 198) + (ny - 180) * (ny - 180))
-            const rightDist = Math.sqrt((nx - 314) * (nx - 314) + (ny - 180) * (ny - 180))
+            // Arcos superiores laranja
+            const leftDist = Math.sqrt((nx - 198) * (nx - 198) + (ny - 188) * (ny - 188))
+            const rightDist = Math.sqrt((nx - 314) * (nx - 314) + (ny - 188) * (ny - 188))
+
             const inUpperArches =
-              (leftDist <= 72 && leftDist >= 34 && ny <= 222 && nx <= 258) ||
-              (rightDist <= 72 && rightDist >= 34 && ny <= 222 && nx >= 254)
+              (leftDist <= 74 && leftDist >= 34 && ny <= 232 && nx <= 258) ||
+              (rightDist <= 74 && rightDist >= 34 && ny <= 232 && nx >= 254)
 
             if (inUpperArches) {
-              if (!(ny > 218 && nx >= 220 && nx <= 292)) {
+              if (!(ny > 222 && nx >= 226 && nx <= 286)) {
                 r = ORANGE_R
                 g = ORANGE_G
                 b = ORANGE_B
               }
             }
 
-            // Sorriso / Bandeja inferior laranja
-            const bottomDist = Math.sqrt((nx - 256) * (nx - 256) + (ny - 262) * (ny - 262))
+            // Sorriso inferior laranja
+            const bottomDist = Math.sqrt((nx - 256) * (nx - 256) + (ny - 260) * (ny - 260))
             if (
-              bottomDist >= 130 &&
-              bottomDist <= 164 &&
-              ny >= 348 &&
-              ny <= 424 &&
+              bottomDist >= 132 &&
+              bottomDist <= 166 &&
+              ny >= 344 &&
+              ny <= 420 &&
               nx >= 148 &&
               nx <= 364
             ) {
@@ -196,7 +185,7 @@ export function buildExtrafrutiPngBytes(size: number): Uint8Array {
               b = ORANGE_B
             }
 
-            // Tipografia extrafruti
+            // Tipografia central 'extrafruti'
             if (ny >= 262 && ny <= 322 && nx >= 148 && nx <= 364) {
               const yMid = 294
               let isGlyph = false
@@ -281,9 +270,9 @@ export function buildExtrafrutiPngBytes(size: number): Uint8Array {
               }
 
               if (isGlyph) {
-                r = TEXT_R
-                g = TEXT_G
-                b = TEXT_B
+                r = GREEN_R
+                g = GREEN_G
+                b = GREEN_B
               }
             }
           }
@@ -301,29 +290,24 @@ export function buildExtrafrutiPngBytes(size: number): Uint8Array {
     }
   }
 
-  // Header PNG
   const signature = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
-  // IHDR
   const ihdrData = new Uint8Array(13)
   const ihdrView = new DataView(ihdrData.buffer)
   ihdrView.setUint32(0, size, false)
   ihdrView.setUint32(4, size, false)
-  ihdrData[8] = 8 // bit depth
-  ihdrData[9] = 2 // color type: RGB
-  ihdrData[10] = 0 // compression
-  ihdrData[11] = 0 // filter
-  ihdrData[12] = 0 // interlace
+  ihdrData[8] = 8
+  ihdrData[9] = 2 // RGB
+  ihdrData[10] = 0
+  ihdrData[11] = 0
+  ihdrData[12] = 0
   const ihdrChunk = createPngChunk('IHDR', ihdrData)
 
-  // IDAT
   const compressed = zlibDeflateUncompressed(rawBytes)
   const idatChunk = createPngChunk('IDAT', compressed)
 
-  // IEND
   const iendChunk = createPngChunk('IEND', new Uint8Array(0))
 
-  // Concatena tudo
   const totalSize = signature.length + ihdrChunk.length + idatChunk.length + iendChunk.length
   const pngBytes = new Uint8Array(totalSize)
   let pos = 0
@@ -350,4 +334,10 @@ export function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(bytes[i])
   }
   return btoa(binary)
+}
+
+export function getPngDataUrl(size: number): string {
+  const bytes = buildExtrafrutiPngBytes(size)
+  const b64 = bytesToBase64(bytes)
+  return `data:image/png;base64,${b64}`
 }

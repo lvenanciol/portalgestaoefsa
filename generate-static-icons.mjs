@@ -2,16 +2,22 @@ import fs from 'node:fs'
 import path from 'node:path'
 import zlib from 'node:zlib'
 
-function crc32(buf) {
-  let crc = 0xffffffff
-  for (let i = 0; i < buf.length; i++) {
-    const byte = buf[i]
-    crc ^= byte
-    for (let j = 0; j < 8; j++) {
-      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0)
-    }
+// Tabela CRC32 estática
+const CRC_TABLE = new Uint32Array(256)
+for (let n = 0; n < 256; n++) {
+  let c = n
+  for (let k = 0; k < 8; k++) {
+    c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
   }
-  return (crc ^ 0xffffffff) >>> 0
+  CRC_TABLE[n] = c >>> 0
+}
+
+function crc32(buf) {
+  let c = 0xffffffff
+  for (let i = 0; i < buf.length; i++) {
+    c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8)
+  }
+  return (c ^ 0xffffffff) >>> 0
 }
 
 function makeChunk(type, data) {
@@ -25,26 +31,24 @@ function makeChunk(type, data) {
   return Buffer.concat([len, typeBuf, data, crcBuf])
 }
 
-// Renderizador rasterizado de precisão para a Logomarca da Extrafruti
-// Fundo sólido verde #1B5E20, círculo central branco #FFFFFF, maçã #F37021, folha #43A047, texto extrafruti #2E7D32
-export function generateExtrafrutiPng(size) {
+export function generateExtrafrutiIconPng(size) {
   const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
   const ihdrData = Buffer.alloc(13)
   ihdrData.writeUInt32BE(size, 0)
   ihdrData.writeUInt32BE(size, 4)
-  ihdrData[8] = 8 // 8 bits per channel
-  ihdrData[9] = 2 // RGB (sem canal alpha - SEM transparência, requisito iOS)
+  ihdrData[8] = 8
+  ihdrData[9] = 2 // Color type 2: RGB (SEM alpha)
   ihdrData[10] = 0
   ihdrData[11] = 0
   ihdrData[12] = 0
   const ihdrChunk = makeChunk('IHDR', ihdrData)
 
-  // Cores institucionais Extrafruti:
+  // Paleta oficial Extrafruti
   const BG_R = 27 // #1B5E20
   const BG_G = 94
   const BG_B = 32
 
-  const WHITE_R = 255 // #FFFFFF
+  const WHITE_R = 255
   const WHITE_G = 255
   const WHITE_B = 255
 
@@ -52,22 +56,18 @@ export function generateExtrafrutiPng(size) {
   const ORANGE_G = 112
   const ORANGE_B = 33
 
-  const LEAF_R = 67 // #43A047
-  const LEAF_G = 160
-  const LEAF_B = 71
-
-  const TEXT_R = 46 // #2E7D32
-  const TEXT_G = 125
-  const TEXT_B = 50
+  const GREEN_R = 46 // #2E7D32
+  const GREEN_G = 125
+  const GREEN_B = 50
 
   const rawScanlines = []
   const cx = size / 2
   const cy = size / 2
-  const circleRadius = size * 0.422
+  const circleRadius = size * 0.425
 
   for (let y = 0; y < size; y++) {
     const line = Buffer.alloc(1 + size * 3)
-    line[0] = 0 // Filter: None
+    line[0] = 0 // Filter None
 
     for (let x = 0; x < size; x++) {
       let rSum = 0
@@ -96,42 +96,42 @@ export function generateExtrafrutiPng(size) {
             g = WHITE_G
             b = WHITE_B
 
-            // 1. Folha verde superior
-            const leafDx = nx - 280
-            const leafDy = ny - 92
-            const cosL = 0.866
-            const sinL = 0.5
+            // Folha verde superior central da maçã (inclinada)
+            const leafDx = nx - 268
+            const leafDy = ny - 122
+            const cosL = 0.88
+            const sinL = 0.47
             const rxL = leafDx * cosL + leafDy * sinL
             const ryL = -leafDx * sinL + leafDy * cosL
-            if ((rxL * rxL) / (18 * 18) + (ryL * ryL) / (38 * 38) <= 1 && nx >= 254 && ny <= 130) {
-              r = LEAF_R
-              g = LEAF_G
-              b = LEAF_B
+            if ((rxL * rxL) / (18 * 18) + (ryL * ryL) / (38 * 38) <= 1 && nx >= 252 && ny <= 152) {
+              r = GREEN_R
+              g = GREEN_G
+              b = GREEN_B
             }
 
-            // 2. Arco superior da maçã (laranja)
-            const leftDist = Math.sqrt((nx - 198) * (nx - 198) + (ny - 180) * (ny - 180))
-            const rightDist = Math.sqrt((nx - 314) * (nx - 314) + (ny - 180) * (ny - 180))
+            // Arco superior da maçã (laranja #F37021)
+            const leftDist = Math.sqrt((nx - 198) * (nx - 198) + (ny - 188) * (ny - 188))
+            const rightDist = Math.sqrt((nx - 314) * (nx - 314) + (ny - 188) * (ny - 188))
 
             const inUpperArches =
-              (leftDist <= 72 && leftDist >= 34 && ny <= 222 && nx <= 258) ||
-              (rightDist <= 72 && rightDist >= 34 && ny <= 222 && nx >= 254)
+              (leftDist <= 74 && leftDist >= 34 && ny <= 232 && nx <= 258) ||
+              (rightDist <= 74 && rightDist >= 34 && ny <= 232 && nx >= 254)
 
             if (inUpperArches) {
-              if (!(ny > 218 && nx >= 220 && nx <= 292)) {
+              if (!(ny > 222 && nx >= 226 && nx <= 286)) {
                 r = ORANGE_R
                 g = ORANGE_G
                 b = ORANGE_B
               }
             }
 
-            // 3. Sorriso / Bandeja inferior da maçã (laranja)
-            const bottomDist = Math.sqrt((nx - 256) * (nx - 256) + (ny - 262) * (ny - 262))
+            // Sorriso / Bandeja inferior da maçã (laranja #F37021)
+            const bottomDist = Math.sqrt((nx - 256) * (nx - 256) + (ny - 260) * (ny - 260))
             if (
-              bottomDist >= 130 &&
-              bottomDist <= 164 &&
-              ny >= 348 &&
-              ny <= 424 &&
+              bottomDist >= 132 &&
+              bottomDist <= 166 &&
+              ny >= 344 &&
+              ny <= 420 &&
               nx >= 148 &&
               nx <= 364
             ) {
@@ -140,7 +140,7 @@ export function generateExtrafrutiPng(size) {
               b = ORANGE_B
             }
 
-            // 4. Tipografia central 'extrafruti'
+            // Tipografia central 'extrafruti' em verde #2E7D32
             if (ny >= 262 && ny <= 322 && nx >= 148 && nx <= 364) {
               const yMid = 294
               let isGlyph = false
@@ -225,9 +225,9 @@ export function generateExtrafrutiPng(size) {
               }
 
               if (isGlyph) {
-                r = TEXT_R
-                g = TEXT_G
-                b = TEXT_B
+                r = GREEN_R
+                g = GREEN_G
+                b = GREEN_B
               }
             }
           }
