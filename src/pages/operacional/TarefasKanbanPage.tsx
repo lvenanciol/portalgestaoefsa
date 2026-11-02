@@ -1070,8 +1070,19 @@ export default function TarefasKanbanPage() {
 
   return (
     <div className="space-y-4 pb-8">
-      {/* BARRA SUPERIOR: Apenas Título + Subtítulo */}
+      {/* BARRA SUPERIOR: Logomarca da empresa centralizada + Título + Subtítulo */}
+      {/* Item (b): a logo da empresa da tarefa fica centralizada no topo do layout.
+          Com o filtro em "Todas as empresas" não há empresa única — aí mostramos
+          apenas o título, como antes. */}
       <div className="pb-3 border-b border-gray-200/80">
+        {empresaFiltroAtiva !== 'todas' && (
+          <div className="flex flex-col items-center justify-center pt-1 pb-2">
+            <EmpresaIcon nome={empresaFiltroAtiva} className="h-12 w-12 sm:h-14 sm:w-14" />
+            <span className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">
+              {empresaFiltroAtiva}
+            </span>
+          </div>
+        )}
         <h1 className="text-2xl lg:text-[26px] font-bold text-gray-900 tracking-tight flex items-center gap-2">
           <span className="text-[#1B5E20] text-xl font-bold tracking-tight select-none">|'|</span>{' '}
           Tarefas & Agenda

@@ -347,7 +347,15 @@ routerAdd(
           const subX = Math.max(marginLeft + 10, (W - subW) / 2)
           drawText(subX, curY - topHeaderH + 12, subText, 9.5, '/F2', { r: 0.42, g: 0.45, b: 0.5 })
         } else {
-          // Fallback elegante e idêntico à identidade visual da empresa
+          // Fallback: sem imagem embutível (logo ausente ou formato com canal alfa
+          // que o Goja não consegue separar). Registra o motivo para diagnóstico.
+          console.warn(
+            '[PDF tarefas] logo não embutível para "' +
+              empPrincipal +
+              '" — usando badge textual. (arquivo: ' +
+              (logoInfo && (logoInfo.fileNameOriginal || logoInfo.fileName)) +
+              ')',
+          )
           // Bloco centralizado de marca com o nome/sigla da empresa + título dinâmico
           const badgeText = empPrincipal.toUpperCase()
           const badgeW = Math.max(120, badgeText.length * 9.5 + 24)
@@ -818,12 +826,82 @@ routerAdd(
             }
           }
 
+          // ── Fallback ESSENCIAL: PNG com canal alfa (colorType 4/6) NÃO é embutível
+          // no PDF — o Goja não tem zlib para separar o canal alfa e o gerador caía
+          // no badge verde "EXTRAFRUTI" em vez da logomarca real.
+          // O PocketBase gera thumbs no SERVIDOR já em RGB (colorType 2, sem alfa):
+          // ?thumb=100x100 devolve um PNG pequeno e embutível direto. Buscamos esse
+          // thumbnail quando o arquivo original não for utilizável.
+          let bytesParaPdf = rawBytes
+          let nomeParaPdf = logoFile
+          function pngEmbutivel(bytes) {
+            if (!bytes || bytes.length < 26) return false
+            // assinatura PNG
+            const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+            for (let i = 0; i < 8; i++) {
+              if ((bytes.charCodeAt(i) & 0xff) !== sig[i]) return false
+            }
+            const ct = bytes.charCodeAt(25) & 0xff
+            const bd = bytes.charCodeAt(24) & 0xff
+            const il = bytes.charCodeAt(28) & 0xff
+            return il === 0 && (ct === 0 || ct === 2) && bd === 8
+          }
+          // JPEG é sempre embutível (DCTDecode nativo)
+          function ehJpeg(bytes) {
+            if (!bytes || bytes.length < 2) return false
+            return (bytes.charCodeAt(0) & 0xff) === 0xff && (bytes.charCodeAt(1) & 0xff) === 0xd8
+          }
+          if (!ehJpeg(bytesParaPdf) && !pngEmbutivel(bytesParaPdf)) {
+            try {
+              const thumbUrl =
+                (base || '') +
+                '/api/files/' +
+                colLogo.id +
+                '/' +
+                lrec.id +
+                '/' +
+                logoFile +
+                '?thumb=100x100'
+              const tr = $http.send({ url: thumbUrl, method: 'GET' })
+              if (tr && tr.statusCode === 200 && tr.body && tr.body.length > 100) {
+                // Converte []byte -> string binária (mesmo padrão do ping.js):
+                // String.fromCharCode.apply em blocos, para não estourar o arg limit.
+                function bytesParaString(bytes) {
+                  if (!bytes) return ''
+                  if (typeof bytes === 'string') return bytes
+                  const partes = []
+                  const chunk = 4096
+                  for (let i = 0; i < bytes.length; i += chunk) {
+                    const sub = bytes.slice(i, Math.min(i + chunk, bytes.length))
+                    partes.push(String.fromCharCode.apply(null, sub))
+                  }
+                  return partes.join('')
+                }
+                const tBytes = bytesParaString(tr.body)
+                if (ehJpeg(tBytes) || pngEmbutivel(tBytes)) {
+                  bytesParaPdf = tBytes
+                  nomeParaPdf = 'thumb_' + logoFile.replace(/\.[a-z0-9]+$/i, '') + '.png'
+                  console.log(
+                    '[PDF tarefas] logo ' + logoFile + ' trocada pelo thumb RGB (100x100)',
+                  )
+                } else {
+                  console.warn('[PDF tarefas] thumb da logo também não é embutível: ' + logoFile)
+                }
+              }
+            } catch (errThumb) {
+              console.warn(
+                '[PDF tarefas] Falha ao buscar thumb da logo ' + logoFile + ': ' + errThumb,
+              )
+            }
+          }
+
           logosMap[empNome] = {
             empresa: lrec.getString('empresa'),
             sigla: lrec.getString('sigla'),
             cor: lrec.getString('cor') || '#1B5E20',
-            fileName: logoFile,
-            rawBytes: rawBytes,
+            fileName: nomeParaPdf,
+            rawBytes: bytesParaPdf,
+            fileNameOriginal: logoFile,
             logoUrl: base
               ? base + '/api/files/' + colLogo.id + '/' + lrec.id + '/' + logoFile
               : '/api/files/' + colLogo.id + '/' + lrec.id + '/' + logoFile,
