@@ -2,7 +2,12 @@
 // Estratégia Network-First: nunca prende versões antigas nem atrapalha deploys,
 // garantindo que novos builds sejam carregados imediatamente em refresh.
 
-const CACHE_NAME = 'pge-pwa-v2'
+// v3 (02/11/2026): bump para forçar a purga do cache antigo no PWA instalado.
+// O SW já é network-first + skipWaiting, mas sem trocar o CACHE_NAME um cliente
+// que ficou com o offline cache de uma versão anterior podia continuar servindo
+// assets velhos. Subir a versão garante que o activate limpe tudo e o preview
+// passe a exibir sempre o bundle do último build.
+const CACHE_NAME = 'pge-pwa-v3'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

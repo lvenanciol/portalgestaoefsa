@@ -487,12 +487,91 @@ routerAdd(
       const marginRight = 36
       const contentWidth = W - marginLeft - marginRight
 
+      // As fontes usam /Encoding /WinAnsiEncoding: os acentos do português existem
+      // em CP1252 e devem ser emitidos como BYTE ÚNICO (ex.: "Ã" = 0xC3), não
+      // removidos. Antes, sanitizeAscii fazia NFD + remoção de diacríticos, então
+      // "PORTAL DE GESTÃO" saía "PORTAL DE GESTAO" no PDF (o HTML mantinha o acento)
+      // — divergência visível entre e-mail e anexo.
+      const WINANSI_MAP = {
+        Á: '\xC1',
+        À: '\xC0',
+        Â: '\xC2',
+        Ã: '\xC3',
+        Ä: '\xC4',
+        É: '\xC9',
+        È: '\xC8',
+        Ê: '\xCA',
+        Ë: '\xCB',
+        Í: '\xCD',
+        Ì: '\xCC',
+        Î: '\xCE',
+        Ï: '\xCF',
+        Ó: '\xD3',
+        Ò: '\xD2',
+        Ô: '\xD4',
+        Õ: '\xD5',
+        Ö: '\xD6',
+        Ú: '\xDA',
+        Ù: '\xD9',
+        Û: '\xDB',
+        Ü: '\xDC',
+        Ç: '\xC7',
+        Ñ: '\xD1',
+        á: '\xE1',
+        à: '\xE0',
+        â: '\xE2',
+        ã: '\xE3',
+        ä: '\xE4',
+        é: '\xE9',
+        è: '\xE8',
+        ê: '\xEA',
+        ë: '\xEB',
+        í: '\xED',
+        ì: '\xEC',
+        î: '\xEE',
+        ï: '\xEF',
+        ó: '\xF3',
+        ò: '\xF2',
+        ô: '\xF4',
+        õ: '\xF5',
+        ö: '\xF6',
+        ú: '\xFA',
+        ù: '\xF9',
+        û: '\xFB',
+        ü: '\xFC',
+        ç: '\xE7',
+        ñ: '\xF1',
+        º: '\xBA',
+        ª: '\xAA',
+        '–': '\x96',
+        '—': '\x97',
+        '“': '\x93',
+        '”': '\x94',
+        '‘': '\x91',
+        '’': '\x92',
+        '•': '\x95',
+      }
+      // Converte para bytes WinAnsi preservando acentos; descarta só o que não existe
+      // no CP1252 (emoji, por exemplo), evitando quebrar o stream do PDF.
       function sanitizeAscii(s) {
         if (!s) return ''
-        return String(s)
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+        const str = String(s)
+        let out = ''
+        for (let i = 0; i < str.length; i++) {
+          const ch = str.charAt(i)
+          if (WINANSI_MAP[ch] !== undefined) {
+            out += WINANSI_MAP[ch]
+          } else if (ch >= '\x20' && ch <= '\x7E') {
+            out += ch
+          } else if (ch === '\n' || ch === '\r' || ch === '\t') {
+            out += ch
+          } else {
+            // não representável em WinAnsi: remove o diacrítico e mantém a base
+            const base = ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+            out += /^[\x20-\x7E]$/.test(base) ? base : ' '
+          }
+        }
+        return out
       }
 
       function escapePdfStr(s) {
@@ -647,7 +726,9 @@ routerAdd(
           null,
         )
 
-        const subText = 'PAINEL DE GESTAO ' + empPrincipal.toUpperCase()
+        // Título dinâmico exigido pelo dono: "PORTAL DE GESTÃO {EMPRESA}"
+        // (antes era "PAINEL DE GESTAO" — nome errado, e sem o acento).
+        const subText = 'PORTAL DE GESTÃO ' + empPrincipal.toUpperCase()
 
         if (temImagemEmbutivel) {
           // Calcula dimensões proporcionais da logomarca (máx 150pt larg, 42pt alt)
@@ -1370,7 +1451,9 @@ routerAdd(
           ' tarefa(s)'
 
       // Item (b): Título abaixo da logomarca dinâmico por empresa
-      const tituloAbaixoLogo = 'PAINEL DE GESTÃO ' + empPrincipal.toUpperCase()
+      // Item (b): Título abaixo da logomarca dinâmico por empresa
+      // Exigência do dono: "PORTAL DE GESTÃO {EMPRESA}"
+      const tituloAbaixoLogo = 'PORTAL DE GESTÃO ' + empPrincipal.toUpperCase()
 
       // Monta HTML completo
       let html =
