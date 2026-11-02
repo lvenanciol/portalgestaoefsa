@@ -1,4 +1,5 @@
 /* Main entry point for the application - renders the root React component */
+// Rebuild preview bundle cache refresh
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './main.css'
