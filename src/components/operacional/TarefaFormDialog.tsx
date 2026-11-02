@@ -137,9 +137,11 @@ export function TarefaFormDialog({
   const cronometroIntervalRef = useRef<any>(null)
   const autoEncerramentoDisparadoRef = useRef<boolean>(false)
 
-  // Busca e dropdown de Parceiros
+  // Busca e dropdown de Parceiros e Responsável
   const [buscaParceiro, setBuscaParceiro] = useState('')
   const [popoverParceiroAberto, setPopoverParceiroAberto] = useState(false)
+  const [buscaResponsavel, setBuscaResponsavel] = useState('')
+  const [popoverResponsavelAberto, setPopoverResponsavelAberto] = useState(false)
 
   // Expandir lista de anexos
   const [expandirAnexos, setExpandirAnexos] = useState(false)
@@ -237,6 +239,10 @@ export function TarefaFormDialog({
       if (timerDestaqueRef.current) clearTimeout(timerDestaqueRef.current)
       setCamposSinalizados({})
       setExpandirAnexos(false)
+      setBuscaParceiro('')
+      setBuscaResponsavel('')
+      setPopoverParceiroAberto(false)
+      setPopoverResponsavelAberto(false)
     }
   }, [open])
 
@@ -937,6 +943,16 @@ export function TarefaFormDialog({
     return nome.includes(b) || emp.includes(b) || tipo.includes(b)
   })
 
+  // Filtragem de responsáveis no dropdown (mesma lógica)
+  const responsaveisFiltrados = parceiros.filter((p) => {
+    if (!buscaResponsavel.trim()) return true
+    const b = buscaResponsavel.toLowerCase()
+    const nome = String(p.nome || '').toLowerCase()
+    const emp = String(p.empresa || '').toLowerCase()
+    const tipo = String(p.tipo || '').toLowerCase()
+    return nome.includes(b) || emp.includes(b) || tipo.includes(b)
+  })
+
   // Prioridades mapeadas para o seletor de 3 opções lado a lado (Baixa / Normal / Alta)
   const prioridadeSelecionada = form.prioridade_p || 'P2'
 
@@ -1308,7 +1324,7 @@ export function TarefaFormDialog({
                 )}
               </div>
 
-              {/* RESPONSÁVEL */}
+              {/* RESPONSÁVEL (Seleção ÚNICA com busca e lista estilo Parceiros/Contatos) */}
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center justify-between">
                   <span>Responsável</span>
@@ -1318,70 +1334,167 @@ export function TarefaFormDialog({
                     </span>
                   )}
                 </Label>
-                <Select
-                  value={form.responsavel || ' '}
-                  onValueChange={(v) => {
-                    if (v === '__cadastrar_novo__') {
-                      onAbrirNovoParceiro()
-                      return
-                    }
-                    const novoNome = v === ' ' ? '' : v
-                    setForm((f) => {
-                      const pMatch = parceiros.find((p) => p.nome === novoNome)
-                      const curParceiros = f.parceiro_ids || []
-                      const novosParceiros =
-                        pMatch && !curParceiros.includes(pMatch.id)
-                          ? [...curParceiros, pMatch.id]
-                          : curParceiros
-                      return { ...f, responsavel: novoNome, parceiro_ids: novosParceiros }
-                    })
-                    if (camposSinalizados.responsavelNaoReconhecido) {
-                      setCamposSinalizados((prev) => ({
-                        ...prev,
-                        responsavelNaoReconhecido: undefined,
-                      }))
-                    }
-                  }}
-                >
-                  <SelectTrigger
-                    className={cn(
-                      'h-10 bg-gray-50/80 border-gray-200 transition-all',
-                      camposDestacados.responsavel &&
-                        'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
-                      camposSinalizados.responsavelNaoReconhecido &&
-                        'border-amber-400 bg-amber-50/50 ring-1 ring-amber-300',
-                    )}
-                  >
-                    <SelectValue placeholder="Não definido" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-56">
-                    <SelectItem
-                      value="__cadastrar_novo__"
-                      className="font-semibold text-[#1B5E20] bg-emerald-50/70 border-b border-emerald-100 focus:bg-emerald-100 focus:text-[#0F3D13] cursor-pointer"
+                <Popover open={popoverResponsavelAberto} onOpenChange={setPopoverResponsavelAberto}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      className={cn(
+                        'w-full justify-between h-10 bg-gray-50/80 border-gray-200 font-normal text-xs text-gray-700 hover:bg-gray-100/60 transition-all',
+                        camposDestacados.responsavel &&
+                          'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
+                        camposSinalizados.responsavelNaoReconhecido &&
+                          'border-amber-400 bg-amber-50/50 ring-1 ring-amber-300',
+                      )}
                     >
-                      <div className="flex items-center gap-2 text-[#1B5E20]">
+                      <span className="truncate">
+                        {(() => {
+                          if (!form.responsavel) return 'Não definido'
+                          const pMatch = parceiros.find((p) => p.nome === form.responsavel)
+                          const nomeLimpo =
+                            limparTextoResponsavel(form.responsavel) || form.responsavel
+                          const emp =
+                            pMatch?.empresa ||
+                            (Array.isArray(pMatch?.empresas) ? pMatch.empresas[0] : '')
+                          return emp ? `${nomeLimpo} (${emp})` : nomeLimpo
+                        })()}
+                      </span>
+                      <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-1" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    className="w-[calc(100vw-3rem)] sm:w-[420px] p-2 bg-white"
+                    align="start"
+                  >
+                    <div className="space-y-2">
+                      {/* Campo de busca interno */}
+                      <div className="relative">
+                        <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-3" />
+                        <Input
+                          value={buscaResponsavel}
+                          onChange={(e) => setBuscaResponsavel(e.target.value)}
+                          placeholder="Buscar parceiro por nome ou empresa..."
+                          className="h-9 pl-8 text-xs bg-gray-50"
+                        />
+                      </div>
+
+                      {/* Cadastrar novo como primeiro item */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPopoverResponsavelAberto(false)
+                          onAbrirNovoParceiro()
+                        }}
+                        className="w-full flex items-center gap-2 p-2 rounded-md text-xs font-semibold text-[#1B5E20] bg-emerald-50/80 hover:bg-emerald-100 transition-colors"
+                      >
                         <Plus className="h-3.5 w-3.5" />
                         <span>Cadastrar novo</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value=" ">Não definido</SelectItem>
-                    {parceiros.map((p) => {
-                      const empRotulo =
-                        p.empresa || (Array.isArray(p.empresas) ? p.empresas.join(', ') : p.tipo)
-                      const nomeLimpo = limparTextoResponsavel(p.nome)
-                      return (
-                        <SelectItem key={p.id} value={p.nome}>
+                      </button>
+
+                      {/* Lista rolável de responsáveis (seleção única) */}
+                      <div className="max-h-56 overflow-y-auto space-y-1">
+                        {/* Opção para limpar / Não definido */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForm((f) => ({ ...f, responsavel: '' }))
+                            setPopoverResponsavelAberto(false)
+                            if (camposSinalizados.responsavelNaoReconhecido) {
+                              setCamposSinalizados((prev) => ({
+                                ...prev,
+                                responsavelNaoReconhecido: undefined,
+                              }))
+                            }
+                          }}
+                          className={cn(
+                            'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
+                            !form.responsavel
+                              ? 'bg-emerald-50 text-[#1B5E20] font-bold'
+                              : 'hover:bg-gray-50 text-gray-500 italic',
+                          )}
+                        >
                           <div className="flex items-center gap-2">
-                            <span className="font-medium text-gray-900">{nomeLimpo || p.nome}</span>
-                            {empRotulo ? (
-                              <span className="text-[10px] text-gray-400">({empRotulo})</span>
-                            ) : null}
+                            <span
+                              className={cn(
+                                'h-4 w-4 rounded-xs border flex items-center justify-center text-[10px]',
+                                !form.responsavel
+                                  ? 'bg-[#1B5E20] border-[#1B5E20] text-white'
+                                  : 'border-gray-300',
+                              )}
+                            >
+                              {!form.responsavel ? '✓' : ''}
+                            </span>
+                            <span>Não definido</span>
                           </div>
-                        </SelectItem>
-                      )
-                    })}
-                  </SelectContent>
-                </Select>
+                        </button>
+
+                        {responsaveisFiltrados.length === 0 ? (
+                          <p className="text-[11px] text-gray-400 text-center py-3">
+                            Nenhum parceiro encontrado com esse nome.
+                          </p>
+                        ) : (
+                          responsaveisFiltrados.map((p) => {
+                            const sel = form.responsavel === p.nome
+                            const empRotulo =
+                              p.empresa || (Array.isArray(p.empresas) ? p.empresas.join(', ') : '')
+                            return (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => {
+                                  const novoNome = p.nome
+                                  setForm((f) => {
+                                    const curParceiros = f.parceiro_ids || []
+                                    const novosParceiros = !curParceiros.includes(p.id)
+                                      ? [...curParceiros, p.id]
+                                      : curParceiros
+                                    return {
+                                      ...f,
+                                      responsavel: novoNome,
+                                      parceiro_ids: novosParceiros,
+                                    }
+                                  })
+                                  setPopoverResponsavelAberto(false)
+                                  if (camposSinalizados.responsavelNaoReconhecido) {
+                                    setCamposSinalizados((prev) => ({
+                                      ...prev,
+                                      responsavelNaoReconhecido: undefined,
+                                    }))
+                                  }
+                                }}
+                                className={cn(
+                                  'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
+                                  sel
+                                    ? 'bg-emerald-50 text-[#1B5E20] font-bold'
+                                    : 'hover:bg-gray-50 text-gray-800',
+                                )}
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  <span
+                                    className={cn(
+                                      'h-4 w-4 rounded-xs border flex items-center justify-center text-[10px]',
+                                      sel
+                                        ? 'bg-[#1B5E20] border-[#1B5E20] text-white'
+                                        : 'border-gray-300',
+                                    )}
+                                  >
+                                    {sel ? '✓' : ''}
+                                  </span>
+                                  <span className="truncate">
+                                    {limparTextoResponsavel(p.nome) || p.nome}
+                                  </span>
+                                </div>
+                                <span className="text-[10px] text-gray-400 shrink-0 ml-2">
+                                  {empRotulo ? `(${empRotulo})` : `(${p.tipo})`}
+                                </span>
+                              </button>
+                            )
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
                 {camposSinalizados.responsavelNaoReconhecido && (
                   <p className="text-[11px] text-amber-700 font-medium flex items-center gap-1">
                     <AlertTriangle className="h-3 w-3 shrink-0" />"
@@ -1457,10 +1570,10 @@ export function TarefaFormDialog({
               </div>
             </div>
 
-            {/* Linha 3: PRIORIDADE (3 opções lado a lado com Normal pré-selecionada) e STATUS */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {/* PRIORIDADE */}
-              <div className="space-y-1.5">
+            {/* Linha 3: PRIORIDADE · STATUS (compacto pelo conteúdo) · VÍNCULO (compacto, à direita do status) */}
+            <div className="flex flex-col sm:flex-row sm:items-start gap-3.5">
+              {/* PRIORIDADE (à esquerda, largura proporcional como antes) */}
+              <div className="space-y-1.5 w-full sm:w-1/2 sm:shrink-0">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center justify-between">
                   <span>Prioridade</span>
                   {camposDestacados.prioridade && (
@@ -1515,73 +1628,85 @@ export function TarefaFormDialog({
                 </div>
               </div>
 
-              {/* STATUS */}
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center justify-between">
-                  <span>Status</span>
-                  {camposDestacados.status && (
-                    <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-xs animate-pulse">
-                      Preenchido por IA
-                    </span>
-                  )}
-                </Label>
-                <Select
-                  value={form.status_kanban || 'triagem'}
-                  onValueChange={(v) => setForm({ ...form, status_kanban: v })}
-                >
-                  <SelectTrigger
-                    className={cn(
-                      'h-10 bg-gray-50/80 border-gray-200 transition-all',
-                      camposDestacados.status &&
-                        'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
+              {/* Bloco compacto à direita: STATUS e VÍNCULO (ORIGEM) lado a lado na mesma linha */}
+              <div className="flex flex-col sm:flex-row sm:items-start gap-3 w-full sm:flex-1">
+                {/* STATUS compacto (largura dimensionada pelo conteúdo) */}
+                <div className="space-y-1.5 w-full sm:w-auto shrink-0">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center justify-between gap-1">
+                    <span>Status</span>
+                    {camposDestacados.status && (
+                      <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-xs animate-pulse">
+                        IA
+                      </span>
                     )}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="triagem">Triagem</SelectItem>
-                    <SelectItem value="a_fazer">A Fazer</SelectItem>
-                    <SelectItem value="em_andamento">Em Andamento</SelectItem>
-                    <SelectItem value="bloqueado">Bloqueado</SelectItem>
-                    <SelectItem value="concluido">Concluído</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Linha complementar: VÍNCULO (ORIGEM) mantido com proporcionalidade */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Vínculo (Origem)
-                </Label>
-                <div className="flex flex-col sm:flex-row items-center gap-2">
+                  </Label>
                   <Select
-                    value={form.vinculo_tipo || ' '}
-                    onValueChange={(v) => {
-                      const vt = v === ' ' ? '' : v
-                      setForm({ ...form, vinculo_tipo: vt, vinculo_id: vt ? form.vinculo_id : '' })
-                    }}
+                    value={form.status_kanban || 'triagem'}
+                    onValueChange={(v) => setForm({ ...form, status_kanban: v })}
                   >
-                    <SelectTrigger className="h-10 bg-gray-50/80 border-gray-200 w-full sm:w-1/2">
-                      <SelectValue placeholder="Nenhum vínculo" />
+                    <SelectTrigger
+                      className={cn(
+                        'h-10 bg-gray-50/80 border-gray-200 transition-all w-full sm:w-[150px]',
+                        camposDestacados.status &&
+                          'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
+                      )}
+                    >
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value=" ">Nenhum</SelectItem>
-                      <SelectItem value="ata">Ata</SelectItem>
-                      <SelectItem value="projeto">Projeto</SelectItem>
-                      <SelectItem value="contrato">Contrato</SelectItem>
+                      <SelectItem value="triagem">Triagem</SelectItem>
+                      <SelectItem value="a_fazer">A Fazer</SelectItem>
+                      <SelectItem value="em_andamento">Em Andamento</SelectItem>
+                      <SelectItem value="bloqueado">Bloqueado</SelectItem>
+                      <SelectItem value="concluido">Concluído</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
 
-                  {form.vinculo_tipo && form.vinculo_tipo !== ' ' && (
-                    <Input
-                      value={form.vinculo_id || ''}
-                      onChange={(e) => setForm({ ...form, vinculo_id: e.target.value })}
-                      placeholder="Identificador ou Código (opcional)"
-                      className="h-10 bg-gray-50/80 border-gray-200 w-full sm:w-1/2 text-xs"
-                    />
-                  )}
+                {/* VÍNCULO (ORIGEM) compacto à direita do Status na mesma linha */}
+                <div className="space-y-1.5 w-full sm:flex-1 sm:min-w-0">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500 block truncate">
+                    Vínculo (Origem)
+                  </Label>
+                  <div className="flex items-center gap-1.5 w-full">
+                    <Select
+                      value={form.vinculo_tipo || ' '}
+                      onValueChange={(v) => {
+                        const vt = v === ' ' ? '' : v
+                        setForm({
+                          ...form,
+                          vinculo_tipo: vt,
+                          vinculo_id: vt ? form.vinculo_id : '',
+                        })
+                      }}
+                    >
+                      <SelectTrigger
+                        className={cn(
+                          'h-10 bg-gray-50/80 border-gray-200 transition-all',
+                          form.vinculo_tipo && form.vinculo_tipo !== ' '
+                            ? 'w-1/2 sm:w-[120px] shrink-0'
+                            : 'w-full sm:w-[130px]',
+                        )}
+                      >
+                        <SelectValue placeholder="Nenhum" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value=" ">Nenhum</SelectItem>
+                        <SelectItem value="ata">Ata</SelectItem>
+                        <SelectItem value="projeto">Projeto</SelectItem>
+                        <SelectItem value="contrato">Contrato</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {form.vinculo_tipo && form.vinculo_tipo !== ' ' && (
+                      <Input
+                        value={form.vinculo_id || ''}
+                        onChange={(e) => setForm({ ...form, vinculo_id: e.target.value })}
+                        placeholder="ID / Cód (opcional)"
+                        className="h-10 bg-gray-50/80 border-gray-200 flex-1 min-w-0 text-xs"
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

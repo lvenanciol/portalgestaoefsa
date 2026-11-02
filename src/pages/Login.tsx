@@ -37,7 +37,8 @@ export default function Login() {
         if (registros && registros.length > 0) {
           const urls = registros
             .map((l: any) => {
-              const campo = l.logo || l.emblema
+              // Prioriza ícone (emblema); fallback para logomarca
+              const campo = l.emblema || l.logo
               if (!campo) return null
               const ext = String(campo).split('?')[0].split('.').pop()?.toLowerCase() || ''
               const ehImagem = ['png', 'jpg', 'jpeg', 'svg', 'webp'].includes(ext)
@@ -63,16 +64,15 @@ export default function Login() {
         const r = (await pb.send('/backend/v1/public/logos', { method: 'GET' })) as any
         const urls = ((r && r.logos) || [])
           .map((l: any) => {
-            const campo = l.logo || l.emblema
-            if (!campo) return null
-            const ext = String(campo).split('?')[0].split('.').pop()?.toLowerCase() || ''
-            const ehImagem = ['png', 'jpg', 'jpeg', 'svg', 'webp'].includes(ext)
-            if (!ehImagem) return null
+            // Prioriza ícone (emblemaUrl / emblema / iconeUrl); fallback para logomarca
+            const urlFinal = l.iconeUrl || l.emblemaUrl || l.logoUrl
+            const campo = l.emblema || l.logo
+            const urlResolvida =
+              urlFinal ||
+              (campo ? pb.files.getURL({ collectionId: 'logomarcas', id: l.id }, campo) : '')
+            if (!urlResolvida) return null
             return {
-              url:
-                l.logoUrl ||
-                l.emblemaUrl ||
-                pb.files.getURL({ collectionId: 'logomarcas', id: l.id }, campo),
+              url: urlResolvida,
               cor: String(l.cor || '#1B5E20'),
             }
           })
