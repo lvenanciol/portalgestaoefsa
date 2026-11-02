@@ -246,7 +246,7 @@ export default function Login() {
         </div>
 
         <p className="text-center text-[11px] text-gray-400 mt-6">
-          Portal de Gestão Executiva — Extrafruti · Casafruti · FoldBox
+          Portal de Gestão Executiva — Extrafruti · Casafruti · FoldBox · LL5
         </p>
       </div>
     </div>
