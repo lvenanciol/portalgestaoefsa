@@ -1,14 +1,17 @@
 // Garante que /apple-touch-icon.png, /icon-192.png e /icon-512.png
 // sirvam o logo oficial da Extrafruti registrado em logomarcas
+import pb from '@/lib/pocketbase/client'
 
 async function carregarIconesPwa() {
   if (typeof window === 'undefined') return
 
   try {
-    // 1. Busca URL do emblema da Extrafruti
-    const res = await fetch('/backend/v1/public/logos')
-    if (!res.ok) return
-    const logos = await res.json()
+    // 1. Busca URL do emblema da Extrafruti via client PocketBase (URL absoluta da instância)
+    const logos = (await pb.send('/backend/v1/public/logos', { method: 'GET' })) as Array<{
+      empresa: string
+      emblemaUrl?: string
+      logoUrl?: string
+    }>
     const extrafruti = logos.find((l: { empresa: string; emblemaUrl?: string; logoUrl?: string }) =>
       l.empresa?.toLowerCase().includes('extrafruti'),
     )
