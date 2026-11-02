@@ -26,14 +26,16 @@ routerAdd(
 routerAdd('GET', '/backend/v1/public/extrafruti-icon.png', (e) => {
   try {
     const rec = $app.findFirstRecordByFilter('logomarcas', 'empresa ~ "Extrafruti"')
-    const fs = $app.newFilesystem()
     const arquivo = rec.getString('emblema') || rec.getString('logo')
-    const fileKey = rec.baseFilesPath() + '/' + arquivo
-    const reader = fs.getFile(fileKey)
-    const bytes = reader.readAll()
-    reader.close()
-    fs.close()
-    return e.blob(200, 'image/png', bytes)
+    const res = $http.send({
+      url:
+        'https://portal-de-gestao-executivo-b4d94.shrd01.internal.goskip.dev/api/files/pbc_3701359284/' +
+        rec.id +
+        '/' +
+        arquivo,
+      method: 'GET',
+    })
+    return e.blob(200, 'image/png', res.raw)
   } catch (err) {
     return e.json(500, { ok: false, erro: String(err) })
   }
