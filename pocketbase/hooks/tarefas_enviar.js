@@ -38,11 +38,134 @@ routerAdd(
       return e.badRequestError('Nenhuma tarefa selecionada/filtrada para envio.')
     }
 
+    // --- PARSERS DE IMAGEM PARA EMBEDDING NATIVO NO PDF ---
+    function parsePngData(raw) {
+      if (!raw || raw.length < 8) return null
+      // Assinatura PNG: 89 50 4E 47 0D 0A 1A 0A
+      const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+      for (let i = 0; i < 8; i++) {
+        if (raw.charCodeAt(i) !== sig[i]) return null
+      }
+
+      let pos = 8
+      let width = 0
+      let height = 0
+      let bitDepth = 0
+      let colorType = -1
+      let interlace = 0
+      let idatChunks = []
+
+      function readU32(p) {
+        return (
+          (((raw.charCodeAt(p) & 0xff) << 24) |
+            ((raw.charCodeAt(p + 1) & 0xff) << 16) |
+            ((raw.charCodeAt(p + 2) & 0xff) << 8) |
+            (raw.charCodeAt(p + 3) & 0xff)) >>>
+          0
+        )
+      }
+
+      while (pos + 8 <= raw.length) {
+        const len = readU32(pos)
+        const type = raw.slice(pos + 4, pos + 8)
+        const dataStart = pos + 8
+        const nextPos = dataStart + len + 4 // +4 para CRC
+
+        if (type === 'IHDR' && len >= 13) {
+          width = readU32(dataStart)
+          height = readU32(dataStart + 4)
+          bitDepth = raw.charCodeAt(dataStart + 8) & 0xff
+          colorType = raw.charCodeAt(dataStart + 9) & 0xff
+          interlace = raw.charCodeAt(dataStart + 12) & 0xff
+        } else if (type === 'IDAT') {
+          idatChunks.push(raw.slice(dataStart, dataStart + len))
+        } else if (type === 'IEND') {
+          break
+        }
+        pos = nextPos
+      }
+
+      if (!width || !height || idatChunks.length === 0) return null
+      // PDF nativo suporta FlateDecode com Predictor 15 diretamente para
+      // Greyscale (0) e Truecolor RGB (2) sem interlace.
+      // Se tiver canal alfa (4 ou 6), sem decompressor zlib na JSVM do Goja,
+      // não é possível separar o canal alfa sem distorcer as cores.
+      if (interlace === 0 && (colorType === 0 || colorType === 2) && bitDepth === 8) {
+        return {
+          tipo: 'png_flate',
+          width: width,
+          height: height,
+          bitDepth: bitDepth,
+          colorSpace: colorType === 0 ? '/DeviceGray' : '/DeviceRGB',
+          colors: colorType === 0 ? 1 : 3,
+          data: idatChunks.join(''),
+        }
+      }
+
+      return {
+        tipo: 'png_nao_embutivel_direto',
+        width: width,
+        height: height,
+        colorType: colorType,
+      }
+    }
+
+    function parseJpegData(raw) {
+      if (!raw || raw.length < 4) return null
+      // Assinatura JPEG: FF D8
+      if ((raw.charCodeAt(0) & 0xff) !== 0xff || (raw.charCodeAt(1) & 0xff) !== 0xd8) {
+        return null
+      }
+
+      let pos = 2
+      let width = 0
+      let height = 0
+      let channels = 3
+
+      while (pos + 4 <= raw.length) {
+        if ((raw.charCodeAt(pos) & 0xff) !== 0xff) {
+          pos++
+          continue
+        }
+        const marker = raw.charCodeAt(pos + 1) & 0xff
+        if (marker === 0xd9 || marker === 0xda) break // SOS ou EOI
+
+        const len =
+          (((raw.charCodeAt(pos + 2) & 0xff) << 8) | (raw.charCodeAt(pos + 3) & 0xff)) >>> 0
+        // SOF0 (0xC0), SOF1 (0xC1), SOF2 (0xC2)
+        if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
+          if (pos + 9 <= raw.length) {
+            height =
+              (((raw.charCodeAt(pos + 5) & 0xff) << 8) | (raw.charCodeAt(pos + 6) & 0xff)) >>> 0
+            width =
+              (((raw.charCodeAt(pos + 7) & 0xff) << 8) | (raw.charCodeAt(pos + 8) & 0xff)) >>> 0
+            channels = raw.charCodeAt(pos + 9) & 0xff
+          }
+          break
+        }
+        pos += 2 + len
+      }
+
+      if (width && height) {
+        return {
+          tipo: 'jpeg_dct',
+          width: width,
+          height: height,
+          bitDepth: 8,
+          colorSpace: channels === 1 ? '/DeviceGray' : '/DeviceRGB',
+          colors: channels,
+          data: raw,
+        }
+      }
+      return null
+    }
+
     // --- GERADOR DE PDF 1.4 PURO INLINE (GOJA / POCKETBASE) ---
     function gerarPdfTarefas(dados) {
       const empPrincipal = dados.empPrincipal || 'Extrafruti'
       const destNome = dados.destinatarioNome || 'Prezado(a)'
       const tarefas = dados.listaTarefas || []
+      const logoInfo = dados.logoInfo || null
 
       // Dimensões A4 em pontos (72 pt / pol)
       const W = 595.28
@@ -101,6 +224,24 @@ routerAdd(
         return lines
       }
 
+      // Analisa e valida os bytes da imagem se houver
+      let parsedImage = null
+      if (logoInfo && logoInfo.rawBytes) {
+        try {
+          const fn = String(logoInfo.fileName || '').toLowerCase()
+          if (fn.endsWith('.jpg') || fn.endsWith('.jpeg')) {
+            parsedImage = parseJpegData(logoInfo.rawBytes)
+          } else {
+            parsedImage = parsePngData(logoInfo.rawBytes)
+            if (!parsedImage) {
+              parsedImage = parseJpegData(logoInfo.rawBytes)
+            }
+          }
+        } catch (errParse) {
+          console.warn('Erro ao processar stream da imagem para o PDF:', errParse)
+        }
+      }
+
       const pagesOps = []
       let curOps = []
 
@@ -147,18 +288,85 @@ routerAdd(
         curOps.push(s)
       }
 
+      function drawImageXObject(imgName, x, y, w, h) {
+        const s =
+          'q ' +
+          w.toFixed(2) +
+          ' 0 0 ' +
+          h.toFixed(2) +
+          ' ' +
+          x.toFixed(2) +
+          ' ' +
+          y.toFixed(2) +
+          ' cm /' +
+          imgName +
+          ' Do Q'
+        curOps.push(s)
+      }
+
       let curY = H - 36
 
       function desenharCabecalho() {
-        drawRect(marginLeft, curY - 38, contentWidth, 38, { r: 1, g: 1, b: 1 }, null, null)
+        // Altura do topo branco com logomarca e título centralizados
+        // Layout espelho do topo do e-mail HTML:
+        // [ Logomarca Centralizada ]
+        // PAINEL DE GESTÃO {EMPRESA}
+        // Faixa verde "Acompanhamento de Tarefas"
+        const temImagemEmbutivel =
+          parsedImage && (parsedImage.tipo === 'jpeg_dct' || parsedImage.tipo === 'png_flate')
 
-        const badgeText = empPrincipal.toUpperCase()
-        drawText(marginLeft + 10, curY - 18, badgeText, 14, '/F2', { r: 0.11, g: 0.37, b: 0.13 })
+        const topHeaderH = temImagemEmbutivel ? 82 : 72
+        drawRect(
+          marginLeft,
+          curY - topHeaderH,
+          contentWidth,
+          topHeaderH,
+          { r: 1, g: 1, b: 1 },
+          null,
+          null,
+        )
+
         const subText = 'PAINEL DE GESTAO ' + empPrincipal.toUpperCase()
-        drawText(marginLeft + 10, curY - 32, subText, 8.5, '/F2', { r: 0.42, g: 0.45, b: 0.5 })
 
-        curY -= 44
+        if (temImagemEmbutivel) {
+          // Calcula dimensões proporcionais da logomarca (máx 150pt larg, 42pt alt)
+          const maxImgW = 150
+          const maxImgH = 42
+          let imgW = parsedImage.width
+          let imgH = parsedImage.height
+          const ratio = Math.min(maxImgW / imgW, maxImgH / imgH, 1)
+          const dispW = imgW * ratio
+          const dispH = imgH * ratio
+          const imgX = (W - dispW) / 2
+          const imgY = curY - 12 - dispH
 
+          drawImageXObject('LogoImg', imgX, imgY, dispW, dispH)
+
+          // Título dinâmico centralizado abaixo da imagem
+          const subW = subText.length * 6.0
+          const subX = Math.max(marginLeft + 10, (W - subW) / 2)
+          drawText(subX, curY - topHeaderH + 12, subText, 9.5, '/F2', { r: 0.42, g: 0.45, b: 0.5 })
+        } else {
+          // Fallback elegante e idêntico à identidade visual da empresa
+          // Bloco centralizado de marca com o nome/sigla da empresa + título dinâmico
+          const badgeText = empPrincipal.toUpperCase()
+          const badgeW = Math.max(120, badgeText.length * 9.5 + 24)
+          const badgeH = 28
+          const badgeX = (W - badgeW) / 2
+          const badgeY = curY - 34
+
+          drawRect(badgeX, badgeY, badgeW, badgeH, { r: 0.11, g: 0.37, b: 0.13 }, null, null)
+          const textW = badgeText.length * 7.5
+          drawText((W - textW) / 2, badgeY + 8, badgeText, 13, '/F2', { r: 1, g: 1, b: 1 })
+
+          const subW = subText.length * 6.0
+          const subX = Math.max(marginLeft + 10, (W - subW) / 2)
+          drawText(subX, curY - topHeaderH + 12, subText, 9.5, '/F2', { r: 0.42, g: 0.45, b: 0.5 })
+        }
+
+        curY -= topHeaderH + 6
+
+        // Faixa verde "Acompanhamento de Tarefas" idêntica ao HTML
         const bannerH = 46
         drawRect(
           marginLeft,
@@ -196,7 +404,7 @@ routerAdd(
         const prazo = t.prazoFormatado || 'Sem prazo'
         const prazoAtrasado = Boolean(t.prazoAtrasado)
         const resp = t.responsavel || 'Nao atribuido'
-        const vinculo = t.vinculoTipo || ''
+        const vinculo = String(t.vinculoTipo || '').trim()
         const recorrencia = t.recorrencia || ''
 
         const descLines = desc ? wrapText(desc, 78) : []
@@ -206,7 +414,11 @@ routerAdd(
         if (descLines.length > 0) {
           cardH += descLines.length * 12 + 16
         }
-        cardH += 4 * 14 + 10
+        // Linhas de detalhe: Prazo + Responsável (+ Vínculo se houver + Recorrência se houver)
+        let numDetailLines = 2
+        if (vinculo) numDetailLines++
+        if (recorrencia && recorrencia !== 'Nenhuma') numDetailLines++
+        cardH += numDetailLines * 14 + 10
         cardH += 12
 
         if (curY - cardH < 50) {
@@ -355,7 +567,7 @@ routerAdd(
         drawText(marginLeft + 80, yInner, resp, 8.5, '/F1', { r: 0.15, g: 0.18, b: 0.22 })
         yInner -= 13
 
-        // Vínculo
+        // Vínculo (omite por completo se não houver ou se for vazio)
         if (vinculo) {
           drawText(marginLeft + 12, yInner, 'Vinculo:', 8.5, '/F2', { r: 0.42, g: 0.45, b: 0.5 })
           drawText(marginLeft + 80, yInner, vinculo, 8.5, '/F1', { r: 0.15, g: 0.18, b: 0.22 })
@@ -399,6 +611,57 @@ routerAdd(
       const fontRegularId = allocId()
       const fontBoldId = allocId()
 
+      let imageXObjectId = null
+      const temImagemEmbutivel =
+        parsedImage && (parsedImage.tipo === 'jpeg_dct' || parsedImage.tipo === 'png_flate')
+
+      if (temImagemEmbutivel) {
+        imageXObjectId = allocId()
+        if (parsedImage.tipo === 'jpeg_dct') {
+          objects.push({
+            id: imageXObjectId,
+            body:
+              '<< /Type /XObject /Subtype /Image /Width ' +
+              parsedImage.width +
+              ' /Height ' +
+              parsedImage.height +
+              ' /ColorSpace ' +
+              parsedImage.colorSpace +
+              ' /BitsPerComponent ' +
+              parsedImage.bitDepth +
+              ' /Filter /DCTDecode /Length ' +
+              parsedImage.data.length +
+              ' >>\nstream\n' +
+              parsedImage.data +
+              '\nendstream',
+          })
+        } else if (parsedImage.tipo === 'png_flate') {
+          objects.push({
+            id: imageXObjectId,
+            body:
+              '<< /Type /XObject /Subtype /Image /Width ' +
+              parsedImage.width +
+              ' /Height ' +
+              parsedImage.height +
+              ' /ColorSpace ' +
+              parsedImage.colorSpace +
+              ' /BitsPerComponent ' +
+              parsedImage.bitDepth +
+              ' /Filter /FlateDecode /DecodeParms << /Predictor 15 /Colors ' +
+              parsedImage.colors +
+              ' /BitsPerComponent ' +
+              parsedImage.bitDepth +
+              ' /Columns ' +
+              parsedImage.width +
+              ' >> /Length ' +
+              parsedImage.data.length +
+              ' >>\nstream\n' +
+              parsedImage.data +
+              '\nendstream',
+          })
+        }
+      }
+
       const numPages = pagesOps.length
       const pageIds = []
       const contentIds = []
@@ -429,6 +692,14 @@ routerAdd(
       for (let p = 0; p < numPages; p++) {
         const streamContent = pagesOps[p].join('\n')
         const streamLen = streamContent.length
+
+        let resourcesDict =
+          '<< /Font << /F1 ' + fontRegularId + ' 0 R /F2 ' + fontBoldId + ' 0 R >>'
+        if (imageXObjectId) {
+          resourcesDict += ' /XObject << /LogoImg ' + imageXObjectId + ' 0 R >>'
+        }
+        resourcesDict += ' >>'
+
         objects.push({
           id: pageIds[p],
           body:
@@ -438,11 +709,9 @@ routerAdd(
             W.toFixed(2) +
             ' ' +
             H.toFixed(2) +
-            '] /Resources << /Font << /F1 ' +
-            fontRegularId +
-            ' 0 R /F2 ' +
-            fontBoldId +
-            ' 0 R >> >> /Contents ' +
+            '] /Resources ' +
+            resourcesDict +
+            ' /Contents ' +
             contentIds[p] +
             ' 0 R >>',
         })
@@ -509,8 +778,17 @@ routerAdd(
     }
     base = base.replace(/\/_\/?$/, '').replace(/\/$/, '')
 
-    // 3. Mapa de logomarcas das empresas ativas
+    // 3. Mapa de logomarcas das empresas ativas com leitura de bytes para o PDF
     const logosMap = {}
+    let pbFsys = null
+    try {
+      if (typeof $app.newFilesystem === 'function') {
+        pbFsys = $app.newFilesystem()
+      }
+    } catch (errFs) {
+      console.warn('Não foi possível inicializar newFilesystem:', errFs)
+    }
+
     try {
       const colLogo = $app.findCollectionByNameOrId('logomarcas')
       const recsLogos = $app.findRecordsByFilter('logomarcas', 'ativo = true', 'empresa', 50, 0)
@@ -521,10 +799,31 @@ routerAdd(
           .toLowerCase()
         const logoFile = lrec.getString('logo') || lrec.getString('emblema')
         if (empNome && logoFile) {
+          let rawBytes = ''
+          // Tenta ler os bytes brutos do arquivo da logomarca no storage do PocketBase
+          if (pbFsys) {
+            let rdr = null
+            try {
+              const fileKey = lrec.baseFilesPath() + '/' + logoFile
+              rdr = pbFsys.getReader(fileKey)
+              if (rdr) {
+                rawBytes = toString(rdr)
+              }
+            } catch (errRdr) {
+              console.warn('Erro ao ler bytes da logo ' + logoFile + ':', errRdr)
+            } finally {
+              try {
+                if (rdr && typeof rdr.close === 'function') rdr.close()
+              } catch (_) {}
+            }
+          }
+
           logosMap[empNome] = {
             empresa: lrec.getString('empresa'),
             sigla: lrec.getString('sigla'),
             cor: lrec.getString('cor') || '#1B5E20',
+            fileName: logoFile,
+            rawBytes: rawBytes,
             logoUrl: base
               ? base + '/api/files/' + colLogo.id + '/' + lrec.id + '/' + logoFile
               : '/api/files/' + colLogo.id + '/' + lrec.id + '/' + logoFile,
@@ -533,6 +832,10 @@ routerAdd(
       }
     } catch (err) {
       console.warn('Erro ao mapear logomarcas:', err)
+    } finally {
+      try {
+        if (pbFsys && typeof pbFsys.close === 'function') pbFsys.close()
+      } catch (_) {}
     }
 
     const hoje = new Date().toISOString().slice(0, 10)
@@ -849,13 +1152,13 @@ routerAdd(
           html += '<td style="padding:4px 0;font-weight:500;">👤 ' + escapeHtml(resp) + '</td>'
           html += '</tr>'
 
-          // Vínculo / Origem (se houver)
-          if (vinculoTipo) {
+          // Vínculo / Origem (se houver e não for vazio/espaços)
+          if (vinculoTipo && vinculoTipo.trim()) {
             html += '<tr>'
             html += '<td style="padding:4px 0;color:#6b7280;font-weight:600;">Vínculo:</td>'
             html +=
               '<td style="padding:4px 0;font-weight:500;text-transform:capitalize;">🔗 ' +
-              escapeHtml(vinculoTipo) +
+              escapeHtml(vinculoTipo.trim()) +
               '</td>'
             html += '</tr>'
           }
@@ -923,6 +1226,7 @@ routerAdd(
           destinatarioNome: nome,
           listaTarefas: tarefasParaPdf,
           dataHoraStr: hoje,
+          logoInfo: logoPrincipalInfo,
         })
       } catch (errPdf) {
         console.warn('Erro ao gerar PDF das tarefas:', errPdf)
