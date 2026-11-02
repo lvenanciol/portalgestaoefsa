@@ -21,6 +21,11 @@ import {
   ExternalLink,
   Download,
   SlidersHorizontal,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  FileText,
+  Upload,
+  X,
 } from 'lucide-react'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import {
@@ -106,6 +111,13 @@ export function TarefaDetalheModal({
   const [painelMobileAberto, setPainelMobileAberto] = useState(false)
   const [novaSub, setNovaSub] = useState('')
   const [subSalvando, setSubSalvando] = useState(false)
+  const [anexoErro, setAnexoErro] = useState('')
+  const [enviandoAnexo, setEnviandoAnexo] = useState(false)
+  const [midiaPreview, setMidiaPreview] = useState<{
+    url: string
+    tipo: 'imagem' | 'video'
+    nome: string
+  } | null>(null)
 
   if (!detalhe) return null
 
@@ -127,6 +139,58 @@ export function TarefaDetalheModal({
     : detalhe.anexos
       ? [detalhe.anexos]
       : []
+
+  const handleUploadAnexoDireto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    e.target.value = ''
+    if (files.length === 0) return
+
+    setAnexoErro('')
+    const LIMITE = 25 * 1024 * 1024 // 25MB
+    const validos: File[] = []
+    for (const f of files) {
+      if (f.size > LIMITE) {
+        setAnexoErro(`O arquivo "${f.name}" excede o limite máximo permitido de 25MB.`)
+      } else {
+        validos.push(f)
+      }
+    }
+    if (validos.length === 0) return
+
+    setEnviandoAnexo(true)
+    try {
+      const fd = new FormData()
+      for (const f of validos) {
+        fd.append('anexos', f)
+      }
+      await pb.collection('tarefas').update(detalhe.id, fd)
+      const upd = await pb.collection('tarefas').getOne(detalhe.id)
+      if (onSubtarefasAtualizadas) onSubtarefasAtualizadas(upd)
+    } catch (err: any) {
+      console.error('Falha ao enviar anexo:', err)
+      setAnexoErro('Falha ao enviar anexo. Verifique o arquivo e tente novamente.')
+    } finally {
+      setEnviandoAnexo(false)
+    }
+  }
+
+  const handleRemoverAnexoDireto = async (nomeArquivo: string) => {
+    if (enviandoAnexo) return
+    setEnviandoAnexo(true)
+    setAnexoErro('')
+    try {
+      const fd = new FormData()
+      fd.append('anexos-', nomeArquivo)
+      await pb.collection('tarefas').update(detalhe.id, fd)
+      const upd = await pb.collection('tarefas').getOne(detalhe.id)
+      if (onSubtarefasAtualizadas) onSubtarefasAtualizadas(upd)
+    } catch (err) {
+      console.error('Falha ao remover anexo:', err)
+      setAnexoErro('Falha ao remover anexo.')
+    } finally {
+      setEnviandoAnexo(false)
+    }
+  }
 
   const handleToggleSub = async (idx: number) => {
     if (subSalvando) return
@@ -491,7 +555,7 @@ export function TarefaDetalheModal({
               )}
             </section>
 
-            {/* Seção ANEXOS recolhível */}
+            {/* Seção ANEXOS recolhível com upload de foto/vídeo/documento */}
             <section className="space-y-2">
               <div className="flex items-center justify-between py-1">
                 <button
@@ -508,23 +572,47 @@ export function TarefaDetalheModal({
                     )}
                   />
                 </button>
-                <span className="text-xs text-gray-400">
-                  {anexosLista.length} anexo{anexosLista.length !== 1 ? 's' : ''}
-                </span>
+                <div className="flex items-center gap-3">
+                  <label className="inline-flex items-center gap-1 text-xs font-semibold text-[#1B5E20] hover:text-[#0F3D13] cursor-pointer">
+                    <Upload className="h-3.5 w-3.5" />
+                    <span>Adicionar foto/vídeo</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,video/*,application/pdf,.docx,.xlsx,.txt,.csv,audio/*"
+                      className="hidden"
+                      disabled={enviandoAnexo}
+                      onChange={handleUploadAnexoDireto}
+                    />
+                  </label>
+                  <span className="text-xs text-gray-400">
+                    {anexosLista.length} anexo{anexosLista.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
               </div>
+
+              {anexoErro && (
+                <div className="p-2 rounded bg-red-50 border border-red-200 text-xs text-red-700">
+                  {anexoErro}
+                </div>
+              )}
 
               {expandAnexos && (
                 <div>
                   {anexosLista.length === 0 ? (
-                    <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/60 text-center text-xs text-gray-400">
-                      Nenhum anexo nesta tarefa.{' '}
-                      <button
-                        type="button"
-                        onClick={() => onEditar(detalhe)}
-                        className="text-[#1B5E20] font-semibold underline hover:text-[#0F3D13] ml-1"
-                      >
-                        Clique em Editar para adicionar
-                      </button>
+                    <div className="p-4 rounded-xl border border-dashed border-gray-200 bg-gray-50/60 text-center text-xs text-gray-400 flex flex-col items-center justify-center gap-1.5">
+                      <p>Nenhum anexo nesta tarefa.</p>
+                      <label className="text-[#1B5E20] font-semibold underline hover:text-[#0F3D13] cursor-pointer">
+                        Clique aqui para anexar uma foto ou vídeo
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*,video/*,application/pdf,.docx,.xlsx,.txt,.csv,audio/*"
+                          className="hidden"
+                          disabled={enviandoAnexo}
+                          onChange={handleUploadAnexoDireto}
+                        />
+                      </label>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -532,37 +620,78 @@ export function TarefaDetalheModal({
                         const url = pb.files.getURL(detalhe, nome)
                         const ext = nome.split('.').pop()?.toLowerCase() || ''
                         const ehImg = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)
+                        const ehVideo = ['mp4', 'webm', 'ogg', 'mov', 'm4v', 'avi', 'mkv'].includes(
+                          ext,
+                        )
 
                         return (
                           <div
                             key={i}
                             className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-gray-50/70 border border-gray-200 hover:border-[#1B5E20] hover:bg-white transition-all group"
                           >
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="flex items-center gap-2.5 min-w-0 flex-1"
-                              title="Visualizar anexo"
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (ehImg) {
+                                  setMidiaPreview({ url, tipo: 'imagem', nome })
+                                } else if (ehVideo) {
+                                  setMidiaPreview({ url, tipo: 'video', nome })
+                                } else {
+                                  window.open(url, '_blank')
+                                }
+                              }}
+                              className="flex items-center gap-2.5 min-w-0 flex-1 text-left"
+                              title={
+                                ehImg
+                                  ? 'Visualizar foto'
+                                  : ehVideo
+                                    ? 'Assistir vídeo'
+                                    : 'Visualizar anexo'
+                              }
                             >
                               {ehImg ? (
                                 <img
                                   src={url}
                                   alt={nome}
-                                  className="h-9 w-9 rounded object-cover shrink-0 border border-gray-200"
+                                  className="h-10 w-10 rounded object-cover shrink-0 border border-gray-200"
                                 />
+                              ) : ehVideo ? (
+                                <div className="h-10 w-10 rounded bg-purple-50 text-purple-700 border border-purple-200 flex flex-col items-center justify-center shrink-0">
+                                  <VideoIcon className="h-5 w-5" />
+                                  <span className="text-[8px] font-bold uppercase">
+                                    {ext.slice(0, 3)}
+                                  </span>
+                                </div>
                               ) : (
-                                <div className="h-9 w-9 rounded bg-emerald-50 text-[#1B5E20] border border-emerald-100 flex items-center justify-center shrink-0 font-bold text-[10px]">
+                                <div className="h-10 w-10 rounded bg-emerald-50 text-[#1B5E20] border border-emerald-100 flex items-center justify-center shrink-0 font-bold text-[10px]">
                                   {ext.slice(0, 4).toUpperCase() || 'FILE'}
                                 </div>
                               )}
                               <div className="min-w-0 flex-1">
-                                <p className="text-xs font-semibold text-gray-800 group-hover:text-[#1B5E20] truncate">
-                                  {nome}
+                                <div className="flex items-center gap-1.5">
+                                  {ehImg && (
+                                    <span className="text-[9px] font-bold px-1 rounded bg-emerald-100 text-[#1B5E20]">
+                                      FOTO
+                                    </span>
+                                  )}
+                                  {ehVideo && (
+                                    <span className="text-[9px] font-bold px-1 rounded bg-purple-100 text-purple-800">
+                                      VÍDEO
+                                    </span>
+                                  )}
+                                  <p className="text-xs font-semibold text-gray-800 group-hover:text-[#1B5E20] truncate">
+                                    {nome}
+                                  </p>
+                                </div>
+                                <p className="text-[10px] text-gray-400">
+                                  {ehImg
+                                    ? 'Clique para ver foto'
+                                    : ehVideo
+                                      ? 'Clique para reproduzir vídeo'
+                                      : 'Clique para abrir'}
                                 </p>
-                                <p className="text-[10px] text-gray-400">Clique para abrir</p>
                               </div>
-                            </a>
+                            </button>
 
                             <div className="flex items-center gap-1 shrink-0">
                               <a
@@ -582,6 +711,15 @@ export function TarefaDetalheModal({
                               >
                                 <Download className="h-3.5 w-3.5" />
                               </a>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoverAnexoDireto(nome)}
+                                disabled={enviandoAnexo}
+                                className="h-7 w-7 rounded flex items-center justify-center text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                title="Remover anexo"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
                             </div>
                           </div>
                         )

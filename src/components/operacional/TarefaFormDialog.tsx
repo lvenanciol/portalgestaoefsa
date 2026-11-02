@@ -1809,11 +1809,23 @@ export function TarefaFormDialog({
                   <input
                     type="file"
                     multiple
+                    accept="image/*,video/*,application/pdf,.docx,.xlsx,.txt,.csv,audio/*"
                     className="hidden"
                     onChange={(e) => {
                       const fl = Array.from(e.target.files || [])
-                      if (fl.length > 0) {
-                        setArquivosNovos((prev) => [...prev, ...fl])
+                      const LIMITE_TAMANHO = 25 * 1024 * 1024 // 25MB
+                      const validos: File[] = []
+                      for (const f of fl) {
+                        if (f.size > LIMITE_TAMANHO) {
+                          setDialogErro(
+                            `Arquivo "${f.name}" excede o limite máximo permitido de 25MB.`,
+                          )
+                        } else {
+                          validos.push(f)
+                        }
+                      }
+                      if (validos.length > 0) {
+                        setArquivosNovos((prev) => [...prev, ...validos])
                       }
                       e.target.value = ''
                     }}
@@ -1838,12 +1850,26 @@ export function TarefaFormDialog({
                   {/* Anexos existentes no PocketBase */}
                   {anexosExistentes.map((nome, idx) => {
                     const urlArquivo = editando ? pb.files.getURL(editando, nome) : ''
+                    const ext = nome.split('.').pop()?.toLowerCase() || ''
+                    const ehFoto = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)
+                    const ehVideo = ['mp4', 'webm', 'ogg', 'mov', 'm4v', 'avi', 'mkv'].includes(ext)
+
                     return (
                       <div
                         key={`existente-${idx}`}
                         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-emerald-50 text-emerald-900 border border-emerald-200 shadow-2xs"
                       >
-                        <Paperclip className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
+                        {ehFoto ? (
+                          <span className="text-[10px] font-bold px-1 rounded bg-emerald-100 text-[#1B5E20]">
+                            FOTO
+                          </span>
+                        ) : ehVideo ? (
+                          <span className="text-[10px] font-bold px-1 rounded bg-purple-100 text-purple-800">
+                            VÍDEO
+                          </span>
+                        ) : (
+                          <Paperclip className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
+                        )}
                         <span className="max-w-[150px] truncate font-medium" title={nome}>
                           {nome}
                         </span>
@@ -1889,6 +1915,14 @@ export function TarefaFormDialog({
 
                   {/* Anexos novos a salvar */}
                   {arquivosNovos.map((arq, idx) => {
+                    const ext = arq.name.split('.').pop()?.toLowerCase() || ''
+                    const ehFoto =
+                      arq.type.startsWith('image/') ||
+                      ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)
+                    const ehVideo =
+                      arq.type.startsWith('video/') ||
+                      ['mp4', 'webm', 'ogg', 'mov', 'm4v', 'avi', 'mkv'].includes(ext)
+
                     const abrirPreviewNovo = () => {
                       try {
                         const objUrl = URL.createObjectURL(arq)
@@ -1918,7 +1952,17 @@ export function TarefaFormDialog({
                         key={`novo-${idx}`}
                         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs"
                       >
-                        <UploadCloud className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                        {ehFoto ? (
+                          <span className="text-[10px] font-bold px-1 rounded bg-amber-100 text-amber-800">
+                            FOTO
+                          </span>
+                        ) : ehVideo ? (
+                          <span className="text-[10px] font-bold px-1 rounded bg-purple-100 text-purple-800">
+                            VÍDEO
+                          </span>
+                        ) : (
+                          <UploadCloud className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                        )}
                         <span className="max-w-[140px] truncate font-medium" title={arq.name}>
                           {arq.name}
                         </span>
