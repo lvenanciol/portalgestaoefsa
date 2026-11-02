@@ -38,6 +38,319 @@ routerAdd(
       return e.badRequestError('Nenhuma tarefa selecionada/filtrada para envio.')
     }
 
+    // ===== PNG COM CANAL ALFA -> RGB EMBUTÍVEL NO PDF (Goja, sem zlib) =====
+    // O gerador usa /Filter /FlateDecode + /Predictor 15, formato que o PDF aceita
+    // nativamente — não é preciso recomprimir. O problema é o CANAL ALFA (colorType
+    // 4/6): o PDF não tem transparência e o Goja não tem zlib para separar o alfa,
+    // então a logo caía no badge textual. Aqui: inflate puro em JS, composição sobre
+    // branco (fundo do cabeçalho) e re-emissão dos pixels como DEFLATE "stored"
+    // embrulhado em zlib, que qualquer leitor de PDF entende.
+
+    function inflatePuro(bytes) {
+      var pos = 0,
+        bitBuf = 0,
+        bitCnt = 0,
+        out = []
+      function getBit() {
+        if (bitCnt === 0) {
+          bitBuf = bytes[pos++] & 0xff
+          bitCnt = 8
+        }
+        var b = bitBuf & 1
+        bitBuf >>= 1
+        bitCnt--
+        return b
+      }
+      function getBits(n) {
+        var v = 0
+        for (var i = 0; i < n; i++) v |= getBit() << i
+        return v
+      }
+      var LBASE = [
+        3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115,
+        131, 163, 195, 227, 258,
+      ]
+      var LEXT = [
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+      ]
+      var DBASE = [
+        1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+        2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+      ]
+      var DEXT = [
+        0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12,
+        13, 13,
+      ]
+      function buildTree(lens) {
+        var maxLen = 1,
+          i
+        for (i = 0; i < lens.length; i++) if (lens[i] > maxLen) maxLen = lens[i]
+        var blCount = [],
+          nextCode = []
+        for (i = 0; i <= maxLen; i++) {
+          blCount.push(0)
+          nextCode.push(0)
+        }
+        for (i = 0; i < lens.length; i++) if (lens[i]) blCount[lens[i]]++
+        var code = 0
+        for (var bits = 1; bits <= maxLen; bits++) {
+          code = (code + blCount[bits - 1]) << 1
+          nextCode[bits] = code
+        }
+        var table = {}
+        for (i = 0; i < lens.length; i++) {
+          var l = lens[i]
+          if (!l) continue
+          table[l + ':' + nextCode[l]] = i
+          nextCode[l]++
+        }
+        return { table: table, maxLen: maxLen }
+      }
+      function decodeSym(tree) {
+        var code = 0
+        for (var len = 1; len <= tree.maxLen; len++) {
+          code = (code << 1) | getBit()
+          var s = tree.table[len + ':' + code]
+          if (s !== undefined) return s
+        }
+        throw new Error('Huffman invalido')
+      }
+      var last = 0
+      while (!last) {
+        last = getBit()
+        var type = getBits(2)
+        if (type === 0) {
+          bitCnt = 0
+          var len = (bytes[pos] & 0xff) | ((bytes[pos + 1] & 0xff) << 8)
+          pos += 4
+          for (var k = 0; k < len; k++) out.push(bytes[pos++] & 0xff)
+        } else if (type === 1 || type === 2) {
+          var litTree, distTree, litLens, distLens, j
+          if (type === 1) {
+            litLens = []
+            for (j = 0; j < 144; j++) litLens.push(8)
+            for (j = 144; j < 256; j++) litLens.push(9)
+            for (j = 256; j < 280; j++) litLens.push(7)
+            for (j = 280; j < 288; j++) litLens.push(8)
+            distLens = []
+            for (j = 0; j < 30; j++) distLens.push(5)
+            litTree = buildTree(litLens)
+            distTree = buildTree(distLens)
+          } else {
+            var hlit = getBits(5) + 257
+            var hdist = getBits(5) + 1
+            var hclen = getBits(4) + 4
+            var order = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
+            var clLens = []
+            for (j = 0; j < 19; j++) clLens.push(0)
+            for (j = 0; j < hclen; j++) clLens[order[j]] = getBits(3)
+            var clTree = buildTree(clLens)
+            var lens = []
+            while (lens.length < hlit + hdist) {
+              var sym = decodeSym(clTree)
+              if (sym < 16) lens.push(sym)
+              else if (sym === 16) {
+                var prev = lens[lens.length - 1],
+                  rep = 3 + getBits(2)
+                for (j = 0; j < rep; j++) lens.push(prev)
+              } else if (sym === 17) {
+                var rep17 = 3 + getBits(3)
+                for (j = 0; j < rep17; j++) lens.push(0)
+              } else {
+                var rep18 = 11 + getBits(7)
+                for (j = 0; j < rep18; j++) lens.push(0)
+              }
+            }
+            litTree = buildTree(lens.slice(0, hlit))
+            distTree = buildTree(lens.slice(hlit))
+          }
+          for (;;) {
+            var s2 = decodeSym(litTree)
+            if (s2 === 256) break
+            if (s2 < 256) out.push(s2)
+            else {
+              var li = s2 - 257
+              var l2 = LBASE[li] + getBits(LEXT[li])
+              var ds = decodeSym(distTree)
+              var dist = DBASE[ds] + getBits(DEXT[ds])
+              var start = out.length - dist
+              for (j = 0; j < l2; j++) out.push(out[start + j])
+            }
+          }
+        } else {
+          throw new Error('BTYPE invalido')
+        }
+      }
+      return out
+    }
+
+    // Deflate "stored" embrulhado em ZLIB (RFC 1950) — formato do /FlateDecode do PDF.
+    function deflateZlibStored(bytes) {
+      var out = [0x78, 0x01]
+      var MAXB = 65535
+      var total = bytes.length
+      var p = 0
+      if (total === 0) return [0x78, 0x01, 1, 0, 0, 255, 255, 0, 0, 0, 1]
+      while (p < total) {
+        var bloco = Math.min(MAXB, total - p)
+        var ultimo = p + bloco >= total ? 1 : 0
+        out.push(ultimo)
+        out.push(bloco & 0xff)
+        out.push((bloco >> 8) & 0xff)
+        var nlen = ~bloco & 0xffff
+        out.push(nlen & 0xff)
+        out.push((nlen >> 8) & 0xff)
+        for (var i = 0; i < bloco; i++) out.push(bytes[p + i] & 0xff)
+        p += bloco
+      }
+      var a = 1,
+        b = 0
+      for (var ai = 0; ai < total; ai++) {
+        a = (a + (bytes[ai] & 0xff)) % 65521
+        b = (b + a) % 65521
+      }
+      var adler = ((b << 16) | a) >>> 0
+      out.push((adler >>> 24) & 0xff)
+      out.push((adler >>> 16) & 0xff)
+      out.push((adler >>> 8) & 0xff)
+      out.push(adler & 0xff)
+      return out
+    }
+
+    // PNG (string binária) -> objeto pronto para o XObject do PDF.
+    function pngRgbaParaEmbutivel(raw) {
+      try {
+        if (!raw || raw.length < 33) return null
+        var sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+        for (var i = 0; i < 8; i++) if ((raw.charCodeAt(i) & 0xff) !== sig[i]) return null
+        function u32(o) {
+          return (
+            (((raw.charCodeAt(o) & 0xff) << 24) |
+              ((raw.charCodeAt(o + 1) & 0xff) << 16) |
+              ((raw.charCodeAt(o + 2) & 0xff) << 8) |
+              (raw.charCodeAt(o + 3) & 0xff)) >>>
+            0
+          )
+        }
+        var p = 8,
+          w = 0,
+          h = 0,
+          bd = 0,
+          ct = -1,
+          il = 0,
+          idat = []
+        while (p + 8 <= raw.length) {
+          var len = u32(p)
+          var type = String.fromCharCode(
+            raw.charCodeAt(p + 4) & 0xff,
+            raw.charCodeAt(p + 5) & 0xff,
+            raw.charCodeAt(p + 6) & 0xff,
+            raw.charCodeAt(p + 7) & 0xff,
+          )
+          var d = p + 8
+          if (type === 'IHDR') {
+            w = u32(d)
+            h = u32(d + 4)
+            bd = raw.charCodeAt(d + 8) & 0xff
+            ct = raw.charCodeAt(d + 9) & 0xff
+            il = raw.charCodeAt(d + 12) & 0xff
+          } else if (type === 'IDAT') {
+            var chunk = []
+            for (var q = 0; q < len; q++) chunk.push(raw.charCodeAt(d + q) & 0xff)
+            idat.push(chunk)
+          } else if (type === 'IEND') break
+          p = d + len + 4
+        }
+        if (!w || !h || !idat.length || bd !== 8 || il !== 0) return null
+        var canais = ct === 6 ? 4 : ct === 2 ? 3 : ct === 0 ? 1 : ct === 4 ? 2 : 0
+        if (!canais) return null
+        var comp = []
+        for (var ci = 0; ci < idat.length; ci++) comp = comp.concat(idat[ci])
+        var descomprimido = inflatePuro(comp.slice(2, comp.length - 4))
+        var bpp = canais
+        var stride = w * bpp
+        var filtrado = []
+        var prev = []
+        for (var z = 0; z < stride; z++) prev.push(0)
+        var rp = 0
+        for (var y = 0; y < h; y++) {
+          var filtro = descomprimido[rp++]
+          var linha = []
+          for (var x = 0; x < stride; x++) linha.push(descomprimido[rp++] & 0xff)
+          var cur = []
+          for (var xx = 0; xx < stride; xx++) {
+            var a = xx >= bpp ? cur[xx - bpp] : 0
+            var b = prev[xx]
+            var c = xx >= bpp ? prev[xx - bpp] : 0
+            var v = linha[xx]
+            if (filtro === 1) v = (v + a) & 0xff
+            else if (filtro === 2) v = (v + b) & 0xff
+            else if (filtro === 3) v = (v + ((a + b) >> 1)) & 0xff
+            else if (filtro === 4) {
+              var pp = a + b - c
+              var pa = pp > a ? pp - a : a - pp
+              var pb = pp > b ? pp - b : b - pp
+              var pc = pp > c ? pp - c : c - pp
+              var pr = pa <= pb && pa <= pc ? a : pb <= pc ? b : c
+              v = (v + pr) & 0xff
+            }
+            cur[xx] = v & 0xff
+          }
+          var linhaRgb = [0]
+          for (var px = 0; px < w; px++) {
+            var o = px * bpp
+            var r,
+              g,
+              bl,
+              al = 255
+            if (canais === 1) {
+              r = g = bl = cur[o]
+            } else if (canais === 2) {
+              r = g = bl = cur[o]
+              al = cur[o + 1]
+            } else if (canais === 3) {
+              r = cur[o]
+              g = cur[o + 1]
+              bl = cur[o + 2]
+            } else {
+              r = cur[o]
+              g = cur[o + 1]
+              bl = cur[o + 2]
+              al = cur[o + 3]
+            }
+            if (al < 255) {
+              r = Math.round((r * al + 255 * (255 - al)) / 255)
+              g = Math.round((g * al + 255 * (255 - al)) / 255)
+              bl = Math.round((bl * al + 255 * (255 - al)) / 255)
+            }
+            linhaRgb.push(r & 0xff, g & 0xff, bl & 0xff)
+          }
+          for (var zz = 0; zz < linhaRgb.length; zz++) filtrado.push(linhaRgb[zz])
+          prev = cur
+        }
+        var deflated = deflateZlibStored(filtrado)
+        var partes = []
+        var CH = 4096
+        for (var ii = 0; ii < deflated.length; ii += CH) {
+          partes.push(
+            String.fromCharCode.apply(null, deflated.slice(ii, Math.min(ii + CH, deflated.length))),
+          )
+        }
+        return {
+          tipo: 'png_flate',
+          width: w,
+          height: h,
+          bitDepth: 8,
+          colorSpace: '/DeviceRGB',
+          colors: 3,
+          data: partes.join(''),
+        }
+      } catch (errConv) {
+        console.warn('[PDF tarefas] Falha ao converter PNG com alfa: ' + errConv)
+        return null
+      }
+    }
+
     // --- PARSERS DE IMAGEM PARA EMBEDDING NATIVO NO PDF ---
     function parsePngData(raw) {
       if (!raw || raw.length < 8) return null
@@ -226,7 +539,12 @@ routerAdd(
 
       // Analisa e valida os bytes da imagem se houver
       let parsedImage = null
-      if (logoInfo && logoInfo.rawBytes) {
+      // PNG já convertido de RGBA para RGB no carregamento da logo (fora do gerador,
+      // onde o inflate puro roda uma única vez por empresa).
+      if (logoInfo && logoInfo.imgConvertida) {
+        parsedImage = logoInfo.imgConvertida
+      }
+      if (!parsedImage && logoInfo && logoInfo.rawBytes) {
         try {
           const fn = String(logoInfo.fileName || '').toLowerCase()
           if (fn.endsWith('.jpg') || fn.endsWith('.jpeg')) {
@@ -235,6 +553,9 @@ routerAdd(
             parsedImage = parsePngData(logoInfo.rawBytes)
             if (!parsedImage) {
               parsedImage = parseJpegData(logoInfo.rawBytes)
+            }
+            if (!parsedImage) {
+              parsedImage = pngRgbaParaEmbutivel(logoInfo.rawBytes)
             }
           }
         } catch (errParse) {
@@ -834,6 +1155,7 @@ routerAdd(
           // thumbnail quando o arquivo original não for utilizável.
           let bytesParaPdf = rawBytes
           let nomeParaPdf = logoFile
+          let imgJaConvertida = null
           function pngEmbutivel(bytes) {
             if (!bytes || bytes.length < 26) return false
             // assinatura PNG
@@ -851,47 +1173,25 @@ routerAdd(
             if (!bytes || bytes.length < 2) return false
             return (bytes.charCodeAt(0) & 0xff) === 0xff && (bytes.charCodeAt(1) & 0xff) === 0xd8
           }
+          // PNG com canal alfa: o Goja não tem zlib, então decodificamos com inflate
+          // puro (JS), compomos sobre BRANCO e re-emitimos como DEFLATE "stored" em
+          // zlib — formato aceito pelo /FlateDecode do PDF. Vale para QUALQUER logo
+          // RGBA (Casafruti, Extrafruti, LL5, FoldBox), sem depender de thumb.
           if (!ehJpeg(bytesParaPdf) && !pngEmbutivel(bytesParaPdf)) {
-            try {
-              const thumbUrl =
-                (base || '') +
-                '/api/files/' +
-                colLogo.id +
-                '/' +
-                lrec.id +
-                '/' +
-                logoFile +
-                '?thumb=100x100'
-              const tr = $http.send({ url: thumbUrl, method: 'GET' })
-              if (tr && tr.statusCode === 200 && tr.body && tr.body.length > 100) {
-                // Converte []byte -> string binária (mesmo padrão do ping.js):
-                // String.fromCharCode.apply em blocos, para não estourar o arg limit.
-                function bytesParaString(bytes) {
-                  if (!bytes) return ''
-                  if (typeof bytes === 'string') return bytes
-                  const partes = []
-                  const chunk = 4096
-                  for (let i = 0; i < bytes.length; i += chunk) {
-                    const sub = bytes.slice(i, Math.min(i + chunk, bytes.length))
-                    partes.push(String.fromCharCode.apply(null, sub))
-                  }
-                  return partes.join('')
-                }
-                const tBytes = bytesParaString(tr.body)
-                if (ehJpeg(tBytes) || pngEmbutivel(tBytes)) {
-                  bytesParaPdf = tBytes
-                  nomeParaPdf = 'thumb_' + logoFile.replace(/\.[a-z0-9]+$/i, '') + '.png'
-                  console.log(
-                    '[PDF tarefas] logo ' + logoFile + ' trocada pelo thumb RGB (100x100)',
-                  )
-                } else {
-                  console.warn('[PDF tarefas] thumb da logo também não é embutível: ' + logoFile)
-                }
-              }
-            } catch (errThumb) {
-              console.warn(
-                '[PDF tarefas] Falha ao buscar thumb da logo ' + logoFile + ': ' + errThumb,
+            const convertido = pngRgbaParaEmbutivel(bytesParaPdf)
+            if (convertido) {
+              imgJaConvertida = convertido
+              console.log(
+                '[PDF tarefas] logo ' +
+                  logoFile +
+                  ' convertida RGBA->RGB (' +
+                  convertido.width +
+                  'x' +
+                  convertido.height +
+                  ')',
               )
+            } else {
+              console.warn('[PDF tarefas] logo nao converteu: ' + logoFile)
             }
           }
 
@@ -902,6 +1202,7 @@ routerAdd(
             fileName: nomeParaPdf,
             rawBytes: bytesParaPdf,
             fileNameOriginal: logoFile,
+            imgConvertida: imgJaConvertida,
             logoUrl: base
               ? base + '/api/files/' + colLogo.id + '/' + lrec.id + '/' + logoFile
               : '/api/files/' + colLogo.id + '/' + lrec.id + '/' + logoFile,
