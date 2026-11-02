@@ -2,7 +2,7 @@
 // Estratégia Network-First: nunca prende versões antigas nem atrapalha deploys,
 // garantindo que novos builds sejam carregados imediatamente em refresh.
 
-const CACHE_NAME = 'pge-pwa-v1'
+const CACHE_NAME = 'pge-pwa-v2'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
@@ -10,14 +10,12 @@ self.addEventListener('install', (event) => {
 })
 
 self.addEventListener('activate', (event) => {
-  // Reivindica controle imediato de todas as páginas abertas
+  // Limpa todos os caches antigos, inclusive eventuais caches de ícones
   event.waitUntil(
     caches
       .keys()
       .then((keys) => {
-        return Promise.all(
-          keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)),
-        )
+        return Promise.all(keys.map((key) => caches.delete(key)))
       })
       .then(() => self.clients.claim()),
   )
@@ -31,12 +29,18 @@ self.addEventListener('fetch', (event) => {
     event.request.method !== 'GET' ||
     url.pathname.startsWith('/api') ||
     url.pathname.startsWith('/backend') ||
-    url.pathname.includes('/realtime')
+    url.pathname.includes('/realtime') ||
+    url.pathname.includes('apple-touch-icon') ||
+    url.pathname.includes('icon-192') ||
+    url.pathname.includes('icon-512') ||
+    url.pathname.endsWith('.png') ||
+    url.pathname.endsWith('.webmanifest') ||
+    url.pathname.endsWith('manifest.json')
   ) {
     return
   }
 
-  // Tenta rede primeiro, permitindo que a aplicação sempre receba as atualizações mais recentes
+  // Tenta rede primeiro, garantindo que o app sempre receba a versão mais recente
   event.respondWith(
     fetch(event.request).catch(() => {
       return caches.match(event.request)

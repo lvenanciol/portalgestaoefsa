@@ -28,24 +28,70 @@ export default function Login() {
   useEffect(() => {
     let vivo = true
     ;(async () => {
+      // 1. Tenta carregar via SDK PocketBase (se tiver permissão de leitura)
+      try {
+        const registros = await pb.collection('logomarcas').getFullList({
+          filter: 'ativo = true',
+          sort: 'empresa',
+        })
+        if (registros && registros.length > 0) {
+          const urls = registros
+            .map((l: any) => {
+              const campo = l.logo || l.emblema
+              if (!campo) return null
+              const ext = String(campo).split('?')[0].split('.').pop()?.toLowerCase() || ''
+              const ehImagem = ['png', 'jpg', 'jpeg', 'svg', 'webp'].includes(ext)
+              if (!ehImagem) return null
+              return {
+                url: pb.files.getURL(l, campo),
+                cor: String(l.cor || '#1B5E20'),
+              }
+            })
+            .filter((item): item is { url: string; cor: string } => item !== null)
+
+          if (vivo && urls.length > 0) {
+            setLogos(urls)
+            return
+          }
+        }
+      } catch (_) {
+        // Prossegue para fallback se collection restrita
+      }
+
+      // 2. Tenta carregar via endpoint público de logos
       try {
         const r = (await pb.send('/backend/v1/public/logos', { method: 'GET' })) as any
         const urls = ((r && r.logos) || [])
           .map((l: any) => {
             const campo = l.logo || l.emblema
-            if (!campo) return ''
+            if (!campo) return null
             const ext = String(campo).split('?')[0].split('.').pop()?.toLowerCase() || ''
             const ehImagem = ['png', 'jpg', 'jpeg', 'svg', 'webp'].includes(ext)
-            if (!ehImagem) return ''
+            if (!ehImagem) return null
             return {
-              url: pb.files.getURL({ collectionId: 'logomarcas', id: l.id }, campo),
+              url:
+                l.logoUrl ||
+                l.emblemaUrl ||
+                pb.files.getURL({ collectionId: 'logomarcas', id: l.id }, campo),
               cor: String(l.cor || '#1B5E20'),
             }
           })
-          .filter(Boolean)
-        if (vivo) setLogos(urls)
-      } catch (_) {
-        if (vivo) setLogos([])
+          .filter((item: any): item is { url: string; cor: string } => item !== null)
+
+        if (vivo && urls.length > 0) {
+          setLogos(urls)
+          return
+        }
+      } catch {
+        /* intentionally ignored */
+      }
+
+      // 3. Fallback estático com os ícones das empresas do grupo
+      if (vivo) {
+        setLogos([
+          { url: '/apple-touch-icon.png', cor: '#1B5E20' },
+          { url: '/icon-192.png', cor: '#1B5E20' },
+        ])
       }
     })()
     return () => {
