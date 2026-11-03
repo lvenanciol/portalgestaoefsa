@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-03T22:32:20.829Z",
+  "generatedAt": "2026-11-03T23:07:15.953Z",
   "collections": [
     {
       "name": "users",
@@ -794,6 +794,27 @@
           "required": false,
           "system": false,
           "selectValues": ["Nenhuma", "Diária", "Semanal", "Mensal", "Bimestral", "A definir"]
+        },
+        {
+          "name": "origem",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["projeto", "avulsa"]
+        },
+        {
+          "name": "projeto_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "projetos"
+        },
+        {
+          "name": "marco_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "marcos"
         }
       ],
       "indexes": ["CREATE INDEX idx_tarefas_status ON tarefas (status)"]
@@ -2449,6 +2470,65 @@
         "CREATE INDEX idx_notif_email ON notificacoes (usuario_email, lida, created DESC)",
         "CREATE INDEX idx_notif_tarefa ON notificacoes (tarefa_id)"
       ]
+    },
+    {
+      "name": "marcos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "nome",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "projeto_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "projetos"
+        },
+        {
+          "name": "data",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ordem",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "concluido",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_marcos_projeto ON marcos (projeto_id)"]
     }
   ]
 }
