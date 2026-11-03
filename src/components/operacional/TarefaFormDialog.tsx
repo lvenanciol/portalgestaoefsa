@@ -658,8 +658,8 @@ export function TarefaFormDialog({
         if (matchEmp) {
           empresaFinal = matchEmp.nome
           empresaMudou = true
-        } else if (empNome === 'cpf') {
-          empresaFinal = 'CPF'
+        } else if (empNome === 'cpf' || empNome === 'll5') {
+          empresaFinal = 'LL5'
           empresaMudou = true
         } else {
           // Empresa citada mas não tem correspondência confiável nos cadastros
@@ -1295,10 +1295,9 @@ export function TarefaFormDialog({
                         'border-amber-400 bg-amber-50/50 ring-1 ring-amber-300',
                     )}
                   >
+                    {/* O SelectValue já renderiza o conteúdo do item selecionado (ícone + nome);
+                        renderizar o ícone aqui de novo duplicava o ícone no campo. */}
                     <div className="flex items-center gap-2 truncate">
-                      {form.empresa && form.empresa !== ' '
-                        ? obterIconeEmpresa(form.empresa)
-                        : null}
                       <SelectValue placeholder="Selecione a empresa..." />
                     </div>
                   </SelectTrigger>
@@ -1317,15 +1316,6 @@ export function TarefaFormDialog({
                         </div>
                       </SelectItem>
                     ))}
-                    {/* Opção "CPF" exclusiva do dropdown Empresa deste diálogo */}
-                    <SelectItem value="CPF">
-                      <div className="flex items-center gap-2 font-medium">
-                        {obterIconeEmpresa('CPF') || (
-                          <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
-                        )}
-                        <span>CPF</span>
-                      </div>
-                    </SelectItem>
                   </SelectContent>
                 </Select>
                 {camposSinalizados.empresaNaoReconhecida && (
@@ -1346,7 +1336,11 @@ export function TarefaFormDialog({
                     </span>
                   )}
                 </Label>
-                <Popover open={popoverResponsavelAberto} onOpenChange={setPopoverResponsavelAberto}>
+                <Popover
+                  modal
+                  open={popoverResponsavelAberto}
+                  onOpenChange={setPopoverResponsavelAberto}
+                >
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
@@ -1403,8 +1397,13 @@ export function TarefaFormDialog({
                         <span>Cadastrar novo</span>
                       </button>
 
-                      {/* Lista rolável de responsáveis (seleção única) */}
-                      <div className="max-h-72 overflow-y-auto overscroll-contain space-y-1">
+                      {/* Lista rolável de responsáveis (seleção única). O stopPropagation no wheel
+                          impede o bloqueio de rolagem do Dialog (react-remove-scroll) e o modal
+                          do Popover registra o popover na própria camada de scroll. */}
+                      <div
+                        className="max-h-72 overflow-y-auto overscroll-contain space-y-1"
+                        onWheel={(e) => e.stopPropagation()}
+                      >
                         {/* Opção para limpar / Não definido */}
                         <button
                           type="button"
@@ -1750,7 +1749,7 @@ export function TarefaFormDialog({
               </div>
 
               {/* Popover com busca e seleção de parceiros */}
-              <Popover open={popoverParceiroAberto} onOpenChange={setPopoverParceiroAberto}>
+              <Popover modal open={popoverParceiroAberto} onOpenChange={setPopoverParceiroAberto}>
                 <PopoverTrigger asChild>
                   <Button
                     ref={triggerParceiroRef}
@@ -1805,7 +1804,10 @@ export function TarefaFormDialog({
                     </button>
 
                     {/* Lista rolável de parceiros */}
-                    <div className="max-h-56 overflow-y-auto space-y-1">
+                    <div
+                      className="max-h-56 overflow-y-auto overscroll-contain space-y-1"
+                      onWheel={(e) => e.stopPropagation()}
+                    >
                       {parceirosFiltrados.length === 0 ? (
                         <p className="text-[11px] text-gray-400 text-center py-3">
                           Nenhum parceiro encontrado com esse nome.

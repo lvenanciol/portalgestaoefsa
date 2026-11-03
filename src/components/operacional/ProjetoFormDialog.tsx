@@ -1258,7 +1258,7 @@ export function ProjetoFormDialog({
                   >
                     Empresa
                   </Label>
-                  <Popover open={popoverEmpresaAberto} onOpenChange={setPopoverEmpresaAberto}>
+                  <Popover modal open={popoverEmpresaAberto} onOpenChange={setPopoverEmpresaAberto}>
                     <PopoverTrigger asChild>
                       <Button
                         type="button"
@@ -1294,7 +1294,10 @@ export function ProjetoFormDialog({
                           />
                         </div>
 
-                        <div className="max-h-64 overflow-y-auto overscroll-contain space-y-1">
+                        <div
+                          className="max-h-64 overflow-y-auto overscroll-contain space-y-1"
+                          onWheel={(e) => e.stopPropagation()}
+                        >
                           {/* Opção se o valor atual não corresponder às empresas conhecidas */}
                           {form.empresa &&
                             !opcoesEmpresas.some(
@@ -1368,7 +1371,7 @@ export function ProjetoFormDialog({
                       .map((s) => s.trim())
                       .filter(Boolean)
                     return (
-                      <Popover open={popoverRespAberto} onOpenChange={setPopoverRespAberto}>
+                      <Popover modal open={popoverRespAberto} onOpenChange={setPopoverRespAberto}>
                         <PopoverTrigger asChild>
                           <Button
                             type="button"
@@ -1410,7 +1413,10 @@ export function ProjetoFormDialog({
                                 className="h-9 pl-8 text-xs bg-gray-50"
                               />
                             </div>
-                            <div className="max-h-64 overflow-y-auto overscroll-contain space-y-1">
+                            <div
+                              className="max-h-64 overflow-y-auto overscroll-contain space-y-1"
+                              onWheel={(e) => e.stopPropagation()}
+                            >
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1510,7 +1516,11 @@ export function ProjetoFormDialog({
                       .map((s) => s.trim())
                       .filter(Boolean)
                     return (
-                      <Popover open={popoverPatrocAberto} onOpenChange={setPopoverPatrocAberto}>
+                      <Popover
+                        modal
+                        open={popoverPatrocAberto}
+                        onOpenChange={setPopoverPatrocAberto}
+                      >
                         <PopoverTrigger asChild>
                           <Button
                             type="button"
@@ -1552,7 +1562,10 @@ export function ProjetoFormDialog({
                                 className="h-9 pl-8 text-xs bg-gray-50"
                               />
                             </div>
-                            <div className="max-h-64 overflow-y-auto overscroll-contain space-y-1">
+                            <div
+                              className="max-h-64 overflow-y-auto overscroll-contain space-y-1"
+                              onWheel={(e) => e.stopPropagation()}
+                            >
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1921,23 +1934,30 @@ export function ProjetoFormDialog({
 
                   {/* Input de busca e adicionar */}
                   <div className="flex items-center gap-2">
-                    <Popover open={popoverRaciAberto} onOpenChange={setPopoverRaciAberto}>
-                      <PopoverTrigger asChild>
-                        <div className="relative flex-1 cursor-pointer">
-                          <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-3" />
+                    <Popover modal open={popoverRaciAberto} onOpenChange={setPopoverRaciAberto}>
+                      <div className="relative flex-1">
+                        <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-3 pointer-events-none" />
+                        <PopoverTrigger asChild>
                           <Input
                             value={buscaRaci}
                             onChange={(e) => {
                               setBuscaRaci(e.target.value)
-                              setPopoverRaciAberto(true)
+                              if (!popoverRaciAberto) setPopoverRaciAberto(true)
                             }}
-                            onFocus={() => setPopoverRaciAberto(true)}
+                            onFocus={() => {
+                              if (!popoverRaciAberto) setPopoverRaciAberto(true)
+                            }}
                             placeholder="Buscar parceiro por nome ou empresa..."
                             className="h-9 pl-8 text-xs bg-gray-50/70 border-gray-200"
                           />
-                        </div>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[360px] p-2.5 bg-white" align="start">
+                        </PopoverTrigger>
+                      </div>
+                      <PopoverContent
+                        className="w-[360px] p-2.5 bg-white"
+                        align="start"
+                        onOpenAutoFocus={(e) => e.preventDefault()}
+                        onCloseAutoFocus={(e) => e.preventDefault()}
+                      >
                         <div className="space-y-2">
                           {/* Seletor de papel RACI dentro do popover ao adicionar */}
                           <div className="flex items-center justify-between pb-2 border-b border-gray-100">
@@ -1981,7 +2001,10 @@ export function ProjetoFormDialog({
                             </div>
                           </div>
 
-                          <div className="space-y-1 max-h-64 overflow-y-auto overscroll-contain">
+                          <div
+                            className="space-y-1 max-h-64 overflow-y-auto overscroll-contain"
+                            onWheel={(e) => e.stopPropagation()}
+                          >
                             {buscaRaci.trim() &&
                               !parceirosFiltrados.some(
                                 (p) =>
