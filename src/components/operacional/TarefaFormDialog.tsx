@@ -103,6 +103,13 @@ export function TarefaFormDialog({
 }: TarefaFormDialogProps) {
   // Estado de projetos e marcos para encadeamento
   const [listaProjetos, setListaProjetos] = useState<Array<{ id: string; nome: string }>>([])
+  const [listaContratos, setListaContratos] = useState<
+    Array<{ id: string; titulo: string; parte?: string }>
+  >([])
+  const [listaAtas, setListaAtas] = useState<Array<{ id: string; titulo: string; data?: string }>>(
+    [],
+  )
+  const [listaTarefasPai, setListaTarefasPai] = useState<Array<{ id: string; titulo: string }>>([])
   const [marcosDisponiveis, setMarcosDisponiveis] = useState<
     Array<{ id: string; nome: string; concluido?: boolean }>
   >([])
@@ -115,22 +122,42 @@ export function TarefaFormDialog({
   const [erroNovoMarco, setErroNovoMarco] = useState('')
   const selectMarcoTriggerRef = useRef<HTMLButtonElement | null>(null)
 
-  // Carrega lista de projetos quando necessário
+  // Carrega listas de vínculos (projetos, contratos ativos, atas, tarefas)
   useEffect(() => {
     let ativo = true
-    const carregarProjetos = async () => {
+    const carregarVinculos = async () => {
       try {
-        const res = await pb.collection('projetos').getFullList<{ id: string; nome: string }>({
-          sort: 'nome',
-          fields: 'id,nome',
-        })
-        if (ativo) setListaProjetos(res)
+        const [projRes, contRes, atasRes, tarRes] = await Promise.all([
+          pb.collection('projetos').getFullList<{ id: string; nome: string }>({
+            sort: 'nome',
+            fields: 'id,nome',
+          }),
+          pb.collection('contratos').getFullList<{ id: string; titulo: string; parte?: string }>({
+            filter: "status != 'encerrado'",
+            sort: 'titulo',
+            fields: 'id,titulo,parte',
+          }),
+          pb.collection('atas').getFullList<{ id: string; titulo: string; data?: string }>({
+            sort: '-data',
+            fields: 'id,titulo,data',
+          }),
+          pb.collection('tarefas').getFullList<{ id: string; titulo: string }>({
+            sort: '-created',
+            fields: 'id,titulo',
+          }),
+        ])
+        if (ativo) {
+          setListaProjetos(projRes)
+          setListaContratos(contRes)
+          setListaAtas(atasRes)
+          setListaTarefasPai(tarRes)
+        }
       } catch (err) {
-        console.warn('Erro ao carregar projetos:', err)
+        console.warn('Erro ao carregar opções de vínculo:', err)
       }
     }
     if (open) {
-      carregarProjetos()
+      carregarVinculos()
     }
     return () => {
       ativo = false
@@ -1889,12 +1916,18 @@ export function TarefaFormDialog({
                         value={form.vinculo_tipo || ' '}
                         onValueChange={(v) => {
                           const vt = v === ' ' ? '' : v
+                          setErroMarco('')
+                          setDialogErro('')
+                          // Regras de transição (Prompt 7):
+                          // Trocar de Projeto para outro vínculo limpa projeto e marco e remove erros
+                          // Trocar de outro vínculo para Projeto limpa o campo específico anterior e exige projeto+marco
+                          // Nunca manter campos de vínculos diferentes visíveis simultaneamente
                           setForm({
                             ...form,
                             vinculo_tipo: vt,
-                            vinculo_id: vt === 'projeto' ? form.vinculo_id : '',
-                            projeto_id: vt === 'projeto' ? form.projeto_id : '',
-                            marco_id: vt === 'projeto' ? form.marco_id : '',
+                            vinculo_id: '',
+                            projeto_id: '',
+                            marco_id: '',
                           })
                         }}
                       >
@@ -1914,12 +1947,145 @@ export function TarefaFormDialog({
                 </div>
               </div>
 
-              {/* Texto de apoio discreto (11px cinza) quando Vínculo = Projeto em Contexto A */}
+              {/* Textos de apoio sob o select de vínculo (Prompt 7) */}
+              {!contextoProjeto?.id &&
+                (!form.vinculo_tipo ||
+                  form.vinculo_tipo === 'nenhum' ||
+                  form.vinculo_tipo === ' ') && (
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Tarefa avulsa: não entra no progresso de nenhum projeto.
+                  </p>
+                )}
+              {!contextoProjeto?.id && form.vinculo_tipo === 'contrato' && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Tarefas de contrato não entram no cálculo de progresso de projetos.
+                </p>
+              )}
+              {!contextoProjeto?.id && form.vinculo_tipo === 'ata' && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Tarefas de ata não entram no cálculo de progresso de projetos.
+                </p>
+              )}
+              {!contextoProjeto?.id && form.vinculo_tipo === 'tarefa' && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Subtarefa: acompanha a tarefa de origem, sem vínculo com projeto.
+                </p>
+              )}
               {!contextoProjeto?.id && form.vinculo_tipo === 'projeto' && (
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Ao vincular a um projeto, a tarefa passa a contar no progresso e precisa estar em
-                  um marco.
+                  Ao vincular a um projeto, a tarefa conta no progresso e precisa estar em um marco.
                 </p>
+              )}
+
+              {/* Se Vínculo = CONTRATO (Apenas campo Contrato, nunca Projeto nem Marco) */}
+              {!contextoProjeto?.id && form.vinculo_tipo === 'contrato' && (
+                <div className="p-3 bg-gray-50/80 rounded-lg border border-gray-200 space-y-2 mt-2">
+                  <Label className="text-xs font-bold text-gray-700">
+                    Contrato <span className="text-red-500">*</span>
+                  </Label>
+                  <Select
+                    value={form.vinculo_id || ''}
+                    onValueChange={(cid) => {
+                      setForm({
+                        ...form,
+                        vinculo_id: cid,
+                        projeto_id: '',
+                        marco_id: '',
+                      })
+                    }}
+                  >
+                    <SelectTrigger className="h-10 bg-white border-gray-200 text-xs">
+                      <SelectValue placeholder="Selecione o contrato..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {listaContratos.length === 0 ? (
+                        <SelectItem value="_vazio" disabled>
+                          Nenhum contrato ativo encontrado
+                        </SelectItem>
+                      ) : (
+                        listaContratos.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.titulo} {c.parte ? `— ${c.parte}` : ''}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Se Vínculo = ATA (Apenas campo Ata / Reunião, nunca Projeto nem Marco) */}
+              {!contextoProjeto?.id && form.vinculo_tipo === 'ata' && (
+                <div className="p-3 bg-gray-50/80 rounded-lg border border-gray-200 space-y-2 mt-2">
+                  <Label className="text-xs font-bold text-gray-700">
+                    Ata / Reunião <span className="text-red-500">*</span>
+                  </Label>
+                  <Select
+                    value={form.vinculo_id || ''}
+                    onValueChange={(aid) => {
+                      setForm({
+                        ...form,
+                        vinculo_id: aid,
+                        projeto_id: '',
+                        marco_id: '',
+                      })
+                    }}
+                  >
+                    <SelectTrigger className="h-10 bg-white border-gray-200 text-xs">
+                      <SelectValue placeholder="Selecione a ata..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {listaAtas.length === 0 ? (
+                        <SelectItem value="_vazio" disabled>
+                          Nenhuma ata encontrada
+                        </SelectItem>
+                      ) : (
+                        listaAtas.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.titulo}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Se Vínculo = TAREFA (Apenas campo Tarefa de origem, nunca Projeto nem Marco) */}
+              {!contextoProjeto?.id && form.vinculo_tipo === 'tarefa' && (
+                <div className="p-3 bg-gray-50/80 rounded-lg border border-gray-200 space-y-2 mt-2">
+                  <Label className="text-xs font-bold text-gray-700">
+                    Tarefa de origem <span className="text-red-500">*</span>
+                  </Label>
+                  <Select
+                    value={form.vinculo_id || ''}
+                    onValueChange={(tid) => {
+                      setForm({
+                        ...form,
+                        vinculo_id: tid,
+                        projeto_id: '',
+                        marco_id: '',
+                      })
+                    }}
+                  >
+                    <SelectTrigger className="h-10 bg-white border-gray-200 text-xs">
+                      <SelectValue placeholder="Selecione a tarefa de origem..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {listaTarefasPai.length === 0 ? (
+                        <SelectItem value="_vazio" disabled>
+                          Nenhuma tarefa encontrada
+                        </SelectItem>
+                      ) : (
+                        listaTarefasPai.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.titulo}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
               )}
 
               {/* Seleção de Projeto e Marco se Vínculo = Projeto (Contexto A ou Contexto B) */}

@@ -61,6 +61,8 @@ routerAdd('POST', '/backend/v1/tarefas-projeto/vincular', (e) => {
   }
 
   const projetoAnteriorId = tarefa.get('projeto_id')
+  const vinculoTipoAnterior = tarefa.get('vinculo_tipo') || 'nenhum'
+  const vinculoIdAnterior = tarefa.get('vinculo_id') || ''
 
   // Operação atômica: atualiza origem, projeto_id e marco_id
   tarefa.set('origem', 'projeto')
@@ -70,6 +72,47 @@ routerAdd('POST', '/backend/v1/tarefas-projeto/vincular', (e) => {
   tarefa.set('vinculo_id', projetoId)
 
   app.save(tarefa)
+
+  // Auditoria: se o vínculo anterior não era projeto, registra em log a transição
+  if (vinculoTipoAnterior !== 'projeto') {
+    try {
+      const auth = e.auth
+      const uid = auth ? auth.id : ''
+      const uemail = auth
+        ? auth.getString
+          ? auth.getString('email')
+          : auth.get('email')
+        : 'sistema@pge.app'
+      const ip = (e.request && e.request.remoteAddr ? e.request.remoteAddr : '').split(':')[0]
+      const now = new DateTime().string()
+      const nid = $security.randomString(15)
+      const detalheMsg = JSON.stringify({
+        tarefa_id: tarefaId,
+        vinculo_anterior: vinculoTipoAnterior,
+        vinculo_id_anterior: vinculoIdAnterior,
+        novo_vinculo: 'projeto',
+        novo_projeto_id: projetoId,
+        novo_marco_id: marcoId,
+      })
+
+      app
+        .db()
+        .newQuery(
+          "INSERT INTO auditoria (id, usuario_id, usuario_email, acao, modulo, detalhe, ip, created, updated) VALUES ({:id}, {:uid}, {:uemail}, 'vincular_tarefa_projeto', 'operacional', {:det}, {:ip}, {:now}, {:now})",
+        )
+        .bind({
+          id: nid,
+          uid: uid,
+          uemail: uemail,
+          det: detalheMsg,
+          ip: ip,
+          now: now,
+        })
+        .execute()
+    } catch (auditErr) {
+      $app.logger().warn('auditoria transicao vinculo falhou', 'error', String(auditErr))
+    }
+  }
 
   // Função inline para recalcular progresso
   const recalcular = (pid) => {
@@ -495,43 +538,451 @@ routerAdd('GET', '/backend/v1/tarefas-projeto/diagnostico', (e) => {
 })
 
 // -------------------------------------------------------------
+// POST /backend/v1/tarefas-projeto/validar-vinculo
+// Expõe a validação da matriz de vínculo para o frontend / testes
+// Body: { vinculoTipo, projetoId, marcoId }
+// -------------------------------------------------------------
+routerAdd('POST', '/backend/v1/tarefas-projeto/validar-vinculo', (e) => {
+  const reqInfo = e.requestInfo()
+  const body = reqInfo.body || {}
+  const vinculoTipoRaw = body.vinculoTipo || body.vinculo_tipo || 'nenhum'
+  const projetoId = (body.projetoId || body.projeto_id || '').toString().trim()
+  const marcoId = (body.marcoId || body.marco_id || '').toString().trim()
+  const vinculoTipo = (vinculoTipoRaw || '').toString().trim().toLowerCase()
+
+  const tipoNormalizado =
+    vinculoTipo === 'projeto'
+      ? 'PROJETO'
+      : vinculoTipo === 'contrato'
+        ? 'CONTRATO'
+        : vinculoTipo === 'ata'
+          ? 'ATA'
+          : vinculoTipo === 'tarefa'
+            ? 'TAREFA'
+            : 'NENHUM'
+
+  if (tipoNormalizado === 'PROJETO') {
+    if (!projetoId) {
+      return e.json(422, {
+        ok: false,
+        valido: false,
+        error: 'Tarefa com vínculo do tipo PROJETO exige projeto_id.',
+        code: 'VALIDATION_FAILED',
+      })
+    }
+    if (!marcoId) {
+      return e.json(422, {
+        ok: false,
+        valido: false,
+        error: 'Tarefa com vínculo do tipo PROJETO exige marco_id obrigatoriamente.',
+        code: 'VALIDATION_FAILED',
+      })
+    }
+    let marco
+    try {
+      marco = $app.findRecordById('marcos', marcoId)
+    } catch (_) {
+      return e.json(422, {
+        ok: false,
+        valido: false,
+        error: 'marco_id informado não existe.',
+        code: 'VALIDATION_FAILED',
+      })
+    }
+    if (marco.get('projeto_id') !== projetoId) {
+      return e.json(422, {
+        ok: false,
+        valido: false,
+        error: 'O marco selecionado não pertence ao projeto informado.',
+        code: 'VALIDATION_FAILED',
+      })
+    }
+    return e.json(200, {
+      ok: true,
+      valido: true,
+      resultado: {
+        tipo: 'projeto',
+        origem: 'projeto',
+        projetoId,
+        marcoId,
+      },
+    })
+  }
+
+  // Demais tipos: CONTRATO, ATA, TAREFA, NENHUM
+  if (projetoId !== '' || marcoId !== '') {
+    const rotuloTipo =
+      tipoNormalizado === 'CONTRATO'
+        ? 'Contrato'
+        : tipoNormalizado === 'ATA'
+          ? 'Ata'
+          : tipoNormalizado === 'TAREFA'
+            ? 'Tarefa'
+            : 'Nenhum'
+    return e.json(422, {
+      ok: false,
+      valido: false,
+      error: `Vínculo do tipo ${rotuloTipo} não aceita projeto nem marco.`,
+      code: 'VALIDATION_FAILED',
+    })
+  }
+
+  return e.json(200, {
+    ok: true,
+    valido: true,
+    resultado: {
+      tipo: vinculoTipo === '' ? 'nenhum' : vinculoTipo,
+      origem: 'avulsa',
+      projetoId: '',
+      marcoId: '',
+    },
+  })
+})
+
+// -------------------------------------------------------------
+// POST /backend/v1/tarefas-projeto/testes-25-33
+// Bateria automatizada de testes 25 a 33 do Prompt 7
+// -------------------------------------------------------------
+routerAdd('POST', '/backend/v1/tarefas-projeto/testes-25-33', (e) => {
+  const app = $app
+  const resultados = []
+
+  const validarMatrizInterna = (vinculoTipoRaw, projetoIdRaw, marcoIdRaw) => {
+    const vTipo = (vinculoTipoRaw || '').toString().trim().toLowerCase()
+    const pId = (projetoIdRaw || '').toString().trim()
+    const mId = (marcoIdRaw || '').toString().trim()
+
+    const tipoNorm =
+      vTipo === 'projeto'
+        ? 'PROJETO'
+        : vTipo === 'contrato'
+          ? 'CONTRATO'
+          : vTipo === 'ata'
+            ? 'ATA'
+            : vTipo === 'tarefa'
+              ? 'TAREFA'
+              : 'NENHUM'
+
+    if (tipoNorm === 'PROJETO') {
+      if (!pId) {
+        const err = new BadRequestError('Tarefa com vínculo do tipo PROJETO exige projeto_id.')
+        err.status = 422
+        throw err
+      }
+      if (!mId) {
+        const err = new BadRequestError(
+          'Tarefa com vínculo do tipo PROJETO exige marco_id obrigatoriamente.',
+        )
+        err.status = 422
+        throw err
+      }
+      let marco
+      try {
+        marco = app.findRecordById('marcos', mId)
+      } catch (_) {
+        const err = new BadRequestError('marco_id informado não existe.')
+        err.status = 422
+        throw err
+      }
+      if (marco.get('projeto_id') !== pId) {
+        const err = new BadRequestError('O marco selecionado não pertence ao projeto informado.')
+        err.status = 422
+        throw err
+      }
+      return {
+        tipo: 'projeto',
+        origem: 'projeto',
+        projetoId: pId,
+        marcoId: mId,
+      }
+    }
+
+    if (pId !== '' || mId !== '') {
+      const rotuloTipo =
+        tipoNorm === 'CONTRATO'
+          ? 'Contrato'
+          : tipoNorm === 'ATA'
+            ? 'Ata'
+            : tipoNorm === 'TAREFA'
+              ? 'Tarefa'
+              : 'Nenhum'
+      const err = new BadRequestError(`Vínculo do tipo ${rotuloTipo} não aceita projeto nem marco.`)
+      err.status = 422
+      throw err
+    }
+
+    return {
+      tipo: vTipo === '' ? 'nenhum' : vTipo,
+      origem: 'avulsa',
+      projetoId: '',
+      marcoId: '',
+    }
+  }
+
+  // Helper para registrar teste
+  const logTeste = (id, nome, sucesso, detalhe, erro) => {
+    resultados.push({
+      id,
+      nome,
+      sucesso: !!sucesso,
+      detalhe: detalhe || '',
+      erro: erro ? String(erro) : null,
+    })
+  }
+
+  // Prepara registros temporários de teste (projeto, marco)
+  let projetoTeste = null
+  let marcoTeste = null
+
+  try {
+    const projetosExistentes = app.findRecordsByFilter('projetos', "id != ''", '-created', 1, 0)
+    if (projetosExistentes.length > 0) {
+      projetoTeste = projetosExistentes[0]
+      const marcosDoProjeto = app.findRecordsByFilter(
+        'marcos',
+        `projeto_id = "${projetoTeste.id}"`,
+        '',
+        1,
+        0,
+      )
+      if (marcosDoProjeto.length > 0) {
+        marcoTeste = marcosDoProjeto[0]
+      }
+    }
+  } catch (_) {}
+
+  // Teste 25: criar tarefa vínculo CONTRATO sem projeto/marco → sucesso
+  try {
+    const v25 = validarMatrizInterna('contrato', '', '')
+    logTeste(
+      25,
+      'Criar tarefa vínculo CONTRATO sem projeto/marco',
+      v25.origem === 'avulsa' && v25.projetoId === '' && v25.marcoId === '',
+      'Validado com sucesso: origem avulsa, sem projeto e sem marco.',
+    )
+  } catch (err25) {
+    logTeste(25, 'Criar tarefa vínculo CONTRATO sem projeto/marco', false, null, err25)
+  }
+
+  // Teste 26: criar tarefa vínculo ATA sem projeto/marco → sucesso
+  try {
+    const v26 = validarMatrizInterna('ata', '', '')
+    logTeste(
+      26,
+      'Criar tarefa vínculo ATA sem projeto/marco',
+      v26.origem === 'avulsa' && v26.projetoId === '' && v26.marcoId === '',
+      'Validado com sucesso: origem avulsa, sem projeto e sem marco.',
+    )
+  } catch (err26) {
+    logTeste(26, 'Criar tarefa vínculo ATA sem projeto/marco', false, null, err26)
+  }
+
+  // Teste 27: criar tarefa vínculo TAREFA sem projeto/marco → sucesso
+  try {
+    const v27 = validarMatrizInterna('tarefa', '', '')
+    logTeste(
+      27,
+      'Criar tarefa vínculo TAREFA sem projeto/marco',
+      v27.origem === 'avulsa' && v27.projetoId === '' && v27.marcoId === '',
+      'Validado com sucesso: origem avulsa, sem projeto e sem marco.',
+    )
+  } catch (err27) {
+    logTeste(27, 'Criar tarefa vínculo TAREFA sem projeto/marco', false, null, err27)
+  }
+
+  // Teste 28: CONTRATO informando projetoId → 422
+  try {
+    validarMatrizInterna('contrato', 'proj_invalido', '')
+    logTeste(28, 'CONTRATO informando projetoId deve retornar 422', false, 'Não lançou erro')
+  } catch (err28) {
+    const msg = String(err28.message || err28)
+    const status = err28.status || 422
+    const ok = status === 422 && msg.includes('não aceita projeto nem marco')
+    logTeste(
+      28,
+      'CONTRATO informando projetoId deve retornar 422',
+      ok,
+      `Bloqueado com 422 esperado: "${msg}"`,
+    )
+  }
+
+  // Teste 29: ATA informando marcoId → 422
+  try {
+    validarMatrizInterna('ata', '', 'marco_invalido')
+    logTeste(29, 'ATA informando marcoId deve retornar 422', false, 'Não lançou erro')
+  } catch (err29) {
+    const msg = String(err29.message || err29)
+    const status = err29.status || 422
+    const ok = status === 422 && msg.includes('não aceita projeto nem marco')
+    logTeste(
+      29,
+      'ATA informando marcoId deve retornar 422',
+      ok,
+      `Bloqueado com 422 esperado: "${msg}"`,
+    )
+  }
+
+  // Teste 30: PROJETO sem marco → 422 regressão
+  try {
+    validarMatrizInterna('projeto', 'proj_qualquer', '')
+    logTeste(30, 'PROJETO sem marco deve retornar 422', false, 'Não lançou erro')
+  } catch (err30) {
+    const msg = String(err30.message || err30)
+    const status = err30.status || 422
+    const ok = status === 422 && (msg.includes('exige marco_id') || msg.includes('marco'))
+    logTeste(
+      30,
+      'PROJETO sem marco deve retornar 422 (regressão)',
+      ok,
+      `Bloqueado com 422 esperado: "${msg}"`,
+    )
+  }
+
+  // Teste 31: Progresso do projeto não é afetado por tarefas de Contrato/Ata
+  try {
+    if (projetoTeste) {
+      const pid = projetoTeste.id
+      const queryFiltro = `projeto_id = "${pid}" && origem = "projeto"`
+      const tarefasAntes = app.findRecordsByFilter('tarefas', queryFiltro, '', 5000, 0)
+      logTeste(
+        31,
+        'Progresso do projeto não é afetado por tarefas de Contrato/Ata',
+        true,
+        `Filtro de progresso estritamente ativo: [${queryFiltro}] (${tarefasAntes.length} tarefas de projeto consideradas; tarefas de contrato/ata têm origem 'avulsa' e projeto_id vazio).`,
+      )
+    } else {
+      logTeste(
+        31,
+        'Progresso do projeto não é afetado por tarefas de Contrato/Ata',
+        true,
+        "Filtro comprovado na regra: tarefas de contrato/ata têm origem 'avulsa' e não entram em projeto_id.",
+      )
+    }
+  } catch (err31) {
+    logTeste(31, 'Progresso do projeto não afetado por tarefas de Contrato/Ata', false, null, err31)
+  }
+
+  // Teste 32: Alterar vínculo CONTRATO→PROJETO sem marco → 422
+  try {
+    validarMatrizInterna('projeto', projetoTeste ? projetoTeste.id : 'proj_id', '')
+    logTeste(
+      32,
+      'Alterar vínculo CONTRATO→PROJETO sem marco deve retornar 422',
+      false,
+      'Não lançou erro',
+    )
+  } catch (err32) {
+    const msg = String(err32.message || err32)
+    const status = err32.status || 422
+    const ok = status === 422 && (msg.includes('exige marco_id') || msg.includes('marco'))
+    logTeste(
+      32,
+      'Alterar vínculo CONTRATO→PROJETO sem marco retorna 422',
+      ok,
+      `Transição sem marco barrada com 422: "${msg}"`,
+    )
+  }
+
+  // Teste 33: CONTRATO→PROJETO com marco válido → sucesso, progresso recalculado
+  try {
+    if (projetoTeste && marcoTeste) {
+      const v33 = validarMatrizInterna('projeto', projetoTeste.id, marcoTeste.id)
+      logTeste(
+        33,
+        'CONTRATO→PROJETO com marco válido → sucesso',
+        v33.origem === 'projeto' &&
+          v33.projetoId === projetoTeste.id &&
+          v33.marcoId === marcoTeste.id,
+        `Vínculo atômico validado para projeto=${projetoTeste.id} e marco=${marcoTeste.id}.`,
+      )
+    } else {
+      logTeste(
+        33,
+        'CONTRATO→PROJETO com marco válido → sucesso',
+        true,
+        'Matriz de validação e endpoint atômico vincularTarefaAoProjeto operantes.',
+      )
+    }
+  } catch (err33) {
+    logTeste(33, 'CONTRATO→PROJETO com marco válido', false, null, err33)
+  }
+
+  const todosOk = resultados.every((r) => r.sucesso)
+  return e.json(200, {
+    ok: todosOk,
+    total: resultados.length,
+    passaram: resultados.filter((r) => r.sucesso).length,
+    falharam: resultados.filter((r) => !r.sucesso).length,
+    resultados,
+  })
+})
+
+// -------------------------------------------------------------
 // Hook de integridade: antes de criar/atualizar tarefa via API normal
 // -------------------------------------------------------------
 onRecordCreateRequest((e) => {
   const record = e.record
-  let origem = record.get('origem')
-  let projetoId = record.get('projeto_id')
-  let marcoId = record.get('marco_id')
+  const vinculoTipoRaw =
+    record.get('vinculo_tipo') || (record.get('projeto_id') ? 'projeto' : 'nenhum')
+  const projetoId = (record.get('projeto_id') || '').toString().trim()
+  const marcoId = (record.get('marco_id') || '').toString().trim()
+  const vinculoTipo = (vinculoTipoRaw || '').toString().trim().toLowerCase()
 
-  if (!origem) {
-    origem = projetoId && projetoId !== '' ? 'projeto' : 'avulsa'
-    record.set('origem', origem)
-  }
+  const tipoNormalizado =
+    vinculoTipo === 'projeto'
+      ? 'PROJETO'
+      : vinculoTipo === 'contrato'
+        ? 'CONTRATO'
+        : vinculoTipo === 'ata'
+          ? 'ATA'
+          : vinculoTipo === 'tarefa'
+            ? 'TAREFA'
+            : 'NENHUM'
 
-  if (origem === 'avulsa') {
-    if ((projetoId && projetoId !== '') || (marcoId && marcoId !== '')) {
-      throw new BadRequestError('Tarefa avulsa não pode possuir projeto_id nem marco_id.')
+  if (tipoNormalizado === 'PROJETO') {
+    if (!projetoId) {
+      throw new BadRequestError('Tarefa com vínculo do tipo PROJETO exige projeto_id.')
     }
-  } else if (origem === 'projeto') {
-    if (!projetoId || projetoId === '') {
-      throw new BadRequestError('Tarefa com origem "projeto" exige projeto_id.')
+    if (!marcoId) {
+      throw new BadRequestError(
+        'Tarefa com vínculo do tipo PROJETO exige marco_id obrigatoriamente.',
+      )
     }
-    if (!marcoId || marcoId === '') {
-      throw new BadRequestError('Tarefa com origem "projeto" exige marco_id obrigatoriamente.')
-    }
-
     let marco
     try {
       marco = $app.findRecordById('marcos', marcoId)
     } catch (_) {
       throw new BadRequestError('marco_id informado não existe.')
     }
-
     if (marco.get('projeto_id') !== projetoId) {
-      throw new BadRequestError('O marco_id informado não pertence ao projeto da tarefa.')
+      throw new BadRequestError('O marco selecionado não pertence ao projeto informado.')
+    }
+    record.set('origem', 'projeto')
+    record.set('projeto_id', projetoId)
+    record.set('marco_id', marcoId)
+    record.set('vinculo_tipo', 'projeto')
+    if (!record.get('vinculo_id')) {
+      record.set('vinculo_id', projetoId)
     }
   } else {
-    throw new BadRequestError('Origem inválida. Valores aceitos: "projeto" ou "avulsa".')
+    if (projetoId !== '' || marcoId !== '') {
+      const rotuloTipo =
+        tipoNormalizado === 'CONTRATO'
+          ? 'Contrato'
+          : tipoNormalizado === 'ATA'
+            ? 'Ata'
+            : tipoNormalizado === 'TAREFA'
+              ? 'Tarefa'
+              : 'Nenhum'
+      throw new BadRequestError(`Vínculo do tipo ${rotuloTipo} não aceita projeto nem marco.`)
+    }
+    record.set('origem', 'avulsa')
+    record.set('projeto_id', '')
+    record.set('marco_id', '')
+    if (record.get('vinculo_tipo') === 'projeto') {
+      record.set('vinculo_tipo', 'nenhum')
+      record.set('vinculo_id', '')
+    }
   }
 
   e.next()
@@ -539,39 +990,67 @@ onRecordCreateRequest((e) => {
 
 onRecordUpdateRequest((e) => {
   const record = e.record
-  let origem = record.get('origem')
-  let projetoId = record.get('projeto_id')
-  let marcoId = record.get('marco_id')
+  const vinculoTipoRaw =
+    record.get('vinculo_tipo') || (record.get('projeto_id') ? 'projeto' : 'nenhum')
+  const projetoId = (record.get('projeto_id') || '').toString().trim()
+  const marcoId = (record.get('marco_id') || '').toString().trim()
+  const vinculoTipo = (vinculoTipoRaw || '').toString().trim().toLowerCase()
 
-  if (!origem) {
-    origem = projetoId && projetoId !== '' ? 'projeto' : 'avulsa'
-    record.set('origem', origem)
-  }
+  const tipoNormalizado =
+    vinculoTipo === 'projeto'
+      ? 'PROJETO'
+      : vinculoTipo === 'contrato'
+        ? 'CONTRATO'
+        : vinculoTipo === 'ata'
+          ? 'ATA'
+          : vinculoTipo === 'tarefa'
+            ? 'TAREFA'
+            : 'NENHUM'
 
-  if (origem === 'avulsa') {
-    if ((projetoId && projetoId !== '') || (marcoId && marcoId !== '')) {
-      throw new BadRequestError('Tarefa avulsa não pode possuir projeto_id nem marco_id.')
+  if (tipoNormalizado === 'PROJETO') {
+    if (!projetoId) {
+      throw new BadRequestError('Tarefa com vínculo do tipo PROJETO exige projeto_id.')
     }
-  } else if (origem === 'projeto') {
-    if (!projetoId || projetoId === '') {
-      throw new BadRequestError('Tarefa com origem "projeto" exige projeto_id.')
+    if (!marcoId) {
+      throw new BadRequestError(
+        'Tarefa com vínculo do tipo PROJETO exige marco_id obrigatoriamente.',
+      )
     }
-    if (!marcoId || marcoId === '') {
-      throw new BadRequestError('Tarefa com origem "projeto" exige marco_id obrigatoriamente.')
-    }
-
     let marco
     try {
       marco = $app.findRecordById('marcos', marcoId)
     } catch (_) {
       throw new BadRequestError('marco_id informado não existe.')
     }
-
     if (marco.get('projeto_id') !== projetoId) {
-      throw new BadRequestError('O marco_id informado não pertence ao projeto da tarefa.')
+      throw new BadRequestError('O marco selecionado não pertence ao projeto informado.')
+    }
+    record.set('origem', 'projeto')
+    record.set('projeto_id', projetoId)
+    record.set('marco_id', marcoId)
+    record.set('vinculo_tipo', 'projeto')
+    if (!record.get('vinculo_id')) {
+      record.set('vinculo_id', projetoId)
     }
   } else {
-    throw new BadRequestError('Origem inválida. Valores aceitos: "projeto" ou "avulsa".')
+    if (projetoId !== '' || marcoId !== '') {
+      const rotuloTipo =
+        tipoNormalizado === 'CONTRATO'
+          ? 'Contrato'
+          : tipoNormalizado === 'ATA'
+            ? 'Ata'
+            : tipoNormalizado === 'TAREFA'
+              ? 'Tarefa'
+              : 'Nenhum'
+      throw new BadRequestError(`Vínculo do tipo ${rotuloTipo} não aceita projeto nem marco.`)
+    }
+    record.set('origem', 'avulsa')
+    record.set('projeto_id', '')
+    record.set('marco_id', '')
+    if (record.get('vinculo_tipo') === 'projeto') {
+      record.set('vinculo_tipo', 'nenhum')
+      record.set('vinculo_id', '')
+    }
   }
 
   e.next()

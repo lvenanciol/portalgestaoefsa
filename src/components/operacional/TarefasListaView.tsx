@@ -253,24 +253,27 @@ export function TarefasListaView({
                                       </button>
                                     )}
                                   </div>
-                                  {/* Badge de Vínculo: avulsa (cinza) ou de projeto (verde) ou outros */}
+                                  {/* Badge de Vínculo (Prompt 7): Nenhum -> avulsa (neutro cinza); Contrato -> de contrato (verde claro); Ata -> de ata (verde claro); Tarefa -> subtarefa (cinza); Projeto -> de projeto (verde) */}
                                   <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                                     {ehProjeto ? (
                                       <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
                                         de projeto
                                       </span>
+                                    ) : t.vinculo_tipo === 'contrato' ? (
+                                      <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50/80 text-emerald-800 border border-emerald-200">
+                                        de contrato
+                                      </span>
+                                    ) : t.vinculo_tipo === 'ata' ? (
+                                      <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50/80 text-emerald-800 border border-emerald-200">
+                                        de ata
+                                      </span>
+                                    ) : t.vinculo_tipo === 'tarefa' ? (
+                                      <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                                        subtarefa
+                                      </span>
                                     ) : (
                                       <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
                                         avulsa
-                                      </span>
-                                    )}
-                                    {t.vinculo_tipo && t.vinculo_tipo !== 'projeto' && (
-                                      <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
-                                        {t.vinculo_tipo === 'ata'
-                                          ? 'de ata'
-                                          : t.vinculo_tipo === 'contrato'
-                                            ? 'de contrato'
-                                            : t.vinculo_tipo}
                                       </span>
                                     )}
                                   </div>

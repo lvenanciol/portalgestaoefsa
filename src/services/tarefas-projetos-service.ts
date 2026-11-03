@@ -58,17 +58,45 @@ export interface DiagnosticoOrigemResposta {
   total_marcos: number
   classe_a_projeto_com_marco: number
   classe_b_avulsa_em_conformidade: number
-  violacoes_integridade: number
-  violacoes: Array<{
+  classe_c_inconsistente_projeto_sem_marco: number
+  tarefas_inconsistentes: Array<{
     id: string
-    titulo?: string
-    origem?: string
-    projeto_id?: string
-    marco_id?: string
-    motivo: string
+    titulo: string
+    projeto_id: string
+    projeto_nome: string
+    responsavel?: string
   }>
+  conformidade_percentual: number
 }
 
+export interface ValidarVinculoResposta {
+  ok: boolean
+  valido: boolean
+  resultado?: {
+    tipo: string
+    origem: 'projeto' | 'avulsa'
+    projetoId: string
+    marcoId: string
+  }
+  error?: string
+  code?: string
+}
+
+export interface ItemTestePrompt7 {
+  id: number
+  nome: string
+  sucesso: boolean
+  detalhe: string
+  erro?: string | null
+}
+
+export interface BateriaTestesResposta {
+  ok: boolean
+  total: number
+  passaram: number
+  falharam: number
+  resultados: ItemTestePrompt7[]
+}
 /**
  * Endpoint dedicado para vincular tarefa a um projeto com marco obrigatório.
  * Regras:
@@ -154,12 +182,39 @@ export async function recalcularProgressoProjeto(projetoId: string): Promise<Pro
  * Obtém diagnóstico atual do modelo de vínculo por ORIGEM.
  */
 export async function obterDiagnosticoOrigem(): Promise<DiagnosticoOrigemResposta> {
-  const res = await pb.send<DiagnosticoOrigemResposta>('/backend/v1/tarefas-projeto/diagnostico', {
+  const resp = await pb.send<DiagnosticoOrigemResposta>('/backend/v1/tarefas-projeto/diagnostico', {
     method: 'GET',
   })
-  return res
+  return resp
 }
 
+/**
+ * Valida a matriz de vínculo no backend (PROMPT 7)
+ */
+export async function validarVinculoTarefaApi(params: {
+  vinculoTipo: string
+  projetoId?: string
+  marcoId?: string
+}): Promise<ValidarVinculoResposta> {
+  const resp = await pb.send<ValidarVinculoResposta>(
+    '/backend/v1/tarefas-projeto/validar-vinculo',
+    {
+      method: 'POST',
+      body: params,
+    },
+  )
+  return resp
+}
+
+/**
+ * Executa a bateria de testes automatizados 25 a 33 do Prompt 7
+ */
+export async function executarTestes25a33Prompt7(): Promise<BateriaTestesResposta> {
+  const resp = await pb.send<BateriaTestesResposta>('/backend/v1/tarefas-projeto/testes-25-33', {
+    method: 'POST',
+  })
+  return resp
+}
 /**
  * Busca lista de marcos de um projeto ordenados.
  */
