@@ -130,8 +130,9 @@ export default function ProjetosBoardPage() {
 
   const [buscaTexto, setBuscaTexto] = useState('')
   const [chipAtivo, setChipAtivo] = useState<ChipFiltro>('todos')
-  const [filtroEmpresa, setFiltroEmpresa] = useState<string>('todas')
-  const [filtroResponsavel, setFiltroResponsavel] = useState<string>('todos')
+  // Multiseleção: listas de empresas e responsáveis marcados no filtro
+  const [filtroEmpresa, setFiltroEmpresa] = useState<string[]>([])
+  const [filtroResponsavel, setFiltroResponsavel] = useState<string[]>([])
 
   // Estados dos Popovers de filtro da toolbar
   const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
@@ -145,7 +146,7 @@ export default function ProjetosBoardPage() {
   )
   const [parceirosBanco, setParceirosBanco] = useState<any[]>([])
 
-  const { obterSiglaCor } = useEmpresaLogos()
+  const { obterSiglaCor, obterIconeEmpresa } = useEmpresaLogos()
 
   const carregar = async () => {
     setLoading(true)
@@ -252,14 +253,18 @@ export default function ProjetosBoardPage() {
         }
       }
 
-      // 3. Select Empresa
-      if (filtroEmpresa !== 'todas') {
-        if (String(p.empresa || '').trim() !== filtroEmpresa) return false
+      // 3. Empresas (multiseleção, tolerante a valores legados em maiúsculas)
+      if (filtroEmpresa.length > 0) {
+        const emp = String(p.empresa || '')
+          .trim()
+          .toLowerCase()
+        if (!filtroEmpresa.some((e) => e.toLowerCase() === emp)) return false
       }
 
-      // 4. Select Responsável
-      if (filtroResponsavel !== 'todos') {
-        if (String(p.responsavel || '').trim() !== filtroResponsavel) return false
+      // 4. Responsáveis (multiseleção)
+      if (filtroResponsavel.length > 0) {
+        const resp = String(p.responsavel || '').trim()
+        if (!filtroResponsavel.some((r) => r.toLowerCase() === resp.toLowerCase())) return false
       }
 
       return true
@@ -297,14 +302,14 @@ export default function ProjetosBoardPage() {
   const temFiltroAtivo =
     buscaTexto.trim() !== '' ||
     chipAtivo !== 'todos' ||
-    filtroEmpresa !== 'todas' ||
-    filtroResponsavel !== 'todos'
+    filtroEmpresa.length > 0 ||
+    filtroResponsavel.length > 0
 
   const limparFiltros = () => {
     setBuscaTexto('')
     setChipAtivo('todos')
-    setFiltroEmpresa('todas')
-    setFiltroResponsavel('todos')
+    setFiltroEmpresa([])
+    setFiltroResponsavel([])
   }
 
   const abrirNovo = () => {
@@ -576,21 +581,26 @@ export default function ProjetosBoardPage() {
                 type="button"
                 className={cn(
                   'h-9 px-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-xs font-medium text-gray-800 shadow-2xs inline-flex items-center gap-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20 cursor-pointer min-w-[140px] max-w-[200px]',
-                  filtroEmpresa !== 'todas' &&
+                  filtroEmpresa.length > 0 &&
                     'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50 font-semibold',
                 )}
                 title="Filtro de Empresa"
               >
-                {filtroEmpresa !== 'todas' ? (
-                  <span
-                    className="h-2 w-2 rounded-full shrink-0"
-                    style={{ backgroundColor: obterSiglaCor(filtroEmpresa).cor }}
-                  />
+                {filtroEmpresa.length === 1 ? (
+                  obterIconeEmpresa(filtroEmpresa[0], 'h-4 w-4')
+                ) : filtroEmpresa.length > 1 ? (
+                  <span className="w-4 h-4 rounded-xs bg-[#1B5E20] text-white flex items-center justify-center text-[8px] font-bold shrink-0">
+                    {filtroEmpresa.length}
+                  </span>
                 ) : (
                   <Building2 className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                 )}
                 <span className="truncate flex-1 text-left">
-                  {filtroEmpresa === 'todas' ? 'Empresa' : filtroEmpresa}
+                  {filtroEmpresa.length === 0
+                    ? 'Empresa'
+                    : filtroEmpresa.length === 1
+                      ? filtroEmpresa[0]
+                      : `${filtroEmpresa.length} empresas`}
                 </span>
                 <ChevronDown className="h-3 w-3 text-gray-400 shrink-0 ml-1" />
               </button>
@@ -612,21 +622,21 @@ export default function ProjetosBoardPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      setFiltroEmpresa('todas')
+                      setFiltroEmpresa([])
                       setPopoverEmpresaAberto(false)
                     }}
                     className={cn(
                       'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
-                      filtroEmpresa === 'todas'
+                      filtroEmpresa.length === 0
                         ? 'bg-emerald-50 text-[#1B5E20] font-bold'
                         : 'hover:bg-gray-50 text-gray-700',
                     )}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-gray-400" />
+                      <Building2 className="h-3.5 w-3.5 text-gray-400" />
                       <span>Todas as empresas</span>
                     </div>
-                    {filtroEmpresa === 'todas' && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                    {filtroEmpresa.length === 0 && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
                   </button>
 
                   {empresasFiltradas.length === 0 ? (
@@ -635,15 +645,17 @@ export default function ProjetosBoardPage() {
                     </p>
                   ) : (
                     empresasFiltradas.map((emp) => {
-                      const sel = filtroEmpresa === emp
-                      const { cor } = obterSiglaCor(emp)
+                      const sel = filtroEmpresa.some((e) => e.toLowerCase() === emp.toLowerCase())
                       return (
                         <button
                           key={emp}
                           type="button"
                           onClick={() => {
-                            setFiltroEmpresa(emp)
-                            setPopoverEmpresaAberto(false)
+                            setFiltroEmpresa((prev) =>
+                              prev.some((e) => e.toLowerCase() === emp.toLowerCase())
+                                ? prev.filter((e) => e.toLowerCase() !== emp.toLowerCase())
+                                : [...prev, emp],
+                            )
                           }}
                           className={cn(
                             'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
@@ -653,10 +665,7 @@ export default function ProjetosBoardPage() {
                           )}
                         >
                           <div className="flex items-center gap-2 truncate">
-                            <span
-                              className="h-2 w-2 rounded-full shrink-0"
-                              style={{ backgroundColor: cor }}
-                            />
+                            {obterIconeEmpresa(emp, 'h-4 w-4')}
                             <span className="truncate">{emp}</span>
                           </div>
                           {sel && <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0 ml-1" />}
@@ -676,20 +685,28 @@ export default function ProjetosBoardPage() {
                 type="button"
                 className={cn(
                   'h-9 px-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-xs font-medium text-gray-800 shadow-2xs inline-flex items-center gap-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20 cursor-pointer min-w-[140px] max-w-[200px]',
-                  filtroResponsavel !== 'todos' &&
+                  filtroResponsavel.length > 0 &&
                     'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50 font-semibold',
                 )}
                 title="Filtro de Responsável"
               >
-                {filtroResponsavel !== 'todos' ? (
+                {filtroResponsavel.length === 1 ? (
                   <span className="w-4 h-4 rounded-full bg-[#1B5E20] text-white flex items-center justify-center text-[9px] font-bold shrink-0">
-                    {obterIniciaisResponsavel(filtroResponsavel)}
+                    {obterIniciaisResponsavel(filtroResponsavel[0])}
+                  </span>
+                ) : filtroResponsavel.length > 1 ? (
+                  <span className="w-4 h-4 rounded-full bg-[#1B5E20] text-white flex items-center justify-center text-[9px] font-bold shrink-0">
+                    {filtroResponsavel.length}
                   </span>
                 ) : (
                   <User className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                 )}
                 <span className="truncate flex-1 text-left">
-                  {filtroResponsavel === 'todos' ? 'Responsável' : filtroResponsavel}
+                  {filtroResponsavel.length === 0
+                    ? 'Responsável'
+                    : filtroResponsavel.length === 1
+                      ? filtroResponsavel[0]
+                      : `${filtroResponsavel.length} responsáveis`}
                 </span>
                 <ChevronDown className="h-3 w-3 text-gray-400 shrink-0 ml-1" />
               </button>
@@ -711,23 +728,21 @@ export default function ProjetosBoardPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      setFiltroResponsavel('todos')
+                      setFiltroResponsavel([])
                       setPopoverResponsavelAberto(false)
                     }}
                     className={cn(
                       'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
-                      filtroResponsavel === 'todos'
+                      filtroResponsavel.length === 0
                         ? 'bg-emerald-50 text-[#1B5E20] font-bold'
                         : 'hover:bg-gray-50 text-gray-700',
                     )}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="w-4 h-4 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[9px] font-bold">
-                        *
-                      </span>
+                      <User className="h-3.5 w-3.5 text-gray-400" />
                       <span>Todos os responsáveis</span>
                     </div>
-                    {filtroResponsavel === 'todos' && (
+                    {filtroResponsavel.length === 0 && (
                       <Check className="h-3.5 w-3.5 text-[#1B5E20]" />
                     )}
                   </button>
@@ -738,7 +753,7 @@ export default function ProjetosBoardPage() {
                     </p>
                   ) : (
                     responsaveisFiltrados.map((resp) => {
-                      const sel = filtroResponsavel === resp
+                      const sel = filtroResponsavel.includes(resp)
                       const pMatch = parceirosBanco.find(
                         (p) => (limparTextoResponsavel(p.nome) || p.nome) === resp,
                       )
@@ -750,8 +765,11 @@ export default function ProjetosBoardPage() {
                           key={resp}
                           type="button"
                           onClick={() => {
-                            setFiltroResponsavel(resp)
-                            setPopoverResponsavelAberto(false)
+                            setFiltroResponsavel((prev) =>
+                              prev.includes(resp)
+                                ? prev.filter((r) => r !== resp)
+                                : [...prev, resp],
+                            )
                           }}
                           className={cn(
                             'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
