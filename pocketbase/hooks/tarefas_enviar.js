@@ -328,6 +328,42 @@ routerAdd(
           for (var zz = 0; zz < linhaRgb.length; zz++) filtrado.push(linhaRgb[zz])
           prev = cur
         }
+        // ── REDUÇÃO DE ESCALA ───────────────────────────────────────────────
+        // A logo vai no cabeçalho com no máximo 150pt de largura (≈208px a 100dpi).
+        // As imagens do portal são grandes (FoldBox 1920x1080, Casafruti 692x982):
+        // embutir nessa resolução inflava o PDF para ~6 MB. Aqui reduzimos por
+        // AMOSTRAGEM (nearest neighbor), que preserva bordas de logotipo e é O(n)
+        // — decodificar de novo em escala menor exigiria refazer o filtro por linha.
+        var MAXLADO = 400
+        var passoX = 1
+        var passoY = 1
+        if (w > MAXLADO || h > MAXLADO) {
+          // ceil (não round): 512/400 = 1.28 daria round(1.28)=1 e NADA seria
+          // reduzido. Com ceil garantimos passo >= 2 e o lado cai abaixo do limite.
+          var esc = Math.max(w, h) / MAXLADO
+          passoX = Math.max(1, Math.ceil(esc))
+          passoY = passoX
+        }
+        var wFinal = Math.floor((w + passoX - 1) / passoX)
+        var hFinal = Math.floor((h + passoY - 1) / passoY)
+        var reduzido = []
+        if (passoX > 1 || passoY > 1) {
+          // filtrado está em linhas RGB (3 bytes/pixel) já sem alfa
+          for (var ry = 0; ry < hFinal; ry++) {
+            var ly = Math.min(h - 1, ry * passoY)
+            var base = ly * (w * 3)
+            reduzido.push(0) // filtro "None" da linha
+            for (var rx = 0; rx < wFinal; rx++) {
+              var lx = Math.min(w - 1, rx * passoX)
+              var oo = base + lx * 3
+              reduzido.push(filtrado[oo] & 0xff, filtrado[oo + 1] & 0xff, filtrado[oo + 2] & 0xff)
+            }
+          }
+          w = wFinal
+          h = hFinal
+          filtrado = reduzido
+        }
+
         var deflated = deflateZlibStored(filtrado)
         var partes = []
         var CH = 4096
@@ -1218,13 +1254,24 @@ routerAdd(
               const fileKey = lrec.baseFilesPath() + '/' + logoFile
               rdr = pbFsys.getReader(fileKey)
               if (rdr) {
-                // CRÍTICO: bytes binários NÃO podem passar por toString() — a string
-                // sai em UTF-8 e todo byte >= 0x80 vira U+FFFD. Prova: o 0x89 da
-                // assinatura PNG volta como FFFD e a logo nunca é reconhecida,
-                // caindo SEMPRE no badge textual. readerToString preserva os bytes
-                // 1:1 (string binária latin1), que é o que os parsers esperam.
-                rawBytes =
-                  typeof readerToString === 'function' ? readerToString(rdr) : toString(rdr)
+                // CRÍTICO: toString()/readerToString() convertem o conteúdo como
+                // UTF-8 — a doc do PocketBase diz que readerToString "is superseded
+                // by toString", ou seja, são o MESMO comportamento. Todo byte >= 0x80
+                // vira U+FFFD: o 0x89 da assinatura PNG morre e a logo nunca é
+                // reconhecida (log "logo nao converteu", badge textual sempre).
+                // toBytes() devolve a fatia REAL de bytes como number[]; daí
+                // remontamos uma string binária 1:1 (cada char = 1 byte, 0-255),
+                // que é exatamente o que os parsers PNG/JPEG esperam.
+                const arr = toBytes(rdr)
+                let bin = ''
+                const CHK = 8192
+                for (let bi = 0; bi < arr.length; bi += CHK) {
+                  const fim = Math.min(bi + CHK, arr.length)
+                  const pedaco = []
+                  for (let bj = bi; bj < fim; bj++) pedaco.push(arr[bj] & 0xff)
+                  bin += String.fromCharCode.apply(null, pedaco)
+                }
+                rawBytes = bin
               }
             } catch (errRdr) {
               console.warn('Erro ao ler bytes da logo ' + logoFile + ':', errRdr)
@@ -1265,6 +1312,40 @@ routerAdd(
           // puro (JS), compomos sobre BRANCO e re-emitimos como DEFLATE "stored" em
           // zlib — formato aceito pelo /FlateDecode do PDF. Vale para QUALQUER logo
           // RGBA (Casafruti, Extrafruti, LL5, FoldBox), sem depender de thumb.
+          // Diagnóstico: sem saber SE os bytes chegaram e QUAL é o colorType,
+          // "logo nao converteu" não diz onde está o problema. Registra a
+          // assinatura lida (f88 = PNG), o tamanho, o colorType e o bitDepth.
+          try {
+            const n = bytesParaPdf ? bytesParaPdf.length : 0
+            const b0 = n > 0 ? bytesParaPdf.charCodeAt(0) & 0xff : -1
+            const b1 = n > 1 ? bytesParaPdf.charCodeAt(1) & 0xff : -1
+            const ctDiag = n > 25 ? bytesParaPdf.charCodeAt(25) & 0xff : -1
+            const bdDiag = n > 24 ? bytesParaPdf.charCodeAt(24) & 0xff : -1
+            const ilDiag = n > 28 ? bytesParaPdf.charCodeAt(28) & 0xff : -1
+            console.log(
+              '[PDF tarefas] diag ' +
+                logoFile +
+                ' bytes=' +
+                n +
+                ' b0=' +
+                b0 +
+                ' b1=' +
+                b1 +
+                ' colorType=' +
+                ctDiag +
+                ' bitDepth=' +
+                bdDiag +
+                ' interlace=' +
+                ilDiag +
+                ' jpeg=' +
+                ehJpeg(bytesParaPdf) +
+                ' pngDireto=' +
+                pngEmbutivel(bytesParaPdf),
+            )
+          } catch (diagErr) {
+            console.warn('[PDF tarefas] diag falhou: ' + diagErr)
+          }
+
           if (!ehJpeg(bytesParaPdf) && !pngEmbutivel(bytesParaPdf)) {
             const convertido = pngRgbaParaEmbutivel(bytesParaPdf)
             if (convertido) {
