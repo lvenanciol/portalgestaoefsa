@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-03T14:02:11.882Z",
+  "generatedAt": "2026-11-03T14:24:53.999Z",
   "collections": [
     {
       "name": "users",
@@ -893,6 +893,56 @@
         {
           "name": "raci",
           "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "patrocinador",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "prioridade",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Baixa", "Normal", "Alta"]
+        },
+        {
+          "name": "inicio",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "marco_atual",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "Fase 1 de 5",
+            "Fase 2 de 5",
+            "Fase 3 de 5",
+            "Fase 4 de 5",
+            "Fase 5 de 5"
+          ]
+        },
+        {
+          "name": "vinculo_tipo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vinculo_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "anexos",
+          "type": "file",
           "required": false,
           "system": false
         }

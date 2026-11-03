@@ -32,13 +32,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ProjetoFormDialog } from '@/components/operacional/ProjetoFormDialog'
 import {
   Select,
   SelectContent,
@@ -147,8 +142,6 @@ export default function ProjetoDetalhePage() {
 
   // Modal de Edição de Projeto (espelha o modal existente de Projetos)
   const [dialogEdicao, setDialogEdicao] = useState(false)
-  const [formEdicao, setFormEdicao] = useState<any>({})
-  const [salvandoEdicao, setSalvandoEdicao] = useState(false)
 
   // Modal de Nova Tarefa vinculada ao projeto
   const [dialogNovaTarefa, setDialogNovaTarefa] = useState(false)
@@ -419,52 +412,7 @@ export default function ProjetoDetalhePage() {
   // Abertura do modal de Edição de Projeto existente
   const abrirModalEdicao = () => {
     if (!projeto) return
-    setFormEdicao({
-      nome: projeto.nome || '',
-      empresa: projeto.empresa || '',
-      status: projeto.status || 'planejamento',
-      progresso: projeto.progresso ?? 0,
-      responsavel: projeto.responsavel || '',
-      orcamento: projeto.orcamento ?? '',
-      realizado: projeto.realizado ?? '',
-      descricao: projeto.descricao || '',
-      prazo: projeto.prazo ? String(projeto.prazo).slice(0, 10) : '',
-    })
     setDialogEdicao(true)
-  }
-
-  // Salvar Edição do Projeto
-  const salvarEdicaoProjeto = async () => {
-    if (!projeto?.id) return
-    setSalvandoEdicao(true)
-    try {
-      const dados: any = {
-        nome: formEdicao.nome,
-        empresa: formEdicao.empresa,
-        status: formEdicao.status,
-        progresso: Number(formEdicao.progresso) || 0,
-        responsavel: formEdicao.responsavel,
-        orcamento: Number(formEdicao.orcamento) || 0,
-        realizado: Number(formEdicao.realizado) || 0,
-        descricao: formEdicao.descricao,
-        prazo: formEdicao.prazo ? formEdicao.prazo + ' 00:00:00.000Z' : '',
-      }
-      await pb.collection('projetos').update(projeto.id, dados)
-      setDialogEdicao(false)
-      await carregarDados()
-      toast({
-        title: 'Projeto atualizado com sucesso',
-        description: 'As alterações foram salvas.',
-      })
-    } catch (e: any) {
-      toast({
-        title: 'Erro ao salvar projeto',
-        description: String(e?.message || e),
-        variant: 'destructive',
-      })
-    } finally {
-      setSalvandoEdicao(false)
-    }
   }
 
   // Abertura do modal de Nova Tarefa vinculado a este projeto
@@ -1555,138 +1503,13 @@ export default function ProjetoDetalhePage() {
         </div>
       )}
 
-      {/* DIÁLOGO: EDITAR PROJETO (espelha exatamente o modal existente de Projetos) */}
-      <Dialog open={dialogEdicao} onOpenChange={setDialogEdicao}>
-        <DialogContent className="bg-white max-w-md">
-          <DialogHeader>
-            <DialogTitle>Editar projeto</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="grid gap-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Nome *
-              </Label>
-              <Input
-                value={formEdicao.nome || ''}
-                onChange={(e) => setFormEdicao({ ...formEdicao, nome: e.target.value })}
-                className="h-10 bg-gray-50"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Empresa
-                </Label>
-                <Input
-                  value={formEdicao.empresa || ''}
-                  onChange={(e) => setFormEdicao({ ...formEdicao, empresa: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Responsável
-                </Label>
-                <Input
-                  value={formEdicao.responsavel || ''}
-                  onChange={(e) => setFormEdicao({ ...formEdicao, responsavel: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Status
-                </Label>
-                <Select
-                  value={formEdicao.status || 'planejamento'}
-                  onValueChange={(v) => setFormEdicao({ ...formEdicao, status: v })}
-                >
-                  <SelectTrigger className="h-10 bg-gray-50">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="planejamento">planejamento</SelectItem>
-                    <SelectItem value="em_andamento">em andamento</SelectItem>
-                    <SelectItem value="pausado">pausado</SelectItem>
-                    <SelectItem value="concluido">concluído</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Progresso %
-                </Label>
-                <Input
-                  type="number"
-                  value={formEdicao.progresso ?? ''}
-                  onChange={(e) => setFormEdicao({ ...formEdicao, progresso: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Orçamento
-                </Label>
-                <Input
-                  type="number"
-                  value={formEdicao.orcamento ?? ''}
-                  onChange={(e) => setFormEdicao({ ...formEdicao, orcamento: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Realizado (R$)
-                </Label>
-                <Input
-                  type="number"
-                  value={formEdicao.realizado ?? ''}
-                  onChange={(e) => setFormEdicao({ ...formEdicao, realizado: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Prazo
-                </Label>
-                <Input
-                  type="date"
-                  value={formEdicao.prazo || ''}
-                  onChange={(e) => setFormEdicao({ ...formEdicao, prazo: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-            </div>
-            <div className="grid gap-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Descrição
-              </Label>
-              <Textarea
-                value={formEdicao.descricao || ''}
-                onChange={(e) => setFormEdicao({ ...formEdicao, descricao: e.target.value })}
-                rows={3}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogEdicao(false)} className="h-9">
-              Cancelar
-            </Button>
-            <Button
-              onClick={salvarEdicaoProjeto}
-              disabled={salvandoEdicao || !formEdicao.nome}
-              className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white font-semibold"
-            >
-              {salvandoEdicao ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Salvar
-              alterações
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* DIÁLOGO: EDITAR PROJETO (usando o mesmo ProjetoFormDialog refatorado) */}
+      <ProjetoFormDialog
+        open={dialogEdicao}
+        onOpenChange={setDialogEdicao}
+        editando={projeto}
+        onSalvo={carregarDados}
+      />
 
       {/* DIÁLOGO: NOVA TAREFA VINCULADA AO PROJETO (reutilizando TarefaFormDialog) */}
       <TarefaFormDialog

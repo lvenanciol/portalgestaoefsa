@@ -19,13 +19,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ProjetoFormDialog } from '@/components/operacional/ProjetoFormDialog'
 import {
   Select,
   SelectContent,
@@ -97,8 +92,6 @@ export default function ProjetosBoardPage() {
   const [erro, setErro] = useState('')
   const [detalhe, setDetalhe] = useState<any | null>(null)
   const [dialog, setDialog] = useState(false)
-  const [form, setForm] = useState<any>({})
-  const [salvando, setSalvando] = useState(false)
   const [analisandoRisco, setAnalisandoRisco] = useState(false)
   const [parecerRisco, setParecerRisco] = useState<any | null>(null)
   const [novoRisco, setNovoRisco] = useState({
@@ -255,40 +248,7 @@ export default function ProjetosBoardPage() {
   }
 
   const abrirNovo = () => {
-    setForm({
-      nome: '',
-      empresa: '',
-      status: 'planejamento',
-      progresso: 0,
-      responsavel: '',
-      orcamento: '',
-      descricao: '',
-      prazo: '',
-    })
     setDialog(true)
-  }
-
-  const salvar = async () => {
-    setSalvando(true)
-    try {
-      const dados: any = {
-        nome: form.nome,
-        empresa: form.empresa,
-        status: form.status,
-        progresso: Number(form.progresso) || 0,
-        responsavel: form.responsavel,
-        orcamento: Number(form.orcamento) || 0,
-        descricao: form.descricao,
-        prazo: form.prazo ? form.prazo + ' 00:00:00.000Z' : '',
-      }
-      await pb.collection('projetos').create(dados)
-      setDialog(false)
-      await carregar()
-    } catch (e) {
-      setErro(String(e))
-    } finally {
-      setSalvando(false)
-    }
   }
 
   const mudarStatusProjeto = async (projeto: any, novoStatus: string) => {
@@ -784,113 +744,13 @@ export default function ProjetosBoardPage() {
         />
       )}
 
-      {/* Dialog novo */}
-      <Dialog open={dialog} onOpenChange={setDialog}>
-        <DialogContent className="bg-white max-w-md">
-          <DialogHeader>
-            <DialogTitle>Novo projeto</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="grid gap-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Nome *
-              </Label>
-              <Input
-                value={form.nome || ''}
-                onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                className="h-10 bg-gray-50"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Empresa
-                </Label>
-                <Input
-                  value={form.empresa || ''}
-                  onChange={(e) => setForm({ ...form, empresa: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Responsável
-                </Label>
-                <Input
-                  value={form.responsavel || ''}
-                  onChange={(e) => setForm({ ...form, responsavel: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Status
-                </Label>
-                <Select
-                  value={form.status || 'planejamento'}
-                  onValueChange={(v) => setForm({ ...form, status: v })}
-                >
-                  <SelectTrigger className="h-10 bg-gray-50">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="planejamento">planejamento</SelectItem>
-                    <SelectItem value="em_andamento">em andamento</SelectItem>
-                    <SelectItem value="pausado">pausado</SelectItem>
-                    <SelectItem value="concluido">concluído</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Progresso %
-                </Label>
-                <Input
-                  type="number"
-                  value={form.progresso ?? ''}
-                  onChange={(e) => setForm({ ...form, progresso: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Orçamento
-                </Label>
-                <Input
-                  type="number"
-                  value={form.orcamento ?? ''}
-                  onChange={(e) => setForm({ ...form, orcamento: e.target.value })}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-            </div>
-            <div className="grid gap-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Descrição
-              </Label>
-              <Textarea
-                value={form.descricao || ''}
-                onChange={(e) => setForm({ ...form, descricao: e.target.value })}
-                rows={2}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialog(false)} className="h-9">
-              Cancelar
-            </Button>
-            <Button
-              onClick={salvar}
-              disabled={salvando || !form.nome}
-              className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
-            >
-              {salvando ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null} Salvar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Modal Novo Projeto refatorado com retrocompatibilidade */}
+      <ProjetoFormDialog
+        open={dialog}
+        onOpenChange={setDialog}
+        editando={null}
+        onSalvo={carregar}
+      />
 
       {/* Detalhe do projeto */}
       <Dialog open={!!detalhe} onOpenChange={(o) => !o && setDetalhe(null)}>

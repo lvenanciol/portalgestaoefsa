@@ -103,7 +103,43 @@ routerAdd(
       'decisoes (string), resumo (string executiva de até 5 linhas), action_items (array de objetos ' +
       '{acao, dono, prazo}). Português do Brasil. Interprete a transcrição da reunião e organize-a.'
 
-    const sys = alvo === 'ata' ? sysAta : sysTarefa
+    const sysProjeto =
+      'Você é o assistente oficial de gestão do grupo empresarial (empresas: ' +
+      listaEmpresas.join(', ') +
+      ').\n' +
+      'Data atual de referência no sistema: ' +
+      dataRefISO +
+      '.\n' +
+      'Parceiros e contatos cadastrados no sistema: ' +
+      parceirosContexto +
+      '.\n\n' +
+      'Interprete a frase informada pelo usuário (falada ou digitada) para estruturar um formulário de PROJETO.\n' +
+      'Responda EXCLUSIVAMENTE em JSON válido (sem cercas markdown, sem comentários) com as seguintes chaves:\n' +
+      '{\n' +
+      '  "nome": string (título limpo e objetivo do projeto, ex.: "Instalação RFID no CD Serra"),\n' +
+      '  "descricao": string (detalhes, escopo e entregáveis do projeto extraídos da frase),\n' +
+      '  "empresa": string (APENAS se corresponder claramente a uma das empresas: ' +
+      listaEmpresas.join(', ') +
+      '; padrão "Extrafruti"),\n' +
+      '  "responsavel": string (APENAS o nome exato de um parceiro/contato cadastrado se houver correspondência inequívoca; caso contrário ""),\n' +
+      '  "patrocinador": string (nome da liderança ou diretoria patrocinadora citada, ou "Diretoria Executiva" ou ""),\n' +
+      '  "prioridade": "Baixa" | "Normal" | "Alta" (padrão "Normal", "Alta" se urgente/estratégico),\n' +
+      '  "status": "planejamento" | "em_andamento" | "pausado" | "concluido" (minúsculas, padrão "planejamento"),\n' +
+      '  "inicio": string no formato YYYY-MM-DD (data de início citada ou vazio ""),\n' +
+      '  "prazo": string no formato YYYY-MM-DD (data de go-live/conclusão/prazo citada, ex.: "junho" -> 2026-06-30),\n' +
+      '  "orcamento": number ou string numérico (valor numérico do orçamento em reais, ex.: "R$ 350 mil" -> 350000, ou vazio 0),\n' +
+      '  "marco_atual": "Fase 1 de 5" | "Fase 2 de 5" | "Fase 3 de 5" | "Fase 4 de 5" | "Fase 5 de 5" (padrão "Fase 1 de 5"),\n' +
+      '  "vinculo_tipo": "" | "tarefa" | "contrato" | "ata" | "projeto",\n' +
+      '  "vinculo_id": string,\n' +
+      '  "raci": array de objetos [{"nome": string, "papel": "R"|"A"|"C"|"I"}],\n' +
+      '  "marcos": array de objetos [{"nome": string, "data": string YYYY-MM-DD, "ok": boolean}],\n' +
+      '  "riscos": array de objetos [{"risco": string, "severidade": "Alto"|"Médio"|"Baixo"}]\n' +
+      '}\n' +
+      'REGRAS:\n' +
+      '- Não invente dados ausentes; use valores default seguros quando não especificado.\n' +
+      '- Converta expressões numéricas como "350 mil" para 350000.'
+
+    const sys = alvo === 'ata' ? sysAta : alvo === 'projeto' ? sysProjeto : sysTarefa
 
     const r = $ai.chat({
       model: 'fast',
