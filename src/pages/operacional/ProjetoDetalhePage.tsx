@@ -52,6 +52,7 @@ import { cn } from '@/lib/utils'
 import { toast } from '@/hooks/use-toast'
 import { TarefaFormDialog, TarefaFormData } from '@/components/operacional/TarefaFormDialog'
 import { ParceiroCadastroDialog } from '@/components/operacional/ParceiroCadastroDialog'
+import { useEmpresaLogos } from '@/components/common/EmpresaIcon'
 
 // Utilitários de formatação
 const fmtBRL = (v: any) => {
@@ -127,6 +128,7 @@ export default function ProjetoDetalhePage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { empresas } = useApp()
+  const { obterIconeEmpresa } = useEmpresaLogos()
 
   const [projeto, setProjeto] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1520,7 +1522,7 @@ export default function ProjetoDetalhePage() {
         setForm={setFormTarefa}
         empresas={empresas}
         parceiros={parceiros}
-        obterIconeEmpresa={() => null}
+        obterIconeEmpresa={obterIconeEmpresa}
         onAbrirNovoParceiro={() => setNovoParceiroModalAberto(true)}
         arquivosNovos={arquivosNovos}
         setArquivosNovos={setArquivosNovos}

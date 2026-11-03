@@ -1295,10 +1295,20 @@ export function TarefaFormDialog({
                         'border-amber-400 bg-amber-50/50 ring-1 ring-amber-300',
                     )}
                   >
-                    <SelectValue placeholder="Selecione a empresa..." />
+                    <div className="flex items-center gap-2 truncate">
+                      {form.empresa && form.empresa !== ' '
+                        ? obterIconeEmpresa(form.empresa)
+                        : null}
+                      <SelectValue placeholder="Selecione a empresa..." />
+                    </div>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value=" ">Todas / Grupo Consolidado</SelectItem>
+                    <SelectItem value=" ">
+                      <div className="flex items-center gap-2">
+                        {obterIconeEmpresa('')}
+                        <span>Todas / Grupo Consolidado</span>
+                      </div>
+                    </SelectItem>
                     {empresas.map((e) => (
                       <SelectItem key={e.id} value={e.nome}>
                         <div className="flex items-center gap-2">
@@ -1310,7 +1320,9 @@ export function TarefaFormDialog({
                     {/* Opção "CPF" exclusiva do dropdown Empresa deste diálogo */}
                     <SelectItem value="CPF">
                       <div className="flex items-center gap-2 font-medium">
-                        <span className="h-2 w-2 rounded-full bg-amber-500" />
+                        {obterIconeEmpresa('CPF') || (
+                          <span className="h-2 w-2 rounded-full bg-amber-500 shrink-0" />
+                        )}
                         <span>CPF</span>
                       </div>
                     </SelectItem>
@@ -1392,7 +1404,7 @@ export function TarefaFormDialog({
                       </button>
 
                       {/* Lista rolável de responsáveis (seleção única) */}
-                      <div className="max-h-56 overflow-y-auto space-y-1">
+                      <div className="max-h-72 overflow-y-auto overscroll-contain space-y-1">
                         {/* Opção para limpar / Não definido */}
                         <button
                           type="button"

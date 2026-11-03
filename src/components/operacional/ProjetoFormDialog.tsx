@@ -49,7 +49,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { limparTextoResponsavel, obterIniciaisResponsavel } from '@/lib/responsavel-utils'
-import { useEmpresaLogos } from '@/components/common/EmpresaIcon'
+import { EmpresaIcon, useEmpresaLogos } from '@/components/common/EmpresaIcon'
 
 export interface RaciItem {
   id?: string
@@ -170,7 +170,7 @@ export function ProjetoFormDialog({
   const [popoverPatrocAberto, setPopoverPatrocAberto] = useState(false)
   const [buscaPatroc, setBuscaPatroc] = useState('')
 
-  const { obterSiglaCor } = useEmpresaLogos()
+  const { obterSiglaCor, obterIconeEmpresa } = useEmpresaLogos()
 
   // Validação
   const [erroNome, setErroNome] = useState(false)
@@ -817,6 +817,25 @@ export function ProjetoFormDialog({
   }, [parceiros, buscaPatroc])
 
   // Ações de RACI
+  const toggleRaci = (nome: string) => {
+    if (!nome.trim()) return
+    const limpo = limparTextoResponsavel(nome) || nome.trim()
+    setForm((prev) => {
+      const atual = prev.raci || []
+      const existe = atual.some((item) => item.nome === limpo)
+      if (existe) {
+        return {
+          ...prev,
+          raci: atual.filter((item) => item.nome !== limpo),
+        }
+      }
+      return {
+        ...prev,
+        raci: [...atual, { nome: limpo, papel: papelRaciSelecionado }],
+      }
+    })
+  }
+
   const adicionarAoRaci = (nome: string) => {
     if (!nome.trim()) return
     const limpo = limparTextoResponsavel(nome) || nome.trim()
@@ -837,7 +856,6 @@ export function ProjetoFormDialog({
       }
     })
     setBuscaRaci('')
-    setPopoverRaciAberto(false)
   }
 
   const removerDoRaci = (nome: string) => {
@@ -1251,10 +1269,7 @@ export function ProjetoFormDialog({
                       >
                         <div className="flex items-center gap-2 truncate">
                           {form.empresa ? (
-                            <span
-                              className="h-2 w-2 rounded-full shrink-0"
-                              style={{ backgroundColor: obterSiglaCor(form.empresa).cor }}
-                            />
+                            <EmpresaIcon nome={form.empresa} className="h-4 w-4 shrink-0" />
                           ) : (
                             <Building2 className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                           )}
@@ -1279,7 +1294,7 @@ export function ProjetoFormDialog({
                           />
                         </div>
 
-                        <div className="max-h-56 overflow-y-auto space-y-1">
+                        <div className="max-h-64 overflow-y-auto overscroll-contain space-y-1">
                           {/* Opção se o valor atual não corresponder às empresas conhecidas */}
                           {form.empresa &&
                             !opcoesEmpresas.some(
@@ -1291,10 +1306,7 @@ export function ProjetoFormDialog({
                                 className="w-full flex items-center justify-between p-2 rounded-md text-xs text-left bg-emerald-50 text-[#1B5E20] font-bold"
                               >
                                 <div className="flex items-center gap-2 truncate">
-                                  <span
-                                    className="h-2 w-2 rounded-full shrink-0"
-                                    style={{ backgroundColor: obterSiglaCor(form.empresa).cor }}
-                                  />
+                                  <EmpresaIcon nome={form.empresa} className="h-4 w-4 shrink-0" />
                                   <span className="truncate">{form.empresa} (valor atual)</span>
                                 </div>
                                 <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
@@ -1309,7 +1321,6 @@ export function ProjetoFormDialog({
                             empresasFiltradas.map((emp) => {
                               const sel =
                                 normalizarEmpresa(form.empresa) === emp || form.empresa === emp
-                              const { cor } = obterSiglaCor(emp)
                               return (
                                 <button
                                   key={emp}
@@ -1327,10 +1338,7 @@ export function ProjetoFormDialog({
                                   )}
                                 >
                                   <div className="flex items-center gap-2 truncate">
-                                    <span
-                                      className="h-2 w-2 rounded-full shrink-0"
-                                      style={{ backgroundColor: cor }}
-                                    />
+                                    <EmpresaIcon nome={emp} className="h-4 w-4 shrink-0" />
                                     <span className="truncate">{emp}</span>
                                   </div>
                                   {sel && (
@@ -1346,7 +1354,7 @@ export function ProjetoFormDialog({
                   </Popover>
                 </div>
 
-                {/* RESPONSÁVEL (popover de parceiros/contatos no padrão de Tarefas & Agenda) */}
+                {/* RESPONSÁVEL (popover de parceiros/contatos com MULTISELEÇÃO no padrão de Tarefas & Agenda) */}
                 <div className="space-y-1.5 md:col-span-1">
                   <Label
                     htmlFor="responsavel"
@@ -1354,120 +1362,141 @@ export function ProjetoFormDialog({
                   >
                     Responsável
                   </Label>
-                  <Popover open={popoverRespAberto} onOpenChange={setPopoverRespAberto}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        id="responsavel"
-                        className="w-full justify-between h-10 bg-gray-50/70 border-gray-200 font-normal text-xs text-gray-700 hover:bg-gray-100/60"
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          {form.responsavel ? (
-                            <span className="w-5 h-5 rounded-full bg-[#1B5E20] text-white flex items-center justify-center text-[9px] font-bold shrink-0">
-                              {obterIniciaisResponsavel(form.responsavel)}
-                            </span>
-                          ) : (
-                            <User className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                          )}
-                          <span className="truncate">{form.responsavel || 'Não definido'}</span>
-                        </div>
-                        <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-1" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[340px] p-2 bg-white" align="start">
-                      <div className="space-y-2">
-                        <div className="relative">
-                          <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-3 pointer-events-none" />
-                          <Input
-                            value={buscaResp}
-                            onChange={(e) => setBuscaResp(e.target.value)}
-                            placeholder="Buscar parceiro por nome ou empresa..."
-                            className="h-9 pl-8 text-xs bg-gray-50"
-                          />
-                        </div>
-                        <div className="max-h-56 overflow-y-auto space-y-1">
-                          <button
+                  {(() => {
+                    const listaResp = (form.responsavel || '')
+                      .split(',')
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                    return (
+                      <Popover open={popoverRespAberto} onOpenChange={setPopoverRespAberto}>
+                        <PopoverTrigger asChild>
+                          <Button
                             type="button"
-                            onClick={() => {
-                              setForm({ ...form, responsavel: '' })
-                              setPopoverRespAberto(false)
-                            }}
-                            className={cn(
-                              'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
-                              !form.responsavel
-                                ? 'bg-emerald-50 text-[#1B5E20] font-bold'
-                                : 'hover:bg-gray-50 text-gray-500 italic',
-                            )}
+                            variant="outline"
+                            id="responsavel"
+                            className="w-full justify-between h-10 bg-gray-50/70 border-gray-200 font-normal text-xs text-gray-700 hover:bg-gray-100/60"
                           >
-                            <span>Não definido</span>
-                            {!form.responsavel && (
-                              <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
-                            )}
-                          </button>
-                          {buscaResp.trim() &&
-                            !responsaveisFiltrados.some(
-                              (p) =>
-                                (p.nome || '').toLowerCase() === buscaResp.trim().toLowerCase(),
-                            ) && (
+                            <div className="flex items-center gap-2 truncate">
+                              {listaResp.length === 0 ? (
+                                <User className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                              ) : listaResp.length === 1 ? (
+                                <span className="w-5 h-5 rounded-full bg-[#1B5E20] text-white flex items-center justify-center text-[9px] font-bold shrink-0">
+                                  {obterIniciaisResponsavel(listaResp[0])}
+                                </span>
+                              ) : (
+                                <span className="w-5 h-5 rounded-full bg-[#1B5E20] text-white flex items-center justify-center text-[9px] font-bold shrink-0">
+                                  {listaResp.length}
+                                </span>
+                              )}
+                              <span className="truncate">
+                                {listaResp.length === 0
+                                  ? 'Não definido'
+                                  : listaResp.length === 1
+                                    ? listaResp[0]
+                                    : `${listaResp.length} selecionados (${listaResp.join(', ')})`}
+                              </span>
+                            </div>
+                            <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-1" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[340px] p-2 bg-white" align="start">
+                          <div className="space-y-2">
+                            <div className="relative">
+                              <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-3 pointer-events-none" />
+                              <Input
+                                value={buscaResp}
+                                onChange={(e) => setBuscaResp(e.target.value)}
+                                placeholder="Buscar parceiro por nome ou empresa..."
+                                className="h-9 pl-8 text-xs bg-gray-50"
+                              />
+                            </div>
+                            <div className="max-h-64 overflow-y-auto overscroll-contain space-y-1">
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const limpo =
-                                    limparTextoResponsavel(buscaResp.trim()) || buscaResp.trim()
-                                  setForm({ ...form, responsavel: limpo })
-                                  setPopoverRespAberto(false)
-                                  setBuscaResp('')
-                                }}
-                                className="w-full flex items-center gap-2 p-2 rounded-md text-xs text-left bg-emerald-50/50 hover:bg-emerald-100 text-[#1B5E20] font-semibold"
-                              >
-                                <Plus className="h-3 w-3" /> Usar "{buscaResp.trim()}"
-                              </button>
-                            )}
-                          {responsaveisFiltrados.map((p) => {
-                            const nomeLimpo = limparTextoResponsavel(p.nome) || p.nome
-                            const sel =
-                              form.responsavel === nomeLimpo || form.responsavel === p.nome
-                            const emp =
-                              p.empresa || (Array.isArray(p.empresas) ? p.empresas[0] : '')
-                            return (
-                              <button
-                                key={p.id || p.nome}
-                                type="button"
-                                onClick={() => {
-                                  setForm({ ...form, responsavel: nomeLimpo })
-                                  setPopoverRespAberto(false)
-                                  setBuscaResp('')
+                                  setForm({ ...form, responsavel: '' })
                                 }}
                                 className={cn(
                                   'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
-                                  sel
+                                  listaResp.length === 0
                                     ? 'bg-emerald-50 text-[#1B5E20] font-bold'
-                                    : 'hover:bg-gray-50 text-gray-800',
+                                    : 'hover:bg-gray-50 text-gray-500 italic',
                                 )}
                               >
-                                <div className="flex items-center gap-2 truncate">
-                                  <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#1B5E20] border border-emerald-200 flex items-center justify-center text-[9px] font-bold shrink-0">
-                                    {obterIniciaisResponsavel(nomeLimpo)}
-                                  </span>
-                                  <span className="truncate">{nomeLimpo}</span>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                                  {emp && (
-                                    <span className="text-[10px] text-gray-400">({emp})</span>
-                                  )}
-                                  {sel && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
-                                </div>
+                                <span>Limpar seleção / Não definido</span>
+                                {listaResp.length === 0 && (
+                                  <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
+                                )}
                               </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                              {buscaResp.trim() &&
+                                !responsaveisFiltrados.some(
+                                  (p) =>
+                                    (p.nome || '').toLowerCase() === buscaResp.trim().toLowerCase(),
+                                ) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const limpo =
+                                        limparTextoResponsavel(buscaResp.trim()) || buscaResp.trim()
+                                      const jaTem = listaResp.includes(limpo)
+                                      const novaLista = jaTem
+                                        ? listaResp.filter((r) => r !== limpo)
+                                        : [...listaResp, limpo]
+                                      setForm({ ...form, responsavel: novaLista.join(', ') })
+                                      setBuscaResp('')
+                                    }}
+                                    className="w-full flex items-center gap-2 p-2 rounded-md text-xs text-left bg-emerald-50/50 hover:bg-emerald-100 text-[#1B5E20] font-semibold"
+                                  >
+                                    <Plus className="h-3 w-3" /> Usar "{buscaResp.trim()}"
+                                  </button>
+                                )}
+                              {responsaveisFiltrados.map((p) => {
+                                const nomeLimpo = limparTextoResponsavel(p.nome) || p.nome
+                                const sel =
+                                  listaResp.includes(nomeLimpo) || listaResp.includes(p.nome)
+                                const emp =
+                                  p.empresa || (Array.isArray(p.empresas) ? p.empresas[0] : '')
+                                return (
+                                  <button
+                                    key={p.id || p.nome}
+                                    type="button"
+                                    onClick={() => {
+                                      const novaLista = sel
+                                        ? listaResp.filter((r) => r !== nomeLimpo && r !== p.nome)
+                                        : [...listaResp, nomeLimpo]
+                                      setForm({ ...form, responsavel: novaLista.join(', ') })
+                                    }}
+                                    className={cn(
+                                      'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
+                                      sel
+                                        ? 'bg-emerald-50 text-[#1B5E20] font-bold'
+                                        : 'hover:bg-gray-50 text-gray-800',
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2 truncate">
+                                      <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#1B5E20] border border-emerald-200 flex items-center justify-center text-[9px] font-bold shrink-0">
+                                        {obterIniciaisResponsavel(nomeLimpo)}
+                                      </span>
+                                      <span className="truncate">{nomeLimpo}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                      {emp && (
+                                        <span className="text-[10px] text-gray-400">({emp})</span>
+                                      )}
+                                      {sel && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                                    </div>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )
+                  })()}
                 </div>
 
-                {/* PATROCINADOR (popover de parceiros/contatos no mesmo padrão com opção Não definido) */}
+                {/* PATROCINADOR (popover de parceiros/contatos com MULTISELEÇÃO no mesmo padrão) */}
                 <div className="space-y-1.5 md:col-span-1">
                   <Label
                     htmlFor="patrocinador"
@@ -1475,118 +1504,140 @@ export function ProjetoFormDialog({
                   >
                     Patrocinador
                   </Label>
-                  <Popover open={popoverPatrocAberto} onOpenChange={setPopoverPatrocAberto}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        id="patrocinador"
-                        className="w-full justify-between h-10 bg-gray-50/70 border-gray-200 font-normal text-xs text-gray-700 hover:bg-gray-100/60"
-                      >
-                        <div className="flex items-center gap-2 truncate">
-                          {form.patrocinador ? (
-                            <span className="w-5 h-5 rounded-full bg-[#1B5E20] text-white flex items-center justify-center text-[9px] font-bold shrink-0">
-                              {obterIniciaisResponsavel(form.patrocinador)}
-                            </span>
-                          ) : (
-                            <Shield className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                          )}
-                          <span className="truncate">{form.patrocinador || 'Não definido'}</span>
-                        </div>
-                        <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-1" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[340px] p-2 bg-white" align="start">
-                      <div className="space-y-2">
-                        <div className="relative">
-                          <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-3 pointer-events-none" />
-                          <Input
-                            value={buscaPatroc}
-                            onChange={(e) => setBuscaPatroc(e.target.value)}
-                            placeholder="Buscar parceiro por nome ou empresa..."
-                            className="h-9 pl-8 text-xs bg-gray-50"
-                          />
-                        </div>
-                        <div className="max-h-56 overflow-y-auto space-y-1">
-                          <button
+                  {(() => {
+                    const listaPatroc = (form.patrocinador || '')
+                      .split(',')
+                      .map((s) => s.trim())
+                      .filter(Boolean)
+                    return (
+                      <Popover open={popoverPatrocAberto} onOpenChange={setPopoverPatrocAberto}>
+                        <PopoverTrigger asChild>
+                          <Button
                             type="button"
-                            onClick={() => {
-                              setForm({ ...form, patrocinador: '' })
-                              setPopoverPatrocAberto(false)
-                            }}
-                            className={cn(
-                              'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
-                              !form.patrocinador
-                                ? 'bg-emerald-50 text-[#1B5E20] font-bold'
-                                : 'hover:bg-gray-50 text-gray-500 italic',
-                            )}
+                            variant="outline"
+                            id="patrocinador"
+                            className="w-full justify-between h-10 bg-gray-50/70 border-gray-200 font-normal text-xs text-gray-700 hover:bg-gray-100/60"
                           >
-                            <span>Não definido</span>
-                            {!form.patrocinador && (
-                              <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
-                            )}
-                          </button>
-                          {buscaPatroc.trim() &&
-                            !patrocinadoresFiltrados.some(
-                              (n) => n.toLowerCase() === buscaPatroc.trim().toLowerCase(),
-                            ) && (
+                            <div className="flex items-center gap-2 truncate">
+                              {listaPatroc.length === 0 ? (
+                                <Shield className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                              ) : listaPatroc.length === 1 ? (
+                                <span className="w-5 h-5 rounded-full bg-[#1B5E20] text-white flex items-center justify-center text-[9px] font-bold shrink-0">
+                                  {obterIniciaisResponsavel(listaPatroc[0])}
+                                </span>
+                              ) : (
+                                <span className="w-5 h-5 rounded-full bg-[#1B5E20] text-white flex items-center justify-center text-[9px] font-bold shrink-0">
+                                  {listaPatroc.length}
+                                </span>
+                              )}
+                              <span className="truncate">
+                                {listaPatroc.length === 0
+                                  ? 'Não definido'
+                                  : listaPatroc.length === 1
+                                    ? listaPatroc[0]
+                                    : `${listaPatroc.length} selecionados (${listaPatroc.join(', ')})`}
+                              </span>
+                            </div>
+                            <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-1" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[340px] p-2 bg-white" align="start">
+                          <div className="space-y-2">
+                            <div className="relative">
+                              <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-3 pointer-events-none" />
+                              <Input
+                                value={buscaPatroc}
+                                onChange={(e) => setBuscaPatroc(e.target.value)}
+                                placeholder="Buscar parceiro por nome ou empresa..."
+                                className="h-9 pl-8 text-xs bg-gray-50"
+                              />
+                            </div>
+                            <div className="max-h-64 overflow-y-auto overscroll-contain space-y-1">
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const limpo =
-                                    limparTextoResponsavel(buscaPatroc.trim()) || buscaPatroc.trim()
-                                  setForm({ ...form, patrocinador: limpo })
-                                  setPopoverPatrocAberto(false)
-                                  setBuscaPatroc('')
-                                }}
-                                className="w-full flex items-center gap-2 p-2 rounded-md text-xs text-left bg-emerald-50/50 hover:bg-emerald-100 text-[#1B5E20] font-semibold"
-                              >
-                                <Plus className="h-3 w-3" /> Usar "{buscaPatroc.trim()}"
-                              </button>
-                            )}
-                          {patrocinadoresFiltrados.map((nome) => {
-                            const sel = form.patrocinador === nome
-                            const pMatch = parceiros.find(
-                              (p) => (limparTextoResponsavel(p.nome) || p.nome) === nome,
-                            )
-                            const emp =
-                              pMatch?.empresa ||
-                              (Array.isArray(pMatch?.empresas) ? pMatch.empresas[0] : '')
-                            return (
-                              <button
-                                key={nome}
-                                type="button"
-                                onClick={() => {
-                                  setForm({ ...form, patrocinador: nome })
-                                  setPopoverPatrocAberto(false)
-                                  setBuscaPatroc('')
+                                  setForm({ ...form, patrocinador: '' })
                                 }}
                                 className={cn(
                                   'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
-                                  sel
+                                  listaPatroc.length === 0
                                     ? 'bg-emerald-50 text-[#1B5E20] font-bold'
-                                    : 'hover:bg-gray-50 text-gray-800',
+                                    : 'hover:bg-gray-50 text-gray-500 italic',
                                 )}
                               >
-                                <div className="flex items-center gap-2 truncate">
-                                  <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#1B5E20] border border-emerald-200 flex items-center justify-center text-[9px] font-bold shrink-0">
-                                    {obterIniciaisResponsavel(nome)}
-                                  </span>
-                                  <span className="truncate">{nome}</span>
-                                </div>
-                                <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                                  {emp && (
-                                    <span className="text-[10px] text-gray-400">({emp})</span>
-                                  )}
-                                  {sel && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
-                                </div>
+                                <span>Limpar seleção / Não definido</span>
+                                {listaPatroc.length === 0 && (
+                                  <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
+                                )}
                               </button>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                              {buscaPatroc.trim() &&
+                                !patrocinadoresFiltrados.some(
+                                  (n) => n.toLowerCase() === buscaPatroc.trim().toLowerCase(),
+                                ) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const limpo =
+                                        limparTextoResponsavel(buscaPatroc.trim()) ||
+                                        buscaPatroc.trim()
+                                      const jaTem = listaPatroc.includes(limpo)
+                                      const novaLista = jaTem
+                                        ? listaPatroc.filter((p) => p !== limpo)
+                                        : [...listaPatroc, limpo]
+                                      setForm({ ...form, patrocinador: novaLista.join(', ') })
+                                      setBuscaPatroc('')
+                                    }}
+                                    className="w-full flex items-center gap-2 p-2 rounded-md text-xs text-left bg-emerald-50/50 hover:bg-emerald-100 text-[#1B5E20] font-semibold"
+                                  >
+                                    <Plus className="h-3 w-3" /> Usar "{buscaPatroc.trim()}"
+                                  </button>
+                                )}
+                              {patrocinadoresFiltrados.map((nome) => {
+                                const sel = listaPatroc.includes(nome)
+                                const pMatch = parceiros.find(
+                                  (p) => (limparTextoResponsavel(p.nome) || p.nome) === nome,
+                                )
+                                const emp =
+                                  pMatch?.empresa ||
+                                  (Array.isArray(pMatch?.empresas) ? pMatch.empresas[0] : '')
+                                return (
+                                  <button
+                                    key={nome}
+                                    type="button"
+                                    onClick={() => {
+                                      const novaLista = sel
+                                        ? listaPatroc.filter((p) => p !== nome)
+                                        : [...listaPatroc, nome]
+                                      setForm({ ...form, patrocinador: novaLista.join(', ') })
+                                    }}
+                                    className={cn(
+                                      'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
+                                      sel
+                                        ? 'bg-emerald-50 text-[#1B5E20] font-bold'
+                                        : 'hover:bg-gray-50 text-gray-800',
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2 truncate">
+                                      <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#1B5E20] border border-emerald-200 flex items-center justify-center text-[9px] font-bold shrink-0">
+                                        {obterIniciaisResponsavel(nome)}
+                                      </span>
+                                      <span className="truncate">{nome}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                      {emp && (
+                                        <span className="text-[10px] text-gray-400">({emp})</span>
+                                      )}
+                                      {sel && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                                    </div>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )
+                  })()}
                 </div>
 
                 {/* PRIORIDADE (segmented Baixa | Normal | Alta) */}
@@ -1930,7 +1981,7 @@ export function ProjetoFormDialog({
                             </div>
                           </div>
 
-                          <div className="space-y-1 max-h-56 overflow-y-auto">
+                          <div className="space-y-1 max-h-64 overflow-y-auto overscroll-contain">
                             {buscaRaci.trim() &&
                               !parceirosFiltrados.some(
                                 (p) =>
@@ -1938,17 +1989,17 @@ export function ProjetoFormDialog({
                               ) && (
                                 <button
                                   type="button"
-                                  onClick={() => adicionarAoRaci(buscaRaci.trim())}
+                                  onClick={() => toggleRaci(buscaRaci.trim())}
                                   className="w-full flex items-center gap-2 p-2 rounded-md text-xs text-left bg-emerald-50 hover:bg-emerald-100 text-[#1B5E20] font-semibold"
                                 >
-                                  <Plus className="h-3 w-3" /> Adicionar "{buscaRaci.trim()}" (
+                                  <Plus className="h-3 w-3" /> Alternar "{buscaRaci.trim()}" (
                                   {papelRaciSelecionado})
                                 </button>
                               )}
                             {parceirosFiltrados.map((p) => {
                               const nomeLimpo = limparTextoResponsavel(p.nome) || p.nome
                               const jaAdicionado = (form.raci || []).find(
-                                (item) => item.nome === nomeLimpo,
+                                (item) => item.nome === nomeLimpo || item.nome === p.nome,
                               )
                               const emp =
                                 p.empresa || (Array.isArray(p.empresas) ? p.empresas[0] : '')
@@ -1956,11 +2007,11 @@ export function ProjetoFormDialog({
                                 <button
                                   key={p.id || p.nome}
                                   type="button"
-                                  onClick={() => adicionarAoRaci(p.nome)}
+                                  onClick={() => toggleRaci(p.nome)}
                                   className={cn(
                                     'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
                                     jaAdicionado
-                                      ? 'bg-emerald-50/60 text-gray-800'
+                                      ? 'bg-emerald-50/80 text-gray-900 font-semibold'
                                       : 'hover:bg-gray-50 text-gray-800',
                                   )}
                                 >
@@ -1977,12 +2028,13 @@ export function ProjetoFormDialog({
                                     {jaAdicionado ? (
                                       <span
                                         className={cn(
-                                          'w-4 h-4 rounded-full flex items-center justify-center font-bold text-[9px] text-white',
+                                          'w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] text-white shadow-xs',
                                           jaAdicionado.papel === 'R' && 'bg-emerald-600',
                                           jaAdicionado.papel === 'A' && 'bg-blue-600',
                                           jaAdicionado.papel === 'C' && 'bg-amber-500',
                                           jaAdicionado.papel === 'I' && 'bg-purple-600',
                                         )}
+                                        title={`Papel: ${jaAdicionado.papel}`}
                                       >
                                         {jaAdicionado.papel}
                                       </span>
