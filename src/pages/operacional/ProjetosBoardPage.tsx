@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { ProjetosListaView } from '@/components/operacional/ProjetosListaView'
 
 // DELTA — Tela de Projetos / evolução v1
 // A. Faixa de contadores (Ativos, Em risco, Planejamento, Concluído)
@@ -106,7 +107,26 @@ export default function ProjetosBoardPage() {
   })
 
   // DELTA: Controles de visualização e filtros
-  const [modoVisao, setModoVisao] = useState<'cartoes' | 'lista'>('cartoes')
+  // Restrição: Persistir a escolha Cartões/Lista em localStorage
+  const [modoVisao, setModoVisao] = useState<'cartoes' | 'lista'>(() => {
+    try {
+      const salvo = localStorage.getItem('projetos_modo_visao')
+      if (salvo === 'cartoes' || salvo === 'lista') return salvo
+    } catch {
+      // fallback
+    }
+    return 'cartoes'
+  })
+
+  const trocarModoVisao = (novoModo: 'cartoes' | 'lista') => {
+    setModoVisao(novoModo)
+    try {
+      localStorage.setItem('projetos_modo_visao', novoModo)
+    } catch {
+      // ignore
+    }
+  }
+
   const [buscaTexto, setBuscaTexto] = useState('')
   const [chipAtivo, setChipAtivo] = useState<ChipFiltro>('todos')
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>('todas')
@@ -269,6 +289,37 @@ export default function ProjetosBoardPage() {
     }
   }
 
+  const mudarStatusProjeto = async (projeto: any, novoStatus: string) => {
+    // Atualização otimista na mesma fonte de dados
+    const statusAntigo = projeto.status
+    setItens((prev) =>
+      prev.map((item) => (item.id === projeto.id ? { ...item, status: novoStatus } : item)),
+    )
+
+    try {
+      await pb.collection('projetos').update(projeto.id, { status: novoStatus })
+    } catch (e) {
+      // Reverte se der erro
+      setItens((prev) =>
+        prev.map((item) => (item.id === projeto.id ? { ...item, status: statusAntigo } : item)),
+      )
+      setErro(String(e))
+    }
+  }
+
+  const excluirProjeto = async (projeto: any) => {
+    if (!window.confirm(`Deseja realmente excluir o projeto "${projeto.nome}"?`)) return
+    try {
+      await pb.collection('projetos').delete(projeto.id)
+      setItens((prev) => prev.filter((item) => item.id !== projeto.id))
+      if (detalhe?.id === projeto.id) {
+        setDetalhe(null)
+      }
+    } catch (e) {
+      setErro(String(e))
+    }
+  }
+
   const addRisco = async () => {
     if (!detalhe || !novoRisco.risco.trim()) return
     const riscos = parse(detalhe.riscos)
@@ -350,7 +401,7 @@ export default function ProjetosBoardPage() {
           <div className="inline-flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200">
             <button
               type="button"
-              onClick={() => setModoVisao('cartoes')}
+              onClick={() => trocarModoVisao('cartoes')}
               className={cn(
                 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer',
                 modoVisao === 'cartoes'
@@ -363,7 +414,7 @@ export default function ProjetosBoardPage() {
             </button>
             <button
               type="button"
-              onClick={() => setModoVisao('lista')}
+              onClick={() => trocarModoVisao('lista')}
               className={cn(
                 'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer',
                 modoVisao === 'lista'
@@ -716,82 +767,19 @@ export default function ProjetosBoardPage() {
           })}
         </div>
       ) : (
-        /* C. VISÃO LISTA: tabela simples com as 7 colunas obrigatórias */
-        /* PROJETO | STATUS | RESPONSÁVEL | EMPRESA | PROGRESSO | ORÇAMENTO | PRAZO */
-        <div className="bg-white rounded-xl border border-gray-200/90 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-gray-50/80 border-b border-gray-200 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                <tr>
-                  <th className="py-3 px-4">Projeto</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Responsável</th>
-                  <th className="py-3 px-4">Empresa</th>
-                  <th className="py-3 px-4">Progresso</th>
-                  <th className="py-3 px-4">Orçamento</th>
-                  <th className="py-3 px-4">Prazo</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {itensFiltrados.map((p) => {
-                  const orc = Number(p.orcamento) || 0
-                  const rea = Number(p.realizado) || 0
-                  const progresso = Number(p.progresso) || 0
-                  const statusKey = p.status || 'planejamento'
-
-                  return (
-                    <tr
-                      key={p.id}
-                      onClick={() => setDetalhe(p)}
-                      className="hover:bg-gray-50/70 transition-colors cursor-pointer"
-                    >
-                      <td className="py-3 px-4 font-semibold text-gray-900 max-w-[240px] truncate">
-                        {p.nome}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span
-                          className={cn(
-                            'text-[10px] font-bold px-2 py-0.5 rounded-full inline-block',
-                            STATUS_COR[statusKey] || 'bg-gray-100 text-gray-700',
-                          )}
-                        >
-                          {STATUS_LABEL[statusKey] || statusKey.replace('_', ' ')}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-gray-700">{p.responsavel || '—'}</td>
-                      <td className="py-3 px-4 text-gray-700">{p.empresa || 'Grupo'}</td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2 min-w-[120px]">
-                          <div className="h-1.5 flex-1 rounded-full bg-gray-100 overflow-hidden">
-                            <div
-                              className="h-full rounded-full bg-[#1B5E20]"
-                              style={{ width: `${Math.min(100, progresso)}%` }}
-                            />
-                          </div>
-                          <span className="font-semibold text-gray-800 tabular-nums">
-                            {progresso}%
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 tabular-nums text-gray-700">
-                        {orc > 0 ? (
-                          <span>
-                            {fmtBRL(rea)} / {fmtBRL(orc)}
-                          </span>
-                        ) : (
-                          <span className="text-gray-400">Não orçado</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-gray-600 tabular-nums">
-                        {fmtPrazoTabela(p.prazo)}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        /* C. VISÃO LISTA AGRUPADA (PROMPT 2) */
+        /* Tabela agrupada por status (EM ANDAMENTO / EM RISCO / PLANEJAMENTO / CONCLUÍDO) */
+        /* 8 colunas: PROJETO | STATUS | RESPONSÁVEL | EMPRESA | PROGRESSO | ORÇAMENTO | PRAZO | AÇÕES */
+        /* Ordenação nos headers PROJETO, PRAZO, PROGRESSO */
+        /* Linhas em risco/vencidas com borda-esquerda vermelha de 3px */
+        /* Rodapé com link "+ Adicionar projeto" que abre o modal existente */
+        <ProjetosListaView
+          itens={itensFiltrados}
+          onAbrirDetalhe={(p) => setDetalhe(p)}
+          onAbrirNovo={abrirNovo}
+          onMudarStatus={mudarStatusProjeto}
+          onExcluir={excluirProjeto}
+        />
       )}
 
       {/* Dialog novo */}
