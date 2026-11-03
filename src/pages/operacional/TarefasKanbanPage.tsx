@@ -258,23 +258,91 @@ export default function TarefasKanbanPage() {
 
   // Itens para a lista após aplicar busca por texto e filtro rápido
   const itensLista = useMemo(() => {
+    // Normalização para busca insensível a maiúsculas e acentuação
+    const norm = (s: any) =>
+      String(s || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toLowerCase()
+
+    const q = norm(buscaTexto)
+
     return itensFiltrados.filter((t) => {
-      // Filtro de busca por texto
-      if (buscaTexto.trim()) {
-        const q = buscaTexto.trim().toLowerCase()
-        const matchTitulo = String(t.titulo || '')
-          .toLowerCase()
-          .includes(q)
-        const matchResp = String(t.responsavel || '')
-          .toLowerCase()
-          .includes(q)
-        const matchEmp = String(t.empresa || '')
-          .toLowerCase()
-          .includes(q)
-        const matchDesc = String(t.descricao || '')
-          .toLowerCase()
-          .includes(q)
-        if (!matchTitulo && !matchResp && !matchEmp && !matchDesc) return false
+      // Filtro de busca por conteúdo da tarefa em tempo real
+      if (q) {
+        // Nomes de parceiros vinculados
+        let parceirosNomes = ''
+        try {
+          const pIds = Array.isArray(t.parceiros) ? t.parceiros : JSON.parse(t.parceiros || '[]')
+          if (Array.isArray(pIds) && pIds.length > 0) {
+            parceirosNomes = parceiros
+              .filter((p) => pIds.includes(p.id))
+              .map((p) => p.nome || '')
+              .join(' ')
+          }
+        } catch (_) {
+          parceirosNomes = ''
+        }
+
+        // Subtarefas textuais
+        let subtarefasTexto = ''
+        try {
+          const subs = Array.isArray(t.subtarefas) ? t.subtarefas : JSON.parse(t.subtarefas || '[]')
+          if (Array.isArray(subs)) {
+            subtarefasTexto = subs
+              .map((s: any) => (typeof s === 'string' ? s : s?.t || ''))
+              .join(' ')
+          }
+        } catch (_) {
+          subtarefasTexto = ''
+        }
+
+        // Labels amigáveis de prioridade e status
+        const prioCode =
+          t.prioridade_p ||
+          (t.prioridade === 'alta' ? 'P1' : t.prioridade === 'baixa' ? 'P3' : 'P2')
+        const prioExtenso =
+          prioCode === 'P1' ? 'alta p1 urgente' : prioCode === 'P3' ? 'baixa p3' : 'normal media p2'
+
+        const statusKanban = t.status_kanban || 'triagem'
+        const statusExtenso =
+          statusKanban === 'triagem'
+            ? 'triagem nova'
+            : statusKanban === 'a_fazer'
+              ? 'a fazer afazer pendente'
+              : statusKanban === 'em_andamento'
+                ? 'em andamento andamento'
+                : statusKanban === 'bloqueado'
+                  ? 'bloqueado impedimento'
+                  : 'concluido concluida finalizado'
+
+        // Concatena todos os campos textuais relevantes da tarefa
+        const conteudoAgregado = norm(
+          [
+            t.titulo,
+            t.descricao,
+            t.responsavel,
+            t.empresa,
+            t.vinculo_tipo,
+            t.vinculo_id,
+            t.recorrencia,
+            t.criado_por,
+            parceirosNomes,
+            subtarefasTexto,
+            prioCode,
+            prioExtenso,
+            statusKanban,
+            statusExtenso,
+          ]
+            .filter(Boolean)
+            .join(' '),
+        )
+
+        // Se o usuário digitou múltiplos termos separados por espaço, todos devem bater (busca AND)
+        const termos = q.split(/\s+/).filter(Boolean)
+        const matchTodos = termos.every((termo) => conteudoAgregado.includes(termo))
+        if (!matchTodos) return false
       }
 
       // Filtro rápido
@@ -293,7 +361,16 @@ export default function TarefasKanbanPage() {
 
       return true
     })
-  }, [itensFiltrados, buscaTexto, filtroRapido, hoje, inicioSemanaStr, fimSemanaStr, user])
+  }, [
+    itensFiltrados,
+    buscaTexto,
+    filtroRapido,
+    hoje,
+    inicioSemanaStr,
+    fimSemanaStr,
+    user,
+    parceiros,
+  ])
 
   const atrasadas = itensFiltrados.filter(
     (t) => t.status_kanban !== 'concluido' && t.prazo && String(t.prazo).slice(0, 10) < hoje,
@@ -1445,7 +1522,7 @@ export default function TarefasKanbanPage() {
             const isEmAndamento = col.key === 'em_andamento'
             const isOver = colunaHover === col.key && arrastandoTarefa?.status_kanban !== col.key
 
-            const cards = itensFiltrados.filter((t) => (t.status_kanban || 'triagem') === col.key)
+            const cards = itensLista.filter((t) => (t.status_kanban || 'triagem') === col.key)
 
             return (
               <div
