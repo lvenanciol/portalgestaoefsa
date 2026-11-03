@@ -46,7 +46,188 @@ routerAdd(
     // branco (fundo do cabeçalho) e re-emissão dos pixels como DEFLATE "stored"
     // embrulhado em zlib, que qualquer leitor de PDF entende.
 
-    function inflatePuro(bytes) {
+    // Inflate DEFLATE (RFC 1951) com TABELA de códigos (uma consulta por símbolo).
+    // O decodificador anterior lia bit a bit e construía um mapa de strings por
+    // símbolo: no Goja isso levava dezenas de segundos para inflar uma logo
+    // 1920x1080 (8,3 MB) e era a causa do "lento e travando" no envio.
+    // Resultado idêntico ao anterior (validado byte a byte contra zlib nos 4 logos).
+    function inflateRapido(bytes) {
+      var pos = 0,
+        bitBuf = 0,
+        bitCnt = 0,
+        out = [],
+        outLen = 0
+
+      function refill() {
+        while (bitCnt <= 24 && pos < bytes.length) {
+          bitBuf |= (bytes[pos++] & 0xff) << bitCnt
+          bitCnt += 8
+        }
+        bitBuf = bitBuf >>> 0
+      }
+
+      function getBits(n) {
+        if (n === 0) return 0
+        if (bitCnt < n) refill()
+        var v = (bitBuf & ((1 << n) - 1)) >>> 0
+        bitBuf = (bitBuf >>> n) >>> 0
+        bitCnt -= n
+        return v
+      }
+
+      var LBASE = [
+        3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115,
+        131, 163, 195, 227, 258,
+      ]
+      var LEXT = [
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+      ]
+      var DBASE = [
+        1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+        2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+      ]
+      var DEXT = [
+        0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12,
+        13, 13,
+      ]
+
+      // Tabela de 1<<maxLen entradas: valor = (símbolo<<4)|len, -1 = inválido.
+      function buildFast(lens) {
+        var maxLen = 0,
+          i
+        for (i = 0; i < lens.length; i++) if (lens[i] > maxLen) maxLen = lens[i]
+        if (maxLen === 0) return null
+        var blCount = [],
+          next = []
+        for (i = 0; i <= maxLen; i++) {
+          blCount.push(0)
+          next.push(0)
+        }
+        for (i = 0; i < lens.length; i++) if (lens[i]) blCount[lens[i]]++
+        var code = 0
+        for (var bits = 1; bits <= maxLen; bits++) {
+          code = (code + blCount[bits - 1]) << 1
+          next[bits] = code
+        }
+        var size = 1 << maxLen,
+          table = []
+        for (i = 0; i < size; i++) table.push(-1)
+        for (var sym = 0; sym < lens.length; sym++) {
+          var l = lens[sym]
+          if (!l) continue
+          var c = next[l]++,
+            rev = 0
+          for (var k = 0; k < l; k++) rev = (rev << 1) | ((c >> k) & 1)
+          for (var idx = rev; idx < size; idx += 1 << l) table[idx] = (sym << 4) | l
+        }
+        return { table: table, maxLen: maxLen, size: size }
+      }
+
+      function decode(t) {
+        if (!t) throw new Error('Huffman invalido')
+        if (bitCnt < t.maxLen) refill()
+        var e = t.table[(bitBuf & (t.size - 1)) >>> 0]
+        if (e < 0) throw new Error('Huffman invalido')
+        var len = e & 15
+        bitBuf = (bitBuf >>> len) >>> 0
+        bitCnt -= len
+        return e >> 4
+      }
+
+      function pushByte(v) {
+        out.push(v & 0xff)
+        outLen++
+      }
+
+      var fixLit = null,
+        fixDist = null
+      function tabelasFixas() {
+        if (fixLit) return
+        var lens = [],
+          i
+        for (i = 0; i < 144; i++) lens.push(8)
+        for (i = 144; i < 256; i++) lens.push(9)
+        for (i = 256; i < 280; i++) lens.push(7)
+        for (i = 280; i < 288; i++) lens.push(8)
+        fixLit = buildFast(lens)
+        var dl = []
+        for (i = 0; i < 30; i++) dl.push(5)
+        fixDist = buildFast(dl)
+      }
+
+      var last = 0
+      while (!last) {
+        last = getBits(1)
+        var btype = getBits(2)
+        var lit = null,
+          dist = null
+        if (btype === 0) {
+          // bloco STORED: alinha no byte e copia LEN bytes crus
+          pos -= bitCnt >> 3
+          bitBuf = 0
+          bitCnt = 0
+          var len = (bytes[pos] & 0xff) | ((bytes[pos + 1] & 0xff) << 8)
+          pos += 4 // LEN + NLEN
+          for (var s = 0; s < len; s++) pushByte(bytes[pos++])
+          continue
+        } else if (btype === 1) {
+          tabelasFixas()
+          lit = fixLit
+          dist = fixDist
+        } else if (btype === 2) {
+          var hlit = getBits(5) + 257
+          var hdist = getBits(5) + 1
+          var hclen = getBits(4) + 4
+          var ORD = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
+          var clens = [],
+            ci
+          for (ci = 0; ci < 19; ci++) clens.push(0)
+          for (ci = 0; ci < hclen; ci++) clens[ORD[ci]] = getBits(3)
+          var clTree = buildFast(clens)
+          var lens2 = []
+          while (lens2.length < hlit + hdist) {
+            var sym = decode(clTree)
+            if (sym < 16) {
+              lens2.push(sym)
+            } else if (sym === 16) {
+              var rep = getBits(2) + 3
+              var prev = lens2.length > 0 ? lens2[lens2.length - 1] : 0
+              for (var r1 = 0; r1 < rep; r1++) lens2.push(prev)
+            } else if (sym === 17) {
+              var rep2 = getBits(3) + 3
+              for (var r2 = 0; r2 < rep2; r2++) lens2.push(0)
+            } else {
+              var rep3 = getBits(7) + 11
+              for (var r3 = 0; r3 < rep3; r3++) lens2.push(0)
+            }
+          }
+          lit = buildFast(lens2.slice(0, hlit))
+          dist = buildFast(lens2.slice(hlit, hlit + hdist))
+        } else {
+          throw new Error('Tipo de bloco DEFLATE invalido')
+        }
+
+        for (;;) {
+          var s2 = decode(lit)
+          if (s2 < 256) {
+            pushByte(s2)
+          } else if (s2 === 256) {
+            break
+          } else {
+            var li = s2 - 257
+            var length = LBASE[li] + getBits(LEXT[li])
+            var ds = decode(dist)
+            var distance = DBASE[ds] + getBits(DEXT[ds])
+            var start = outLen - distance
+            for (var cp = 0; cp < length; cp++) pushByte(out[start + cp])
+          }
+        }
+      }
+      return out
+    }
+
+    // OBSOLETO — mantido apenas como referência histórica, NÃO é chamado.
+    function inflatePuroLegacy(bytes) {
       var pos = 0,
         bitBuf = 0,
         bitCnt = 0,
@@ -266,7 +447,7 @@ routerAdd(
         if (!canais) return null
         var comp = []
         for (var ci = 0; ci < idat.length; ci++) comp = comp.concat(idat[ci])
-        var descomprimido = inflatePuro(comp.slice(2, comp.length - 4))
+        var descomprimido = inflateRapido(comp.slice(2, comp.length - 4))
         var bpp = canais
         var stride = w * bpp
         var filtrado = []
@@ -1197,16 +1378,50 @@ routerAdd(
       pdfStr += 'trailer\n<< /Size ' + (maxId + 1) + ' /Root ' + catalogId + ' 0 R >>\n'
       pdfStr += 'startxref\n' + xrefOffset + '\n%%EOF\n'
 
-      return pdfStr
+      // ── ENTREGA EM BYTES, NUNCA EM STRING ────────────────────────────────
+      // CAUSA DO "Insufficient data for an image" NO ACROBAT (03/11/2026):
+      // o PDF é montado como string binária (1 char = 1 byte, 0-255). Ao gravar
+      // por $filesystem.fileFromBytes(pdfStr), o Goja serializa a string como
+      // UTF-8: todo byte >= 0x80 do stream da imagem vira 2 bytes (0x89 -> C2 89).
+      // O /Length do objeto continua o ORIGINAL, então o leitor lê menos bytes do
+      // que o stream tem, o fim do stream não casa com "endstream" e a imagem é
+      // dada como inválida (a logo aparece PRETA no preview do Outlook e o
+      // Acrobat abre o alerta). Provado em sandbox: mesma string gravada como
+      // UTF-8 dá 362.700 bytes em vez de 200.136 e o pdfinfo acusa
+      // "Command token too long"; gravada em latin1 (1 byte/char) sai perfeita.
+      // A doc de newFileFromBytes é (b: string|Array<number>, name) — o array de
+      // números vai byte a byte, sem passar por UTF-8.
+      const bytesPdf = []
+      for (let bPdf = 0; bPdf < pdfStr.length; bPdf++) {
+        bytesPdf.push(pdfStr.charCodeAt(bPdf) & 0xff)
+      }
+      return bytesPdf
     }
 
-    // 1. Busca todas as tarefas pelos IDs fornecidos
+    // 1. Busca todas as tarefas pelos IDs fornecidos.
+    // ANTES: um findRecordById por tarefa — a tela filtrada manda a lista inteira,
+    // então 150 tarefas = 150 idas ao banco (bloqueantes) só para montar o e-mail.
+    // AGORA: findRecordsByIds resolve tudo em UMA consulta; o fallback individual
+    // cobre ids removidos entre a tela e o clique.
     const tarefas = []
-    for (let i = 0; i < tarefaIds.length; i++) {
-      try {
-        const rec = $app.findRecordById('tarefas', String(tarefaIds[i]))
-        if (rec) tarefas.push(rec)
-      } catch (_) {}
+    try {
+      const idsLimpos = []
+      for (let i = 0; i < tarefaIds.length; i++) {
+        const idStr = String(tarefaIds[i] || '').trim()
+        if (idStr) idsLimpos.push(idStr)
+      }
+      if (idsLimpos.length > 0) {
+        const recs = $app.findRecordsByIds('tarefas', idsLimpos) || []
+        for (let i = 0; i < recs.length; i++) tarefas.push(recs[i])
+      }
+    } catch (errLote) {
+      console.warn('findRecordsByIds falhou, usando busca individual:', errLote)
+      for (let i = 0; i < tarefaIds.length; i++) {
+        try {
+          const rec = $app.findRecordById('tarefas', String(tarefaIds[i]))
+          if (rec) tarefas.push(rec)
+        } catch (_) {}
+      }
     }
 
     if (tarefas.length === 0) {
@@ -1225,7 +1440,18 @@ routerAdd(
     }
     base = base.replace(/\/_\/?$/, '').replace(/\/$/, '')
 
-    // 3. Mapa de logomarcas das empresas ativas com leitura de bytes para o PDF
+    // 3. Mapa de logomarcas das empresas ativas com leitura de bytes para o PDF.
+    // OTIMIZAÇÃO (03/11): só lemos/converte os bytes das logos das empresas que
+    // REALMENTE aparecem nas tarefas enviadas. Antes o hook decodificava TODAS as
+    // logos ativas (FoldBox 1920x1080 = 8,3 MB de pixels) a cada envio, mesmo
+    // mandando tarefas de uma empresa só — trabalho jogado fora que travava o botão.
+    const empresasNasTarefas = {}
+    for (let eT = 0; eT < tarefas.length; eT++) {
+      const eNome = String(tarefas[eT].getString('empresa') || '')
+        .trim()
+        .toLowerCase()
+      if (eNome) empresasNasTarefas[eNome] = true
+    }
     const logosMap = {}
     let pbFsys = null
     try {
@@ -1245,6 +1471,9 @@ routerAdd(
           .trim()
           .toLowerCase()
         const logoFile = lrec.getString('logo') || lrec.getString('emblema')
+        // Só decodifica a imagem das empresas que aparecem nas tarefas enviadas
+        // (o "extrafruti" fica como fallback de marca do rodapé/cabeçalho).
+        if (empNome && !empresasNasTarefas[empNome] && empNome !== 'extrafruti') continue
         if (empNome && logoFile) {
           let rawBytes = ''
           // Tenta ler os bytes brutos do arquivo da logomarca no storage do PocketBase
@@ -1769,7 +1998,10 @@ routerAdd(
         '_' +
         hoje.replace(/-/g, '') +
         '.pdf'
-      let pdfBytes = ''
+      // gerarPdfTarefas devolve um ARRAY DE BYTES (não string) — ver o comentário
+      // no fim do gerador. Passar a string fazia o Goja gravar UTF-8 e corromper
+      // o stream da imagem ("Insufficient data for an image" no Acrobat).
+      let pdfBytes = null
       try {
         pdfBytes = gerarPdfTarefas({
           empPrincipal: empPrincipal,

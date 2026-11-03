@@ -7,7 +7,9 @@
 // que ficou com o offline cache de uma versão anterior podia continuar servindo
 // assets velhos. Subir a versão garante que o activate limpe tudo e o preview
 // passe a exibir sempre o bundle do último build.
-const CACHE_NAME = 'pge-pwa-v3'
+// v4 (03/11/2026): novo bump junto do rebuild do preview — garante que nenhum
+// cliente continue servindo o bundle anterior por cache do service worker.
+const CACHE_NAME = 'pge-pwa-v4'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

@@ -47,9 +47,17 @@
       // Registro do Service Worker mínimo para PWA
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
-          navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function(err) {
-            console.debug('SW registration skipped or failed:', err);
-          });
+          // updateViaCache:'none' + update() a cada carga: o navegador não pode
+          // reutilizar um sw.js do cache HTTP, então o preview sempre pega o
+          // build recém-gerado (sem esperar publish nem hard-reload).
+          navigator.serviceWorker
+            .register('./sw.js', { scope: './', updateViaCache: 'none' })
+            .then(function(reg) {
+              try { reg.update(); } catch (e) {}
+            })
+            .catch(function(err) {
+              console.debug('SW registration skipped or failed:', err);
+            });
         });
       }
     </script>
