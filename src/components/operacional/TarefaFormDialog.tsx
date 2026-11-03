@@ -43,6 +43,8 @@ export interface TarefaFormData {
   descricao: string
   vinculo_tipo: string
   vinculo_id: string
+  projeto_id?: string
+  marco_id?: string
   empresa: string
   parceiro_ids: string[]
 }
@@ -65,6 +67,11 @@ export interface TarefaFormDialogProps {
   setDialogErro: (msg: string) => void
   salvando: boolean
   onSalvar: (isRascunho?: boolean, fraseCapturaIa?: string) => Promise<void>
+  // Contexto B (detalhe do projeto):
+  contextoProjeto?: {
+    id: string
+    nome: string
+  }
 }
 
 export function TarefaFormDialog({
@@ -85,7 +92,191 @@ export function TarefaFormDialog({
   setDialogErro,
   salvando,
   onSalvar,
+  contextoProjeto,
 }: TarefaFormDialogProps) {
+  // Estado de projetos e marcos para encadeamento
+  const [listaProjetos, setListaProjetos] = useState<Array<{ id: string; nome: string }>>([])
+  const [marcosDisponiveis, setMarcosDisponiveis] = useState<
+    Array<{ id: string; nome: string; concluido?: boolean }>
+  >([])
+  const [carregandoMarcos, setCarregandoMarcos] = useState(false)
+  const [erroMarco, setErroMarco] = useState('')
+  const [novoMarcoModalAberto, setNovoMarcoModalAberto] = useState(false)
+  const [novoMarcoNome, setNovoMarcoNome] = useState('')
+  const [novoMarcoData, setNovoMarcoData] = useState('')
+  const [salvandoNovoMarco, setSalvandoNovoMarco] = useState(false)
+  const [erroNovoMarco, setErroNovoMarco] = useState('')
+  const selectMarcoTriggerRef = useRef<HTMLButtonElement | null>(null)
+
+  // Carrega lista de projetos quando necessário
+  useEffect(() => {
+    let ativo = true
+    const carregarProjetos = async () => {
+      try {
+        const res = await pb.collection('projetos').getFullList<{ id: string; nome: string }>({
+          sort: 'nome',
+          fields: 'id,nome',
+        })
+        if (ativo) setListaProjetos(res)
+      } catch (err) {
+        console.warn('Erro ao carregar projetos:', err)
+      }
+    }
+    if (open) {
+      carregarProjetos()
+    }
+    return () => {
+      ativo = false
+    }
+  }, [open])
+
+  // Se estiver em contextoProjeto, força vinculo_tipo="projeto" e projeto_id=contextoProjeto.id
+  useEffect(() => {
+    if (open && contextoProjeto?.id) {
+      setForm((f) => ({
+        ...f,
+        vinculo_tipo: 'projeto',
+        vinculo_id: contextoProjeto.id,
+        projeto_id: contextoProjeto.id,
+      }))
+    }
+  }, [open, contextoProjeto?.id, setForm])
+
+  // ID do projeto atualmente selecionado (ou do contexto de projeto)
+  const idProjetoAtivo =
+    contextoProjeto?.id ||
+    form.projeto_id ||
+    (form.vinculo_tipo === 'projeto' ? form.vinculo_id : '')
+
+  // Carrega os marcos do projeto ativo
+  const carregarMarcosDoProjeto = useCallback(
+    async (projId: string, selecionarMarcoId?: string) => {
+      if (!projId) {
+        setMarcosDisponiveis([])
+        return
+      }
+      setCarregandoMarcos(true)
+      try {
+        const res = await pb
+          .collection('marcos')
+          .getFullList<{ id: string; nome: string; concluido?: boolean }>({
+            filter: `projeto_id = "${projId}"`,
+            sort: 'ordem',
+          })
+        setMarcosDisponiveis(res)
+        if (selecionarMarcoId) {
+          setForm((f) => ({ ...f, marco_id: selecionarMarcoId }))
+        }
+      } catch (err) {
+        console.warn('Erro ao carregar marcos do projeto:', err)
+        setMarcosDisponiveis([])
+      } finally {
+        setCarregandoMarcos(false)
+      }
+    },
+    [setForm],
+  )
+
+  useEffect(() => {
+    if (open && idProjetoAtivo) {
+      carregarMarcosDoProjeto(idProjetoAtivo)
+    } else if (!idProjetoAtivo) {
+      setMarcosDisponiveis([])
+    }
+  }, [open, idProjetoAtivo, carregarMarcosDoProjeto])
+
+  // Limpa erro de marco ao selecionar
+  useEffect(() => {
+    if (form.marco_id) {
+      setErroMarco('')
+    }
+  }, [form.marco_id])
+
+  // Salvar novo marco enxuto inline
+  const salvarNovoMarcoInline = async () => {
+    if (!novoMarcoNome.trim()) {
+      setErroNovoMarco('Informe o nome do marco.')
+      return
+    }
+    const pid = idProjetoAtivo
+    if (!pid) {
+      setErroNovoMarco('Nenhum projeto selecionado.')
+      return
+    }
+    setSalvandoNovoMarco(true)
+    setErroNovoMarco('')
+    try {
+      const proximaOrdem = (marcosDisponiveis.length || 0) + 1
+      const rec = await pb.collection('marcos').create({
+        nome: novoMarcoNome.trim(),
+        projeto_id: pid,
+        data: novoMarcoData ? novoMarcoData + ' 00:00:00.000Z' : undefined,
+        ordem: proximaOrdem,
+        concluido: false,
+      })
+      await carregarMarcosDoProjeto(pid, rec.id)
+      setNovoMarcoModalAberto(false)
+      setNovoMarcoNome('')
+      setNovoMarcoData('')
+      setErroMarco('')
+      toast({
+        title: 'Marco criado',
+        description: `O marco "${rec.nome}" foi criado e selecionado.`,
+      })
+    } catch (err: any) {
+      setErroNovoMarco(err?.message || 'Erro ao cadastrar marco.')
+    } finally {
+      setSalvandoNovoMarco(false)
+    }
+  }
+
+  // Intercepta onSalvar para validar marco obrigatório quando Vínculo = Projeto
+  const handleSalvarComValidacao = async (isRascunho = false, frase?: string) => {
+    setDialogErro('')
+    setErroMarco('')
+
+    const ehContextoProjeto = !!contextoProjeto?.id
+    const ehVinculoProjeto = ehContextoProjeto || form.vinculo_tipo === 'projeto'
+
+    // Regra: "Salvar rascunho" continua funcionando SEM marco em ambos os contextos
+    if (!isRascunho && ehVinculoProjeto) {
+      if (!form.marco_id || !form.marco_id.trim()) {
+        const msgAviso =
+          'Selecione um marco para esta tarefa. O progresso do projeto é calculado a partir das tarefas concluídas em cada marco.'
+        setErroMarco(msgAviso)
+        setDialogErro(msgAviso)
+        if (selectMarcoTriggerRef.current) {
+          selectMarcoTriggerRef.current.focus()
+        }
+        return
+      }
+    }
+
+    try {
+      await onSalvar(isRascunho, frase)
+    } catch (err: any) {
+      const msg = String(err?.message || err || '')
+      // Mapeamento amigável de erros do backend
+      if (
+        msg.includes('chk_tarefa_marco_obrigatorio') ||
+        msg.includes('origem') ||
+        msg.includes('marcoId é obrigatório') ||
+        msg.includes('marco')
+      ) {
+        setErroMarco('Selecione um marco para esta tarefa.')
+        setDialogErro('Selecione um marco para esta tarefa.')
+      } else if (msg.includes('não pertence') || msg.includes('MISMATCH')) {
+        setErroMarco('O marco escolhido não pertence a este projeto. Escolha outro marco.')
+        setDialogErro('O marco escolhido não pertence a este projeto. Escolha outro marco.')
+      } else if (msg.includes('cancelado')) {
+        setErroMarco('Este marco foi cancelado. Escolha um marco ativo.')
+        setDialogErro('Este marco foi cancelado. Escolha um marco ativo.')
+      } else {
+        setDialogErro(msg)
+      }
+    }
+  }
+
   // Bloco de Captura IA
   const [iaPrompt, setIaPrompt] = useState('')
   const [gerandoIa, setGerandoIa] = useState(false)
@@ -1680,46 +1871,192 @@ export function TarefaFormDialog({
                     Vínculo (Origem)
                   </Label>
                   <div className="flex items-center gap-1.5 w-full">
-                    <Select
-                      value={form.vinculo_tipo || ' '}
-                      onValueChange={(v) => {
-                        const vt = v === ' ' ? '' : v
-                        setForm({
-                          ...form,
-                          vinculo_tipo: vt,
-                          vinculo_id: vt ? form.vinculo_id : '',
-                        })
-                      }}
-                    >
-                      <SelectTrigger
-                        className={cn(
-                          'h-10 bg-gray-50/80 border-gray-200 transition-all',
-                          form.vinculo_tipo && form.vinculo_tipo !== ' '
-                            ? 'w-1/2 sm:w-[120px] shrink-0'
-                            : 'w-full sm:w-[130px]',
-                        )}
+                    {contextoProjeto?.id ? (
+                      /* Contexto B: projeto pré-selecionado e travado como texto */
+                      <div className="h-10 px-3 flex items-center bg-gray-100 border border-gray-200 rounded-md text-xs font-semibold text-gray-800 w-full truncate">
+                        Projeto: {contextoProjeto.nome}
+                      </div>
+                    ) : (
+                      /* Contexto A: opções Nenhum | Tarefa | Contrato | Ata | Projeto */
+                      <Select
+                        value={form.vinculo_tipo || ' '}
+                        onValueChange={(v) => {
+                          const vt = v === ' ' ? '' : v
+                          setForm({
+                            ...form,
+                            vinculo_tipo: vt,
+                            vinculo_id: vt === 'projeto' ? form.vinculo_id : '',
+                            projeto_id: vt === 'projeto' ? form.projeto_id : '',
+                            marco_id: vt === 'projeto' ? form.marco_id : '',
+                          })
+                        }}
                       >
-                        <SelectValue placeholder="Nenhum" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value=" ">Nenhum</SelectItem>
-                        <SelectItem value="ata">Ata</SelectItem>
-                        <SelectItem value="projeto">Projeto</SelectItem>
-                        <SelectItem value="contrato">Contrato</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    {form.vinculo_tipo && form.vinculo_tipo !== ' ' && (
-                      <Input
-                        value={form.vinculo_id || ''}
-                        onChange={(e) => setForm({ ...form, vinculo_id: e.target.value })}
-                        placeholder="ID / Cód (opcional)"
-                        className="h-10 bg-gray-50/80 border-gray-200 flex-1 min-w-0 text-xs"
-                      />
+                        <SelectTrigger className="h-10 bg-gray-50/80 border-gray-200 transition-all w-full">
+                          <SelectValue placeholder="Nenhum" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value=" ">Nenhum</SelectItem>
+                          <SelectItem value="tarefa">Tarefa</SelectItem>
+                          <SelectItem value="contrato">Contrato</SelectItem>
+                          <SelectItem value="ata">Ata</SelectItem>
+                          <SelectItem value="projeto">Projeto</SelectItem>
+                        </SelectContent>
+                      </Select>
                     )}
                   </div>
                 </div>
               </div>
+
+              {/* Texto de apoio discreto (11px cinza) quando Vínculo = Projeto em Contexto A */}
+              {!contextoProjeto?.id && form.vinculo_tipo === 'projeto' && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Ao vincular a um projeto, a tarefa passa a contar no progresso e precisa estar em
+                  um marco.
+                </p>
+              )}
+
+              {/* Seleção de Projeto e Marco se Vínculo = Projeto (Contexto A ou Contexto B) */}
+              {(form.vinculo_tipo === 'projeto' || !!contextoProjeto?.id) && (
+                <div className="p-3 bg-emerald-50/40 rounded-lg border border-emerald-100 space-y-3 mt-2">
+                  {/* Select de Projeto (só editável em Contexto A) */}
+                  {!contextoProjeto?.id && (
+                    <div className="space-y-1">
+                      <Label className="text-xs font-bold text-gray-700">
+                        Projeto <span className="text-red-500">*</span>
+                      </Label>
+                      <Select
+                        value={form.projeto_id || form.vinculo_id || ''}
+                        onValueChange={(projId) => {
+                          setForm({
+                            ...form,
+                            vinculo_tipo: 'projeto',
+                            vinculo_id: projId,
+                            projeto_id: projId,
+                            marco_id: '',
+                          })
+                          setErroMarco('')
+                        }}
+                      >
+                        <SelectTrigger className="h-10 bg-white border-gray-200 text-xs">
+                          <SelectValue placeholder="Selecione o projeto..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {listaProjetos.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>
+                              {p.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Select de Marco (obrigatório com asterisco vermelho) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <Label
+                        htmlFor="select-marco-tarefa"
+                        className={cn(
+                          'text-xs font-bold flex items-center gap-1',
+                          erroMarco ? 'text-red-600' : 'text-gray-700',
+                        )}
+                      >
+                        <span>Marco</span>
+                        <span className="text-red-500">*</span>
+                      </Label>
+                      {idProjetoAtivo && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setErroNovoMarco('')
+                            setNovoMarcoNome('')
+                            setNovoMarcoData('')
+                            setNovoMarcoModalAberto(true)
+                          }}
+                          className="text-[11px] font-semibold text-[#1B5E20] hover:underline"
+                        >
+                          + Novo marco
+                        </button>
+                      )}
+                    </div>
+
+                    {!idProjetoAtivo ? (
+                      <p className="text-xs text-gray-500 italic">
+                        Selecione primeiro um projeto para visualizar os marcos.
+                      </p>
+                    ) : carregandoMarcos ? (
+                      <p className="text-xs text-gray-500">Carregando marcos do projeto...</p>
+                    ) : marcosDisponiveis.length === 0 ? (
+                      /* Bloco âmbar inline no lugar do select se o projeto não tiver marcos */
+                      <div
+                        role="alert"
+                        className="p-3 rounded-lg border border-amber-300 bg-amber-50/90 text-amber-900 space-y-2"
+                      >
+                        <p className="text-xs font-medium">
+                          Este projeto ainda não possui marcos. Cadastre um marco para poder
+                          vincular tarefas.
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => {
+                            setErroNovoMarco('')
+                            setNovoMarcoNome('')
+                            setNovoMarcoData('')
+                            setNovoMarcoModalAberto(true)
+                          }}
+                          className="h-8 bg-[#1B5E20] hover:bg-[#0F3D13] text-white text-xs font-semibold"
+                        >
+                          Criar marco agora
+                        </Button>
+                      </div>
+                    ) : (
+                      /* Select de Marco */
+                      <>
+                        <Select
+                          value={form.marco_id || ''}
+                          onValueChange={(mId) => {
+                            setForm({ ...form, marco_id: mId })
+                            setErroMarco('')
+                          }}
+                        >
+                          <SelectTrigger
+                            ref={selectMarcoTriggerRef}
+                            id="select-marco-tarefa"
+                            aria-invalid={!!erroMarco}
+                            aria-describedby={erroMarco ? 'erro-marco-desc' : undefined}
+                            className={cn(
+                              'h-10 bg-white border-gray-200 text-xs',
+                              erroMarco && 'border-red-500 ring-2 ring-red-200',
+                            )}
+                          >
+                            <SelectValue placeholder="Selecione o marco..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {marcosDisponiveis.map((m) => (
+                              <SelectItem key={m.id} value={m.id}>
+                                {m.nome}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        {/* Mensagem amigável de erro acessível */}
+                        {erroMarco && (
+                          <p
+                            id="erro-marco-desc"
+                            role="alert"
+                            className="text-xs font-medium text-red-600 flex items-center gap-1.5 mt-1"
+                          >
+                            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                            <span>{erroMarco}</span>
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* PARCEIROS/CONTATOS RESPONSÁVEIS (obrigatório) em largura total */}
@@ -2155,10 +2492,10 @@ export function TarefaFormDialog({
         {/* 5) RODAPÉ FIXO NA BASE DO MODAL */}
         {/* ============================================================== */}
         <div className="px-6 py-4 border-t border-gray-100 bg-white flex items-center justify-between gap-3 shrink-0">
-          {/* Lado esquerdo: Salvar rascunho */}
+          {/* Lado esquerdo: Salvar rascunho (continua funcionando SEM marco em ambos os contextos) */}
           <button
             type="button"
-            onClick={() => onSalvar(true, fraseIaAplicada)}
+            onClick={() => handleSalvarComValidacao(true, fraseIaAplicada)}
             disabled={salvando}
             className="text-xs sm:text-[13px] font-medium text-gray-500 hover:text-gray-800 transition-colors underline-offset-2 hover:underline disabled:opacity-50"
           >
@@ -2174,6 +2511,7 @@ export function TarefaFormDialog({
                 if (ouvindo) pararOuvir()
                 onOpenChange(false)
                 setDialogErro('')
+                setErroMarco('')
               }}
               disabled={salvando}
               className="h-9 px-4 text-xs font-semibold text-gray-700 border-gray-200 hover:bg-gray-50"
@@ -2183,9 +2521,18 @@ export function TarefaFormDialog({
 
             <Button
               type="button"
-              onClick={() => onSalvar(false, fraseIaAplicada)}
-              disabled={salvando}
-              className="h-9 px-5 text-xs font-bold bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs flex items-center gap-1.5"
+              onClick={() => handleSalvarComValidacao(false, fraseIaAplicada)}
+              disabled={
+                salvando ||
+                // Botão "Criar tarefa" desabilitado (opacity .5) enquanto não houver marco selecionável em contexto de projeto
+                (!!contextoProjeto?.id && marcosDisponiveis.length === 0)
+              }
+              className={cn(
+                'h-9 px-5 text-xs font-bold bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs flex items-center gap-1.5',
+                !!contextoProjeto?.id &&
+                  marcosDisponiveis.length === 0 &&
+                  'opacity-50 cursor-not-allowed',
+              )}
             >
               {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               <span>{editando ? 'Salvar alterações' : 'Criar tarefa'}</span>
@@ -2193,6 +2540,67 @@ export function TarefaFormDialog({
           </div>
         </div>
       </DialogContent>
+
+      {/* Modal enxuto para criar novo marco inline (nome e data prevista; ao salvar seleciona) */}
+      <Dialog open={novoMarcoModalAberto} onOpenChange={setNovoMarcoModalAberto}>
+        <DialogContent className="max-w-md p-6 bg-white rounded-xl shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-gray-900">
+              Novo Marco do Projeto
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-gray-700">
+                Nome do Marco <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                value={novoMarcoNome}
+                onChange={(e) => setNovoMarcoNome(e.target.value)}
+                placeholder="Ex.: Fase 1 - Planejamento"
+                className="h-9 text-xs"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-gray-700">Data Prevista</Label>
+              <Input
+                type="date"
+                value={novoMarcoData}
+                onChange={(e) => setNovoMarcoData(e.target.value)}
+                className="h-9 text-xs"
+              />
+            </div>
+            {erroNovoMarco && (
+              <p role="alert" className="text-xs text-red-600 font-medium">
+                {erroNovoMarco}
+              </p>
+            )}
+          </div>
+          <DialogFooter className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setNovoMarcoModalAberto(false)}
+              disabled={salvandoNovoMarco}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={salvarNovoMarcoInline}
+              disabled={salvandoNovoMarco}
+              className="bg-[#1B5E20] hover:bg-[#0F3D13] text-white text-xs font-semibold"
+            >
+              {salvandoNovoMarco ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              Salvar marco
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }

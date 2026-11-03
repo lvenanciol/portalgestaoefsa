@@ -31,6 +31,8 @@ export interface TarefasListaProps {
   onMoverStatus?: (t: any, novoStatus: string) => Promise<void> | void
   onAbrirNova?: () => void
   obterIconeEmpresa?: (emp: string) => React.ReactNode
+  onVincularProjeto?: (t: any) => void
+  onDesvincularProjeto?: (t: any) => void
 }
 
 interface GrupoStatusDef {
@@ -79,7 +81,20 @@ export function TarefasListaView({
   onExcluir,
   onMoverStatus,
   onAbrirNova,
+  onVincularProjeto,
+  onDesvincularProjeto,
 }: TarefasListaProps) {
+  // Linhas expandidas para exibir detalhes adicionais (como o marco do projeto)
+  const [linhasExpandidas, setLinhasExpandidas] = useState<Record<string, boolean>>({})
+
+  const toggleExpandirLinha = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setLinhasExpandidas((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }))
+  }
+
   // Estado de grupos recolhidos (por padrão todos abertos)
   const [gruposAbertos, setGruposAbertos] = useState<Record<string, boolean>>({
     triagem: true,
@@ -192,6 +207,17 @@ export function TarefasListaView({
                           )?.label || 'Triagem'
 
                         const responsavelLimpo = limparTextoResponsavel(t.responsavel)
+                        const ehProjeto =
+                          t.origem === 'projeto' || t.vinculo_tipo === 'projeto' || !!t.projeto_id
+                        const linhaAberta = !!linhasExpandidas[t.id]
+                        const nomeMarco =
+                          t.expand?.marco_id?.nome ||
+                          t.marco_nome ||
+                          (t.marco_id ? `Marco ${t.marco_id}` : '')
+                        const nomeProjeto =
+                          t.expand?.projeto_id?.nome ||
+                          t.projeto_nome ||
+                          (t.projeto_id ? `Projeto ${t.projeto_id}` : '')
 
                         return (
                           <div
@@ -204,22 +230,50 @@ export function TarefasListaView({
                               {/* COLUNA 1: Título + Vínculo (4 colunas) */}
                               <div className="lg:col-span-4 flex items-start gap-2.5 min-w-0">
                                 <div className="min-w-0 flex-1">
-                                  <h3 className="text-xs sm:text-[13px] font-bold text-gray-900 group-hover:text-[#1B5E20] transition-colors truncate leading-tight">
-                                    {t.titulo}
-                                  </h3>
-                                  {t.vinculo_tipo && (
-                                    <div className="mt-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <h3 className="text-xs sm:text-[13px] font-bold text-gray-900 group-hover:text-[#1B5E20] transition-colors truncate leading-tight">
+                                      {t.titulo}
+                                    </h3>
+                                    {/* Botão de expansão quando tiver detalhes de projeto/marco */}
+                                    {ehProjeto && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => toggleExpandirLinha(t.id, e)}
+                                        className="text-gray-400 hover:text-gray-600 p-0.5 rounded transition-colors"
+                                        title={
+                                          linhaAberta ? 'Ocultar detalhes' : 'Ver marco vinculado'
+                                        }
+                                      >
+                                        <ChevronDown
+                                          className={cn(
+                                            'h-3.5 w-3.5 transition-transform duration-200',
+                                            linhaAberta && 'rotate-180',
+                                          )}
+                                        />
+                                      </button>
+                                    )}
+                                  </div>
+                                  {/* Badge de Vínculo: avulsa (cinza) ou de projeto (verde) ou outros */}
+                                  <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                    {ehProjeto ? (
                                       <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                        de projeto
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                                        avulsa
+                                      </span>
+                                    )}
+                                    {t.vinculo_tipo && t.vinculo_tipo !== 'projeto' && (
+                                      <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
                                         {t.vinculo_tipo === 'ata'
                                           ? 'de ata'
-                                          : t.vinculo_tipo === 'projeto'
-                                            ? 'de projeto'
-                                            : t.vinculo_tipo === 'contrato'
-                                              ? 'de contrato'
-                                              : t.vinculo_tipo}
+                                          : t.vinculo_tipo === 'contrato'
+                                            ? 'de contrato'
+                                            : t.vinculo_tipo}
                                       </span>
-                                    </div>
-                                  )}
+                                    )}
+                                  </div>
                                 </div>
                               </div>
 
@@ -380,7 +434,7 @@ export function TarefasListaView({
                                       <MoreHorizontal className="h-4 w-4" />
                                     </button>
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end" className="w-36 bg-white">
+                                  <DropdownMenuContent align="end" className="w-48 bg-white">
                                     <DropdownMenuItem
                                       onClick={() => onAbrirEditar(t)}
                                       className="flex items-center gap-2 text-xs font-medium cursor-pointer"
@@ -388,6 +442,28 @@ export function TarefasListaView({
                                       <Pencil className="h-3.5 w-3.5 text-gray-500" />
                                       <span>Editar</span>
                                     </DropdownMenuItem>
+
+                                    {/* Ações rápidas de vínculo a projeto */}
+                                    {ehProjeto && onDesvincularProjeto ? (
+                                      <DropdownMenuItem
+                                        onClick={() => onDesvincularProjeto(t)}
+                                        className="flex items-center gap-2 text-xs font-medium text-amber-700 hover:text-amber-800 hover:bg-amber-50 cursor-pointer"
+                                      >
+                                        <Repeat className="h-3.5 w-3.5 text-amber-600" />
+                                        <span>Desvincular do projeto</span>
+                                      </DropdownMenuItem>
+                                    ) : null}
+
+                                    {!ehProjeto && onVincularProjeto ? (
+                                      <DropdownMenuItem
+                                        onClick={() => onVincularProjeto(t)}
+                                        className="flex items-center gap-2 text-xs font-medium text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 cursor-pointer"
+                                      >
+                                        <PlusCircle className="h-3.5 w-3.5 text-emerald-600" />
+                                        <span>Vincular a projeto</span>
+                                      </DropdownMenuItem>
+                                    ) : null}
+
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem
                                       onClick={() => onExcluir(t)}
@@ -400,6 +476,40 @@ export function TarefasListaView({
                                 </DropdownMenu>
                               </div>
                             </div>
+
+                            {/* Detalhes expandidos: marco vinculado e projeto */}
+                            {ehProjeto && linhaAberta && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="mt-3 pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs text-gray-600 bg-emerald-50/40 rounded-lg px-3 py-2"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="font-semibold text-emerald-900 shrink-0">
+                                    Marco vinculado:
+                                  </span>
+                                  <span className="font-medium text-emerald-800 truncate">
+                                    {nomeMarco || 'Marco não informado'}
+                                  </span>
+                                  {nomeProjeto && (
+                                    <>
+                                      <span className="text-gray-300">·</span>
+                                      <span className="text-gray-500 text-[11px] truncate">
+                                        Projeto: {nomeProjeto}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                                {onDesvincularProjeto && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onDesvincularProjeto(t)}
+                                    className="text-[11px] text-amber-700 hover:text-amber-900 font-semibold underline underline-offset-2 shrink-0 ml-2"
+                                  >
+                                    Desvincular
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )
                       })}

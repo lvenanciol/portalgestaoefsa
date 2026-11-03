@@ -73,6 +73,12 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { limparTextoResponsavel, obterIniciaisResponsavel } from '@/lib/responsavel-utils'
+import {
+  vincularTarefaAoProjeto,
+  desvincularTarefaDeProjeto,
+  listarMarcosProjeto,
+  MarcoRegistro,
+} from '@/services/tarefas-projetos-service'
 
 // Fase 7 (prompt-mestre) — Tarefas & Agenda: kanban 4 colunas (A Fazer,
 // Em Andamento, Bloqueado, Concluído), prioridade P1-P3, subtarefas,
@@ -139,16 +145,134 @@ export default function TarefasKanbanPage() {
   const [mesRef, setMesRef] = useState(() => new Date().toISOString().slice(0, 7))
   const { obterIconeEmpresa } = useEmpresaLogos()
 
+  // Estados para ação rápida de vincular tarefa a projeto
+  const [vincularModalTarefa, setVincularModalTarefa] = useState<any | null>(null)
+  const [projetosParaVincular, setProjetosParaVincular] = useState<any[]>([])
+  const [projetoVincularId, setProjetoVincularId] = useState('')
+  const [marcosParaVincular, setMarcosParaVincular] = useState<MarcoRegistro[]>([])
+  const [marcoVincularId, setMarcoVincularId] = useState('')
+  const [carregandoMarcosVincular, setCarregandoMarcosVincular] = useState(false)
+  const [salvandoVinculo, setSalvandoVinculo] = useState(false)
+  const [erroVinculoModal, setErroVinculoModal] = useState('')
+
+  // Estado para desvincular tarefa de projeto
+  const [desvincularModalTarefa, setDesvincularModalTarefa] = useState<any | null>(null)
+  const [salvandoDesvinculo, setSalvandoDesvinculo] = useState(false)
+
   const carregar = async () => {
     setLoading(true)
     try {
-      const r = await pb.collection('tarefas').getFullList({ sort: '-created' })
+      const r = await pb.collection('tarefas').getFullList({
+        sort: '-created',
+        expand: 'projeto_id,marco_id',
+      })
       setItens(r as any[])
       setErro('')
     } catch (e) {
       setErro(String(e))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const abrirVincularProjeto = async (tarefa: any) => {
+    setVincularModalTarefa(tarefa)
+    setProjetoVincularId('')
+    setMarcoVincularId('')
+    setMarcosParaVincular([])
+    setErroVinculoModal('')
+    try {
+      const projs = await pb.collection('projetos').getFullList({ sort: 'nome' })
+      setProjetosParaVincular(projs as any[])
+    } catch (err) {
+      console.error('Erro ao listar projetos para vincular:', err)
+    }
+  }
+
+  const handleSelecionarProjetoParaVincular = async (pId: string) => {
+    setProjetoVincularId(pId)
+    setMarcoVincularId('')
+    setErroVinculoModal('')
+    if (!pId) {
+      setMarcosParaVincular([])
+      return
+    }
+    setCarregandoMarcosVincular(true)
+    try {
+      const ms = await listarMarcosProjeto(pId)
+      setMarcosParaVincular(ms)
+    } catch (err) {
+      console.error('Erro ao listar marcos do projeto:', err)
+      setMarcosParaVincular([])
+    } finally {
+      setCarregandoMarcosVincular(false)
+    }
+  }
+
+  const confirmarVinculoProjeto = async () => {
+    if (!vincularModalTarefa) return
+    if (!projetoVincularId) {
+      setErroVinculoModal('Selecione um projeto para continuar.')
+      return
+    }
+    if (!marcoVincularId) {
+      setErroVinculoModal('Escolha o marco para concluir o vínculo com o projeto.')
+      return
+    }
+
+    setSalvandoVinculo(true)
+    setErroVinculoModal('')
+    try {
+      await vincularTarefaAoProjeto({
+        tarefaId: vincularModalTarefa.id,
+        projetoId: projetoVincularId,
+        marcoId: marcoVincularId,
+      })
+      toast({
+        title: 'Tarefa vinculada ao projeto',
+        description: 'A tarefa agora faz parte do projeto e conta no cálculo de progresso.',
+      })
+      setVincularModalTarefa(null)
+      await carregar()
+    } catch (err: any) {
+      const msg = err?.message || 'Falha ao vincular tarefa ao projeto.'
+      if (msg.includes('chk_tarefa_marco_obrigatorio') || msg.includes('marco')) {
+        setErroVinculoModal('Selecione um marco para esta tarefa.')
+      } else if (msg.includes('pertence')) {
+        setErroVinculoModal('O marco escolhido não pertence a este projeto. Escolha outro marco.')
+      } else if (msg.includes('cancelado')) {
+        setErroVinculoModal('Este marco foi cancelado. Escolha um marco ativo.')
+      } else {
+        setErroVinculoModal(msg)
+      }
+    } finally {
+      setSalvandoVinculo(false)
+    }
+  }
+
+  const abrirDesvincularProjeto = (tarefa: any) => {
+    setDesvincularModalTarefa(tarefa)
+  }
+
+  const confirmarDesvinculoProjeto = async () => {
+    if (!desvincularModalTarefa) return
+    setSalvandoDesvinculo(true)
+    try {
+      await desvincularTarefaDeProjeto(desvincularModalTarefa.id)
+      toast({
+        title: 'Tarefa desvinculada',
+        description: 'A tarefa agora é avulsa e deixou de contar no progresso do projeto.',
+      })
+      setDesvincularModalTarefa(null)
+      await carregar()
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao desvincular',
+        description: err?.message || 'Não foi possível desvincular a tarefa do projeto.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoDesvinculo(false)
     }
   }
 
@@ -1508,6 +1632,8 @@ export default function TarefasKanbanPage() {
           onMoverStatus={mover}
           onAbrirNova={abrirNova}
           obterIconeEmpresa={obterIconeEmpresa}
+          onVincularProjeto={abrirVincularProjeto}
+          onDesvincularProjeto={abrirDesvincularProjeto}
         />
       )}
 
@@ -1959,6 +2085,150 @@ export default function TarefasKanbanPage() {
         enviarChat={enviarChat}
         chatErro={chatErro}
       />
+
+      {/* Diálogo de ação rápida: Vincular tarefa a projeto (exige projeto + marco na mesma tela) */}
+      <Dialog open={!!vincularModalTarefa} onOpenChange={(o) => !o && setVincularModalTarefa(null)}>
+        <DialogContent className="bg-white max-w-md p-6 rounded-xl shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-gray-900">
+              Vincular tarefa a projeto
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2 text-xs">
+            <p className="text-gray-600">
+              Ao vincular a tarefa{' '}
+              <strong className="text-gray-900">"{vincularModalTarefa?.titulo}"</strong> a um
+              projeto, ela passa a contar no progresso do projeto e precisa obrigatoriamente estar
+              associada a um marco.
+            </p>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-gray-700">
+                Projeto <span className="text-red-500">*</span>
+              </Label>
+              <Select value={projetoVincularId} onValueChange={handleSelecionarProjetoParaVincular}>
+                <SelectTrigger className="h-9 text-xs bg-white">
+                  <SelectValue placeholder="Selecione o projeto" />
+                </SelectTrigger>
+                <SelectContent className="bg-white max-h-56">
+                  {projetosParaVincular.map((p) => (
+                    <SelectItem key={p.id} value={p.id} className="text-xs">
+                      {p.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {projetoVincularId && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-gray-700">
+                  Marco <span className="text-red-500">*</span>
+                </Label>
+                {carregandoMarcosVincular ? (
+                  <div className="flex items-center gap-2 text-gray-500 text-xs py-2">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-[#1B5E20]" />
+                    <span>Carregando marcos do projeto...</span>
+                  </div>
+                ) : marcosParaVincular.length === 0 ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs">
+                    Este projeto ainda não possui marcos cadastrados. Crie um marco no projeto antes
+                    de vincular esta tarefa.
+                  </div>
+                ) : (
+                  <Select
+                    value={marcoVincularId}
+                    onValueChange={(v) => {
+                      setMarcoVincularId(v)
+                      setErroVinculoModal('')
+                    }}
+                  >
+                    <SelectTrigger className="h-9 text-xs bg-white">
+                      <SelectValue placeholder="Selecione o marco" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white max-h-56">
+                      {marcosParaVincular.map((m) => (
+                        <SelectItem key={m.id} value={m.id} className="text-xs">
+                          {m.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
+
+            {erroVinculoModal && (
+              <p role="alert" className="text-xs text-red-600 font-medium">
+                {erroVinculoModal}
+              </p>
+            )}
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-gray-100">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setVincularModalTarefa(null)}
+              disabled={salvandoVinculo}
+              className="h-9 text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={confirmarVinculoProjeto}
+              disabled={salvandoVinculo || !projetoVincularId || !marcoVincularId}
+              className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white text-xs font-semibold"
+            >
+              {salvandoVinculo ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
+              Confirmar vínculo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Diálogo de ação rápida: Desvincular do projeto */}
+      <Dialog
+        open={!!desvincularModalTarefa}
+        onOpenChange={(o) => !o && setDesvincularModalTarefa(null)}
+      >
+        <DialogContent className="bg-white max-w-sm p-6 rounded-xl shadow-xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-amber-700 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" /> Desvincular do projeto
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2 text-[13px] text-gray-700 leading-relaxed">
+            Esta tarefa deixará de contar no progresso do projeto{' '}
+            <strong className="text-gray-900 font-semibold">
+              {desvincularModalTarefa?.expand?.projeto_id?.nome ||
+                desvincularModalTarefa?.projeto_nome ||
+                'vinculado'}
+            </strong>
+            . Confirmar?
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-gray-100">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDesvincularModalTarefa(null)}
+              disabled={salvandoDesvinculo}
+              className="h-9 text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              onClick={confirmarDesvinculoProjeto}
+              disabled={salvandoDesvinculo}
+              className="h-9 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold"
+            >
+              {salvandoDesvinculo ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
+              Confirmar desvinculação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirmação de exclusão da tarefa */}
       <Dialog open={!!excluindoTarefa} onOpenChange={(o) => !o && setExcluindoTarefa(null)}>
