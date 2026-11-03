@@ -52,6 +52,12 @@ import { cn } from '@/lib/utils'
 import { toast } from '@/hooks/use-toast'
 import { TarefaFormDialog, TarefaFormData } from '@/components/operacional/TarefaFormDialog'
 import { ParceiroCadastroDialog } from '@/components/operacional/ParceiroCadastroDialog'
+import { ProjetoTarefasAba } from '@/components/operacional/ProjetoTarefasAba'
+import {
+  MarcoRegistro,
+  listarMarcosProjeto,
+  obterDiagnosticoOrigem,
+} from '@/services/tarefas-projetos-service'
 import { useEmpresaLogos } from '@/components/common/EmpresaIcon'
 
 // Utilitários de formatação
@@ -142,6 +148,12 @@ export default function ProjetoDetalhePage() {
   // Tarefas vinculadas (lidas do PocketBase e atualizáveis)
   const [tarefasDoProjeto, setTarefasDoProjeto] = useState<any[]>([])
 
+  // Marcos reais da coleção 'marcos' do PocketBase
+  const [marcosReais, setMarcosReais] = useState<MarcoRegistro[]>([])
+
+  // Sentinela de diagnóstico de inconsistência
+  const [temInconsistenciaDiagnostico, setTemInconsistenciaDiagnostico] = useState(false)
+
   // Modal de Edição de Projeto (espelha o modal existente de Projetos)
   const [dialogEdicao, setDialogEdicao] = useState(false)
 
@@ -175,27 +187,58 @@ export default function ProjetoDetalhePage() {
       const p = await pb.collection('projetos').getOne(id)
       setProjeto(p)
 
-      // Carregar tarefas vinculadas a este projeto (ou criadas para ele)
+      // 1. Carregar marcos reais da coleção 'marcos'
+      try {
+        const mList = await listarMarcosProjeto(id)
+        setMarcosReais(mList)
+      } catch (err) {
+        console.warn('Erro ao carregar marcos do projeto:', err)
+        setMarcosReais([])
+      }
+
+      // 2. Carregar tarefas vinculadas a este projeto (ou criadas para ele)
       try {
         const tList = await pb.collection('tarefas').getFullList({
-          filter: `vinculo_tipo = 'projeto' && vinculo_id = '${id}'`,
+          filter: `projeto_id = '${id}' || (vinculo_tipo = 'projeto' && vinculo_id = '${id}')`,
           sort: '-created',
+          expand: 'marco_id',
         })
         setTarefasDoProjeto(tList)
       } catch {
         // Se filtro falhar, tenta ler tarefas em geral vinculadas
         try {
-          const tListAll = await pb.collection('tarefas').getFullList({ sort: '-created' })
+          const tListAll = await pb.collection('tarefas').getFullList({
+            sort: '-created',
+            expand: 'marco_id',
+          })
           const vinculadas = tListAll.filter(
             (t: any) =>
-              t.vinculo_tipo === 'projeto' &&
-              (t.vinculo_id === id ||
-                String(t.vinculo_id || '').toLowerCase() === String(p.nome || '').toLowerCase()),
+              t.projeto_id === id ||
+              (t.vinculo_tipo === 'projeto' &&
+                (t.vinculo_id === id ||
+                  String(t.vinculo_id || '').toLowerCase() === String(p.nome || '').toLowerCase())),
           )
           setTarefasDoProjeto(vinculadas)
         } catch {
           setTarefasDoProjeto([])
         }
+      }
+
+      // 3. Checar diagnóstico de integridade
+      try {
+        const diag: any = await obterDiagnosticoOrigem()
+        const listaInconsistente =
+          diag?.violacoes ||
+          diag?.detalhe?.tarefas_sem_marco_inconsistente ||
+          diag?.tarefas_sem_marco_inconsistente ||
+          []
+        const temInconsistencia = (diag?.violacoes_integridade || 0) > 0 || listaInconsistente.length > 0
+        setTemInconsistenciaDiagnostico(temInconsistencia)
+        if (temInconsistencia) {
+          console.error('Inconsistência de integridade detectada:', listaInconsistente)
+        }
+      } catch {
+        setTemInconsistenciaDiagnostico(false)
       }
 
       setErro('')
@@ -237,34 +280,31 @@ export default function ProjetoDetalhePage() {
     const prioridade = projeto.prioridade || 'Alta'
     const inicio = projeto.inicio || '01/08/2026'
 
-    // Marcos
-    const marcosRaw = parseJson(projeto.marcos)
+    // Marcos para a Aba Cronograma (usa marcosReais quando disponíveis, senão JSON legado ou fallback)
     let marcosLista: MarcoItem[] = []
-    if (marcosRaw.length > 0) {
-      marcosLista = marcosRaw.map((m: any, idx: number) => ({
-        num: idx + 1,
-        fase: `Fase ${idx + 1}`,
-        nome: m.nome || `Fase ${idx + 1}`,
-        data: fmtDataBR(m.data) || '15/10/2026',
-        ok: !!m.ok,
-        atual: !m.ok && idx === marcosRaw.findIndex((x: any) => !x.ok),
+    if (marcosReais.length > 0) {
+      marcosLista = marcosReais.map((m, idx) => ({
+        num: m.ordem || idx + 1,
+        fase: `Fase ${m.ordem || idx + 1}`,
+        nome: m.nome,
+        data: m.data ? fmtDataBR(m.data) : 'A definir',
+        ok: !!m.concluido,
+        atual: !m.concluido && idx === marcosReais.findIndex((x) => !x.concluido),
       }))
     } else {
-      // Mock estruturado fiel à tela de referência
-      marcosLista = [
-        { num: 1, fase: 'Fase 1', nome: 'Planejamento', data: '01/08/2026', ok: true },
-        { num: 2, fase: 'Fase 2', nome: 'Levantamento', data: '15/08/2026', ok: true },
-        {
-          num: 3,
-          fase: 'Fase 3',
-          nome: 'Desenvolvimento',
-          data: '01/09/2026',
-          ok: false,
-          atual: true,
-        },
-        { num: 4, fase: 'Fase 4', nome: 'Testes', data: '15/10/2026', ok: false },
-        { num: 5, fase: 'Fase 5', nome: 'Implantação', data: '01/11/2026', ok: false },
-      ]
+      const marcosRaw = parseJson(projeto.marcos)
+      if (marcosRaw.length > 0) {
+        marcosLista = marcosRaw.map((m: any, idx: number) => ({
+          num: idx + 1,
+          fase: `Fase ${idx + 1}`,
+          nome: m.nome || `Fase ${idx + 1}`,
+          data: fmtDataBR(m.data) || '15/10/2026',
+          ok: !!m.ok,
+          atual: !m.ok && idx === marcosRaw.findIndex((x: any) => !x.ok),
+        }))
+      } else {
+        marcosLista = []
+      }
     }
 
     // Riscos
@@ -294,7 +334,7 @@ export default function ProjetoDetalhePage() {
       ]
     }
 
-    // Tarefas sintéticas baseadas no estado se o banco não tiver
+    // Tarefas mapeadas para o resumo e para a aba
     const tarefasLista: TarefaResumo[] =
       tarefasDoProjeto.length > 0
         ? tarefasDoProjeto.map((t) => ({
@@ -306,36 +346,10 @@ export default function ProjetoDetalhePage() {
             concluida: t.status === 'concluida' || t.status_kanban === 'concluido',
             responsavel: t.responsavel || 'Equipe',
             status_kanban: t.status_kanban || 'a_fazer',
+            marco_id: t.marco_id,
+            expand: t.expand,
           }))
-        : [
-            {
-              id: 'local-1',
-              titulo: 'Revisar escopo do módulo de relatórios',
-              prioridade: 'Alta',
-              prazo: '14/10/2026',
-              concluida: false,
-              responsavel: 'Mariana Costa',
-              status_kanban: 'a_fazer',
-            },
-            {
-              id: 'local-2',
-              titulo: 'Reunião de alinhamento com a TI',
-              prioridade: 'Média',
-              prazo: '17/10/2026',
-              concluida: false,
-              responsavel: 'Felipe Almeida',
-              status_kanban: 'a_fazer',
-            },
-            {
-              id: 'local-3',
-              titulo: 'Validar materiais de treinamento',
-              prioridade: 'Baixa',
-              prazo: '21/10/2026',
-              concluida: false,
-              responsavel: 'Carla Souza',
-              status_kanban: 'a_fazer',
-            },
-          ]
+        : []
 
     // RACI
     let raci = {
@@ -371,7 +385,7 @@ export default function ProjetoDetalhePage() {
       tarefasLista,
       raci,
     }
-  }, [projeto, tarefasDoProjeto])
+  }, [projeto, tarefasDoProjeto, marcosReais])
 
   // Estado local para checkbox funcional das tarefas (para atualizar contador dinamicamente)
   const [tarefasConcluidasMap, setTarefasConcluidasMap] = useState<Record<string, boolean>>({})
@@ -1252,65 +1266,32 @@ export default function ProjetoDetalhePage() {
 
       {/* ABA 3: TAREFAS */}
       {abaAtiva === 'tarefas' && (
-        <div className="bg-white rounded-xl border border-gray-200/90 p-6 shadow-xs space-y-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-gray-900">Tarefas do Projeto</h2>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {tarefasPendentesCount} pendente(s) de um total de {totalTarefas} tarefas
-              </p>
-            </div>
-            <Button
-              onClick={abrirNovaTarefa}
-              className="h-8 bg-[#1B5E20] hover:bg-[#0F3D13] text-white text-xs font-semibold"
-            >
-              <Plus className="h-3.5 w-3.5 mr-1" /> Nova tarefa
-            </Button>
-          </div>
-
-          <div className="space-y-2">
-            {tarefasLista.map((t) => {
-              const marcada =
-                tarefasConcluidasMap[t.id] !== undefined ? tarefasConcluidasMap[t.id] : t.concluida
-
-              return (
-                <div
-                  key={t.id}
-                  className="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50/80 transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <input
-                      type="checkbox"
-                      checked={marcada}
-                      onChange={() => toggleTarefa(t.id)}
-                      className="h-4 w-4 rounded border-gray-300 text-[#1B5E20] focus:ring-[#1B5E20] cursor-pointer"
-                    />
-                    <div className="min-w-0">
-                      <span
-                        className={cn(
-                          'text-xs font-bold block truncate',
-                          marcada ? 'line-through text-gray-400' : 'text-gray-900',
-                        )}
-                      >
-                        {t.titulo}
-                      </span>
-                      <span className="text-[11px] text-gray-400">
-                        Responsável: {t.responsavel || 'Equipe'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[11px] font-semibold text-gray-500">{t.prazo}</span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-gray-100 text-gray-700">
-                      {t.prioridade || 'Média'}
-                    </span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <ProjetoTarefasAba
+          projetoId={projeto.id}
+          projetoNome={projeto.nome}
+          marcos={marcosReais}
+          tarefas={tarefasDoProjeto.map((t: any) => ({
+            id: t.id,
+            titulo: t.titulo,
+            prioridade:
+              t.prioridade === 'alta' ? 'Alta' : t.prioridade === 'baixa' ? 'Baixa' : 'Média',
+            prioridade_p: t.prioridade_p,
+            prazo: fmtDataBR(t.prazo),
+            concluida: t.status === 'concluida' || t.status_kanban === 'concluido',
+            responsavel: t.responsavel || 'Equipe',
+            status_kanban: t.status_kanban || 'a_fazer',
+            marco_id: t.marco_id,
+            marco_nome: t.marco_nome,
+            origem: t.origem,
+            projeto_id: t.projeto_id,
+            expand: t.expand,
+          }))}
+          temInconsistenciaDiagnostico={temInconsistenciaDiagnostico}
+          tarefasConcluidasMap={tarefasConcluidasMap}
+          onToggleTarefa={toggleTarefa}
+          onAbrirNovaTarefa={abrirNovaTarefa}
+          onRecarregar={carregarDados}
+        />
       )}
 
       {/* ABA 4: ORÇAMENTO */}
@@ -1532,6 +1513,14 @@ export default function ProjetoDetalhePage() {
         setDialogErro={setDialogErroTarefa}
         salvando={salvandoTarefa}
         onSalvar={salvarNovaTarefa}
+        contextoProjeto={
+          projeto?.id
+            ? {
+                id: projeto.id,
+                nome: projeto.nome,
+              }
+            : undefined
+        }
       />
 
       {/* Cadastro de novo parceiro auxiliar se necessário no modal de tarefas */}
