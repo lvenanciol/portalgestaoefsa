@@ -44,10 +44,12 @@ import {
   Link as LinkIcon,
   Users,
   AlertTriangle,
+  Check,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
-import { limparTextoResponsavel } from '@/lib/responsavel-utils'
+import { limparTextoResponsavel, obterIniciaisResponsavel } from '@/lib/responsavel-utils'
+import { useEmpresaLogos } from '@/components/common/EmpresaIcon'
 
 export interface RaciItem {
   id?: string
@@ -160,11 +162,15 @@ export function ProjetoFormDialog({
   const [papelRaciSelecionado, setPapelRaciSelecionado] = useState<'R' | 'A' | 'C' | 'I'>('R')
   const [popoverRaciAberto, setPopoverRaciAberto] = useState(false)
 
-  // Responsável e Patrocinador popovers
+  // Popovers: Empresa, Responsável e Patrocinador
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
+  const [buscaEmpresa, setBuscaEmpresa] = useState('')
   const [popoverRespAberto, setPopoverRespAberto] = useState(false)
   const [buscaResp, setBuscaResp] = useState('')
   const [popoverPatrocAberto, setPopoverPatrocAberto] = useState(false)
   const [buscaPatroc, setBuscaPatroc] = useState('')
+
+  const { obterSiglaCor } = useEmpresaLogos()
 
   // Validação
   const [erroNome, setErroNome] = useState(false)
@@ -763,33 +769,50 @@ export function ProjetoFormDialog({
     const setEmp = new Set<string>()
     OPCOES_EMPRESAS_DEFAULT.forEach((e) => setEmp.add(e))
     empresasBanco.forEach((e) => setEmp.add(normalizarEmpresa(e)))
-    if (form.empresa) setEmp.add(normalizarEmpresa(form.empresa))
+    if (form.empresa) {
+      const norm = normalizarEmpresa(form.empresa)
+      setEmp.add(norm || form.empresa)
+    }
     return Array.from(setEmp).filter(Boolean)
   }, [empresasBanco, form.empresa])
+
+  const empresasFiltradas = useMemo(() => {
+    if (!buscaEmpresa.trim()) return opcoesEmpresas
+    const b = buscaEmpresa.toLowerCase().trim()
+    return opcoesEmpresas.filter((emp) => emp.toLowerCase().includes(b))
+  }, [opcoesEmpresas, buscaEmpresa])
 
   // Lista de pessoas para RACI, Responsável e Patrocinador
   const parceirosFiltrados = useMemo(() => {
     if (!buscaRaci.trim()) return parceiros
-    const b = buscaRaci.toLowerCase()
+    const b = buscaRaci.toLowerCase().trim()
     return parceiros.filter(
-      (p) => p.nome?.toLowerCase().includes(b) || p.empresa?.toLowerCase().includes(b),
+      (p) =>
+        p.nome?.toLowerCase().includes(b) ||
+        (p.empresa || (Array.isArray(p.empresas) ? p.empresas.join(' ') : ''))
+          ?.toLowerCase()
+          .includes(b),
     )
   }, [parceiros, buscaRaci])
 
   const responsaveisFiltrados = useMemo(() => {
     if (!buscaResp.trim()) return parceiros
-    const b = buscaResp.toLowerCase()
+    const b = buscaResp.toLowerCase().trim()
     return parceiros.filter(
-      (p) => p.nome?.toLowerCase().includes(b) || p.empresa?.toLowerCase().includes(b),
+      (p) =>
+        p.nome?.toLowerCase().includes(b) ||
+        (p.empresa || (Array.isArray(p.empresas) ? p.empresas.join(' ') : ''))
+          ?.toLowerCase()
+          .includes(b),
     )
   }, [parceiros, buscaResp])
 
   const patrocinadoresFiltrados = useMemo(() => {
     const defaults = ['Diretoria Executiva', 'Leonardo Lourenço', 'Conselho de Administração']
-    const deParceiros = parceiros.map((p) => p.nome)
+    const deParceiros = parceiros.map((p) => limparTextoResponsavel(p.nome) || p.nome)
     const todos = Array.from(new Set([...defaults, ...deParceiros]))
     if (!buscaPatroc.trim()) return todos
-    const b = buscaPatroc.toLowerCase()
+    const b = buscaPatroc.toLowerCase().trim()
     return todos.filter((n) => n.toLowerCase().includes(b))
   }, [parceiros, buscaPatroc])
 
@@ -1209,7 +1232,7 @@ export function ProjetoFormDialog({
                   )}
                 </div>
 
-                {/* EMPRESA (com retrocompatibilidade para texto digitado/select) */}
+                {/* EMPRESA (popover com dot de cor e compatibilidade com valores legados) */}
                 <div className="space-y-1.5 md:col-span-1">
                   <Label
                     htmlFor="empresa"
@@ -1217,27 +1240,113 @@ export function ProjetoFormDialog({
                   >
                     Empresa
                   </Label>
-                  <Select
-                    value={form.empresa}
-                    onValueChange={(v) => setForm({ ...form, empresa: v })}
-                  >
-                    <SelectTrigger
-                      id="empresa"
-                      className="h-10 bg-gray-50/70 border-gray-200 text-xs text-gray-800"
-                    >
-                      <SelectValue placeholder="Selecione a empresa" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white">
-                      {opcoesEmpresas.map((emp) => (
-                        <SelectItem key={emp} value={emp}>
-                          {emp}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={popoverEmpresaAberto} onOpenChange={setPopoverEmpresaAberto}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        id="empresa"
+                        role="combobox"
+                        className="w-full justify-between h-10 bg-gray-50/70 border-gray-200 font-normal text-xs text-gray-700 hover:bg-gray-100/60"
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          {form.empresa ? (
+                            <span
+                              className="h-2 w-2 rounded-full shrink-0"
+                              style={{ backgroundColor: obterSiglaCor(form.empresa).cor }}
+                            />
+                          ) : (
+                            <Building2 className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                          )}
+                          <span className="truncate">
+                            {normalizarEmpresa(form.empresa) ||
+                              form.empresa ||
+                              'Selecione a empresa'}
+                          </span>
+                        </div>
+                        <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-1" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[320px] p-2 bg-white" align="start">
+                      <div className="space-y-2">
+                        <div className="relative">
+                          <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-3 pointer-events-none" />
+                          <Input
+                            value={buscaEmpresa}
+                            onChange={(e) => setBuscaEmpresa(e.target.value)}
+                            placeholder="Buscar empresa..."
+                            className="h-9 pl-8 text-xs bg-gray-50"
+                          />
+                        </div>
+
+                        <div className="max-h-56 overflow-y-auto space-y-1">
+                          {/* Opção se o valor atual não corresponder às empresas conhecidas */}
+                          {form.empresa &&
+                            !opcoesEmpresas.some(
+                              (e) => e.toLowerCase() === form.empresa.toLowerCase(),
+                            ) && (
+                              <button
+                                type="button"
+                                onClick={() => setPopoverEmpresaAberto(false)}
+                                className="w-full flex items-center justify-between p-2 rounded-md text-xs text-left bg-emerald-50 text-[#1B5E20] font-bold"
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  <span
+                                    className="h-2 w-2 rounded-full shrink-0"
+                                    style={{ backgroundColor: obterSiglaCor(form.empresa).cor }}
+                                  />
+                                  <span className="truncate">{form.empresa} (valor atual)</span>
+                                </div>
+                                <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
+                              </button>
+                            )}
+
+                          {empresasFiltradas.length === 0 ? (
+                            <p className="text-[11px] text-gray-400 text-center py-3">
+                              Nenhuma empresa encontrada.
+                            </p>
+                          ) : (
+                            empresasFiltradas.map((emp) => {
+                              const sel =
+                                normalizarEmpresa(form.empresa) === emp || form.empresa === emp
+                              const { cor } = obterSiglaCor(emp)
+                              return (
+                                <button
+                                  key={emp}
+                                  type="button"
+                                  onClick={() => {
+                                    setForm({ ...form, empresa: normalizarEmpresa(emp) })
+                                    setPopoverEmpresaAberto(false)
+                                    setBuscaEmpresa('')
+                                  }}
+                                  className={cn(
+                                    'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
+                                    sel
+                                      ? 'bg-emerald-50 text-[#1B5E20] font-bold'
+                                      : 'hover:bg-gray-50 text-gray-800',
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2 truncate">
+                                    <span
+                                      className="h-2 w-2 rounded-full shrink-0"
+                                      style={{ backgroundColor: cor }}
+                                    />
+                                    <span className="truncate">{emp}</span>
+                                  </div>
+                                  {sel && (
+                                    <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0 ml-1" />
+                                  )}
+                                </button>
+                              )
+                            })
+                          )}
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
 
-                {/* RESPONSÁVEL (popover com busca sobre contatos/parceiros ou texto livre) */}
+                {/* RESPONSÁVEL (popover de parceiros/contatos no padrão de Tarefas & Agenda) */}
                 <div className="space-y-1.5 md:col-span-1">
                   <Label
                     htmlFor="responsavel"
@@ -1253,22 +1362,31 @@ export function ProjetoFormDialog({
                         id="responsavel"
                         className="w-full justify-between h-10 bg-gray-50/70 border-gray-200 font-normal text-xs text-gray-700 hover:bg-gray-100/60"
                       >
-                        <span className="truncate">{form.responsavel || 'Não definido'}</span>
+                        <div className="flex items-center gap-2 truncate">
+                          {form.responsavel ? (
+                            <span className="w-5 h-5 rounded-full bg-[#1B5E20] text-white flex items-center justify-center text-[9px] font-bold shrink-0">
+                              {obterIniciaisResponsavel(form.responsavel)}
+                            </span>
+                          ) : (
+                            <User className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                          )}
+                          <span className="truncate">{form.responsavel || 'Não definido'}</span>
+                        </div>
                         <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-1" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[320px] p-2 bg-white" align="start">
+                    <PopoverContent className="w-[340px] p-2 bg-white" align="start">
                       <div className="space-y-2">
                         <div className="relative">
-                          <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-3" />
+                          <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-3 pointer-events-none" />
                           <Input
                             value={buscaResp}
                             onChange={(e) => setBuscaResp(e.target.value)}
-                            placeholder="Buscar responsável..."
+                            placeholder="Buscar parceiro por nome ou empresa..."
                             className="h-9 pl-8 text-xs bg-gray-50"
                           />
                         </div>
-                        <div className="max-h-52 overflow-y-auto space-y-1">
+                        <div className="max-h-56 overflow-y-auto space-y-1">
                           <button
                             type="button"
                             onClick={() => {
@@ -1276,22 +1394,28 @@ export function ProjetoFormDialog({
                               setPopoverRespAberto(false)
                             }}
                             className={cn(
-                              'w-full flex items-center gap-2 p-2 rounded-md text-xs text-left transition-colors',
+                              'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
                               !form.responsavel
                                 ? 'bg-emerald-50 text-[#1B5E20] font-bold'
                                 : 'hover:bg-gray-50 text-gray-500 italic',
                             )}
                           >
                             <span>Não definido</span>
+                            {!form.responsavel && (
+                              <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
+                            )}
                           </button>
                           {buscaResp.trim() &&
                             !responsaveisFiltrados.some(
-                              (p) => p.nome.toLowerCase() === buscaResp.trim().toLowerCase(),
+                              (p) =>
+                                (p.nome || '').toLowerCase() === buscaResp.trim().toLowerCase(),
                             ) && (
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setForm({ ...form, responsavel: buscaResp.trim() })
+                                  const limpo =
+                                    limparTextoResponsavel(buscaResp.trim()) || buscaResp.trim()
+                                  setForm({ ...form, responsavel: limpo })
                                   setPopoverRespAberto(false)
                                   setBuscaResp('')
                                 }}
@@ -1300,36 +1424,50 @@ export function ProjetoFormDialog({
                                 <Plus className="h-3 w-3" /> Usar "{buscaResp.trim()}"
                               </button>
                             )}
-                          {responsaveisFiltrados.map((p) => (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => {
-                                setForm({ ...form, responsavel: p.nome })
-                                setPopoverRespAberto(false)
-                              }}
-                              className={cn(
-                                'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
-                                form.responsavel === p.nome
-                                  ? 'bg-emerald-50 text-[#1B5E20] font-bold'
-                                  : 'hover:bg-gray-50 text-gray-800',
-                              )}
-                            >
-                              <span className="truncate">{p.nome}</span>
-                              {p.empresa && (
-                                <span className="text-[10px] text-gray-400 shrink-0 ml-2">
-                                  {p.empresa}
-                                </span>
-                              )}
-                            </button>
-                          ))}
+                          {responsaveisFiltrados.map((p) => {
+                            const nomeLimpo = limparTextoResponsavel(p.nome) || p.nome
+                            const sel =
+                              form.responsavel === nomeLimpo || form.responsavel === p.nome
+                            const emp =
+                              p.empresa || (Array.isArray(p.empresas) ? p.empresas[0] : '')
+                            return (
+                              <button
+                                key={p.id || p.nome}
+                                type="button"
+                                onClick={() => {
+                                  setForm({ ...form, responsavel: nomeLimpo })
+                                  setPopoverRespAberto(false)
+                                  setBuscaResp('')
+                                }}
+                                className={cn(
+                                  'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
+                                  sel
+                                    ? 'bg-emerald-50 text-[#1B5E20] font-bold'
+                                    : 'hover:bg-gray-50 text-gray-800',
+                                )}
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#1B5E20] border border-emerald-200 flex items-center justify-center text-[9px] font-bold shrink-0">
+                                    {obterIniciaisResponsavel(nomeLimpo)}
+                                  </span>
+                                  <span className="truncate">{nomeLimpo}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                  {emp && (
+                                    <span className="text-[10px] text-gray-400">({emp})</span>
+                                  )}
+                                  {sel && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                                </div>
+                              </button>
+                            )
+                          })}
                         </div>
                       </div>
                     </PopoverContent>
                   </Popover>
                 </div>
 
-                {/* PATROCINADOR (novo, select/popover opcional) */}
+                {/* PATROCINADOR (popover de parceiros/contatos no mesmo padrão com opção Não definido) */}
                 <div className="space-y-1.5 md:col-span-1">
                   <Label
                     htmlFor="patrocinador"
@@ -1345,22 +1483,31 @@ export function ProjetoFormDialog({
                         id="patrocinador"
                         className="w-full justify-between h-10 bg-gray-50/70 border-gray-200 font-normal text-xs text-gray-700 hover:bg-gray-100/60"
                       >
-                        <span className="truncate">{form.patrocinador || 'Não definido'}</span>
+                        <div className="flex items-center gap-2 truncate">
+                          {form.patrocinador ? (
+                            <span className="w-5 h-5 rounded-full bg-[#1B5E20] text-white flex items-center justify-center text-[9px] font-bold shrink-0">
+                              {obterIniciaisResponsavel(form.patrocinador)}
+                            </span>
+                          ) : (
+                            <Shield className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                          )}
+                          <span className="truncate">{form.patrocinador || 'Não definido'}</span>
+                        </div>
                         <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-1" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[320px] p-2 bg-white" align="start">
+                    <PopoverContent className="w-[340px] p-2 bg-white" align="start">
                       <div className="space-y-2">
                         <div className="relative">
-                          <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-3" />
+                          <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-3 pointer-events-none" />
                           <Input
                             value={buscaPatroc}
                             onChange={(e) => setBuscaPatroc(e.target.value)}
-                            placeholder="Buscar ou digitar patrocinador..."
+                            placeholder="Buscar parceiro por nome ou empresa..."
                             className="h-9 pl-8 text-xs bg-gray-50"
                           />
                         </div>
-                        <div className="max-h-52 overflow-y-auto space-y-1">
+                        <div className="max-h-56 overflow-y-auto space-y-1">
                           <button
                             type="button"
                             onClick={() => {
@@ -1368,13 +1515,16 @@ export function ProjetoFormDialog({
                               setPopoverPatrocAberto(false)
                             }}
                             className={cn(
-                              'w-full flex items-center gap-2 p-2 rounded-md text-xs text-left transition-colors',
+                              'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
                               !form.patrocinador
                                 ? 'bg-emerald-50 text-[#1B5E20] font-bold'
                                 : 'hover:bg-gray-50 text-gray-500 italic',
                             )}
                           >
                             <span>Não definido</span>
+                            {!form.patrocinador && (
+                              <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
+                            )}
                           </button>
                           {buscaPatroc.trim() &&
                             !patrocinadoresFiltrados.some(
@@ -1383,7 +1533,9 @@ export function ProjetoFormDialog({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  setForm({ ...form, patrocinador: buscaPatroc.trim() })
+                                  const limpo =
+                                    limparTextoResponsavel(buscaPatroc.trim()) || buscaPatroc.trim()
+                                  setForm({ ...form, patrocinador: limpo })
                                   setPopoverPatrocAberto(false)
                                   setBuscaPatroc('')
                                 }}
@@ -1392,24 +1544,45 @@ export function ProjetoFormDialog({
                                 <Plus className="h-3 w-3" /> Usar "{buscaPatroc.trim()}"
                               </button>
                             )}
-                          {patrocinadoresFiltrados.map((nome) => (
-                            <button
-                              key={nome}
-                              type="button"
-                              onClick={() => {
-                                setForm({ ...form, patrocinador: nome })
-                                setPopoverPatrocAberto(false)
-                              }}
-                              className={cn(
-                                'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
-                                form.patrocinador === nome
-                                  ? 'bg-emerald-50 text-[#1B5E20] font-bold'
-                                  : 'hover:bg-gray-50 text-gray-800',
-                              )}
-                            >
-                              <span className="truncate">{nome}</span>
-                            </button>
-                          ))}
+                          {patrocinadoresFiltrados.map((nome) => {
+                            const sel = form.patrocinador === nome
+                            const pMatch = parceiros.find(
+                              (p) => (limparTextoResponsavel(p.nome) || p.nome) === nome,
+                            )
+                            const emp =
+                              pMatch?.empresa ||
+                              (Array.isArray(pMatch?.empresas) ? pMatch.empresas[0] : '')
+                            return (
+                              <button
+                                key={nome}
+                                type="button"
+                                onClick={() => {
+                                  setForm({ ...form, patrocinador: nome })
+                                  setPopoverPatrocAberto(false)
+                                  setBuscaPatroc('')
+                                }}
+                                className={cn(
+                                  'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
+                                  sel
+                                    ? 'bg-emerald-50 text-[#1B5E20] font-bold'
+                                    : 'hover:bg-gray-50 text-gray-800',
+                                )}
+                              >
+                                <div className="flex items-center gap-2 truncate">
+                                  <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#1B5E20] border border-emerald-200 flex items-center justify-center text-[9px] font-bold shrink-0">
+                                    {obterIniciaisResponsavel(nome)}
+                                  </span>
+                                  <span className="truncate">{nome}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                  {emp && (
+                                    <span className="text-[10px] text-gray-400">({emp})</span>
+                                  )}
+                                  {sel && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                                </div>
+                              </button>
+                            )
+                          })}
                         </div>
                       </div>
                     </PopoverContent>
@@ -1708,50 +1881,129 @@ export function ProjetoFormDialog({
                               setPopoverRaciAberto(true)
                             }}
                             onFocus={() => setPopoverRaciAberto(true)}
-                            placeholder="Buscar pessoa..."
+                            placeholder="Buscar parceiro por nome ou empresa..."
                             className="h-9 pl-8 text-xs bg-gray-50/70 border-gray-200"
                           />
                         </div>
                       </PopoverTrigger>
-                      <PopoverContent className="w-[320px] p-2 bg-white" align="start">
-                        <div className="space-y-1 max-h-48 overflow-y-auto">
-                          {buscaRaci.trim() &&
-                            !parceirosFiltrados.some(
-                              (p) => p.nome.toLowerCase() === buscaRaci.trim().toLowerCase(),
-                            ) && (
-                              <button
-                                type="button"
-                                onClick={() => adicionarAoRaci(buscaRaci.trim())}
-                                className="w-full flex items-center gap-2 p-2 rounded-md text-xs text-left bg-emerald-50 hover:bg-emerald-100 text-[#1B5E20] font-semibold"
-                              >
-                                <Plus className="h-3 w-3" /> Adicionar "{buscaRaci.trim()}"
-                              </button>
-                            )}
-                          {parceirosFiltrados.map((p) => (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => adicionarAoRaci(p.nome)}
-                              className="w-full flex items-center justify-between p-2 rounded-md text-xs text-left hover:bg-gray-50 text-gray-800"
-                            >
-                              <span className="truncate">{p.nome}</span>
-                              {p.empresa && (
-                                <span className="text-[10px] text-gray-400 shrink-0 ml-2">
-                                  {p.empresa}
-                                </span>
+                      <PopoverContent className="w-[360px] p-2.5 bg-white" align="start">
+                        <div className="space-y-2">
+                          {/* Seletor de papel RACI dentro do popover ao adicionar */}
+                          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                            <span className="text-[11px] font-semibold text-gray-500 uppercase">
+                              Papel ao adicionar:
+                            </span>
+                            <div className="flex items-center gap-1">
+                              {(['R', 'A', 'C', 'I'] as const).map((p) => {
+                                const ativo = papelRaciSelecionado === p
+                                return (
+                                  <button
+                                    key={p}
+                                    type="button"
+                                    onClick={() => setPapelRaciSelecionado(p)}
+                                    className={cn(
+                                      'w-6 h-6 rounded-md text-[11px] font-bold transition-all cursor-pointer flex items-center justify-center',
+                                      ativo
+                                        ? p === 'R'
+                                          ? 'bg-emerald-600 text-white shadow-xs'
+                                          : p === 'A'
+                                            ? 'bg-blue-600 text-white shadow-xs'
+                                            : p === 'C'
+                                              ? 'bg-amber-500 text-white shadow-xs'
+                                              : 'bg-purple-600 text-white shadow-xs'
+                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+                                    )}
+                                    title={
+                                      p === 'R'
+                                        ? 'Responsável'
+                                        : p === 'A'
+                                          ? 'Aprova'
+                                          : p === 'C'
+                                            ? 'Consultado'
+                                            : 'Informado'
+                                    }
+                                  >
+                                    {p}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                          <div className="space-y-1 max-h-56 overflow-y-auto">
+                            {buscaRaci.trim() &&
+                              !parceirosFiltrados.some(
+                                (p) =>
+                                  (p.nome || '').toLowerCase() === buscaRaci.trim().toLowerCase(),
+                              ) && (
+                                <button
+                                  type="button"
+                                  onClick={() => adicionarAoRaci(buscaRaci.trim())}
+                                  className="w-full flex items-center gap-2 p-2 rounded-md text-xs text-left bg-emerald-50 hover:bg-emerald-100 text-[#1B5E20] font-semibold"
+                                >
+                                  <Plus className="h-3 w-3" /> Adicionar "{buscaRaci.trim()}" (
+                                  {papelRaciSelecionado})
+                                </button>
                               )}
-                            </button>
-                          ))}
-                          {parceirosFiltrados.length === 0 && !buscaRaci.trim() && (
-                            <p className="text-[11px] text-gray-400 text-center py-2">
-                              Nenhuma pessoa cadastrada.
-                            </p>
-                          )}
+                            {parceirosFiltrados.map((p) => {
+                              const nomeLimpo = limparTextoResponsavel(p.nome) || p.nome
+                              const jaAdicionado = (form.raci || []).find(
+                                (item) => item.nome === nomeLimpo,
+                              )
+                              const emp =
+                                p.empresa || (Array.isArray(p.empresas) ? p.empresas[0] : '')
+                              return (
+                                <button
+                                  key={p.id || p.nome}
+                                  type="button"
+                                  onClick={() => adicionarAoRaci(p.nome)}
+                                  className={cn(
+                                    'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
+                                    jaAdicionado
+                                      ? 'bg-emerald-50/60 text-gray-800'
+                                      : 'hover:bg-gray-50 text-gray-800',
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2 truncate">
+                                    <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#1B5E20] border border-emerald-200 flex items-center justify-center text-[9px] font-bold shrink-0">
+                                      {obterIniciaisResponsavel(nomeLimpo)}
+                                    </span>
+                                    <span className="truncate">{nomeLimpo}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                    {emp && (
+                                      <span className="text-[10px] text-gray-400">({emp})</span>
+                                    )}
+                                    {jaAdicionado ? (
+                                      <span
+                                        className={cn(
+                                          'w-4 h-4 rounded-full flex items-center justify-center font-bold text-[9px] text-white',
+                                          jaAdicionado.papel === 'R' && 'bg-emerald-600',
+                                          jaAdicionado.papel === 'A' && 'bg-blue-600',
+                                          jaAdicionado.papel === 'C' && 'bg-amber-500',
+                                          jaAdicionado.papel === 'I' && 'bg-purple-600',
+                                        )}
+                                      >
+                                        {jaAdicionado.papel}
+                                      </span>
+                                    ) : (
+                                      <Plus className="h-3.5 w-3.5 text-gray-400" />
+                                    )}
+                                  </div>
+                                </button>
+                              )
+                            })}
+                            {parceirosFiltrados.length === 0 && !buscaRaci.trim() && (
+                              <p className="text-[11px] text-gray-400 text-center py-2">
+                                Nenhuma pessoa cadastrada.
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </PopoverContent>
                     </Popover>
 
-                    {/* Papel selecionado ao adicionar */}
+                    {/* Papel selecionado ao adicionar rápido */}
                     <Select
                       value={papelRaciSelecionado}
                       onValueChange={(v: 'R' | 'A' | 'C' | 'I') => setPapelRaciSelecionado(v)}

@@ -12,6 +12,9 @@ import {
   List,
   Building2,
   Calendar,
+  ChevronDown,
+  Check,
+  User,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -28,6 +31,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { EmpresaIcon, useEmpresaLogos } from '@/components/common/EmpresaIcon'
+import { limparTextoResponsavel, obterIniciaisResponsavel } from '@/lib/responsavel-utils'
 import { cn } from '@/lib/utils'
 import { ProjetosListaView } from '@/components/operacional/ProjetosListaView'
 
@@ -127,6 +133,20 @@ export default function ProjetosBoardPage() {
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>('todas')
   const [filtroResponsavel, setFiltroResponsavel] = useState<string>('todos')
 
+  // Estados dos Popovers de filtro da toolbar
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
+  const [buscaEmpresaFiltro, setBuscaEmpresaFiltro] = useState('')
+  const [popoverResponsavelAberto, setPopoverResponsavelAberto] = useState(false)
+  const [buscaResponsavelFiltro, setBuscaResponsavelFiltro] = useState('')
+
+  // Lista de empresas cadastradas no banco (para exibir no filtro com dot de cor)
+  const [empresasBanco, setEmpresasBanco] = useState<{ id: string; nome: string; cor?: string }[]>(
+    [],
+  )
+  const [parceirosBanco, setParceirosBanco] = useState<any[]>([])
+
+  const { obterSiglaCor } = useEmpresaLogos()
+
   const carregar = async () => {
     setLoading(true)
     try {
@@ -142,17 +162,41 @@ export default function ProjetosBoardPage() {
 
   useEffect(() => {
     carregar()
+
+    // Carregar empresas e parceiros do banco para enriquecer os filtros
+    pb.collection('empresas')
+      .getFullList({ sort: 'nome' })
+      .then((records) => {
+        setEmpresasBanco(records as any[])
+      })
+      .catch(() => {})
+
+    pb.collection('parceiros')
+      .getFullList({ sort: 'nome' })
+      .then((records) => {
+        setParceirosBanco(records as any[])
+      })
+      .catch(() => {})
   }, [])
 
-  // Lista única de empresas e responsáveis para os selects
+  // Lista única de empresas e responsáveis para os popovers
   const opcoesEmpresas = useMemo(() => {
     const set = new Set<string>()
     itens.forEach((p) => {
       const emp = (p.empresa || '').trim()
       if (emp) set.add(emp)
     })
+    empresasBanco.forEach((e) => {
+      if (e.nome) set.add(e.nome)
+    })
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-  }, [itens])
+  }, [itens, empresasBanco])
+
+  const empresasFiltradas = useMemo(() => {
+    if (!buscaEmpresaFiltro.trim()) return opcoesEmpresas
+    const q = buscaEmpresaFiltro.trim().toLowerCase()
+    return opcoesEmpresas.filter((emp) => emp.toLowerCase().includes(q))
+  }, [opcoesEmpresas, buscaEmpresaFiltro])
 
   const opcoesResponsaveis = useMemo(() => {
     const set = new Set<string>()
@@ -160,8 +204,24 @@ export default function ProjetosBoardPage() {
       const resp = (p.responsavel || '').trim()
       if (resp) set.add(resp)
     })
+    parceirosBanco.forEach((p) => {
+      const nomeLimpo = limparTextoResponsavel(p.nome) || p.nome
+      if (nomeLimpo) set.add(nomeLimpo)
+    })
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-  }, [itens])
+  }, [itens, parceirosBanco])
+
+  const responsaveisFiltrados = useMemo(() => {
+    if (!buscaResponsavelFiltro.trim()) return opcoesResponsaveis
+    const q = buscaResponsavelFiltro.trim().toLowerCase()
+    return opcoesResponsaveis.filter((resp) => {
+      if (resp.toLowerCase().includes(q)) return true
+      const pMatch = parceirosBanco.find((p) => (limparTextoResponsavel(p.nome) || p.nome) === resp)
+      const emp =
+        pMatch?.empresa || (Array.isArray(pMatch?.empresas) ? pMatch.empresas.join(' ') : '')
+      return emp.toLowerCase().includes(q)
+    })
+  }, [opcoesResponsaveis, buscaResponsavelFiltro, parceirosBanco])
 
   // Filtragem dos projetos (B)
   const itensFiltrados = useMemo(() => {
@@ -507,44 +567,217 @@ export default function ProjetosBoardPage() {
           </div>
         </div>
 
-        {/* Selects: Empresa e Responsável + Limpar filtros */}
+        {/* Popovers: Empresa e Responsável + Limpar filtros */}
         <div className="flex items-center gap-2 flex-wrap min-[1100px]:justify-end">
-          {/* Select Empresa */}
-          <Select value={filtroEmpresa} onValueChange={setFiltroEmpresa}>
-            <SelectTrigger className="h-9 min-w-[130px] max-w-[180px] bg-white border-gray-200 text-xs font-medium text-gray-800 shadow-2xs rounded-lg">
-              <div className="flex items-center gap-1.5 truncate">
-                <Building2 className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                <span className="truncate">
+          {/* Popover Empresa no padrão de Tarefas & Agenda (busca interna, dot de cor, limpar seleção) */}
+          <Popover open={popoverEmpresaAberto} onOpenChange={setPopoverEmpresaAberto}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  'h-9 px-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-xs font-medium text-gray-800 shadow-2xs inline-flex items-center gap-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20 cursor-pointer min-w-[140px] max-w-[200px]',
+                  filtroEmpresa !== 'todas' &&
+                    'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50 font-semibold',
+                )}
+                title="Filtro de Empresa"
+              >
+                {filtroEmpresa !== 'todas' ? (
+                  <span
+                    className="h-2 w-2 rounded-full shrink-0"
+                    style={{ backgroundColor: obterSiglaCor(filtroEmpresa).cor }}
+                  />
+                ) : (
+                  <Building2 className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                )}
+                <span className="truncate flex-1 text-left">
                   {filtroEmpresa === 'todas' ? 'Empresa' : filtroEmpresa}
                 </span>
-              </div>
-            </SelectTrigger>
-            <SelectContent align="end" className="w-[180px] bg-white">
-              <SelectItem value="todas">Todas as empresas</SelectItem>
-              {opcoesEmpresas.map((emp) => (
-                <SelectItem key={emp} value={emp}>
-                  {emp}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                <ChevronDown className="h-3 w-3 text-gray-400 shrink-0 ml-1" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-[240px] p-2 bg-white">
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                  <Input
+                    value={buscaEmpresaFiltro}
+                    onChange={(e) => setBuscaEmpresaFiltro(e.target.value)}
+                    placeholder="Buscar empresa..."
+                    className="h-8 pl-8 text-xs bg-gray-50"
+                  />
+                </div>
 
-          {/* Select Responsável */}
-          <Select value={filtroResponsavel} onValueChange={setFiltroResponsavel}>
-            <SelectTrigger className="h-9 min-w-[130px] max-w-[180px] bg-white border-gray-200 text-xs font-medium text-gray-800 shadow-2xs rounded-lg">
-              <span className="truncate">
-                {filtroResponsavel === 'todos' ? 'Responsável' : filtroResponsavel}
-              </span>
-            </SelectTrigger>
-            <SelectContent align="end" className="w-[180px] bg-white">
-              <SelectItem value="todos">Todos os responsáveis</SelectItem>
-              {opcoesResponsaveis.map((resp) => (
-                <SelectItem key={resp} value={resp}>
-                  {resp}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                <div className="max-h-56 overflow-y-auto space-y-1">
+                  {/* Opção Todas as empresas */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiltroEmpresa('todas')
+                      setPopoverEmpresaAberto(false)
+                    }}
+                    className={cn(
+                      'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
+                      filtroEmpresa === 'todas'
+                        ? 'bg-emerald-50 text-[#1B5E20] font-bold'
+                        : 'hover:bg-gray-50 text-gray-700',
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-gray-400" />
+                      <span>Todas as empresas</span>
+                    </div>
+                    {filtroEmpresa === 'todas' && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                  </button>
+
+                  {empresasFiltradas.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 text-center py-2">
+                      Nenhuma empresa encontrada.
+                    </p>
+                  ) : (
+                    empresasFiltradas.map((emp) => {
+                      const sel = filtroEmpresa === emp
+                      const { cor } = obterSiglaCor(emp)
+                      return (
+                        <button
+                          key={emp}
+                          type="button"
+                          onClick={() => {
+                            setFiltroEmpresa(emp)
+                            setPopoverEmpresaAberto(false)
+                          }}
+                          className={cn(
+                            'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
+                            sel
+                              ? 'bg-emerald-50 text-[#1B5E20] font-bold'
+                              : 'hover:bg-gray-50 text-gray-800',
+                          )}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span
+                              className="h-2 w-2 rounded-full shrink-0"
+                              style={{ backgroundColor: cor }}
+                            />
+                            <span className="truncate">{emp}</span>
+                          </div>
+                          {sel && <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0 ml-1" />}
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Popover Responsável no padrão de Tarefas & Agenda (busca interna, avatar de iniciais, limpar seleção) */}
+          <Popover open={popoverResponsavelAberto} onOpenChange={setPopoverResponsavelAberto}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  'h-9 px-3 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-xs font-medium text-gray-800 shadow-2xs inline-flex items-center gap-1.5 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20 cursor-pointer min-w-[140px] max-w-[200px]',
+                  filtroResponsavel !== 'todos' &&
+                    'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50 font-semibold',
+                )}
+                title="Filtro de Responsável"
+              >
+                {filtroResponsavel !== 'todos' ? (
+                  <span className="w-4 h-4 rounded-full bg-[#1B5E20] text-white flex items-center justify-center text-[9px] font-bold shrink-0">
+                    {obterIniciaisResponsavel(filtroResponsavel)}
+                  </span>
+                ) : (
+                  <User className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                )}
+                <span className="truncate flex-1 text-left">
+                  {filtroResponsavel === 'todos' ? 'Responsável' : filtroResponsavel}
+                </span>
+                <ChevronDown className="h-3 w-3 text-gray-400 shrink-0 ml-1" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-[280px] p-2 bg-white">
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-2.5 pointer-events-none" />
+                  <Input
+                    value={buscaResponsavelFiltro}
+                    onChange={(e) => setBuscaResponsavelFiltro(e.target.value)}
+                    placeholder="Buscar parceiro por nome ou empresa..."
+                    className="h-8 pl-8 text-xs bg-gray-50"
+                  />
+                </div>
+
+                <div className="max-h-56 overflow-y-auto space-y-1">
+                  {/* Opção Todos os responsáveis */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFiltroResponsavel('todos')
+                      setPopoverResponsavelAberto(false)
+                    }}
+                    className={cn(
+                      'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
+                      filtroResponsavel === 'todos'
+                        ? 'bg-emerald-50 text-[#1B5E20] font-bold'
+                        : 'hover:bg-gray-50 text-gray-700',
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-4 h-4 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-[9px] font-bold">
+                        *
+                      </span>
+                      <span>Todos os responsáveis</span>
+                    </div>
+                    {filtroResponsavel === 'todos' && (
+                      <Check className="h-3.5 w-3.5 text-[#1B5E20]" />
+                    )}
+                  </button>
+
+                  {responsaveisFiltrados.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 text-center py-2">
+                      Nenhum responsável encontrado.
+                    </p>
+                  ) : (
+                    responsaveisFiltrados.map((resp) => {
+                      const sel = filtroResponsavel === resp
+                      const pMatch = parceirosBanco.find(
+                        (p) => (limparTextoResponsavel(p.nome) || p.nome) === resp,
+                      )
+                      const emp =
+                        pMatch?.empresa ||
+                        (Array.isArray(pMatch?.empresas) ? pMatch.empresas[0] : '')
+                      return (
+                        <button
+                          key={resp}
+                          type="button"
+                          onClick={() => {
+                            setFiltroResponsavel(resp)
+                            setPopoverResponsavelAberto(false)
+                          }}
+                          className={cn(
+                            'w-full flex items-center justify-between p-2 rounded-md text-xs text-left transition-colors',
+                            sel
+                              ? 'bg-emerald-50 text-[#1B5E20] font-bold'
+                              : 'hover:bg-gray-50 text-gray-800',
+                          )}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="w-5 h-5 rounded-full bg-emerald-100 text-[#1B5E20] border border-emerald-200 flex items-center justify-center text-[9px] font-bold shrink-0">
+                              {obterIniciaisResponsavel(resp)}
+                            </span>
+                            <span className="truncate">{resp}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                            {emp && <span className="text-[10px] text-gray-400">({emp})</span>}
+                            {sel && <Check className="h-3.5 w-3.5 text-[#1B5E20]" />}
+                          </div>
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
 
           {/* Link "Limpar filtros" */}
           {temFiltroAtivo && (
