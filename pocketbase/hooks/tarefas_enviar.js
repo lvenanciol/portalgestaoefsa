@@ -515,29 +515,69 @@ routerAdd(
         // embutir nessa resolução inflava o PDF para ~6 MB. Aqui reduzimos por
         // AMOSTRAGEM (nearest neighbor), que preserva bordas de logotipo e é O(n)
         // — decodificar de novo em escala menor exigiria refazer o filtro por linha.
-        var MAXLADO = 400
-        var passoX = 1
-        var passoY = 1
-        if (w > MAXLADO || h > MAXLADO) {
-          // ceil (não round): 512/400 = 1.28 daria round(1.28)=1 e NADA seria
-          // reduzido. Com ceil garantimos passo >= 2 e o lado cai abaixo do limite.
-          var esc = Math.max(w, h) / MAXLADO
-          passoX = Math.max(1, Math.ceil(esc))
-          passoY = passoX
-        }
-        var wFinal = Math.floor((w + passoX - 1) / passoX)
-        var hFinal = Math.floor((h + passoY - 1) / passoY)
+        // RESOLUÇÃO PELA CAIXA REAL DE EXIBIÇÃO (03/11/2026):
+        // a logo é desenhada no cabeçalho em no máximo 150pt × 42pt. Embutir
+        // 512×512 num espaço de 42pt dava 790 KB de anexo sem ganho visível
+        // (a marca até saía nítida, mas 12x maior do que o papel precisa).
+        // Agora calculamos o tamanho DE TELA dessa logo específica (respeitando
+        // a proporção dela) e geramos pixels para 300 dpi — padrão de impressão.
+        //   logo quadrado 512x512  → caixa 42pt  → ~175 px
+        //   logo 16:9 (FoldBox)    → caixa 75pt  → ~311 px
+        // O PDF volta a ~200 KB e a marca continua nítida no papel e na tela.
+        // (As constantes 150/42 espelham maxImgW/maxImgH de desenharCabecalho.)
+        var CAIXA_W_PT = 150
+        var CAIXA_H_PT = 42
+        var DPI_ALVO = 300
+        var ratioTela = Math.min(CAIXA_W_PT / w, CAIXA_H_PT / h, 1)
+        var ladoMaxTela = Math.max(w * ratioTela, h * ratioTela)
+        var MAXLADO = Math.round((ladoMaxTela * DPI_ALVO) / 72)
+        if (MAXLADO < 96) MAXLADO = 96
+        if (MAXLADO > 640) MAXLADO = 640
+        var escalaFinal = Math.min(1, MAXLADO / Math.max(w, h))
+        var wFinal = Math.max(1, Math.round(w * escalaFinal))
+        var hFinal = Math.max(1, Math.round(h * escalaFinal))
+        // ══ DISTORÇÃO DA LOGO (03/11/2026) — CAUSA E CORREÇÃO ═════════════════
+        // 'filtrado' guarda CADA linha como [0][R][G][B]×w: o stride REAL é
+        // (1 + w*3), porque o primeiro byte da linha é o código de filtro PNG
+        // ("None") e o primeiro pixel só começa em +1. O código anterior usava
+        // base = ly * (w * 3), SEM esse byte. Resultado: a cada linha o ponteiro
+        // escorregava 1 byte (um canal de cor), gerando o deslocamento diagonal
+        // progressivo que aparecia como logo distorcida/"listrada" no PDF.
+        // Medido no sandbox com o logo real da Extrafruti (512×512):
+        //   offset errado → diferença média 54,5 contra a referência
+        //   offset certo  → diferença média 0,0
+        // Também trocamos VIZINHO MAIS PRÓXIMO por MÉDIA DE ÁREA (box filter):
+        // com passo 2 o nearest descartava 3 de cada 4 pixels e o texto
+        // "extrafruti" saía serrilhado/ilegível. A média preserva a marca.
         var reduzido = []
-        if (passoX > 1 || passoY > 1) {
-          // filtrado está em linhas RGB (3 bytes/pixel) já sem alfa
+        if (wFinal !== w || hFinal !== h) {
+          var strideReal = 1 + w * 3
+          var fatorX = w / wFinal
+          var fatorY = h / hFinal
           for (var ry = 0; ry < hFinal; ry++) {
-            var ly = Math.min(h - 1, ry * passoY)
-            var base = ly * (w * 3)
-            reduzido.push(0) // filtro "None" da linha
+            // janela vertical em pixels fracionários (cobre o pixel de origem)
+            var y0 = Math.floor(ry * fatorY)
+            var y1 = Math.min(h, Math.max(y0 + 1, Math.ceil((ry + 1) * fatorY)))
+            var yc = y1 - y0
+            reduzido.push(0) // filtro "None" da linha de destino
             for (var rx = 0; rx < wFinal; rx++) {
-              var lx = Math.min(w - 1, rx * passoX)
-              var oo = base + lx * 3
-              reduzido.push(filtrado[oo] & 0xff, filtrado[oo + 1] & 0xff, filtrado[oo + 2] & 0xff)
+              var x0 = Math.floor(rx * fatorX)
+              var x1 = Math.min(w, Math.max(x0 + 1, Math.ceil((rx + 1) * fatorX)))
+              var xc = x1 - x0
+              var sr = 0
+              var sg = 0
+              var sb = 0
+              for (var yy = y0; yy < y1; yy++) {
+                var baseLinha = yy * strideReal + 1 + x0 * 3
+                for (var xx = 0; xx < xc; xx++) {
+                  var ooSrc = baseLinha + xx * 3
+                  sr += filtrado[ooSrc] & 0xff
+                  sg += filtrado[ooSrc + 1] & 0xff
+                  sb += filtrado[ooSrc + 2] & 0xff
+                }
+              }
+              var div = yc * xc || 1
+              reduzido.push(Math.round(sr / div), Math.round(sg / div), Math.round(sb / div))
             }
           }
           w = wFinal
