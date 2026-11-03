@@ -12,6 +12,7 @@ import DesempenhoPage from './pages/DesempenhoPage'
 import DocumentosPage from './pages/operacional/DocumentosImportacoesPage'
 import TarefasPage from './pages/operacional/TarefasKanbanPage'
 import ProjetosPage from './pages/operacional/ProjetosBoardPage'
+import ProjetoDetalhePage from './pages/operacional/ProjetoDetalhePage'
 import AtasPage from './pages/operacional/AtasReunioesPage'
 import EmailsPage from './pages/operacional/EmailsPage'
 import ContratosPage from './pages/operacional/ContratosPage'
@@ -49,6 +50,7 @@ const AppRoutes = () => {
         <Route path="/documentos" element={<DocumentosPage />} />
         <Route path="/tarefas" element={<TarefasPage />} />
         <Route path="/projetos" element={<ProjetosPage />} />
+        <Route path="/projetos/:id" element={<ProjetoDetalhePage />} />
         <Route path="/atas" element={<AtasPage />} />
         <Route path="/emails" element={<EmailsPage />} />
         <Route path="/contratos" element={<ContratosPage />} />

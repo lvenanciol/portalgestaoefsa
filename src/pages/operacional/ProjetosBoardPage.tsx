@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   FolderKanban,
   Plus,
@@ -90,6 +91,7 @@ type ChipFiltro = 'todos' | 'em_andamento' | 'planejamento' | 'em_risco' | 'conc
 
 export default function ProjetosBoardPage() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [itens, setItens] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
@@ -651,7 +653,7 @@ export default function ProjetosBoardPage() {
               <div
                 key={p.id}
                 className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs hover:shadow-md transition-shadow cursor-pointer flex flex-col justify-between"
-                onClick={() => setDetalhe(p)}
+                onClick={() => navigate(`/projetos/${p.id}`)}
               >
                 <div>
                   {/* Topo do card */}
@@ -775,7 +777,7 @@ export default function ProjetosBoardPage() {
         /* Rodapé com link "+ Adicionar projeto" que abre o modal existente */
         <ProjetosListaView
           itens={itensFiltrados}
-          onAbrirDetalhe={(p) => setDetalhe(p)}
+          onAbrirDetalhe={(p) => navigate(`/projetos/${p.id}`)}
           onAbrirNovo={abrirNovo}
           onMudarStatus={mudarStatusProjeto}
           onExcluir={excluirProjeto}
