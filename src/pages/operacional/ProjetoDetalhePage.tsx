@@ -232,7 +232,8 @@ export default function ProjetoDetalhePage() {
           diag?.detalhe?.tarefas_sem_marco_inconsistente ||
           diag?.tarefas_sem_marco_inconsistente ||
           []
-        const temInconsistencia = (diag?.violacoes_integridade || 0) > 0 || listaInconsistente.length > 0
+        const temInconsistencia =
+          (diag?.violacoes_integridade || 0) > 0 || listaInconsistente.length > 0
         setTemInconsistenciaDiagnostico(temInconsistencia)
         if (temInconsistencia) {
           console.error('Inconsistência de integridade detectada:', listaInconsistente)
@@ -268,7 +269,8 @@ export default function ProjetoDetalhePage() {
   const dadosEnriquecidos = useMemo(() => {
     if (!projeto) return null
 
-    const progresso = Number(projeto.progresso) || 65
+    const progresso =
+      typeof projeto.progresso === 'number' ? projeto.progresso : Number(projeto.progresso) || 0
     const orcamento = Number(projeto.orcamento) || 180000
     const realizado = Number(projeto.realizado) || 117000
     const pctOrc = orcamento > 0 ? Math.round((realizado / orcamento) * 100) : 0
@@ -452,8 +454,8 @@ export default function ProjetoDetalhePage() {
     setDialogNovaTarefa(true)
   }
 
-  // Salvar Nova Tarefa
-  const salvarNovaTarefa = async () => {
+  // Salvar Nova Tarefa (suporta isRascunho e marco_id obrigatório para salvar normal)
+  const salvarNovaTarefa = async (isRascunho?: boolean) => {
     if (!formTarefa.titulo.trim()) {
       setDialogErroTarefa('O título da tarefa é obrigatório.')
       return
@@ -461,6 +463,14 @@ export default function ProjetoDetalhePage() {
     if (!formTarefa.parceiro_ids || formTarefa.parceiro_ids.length === 0) {
       setDialogErroTarefa('Vincule pelo menos um parceiro/contato responsável.')
       return
+    }
+
+    // Validação estrita de marco_id no contexto de projeto quando não for rascunho
+    if (!isRascunho) {
+      if (!formTarefa.marco_id || !formTarefa.marco_id.trim()) {
+        setDialogErroTarefa('Selecione um marco para esta tarefa.')
+        return
+      }
     }
 
     setSalvandoTarefa(true)
@@ -473,6 +483,14 @@ export default function ProjetoDetalhePage() {
             ? 'baixa'
             : 'media'
 
+      const statusCalculado = isRascunho
+        ? 'rascunho'
+        : formTarefa.status_kanban === 'concluido'
+          ? 'concluida'
+          : 'pendente'
+
+      const statusKanbanCalculado = isRascunho ? 'rascunho' : formTarefa.status_kanban || 'a_fazer'
+
       const payload: any = {
         titulo: formTarefa.titulo,
         descricao: formTarefa.descricao,
@@ -482,11 +500,12 @@ export default function ProjetoDetalhePage() {
         responsavel: formTarefa.responsavel || (user?.name ?? 'Equipe'),
         prazo: formTarefa.prazo ? formTarefa.prazo + ' 00:00:00.000Z' : '',
         recorrencia: formTarefa.recorrencia || 'Nenhuma',
-        status: formTarefa.status_kanban === 'concluido' ? 'concluida' : 'pendente',
-        status_kanban: formTarefa.status_kanban || 'a_fazer',
+        status: statusCalculado,
+        status_kanban: statusKanbanCalculado,
         parceiros: JSON.stringify(formTarefa.parceiro_ids || []),
         vinculo_tipo: 'projeto',
         vinculo_id: projeto?.id || '',
+        marco_id: formTarefa.marco_id || null,
         criado_por: user?.email || '',
       }
 
@@ -503,11 +522,25 @@ export default function ProjetoDetalhePage() {
       setDialogNovaTarefa(false)
       await carregarDados()
       toast({
-        title: 'Tarefa criada com sucesso',
+        title: isRascunho ? 'Rascunho salvo' : 'Tarefa criada com sucesso',
         description: `Vinculada ao projeto "${projeto?.nome}".`,
       })
     } catch (e: any) {
-      setDialogErroTarefa(String(e?.message || e || 'Erro ao criar tarefa.'))
+      const msg = String(e?.message || e || '')
+      if (
+        msg.includes('chk_tarefa_marco_obrigatorio') ||
+        msg.includes('marcoId é obrigatório') ||
+        msg.includes('marco_id')
+      ) {
+        setDialogErroTarefa('Selecione um marco para esta tarefa.')
+      } else if (msg.includes('não pertence') || msg.includes('MISMATCH')) {
+        setDialogErroTarefa('O marco escolhido não pertence a este projeto. Escolha outro marco.')
+      } else if (msg.includes('cancelado')) {
+        setDialogErroTarefa('Este marco foi cancelado. Escolha um marco ativo.')
+      } else {
+        setDialogErroTarefa(msg || 'Erro ao criar tarefa.')
+      }
+      throw e
     } finally {
       setSalvandoTarefa(false)
     }

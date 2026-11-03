@@ -35,6 +35,32 @@ import { MarcoRegistro, vincularTarefaAoProjeto } from '@/services/tarefas-proje
 import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
 
+function formatarMensagemErroAmigavel(raw: any): string {
+  const msg = String(raw?.message || raw?.error || raw || '')
+  if (
+    msg.includes('MARCO_PROJETO_MISMATCH') ||
+    msg.includes('não pertence ao projeto') ||
+    msg.includes('pertence ao projeto')
+  ) {
+    return 'O marco escolhido não pertence a este projeto. Escolha outro marco.'
+  }
+  if (msg.includes('cancelado') || msg.includes('MARCO_CANCELADO')) {
+    return 'Este marco foi cancelado. Escolha um marco ativo.'
+  }
+  if (
+    msg.includes('marcoId é obrigatório') ||
+    msg.includes('exige marco_id') ||
+    msg.includes('exige um marco obrigatório') ||
+    msg.includes('VALIDATION_FAILED')
+  ) {
+    return 'Selecione um marco para esta tarefa.'
+  }
+  if (msg.includes('ON DELETE RESTRICT') || msg.includes('possui tarefas vinculadas')) {
+    return 'Este marco possui tarefas vinculadas. Mova as tarefas para outro marco antes de excluir.'
+  }
+  return msg || 'Ocorreu uma instabilidade ao salvar. Tente novamente.'
+}
+
 export interface TarefaAbaItem {
   id: string
   titulo: string
@@ -103,8 +129,10 @@ export function ProjetoTarefasAba({
   // Agrupamento estrito por marco REAL do projeto
   // REMOVIDO "Sem marco vinculado": tarefas com marco_id inexistente ou solto se o diagnóstico sinalizar vão para aviso
   const tarefasPorMarco = useMemo(() => {
+    // Ordena marcos por ordem numérica para exibição consistente
+    const marcosOrdenados = [...marcos].sort((a, b) => (a.ordem || 0) - (b.ordem || 0))
     const mapa: Record<string, TarefaAbaItem[]> = {}
-    marcos.forEach((m) => {
+    marcosOrdenados.forEach((m) => {
       mapa[m.id] = []
     })
 
@@ -118,6 +146,13 @@ export function ProjetoTarefasAba({
         semMarcoOuInvalido.push(t)
       }
     })
+
+    if (semMarcoOuInvalido.length > 0) {
+      console.error(
+        `[ProjetoTarefasAba] Encontradas ${semMarcoOuInvalido.length} tarefa(s) com inconsistência de vínculo (sem marco válido no projeto):`,
+        semMarcoOuInvalido,
+      )
+    }
 
     return { mapa, semMarcoOuInvalido }
   }, [marcos, tarefas])
@@ -151,7 +186,7 @@ export function ProjetoTarefasAba({
       if (!res.success) {
         toast({
           title: 'Não foi possível mover a tarefa',
-          description: res.error || 'Erro ao atualizar marco da tarefa.',
+          description: formatarMensagemErroAmigavel(res.error),
           variant: 'destructive',
         })
         return
@@ -165,8 +200,8 @@ export function ProjetoTarefasAba({
       await onRecarregar()
     } catch (err: any) {
       toast({
-        title: 'Erro ao mover tarefa',
-        description: String(err?.message || err || 'Falha de comunicação.'),
+        title: 'Não foi possível mover a tarefa',
+        description: formatarMensagemErroAmigavel(err),
         variant: 'destructive',
       })
     } finally {
@@ -203,8 +238,8 @@ export function ProjetoTarefasAba({
       await onRecarregar()
     } catch (err: any) {
       toast({
-        title: 'Erro ao excluir marco',
-        description: String(err?.message || err),
+        title: 'Não foi possível excluir o marco',
+        description: formatarMensagemErroAmigavel(err),
         variant: 'destructive',
       })
     }
@@ -231,9 +266,7 @@ export function ProjetoTarefasAba({
           marcoId: marcoDestinoId,
         })
         if (!res.success) {
-          throw new Error(
-            `Falha ao mover tarefa "${t.titulo}": ${res.error || 'Erro no serviço de vínculo'}`,
-          )
+          throw new Error(formatarMensagemErroAmigavel(res.error) || 'Falha ao mover tarefa.')
         }
       }
 
@@ -249,7 +282,7 @@ export function ProjetoTarefasAba({
       setMarcoParaExcluir(null)
       await onRecarregar()
     } catch (err: any) {
-      setErroExclusao(String(err?.message || err || 'Falha ao processar exclusão do marco.'))
+      setErroExclusao(formatarMensagemErroAmigavel(err))
     } finally {
       setExecutandoExclusao(false)
     }
@@ -303,17 +336,33 @@ export function ProjetoTarefasAba({
         </Button>
       </div>
 
-      {/* FAIXA ÂMBAR DISCRETA SE HOUVER INCONSISTÊNCIA DE INTEGRIDADE */}
-      {(temInconsistenciaDiagnostico || tarefasPorMarco.semMarcoOuInvalido.length > 0) && (
+      {/* FAIXA ÂMBAR DISCRETA SE HOUVER INCONSISTÊNCIA DE INTEGRIDADE (apenas se N > 0) */}
+      {tarefasPorMarco.semMarcoOuInvalido.length > 0 && (
         <div
           role="alert"
-          className="flex items-center gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs"
+          className="flex items-center justify-between gap-2.5 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs"
         >
-          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-          <div className="flex-1">
-            <span className="font-semibold">Aviso de integridade:</span> Encontramos tarefas com
-            vínculo incompleto (falha de dados). Revise para corrigir.
+          <div className="flex items-center gap-2.5 min-w-0">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+            <div className="truncate">
+              Encontramos {tarefasPorMarco.semMarcoOuInvalido.length} tarefas com inconsistência de
+              vínculo. Revise para corrigir.
+            </div>
           </div>
+          {marcos.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                const primeira = tarefasPorMarco.semMarcoOuInvalido[0]
+                if (primeira && marcos[0]) {
+                  handleMoverMarco(primeira.id, marcos[0].id)
+                }
+              }}
+              className="text-amber-800 underline hover:text-amber-950 font-semibold shrink-0 cursor-pointer"
+            >
+              Corrigir agora
+            </button>
+          )}
         </div>
       )}
 
