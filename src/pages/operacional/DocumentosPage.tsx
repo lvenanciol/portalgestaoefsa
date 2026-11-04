@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   AlertDialog,
@@ -44,7 +45,7 @@ import { JuridicosImportModal } from '@/components/documentos/JuridicosImportMod
 import { ProcessoHistoricoModal } from '@/components/documentos/ProcessoHistoricoModal'
 import { AudienciasModal } from '@/components/documentos/AudienciasModal'
 import { NovoDocumentoModal } from '@/components/documentos/NovoDocumentoModal'
-import { CalendarDays, History, Upload } from 'lucide-react'
+import { CalendarDays, Upload } from 'lucide-react'
 
 type TipoAba = 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
 
@@ -562,18 +563,26 @@ export function DocumentosPage() {
               <div className="flex items-center gap-1.5 text-[11px] text-gray-500 font-mono">
                 <span>{item.numero_cnj || item.numero_processo}</span>
                 {item.versao_atual && item.versao_atual > 1 && (
-                  <Badge
-                    variant="outline"
-                    className="text-[9px] px-1 py-0 bg-blue-50 text-blue-700 border-blue-200 cursor-pointer hover:bg-blue-100"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setProcessoHistoricoSelecionado(item)
-                      setModalHistoricoAberto(true)
-                    }}
-                    title="Ver histórico de alterações"
-                  >
-                    v{item.versao_atual}
-                  </Badge>
+                  <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge
+                          variant="outline"
+                          className="text-[9px] px-1 py-0 bg-blue-50 text-blue-700 border-blue-200 cursor-pointer hover:bg-blue-100"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setProcessoHistoricoSelecionado(item)
+                            setModalHistoricoAberto(true)
+                          }}
+                        >
+                          v{item.versao_atual}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-[11px]">
+                        Ver histórico de alterações (v{item.versao_atual})
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
               </div>
             </div>
@@ -706,28 +715,6 @@ export function DocumentosPage() {
           <span className="font-semibold text-emerald-900">
             {formatarMoeda(item.valor_atualizado ?? item.valor_causa)}
           </span>
-        ),
-      },
-      {
-        id: 'historico_btn',
-        label: 'Histórico',
-        sortable: false,
-        render: (item) => (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation()
-              setProcessoHistoricoSelecionado(item)
-              setModalHistoricoAberto(true)
-            }}
-            className="h-7 px-2 text-xs text-gray-500 hover:text-emerald-700 hover:bg-emerald-50"
-            title="Visualizar histórico de versões e alterações"
-          >
-            <History className="h-3.5 w-3.5 mr-1 text-gray-500" />
-            Histórico
-          </Button>
         ),
       },
     ],
@@ -943,24 +930,32 @@ export function DocumentosPage() {
         acoes={(item) => (
           <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
             <DocumentoParecerButton documento={item} tipoAba={abaAtiva} promptPadrao="" />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation()
-                setDocParaExcluir({
-                  id: item.id,
-                  titulo: String(obterTituloExibicao(item)),
-                  colecao: obterColecaoPorAba(abaAtiva),
-                })
-              }}
-              className="h-8 px-2.5 text-xs text-rose-700 hover:text-rose-800 hover:bg-rose-50 border-rose-200"
-              title="Excluir documento"
-            >
-              <Trash2 className="h-3.5 w-3.5 mr-1 text-rose-600" />
-              Excluir
-            </Button>
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Excluir documento"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDocParaExcluir({
+                        id: item.id,
+                        titulo: String(obterTituloExibicao(item)),
+                        colecao: obterColecaoPorAba(abaAtiva),
+                      })
+                    }}
+                    className="h-7 w-7 text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-colors"
+                  >
+                    <Trash2 className="h-4 w-4 shrink-0" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-[11px]">
+                  Excluir documento
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         )}
       />

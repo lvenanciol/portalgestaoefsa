@@ -9,9 +9,11 @@ import {
   ShieldAlert,
   Lightbulb,
   FileText,
+  MessageCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import pb from '@/lib/pocketbase/client'
@@ -144,118 +146,127 @@ export function DocumentoParecerButton({
 
   return (
     <>
-      <Popover open={popoverAberto} onOpenChange={setPopoverAberto}>
-        <PopoverTrigger asChild>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 px-2.5 text-xs font-medium text-emerald-800 border-emerald-300/80 bg-emerald-50/50 hover:bg-emerald-100/60 hover:text-emerald-900 transition-colors shadow-2xs"
-            title="Emitir Parecer de Especialista"
+      <TooltipProvider delayDuration={300}>
+        <Popover open={popoverAberto} onOpenChange={setPopoverAberto}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  aria-label="Emitir parecer"
+                  className="h-7 w-7 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 transition-colors"
+                >
+                  <MessageCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                </Button>
+              </PopoverTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-[11px]">
+              Emitir parecer
+            </TooltipContent>
+          </Tooltip>
+          <PopoverContent
+            align="end"
+            className="w-96 p-4 bg-white rounded-xl shadow-xl border border-gray-200 z-50"
           >
-            <Sparkles className="h-3.5 w-3.5 mr-1.5 text-emerald-600 shrink-0" />
-            Parecer
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="end"
-          className="w-96 p-4 bg-white rounded-xl shadow-xl border border-gray-200 z-50"
-        >
-          <div className="space-y-3">
-            <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-              <div className="flex items-center gap-1.5">
-                <Sparkles className="h-4 w-4 text-[#1B5E20]" />
-                <span className="text-[13px] font-bold text-gray-900">
-                  Parecer Especialista ({tipoAba.toUpperCase()})
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditandoPrompt((prev) => !prev)}
-                className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:text-emerald-900 transition-colors"
-              >
-                <Edit3 className="h-3 w-3" />
-                {editandoPrompt ? 'Ver' : 'Editar prompt'}
-              </button>
-            </div>
-
-            <div className="text-[11px] text-gray-500">
-              O parecer emite um resumo com panorama geral seguido de Riscos, Oportunidades, Ameaças
-              e Sugestões do documento:{' '}
-              <strong className="text-gray-800">
-                {documento.titulo ||
-                  documento.numero ||
-                  documento.numero_processo ||
-                  'Documento selecionado'}
-              </strong>
-            </div>
-
-            {editandoPrompt ? (
-              <div className="space-y-2">
-                <label className="text-[11px] font-semibold text-gray-600 block">
-                  Prompt do Especialista:
-                </label>
-                <Textarea
-                  value={promptTexto}
-                  onChange={(e) => setPromptTexto(e.target.value)}
-                  rows={5}
-                  className="text-xs text-gray-800 bg-gray-50 resize-y"
-                  placeholder="Defina o papel do especialista e foco da análise..."
-                />
-                <div className="flex items-center justify-between pt-1">
-                  <button
-                    type="button"
-                    onClick={handleRestaurarPadrao}
-                    className="text-[11px] text-gray-500 hover:text-gray-700 underline"
-                  >
-                    Restaurar padrão
-                  </button>
-                  <Button
-                    size="sm"
-                    onClick={handleSalvarPrompt}
-                    className="h-7 px-2.5 text-xs bg-emerald-700 hover:bg-emerald-800 text-white"
-                  >
-                    <Check className="h-3 w-3 mr-1" /> Salvar prompt
-                  </Button>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="h-4 w-4 text-[#1B5E20]" />
+                  <span className="text-[13px] font-bold text-gray-900">
+                    Parecer Especialista ({tipoAba.toUpperCase()})
+                  </span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setEditandoPrompt((prev) => !prev)}
+                  className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:text-emerald-900 transition-colors"
+                >
+                  <Edit3 className="h-3 w-3" />
+                  {editandoPrompt ? 'Ver' : 'Editar prompt'}
+                </button>
               </div>
-            ) : (
-              <div className="bg-gray-50 rounded-lg p-2.5 border border-gray-100 max-h-36 overflow-y-auto text-[11.5px] text-gray-600 italic leading-relaxed">
-                "{promptTexto}"
-              </div>
-            )}
 
-            {salvoFeedback && (
-              <div className="text-[11px] text-emerald-600 font-medium">
-                ✓ Prompt salvo com sucesso para esta aba.
+              <div className="text-[11px] text-gray-500">
+                O parecer emite um resumo com panorama geral seguido de Riscos, Oportunidades,
+                Ameaças e Sugestões do documento:{' '}
+                <strong className="text-gray-800">
+                  {documento.titulo ||
+                    documento.numero ||
+                    documento.numero_processo ||
+                    'Documento selecionado'}
+                </strong>
               </div>
-            )}
 
-            <div className="pt-2 flex items-center justify-end gap-2 border-t border-gray-100">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPopoverAberto(false)}
-                className="h-8 text-xs"
-              >
-                Cancelar
-              </Button>
-              <Button
-                size="sm"
-                onClick={emitirParecer}
-                disabled={carregando}
-                className="h-8 text-xs bg-[#1B5E20] hover:bg-[#0F3D13] text-white font-medium"
-              >
-                {carregando ? (
-                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-                )}
-                Gerar Parecer
-              </Button>
+              {editandoPrompt ? (
+                <div className="space-y-2">
+                  <label className="text-[11px] font-semibold text-gray-600 block">
+                    Prompt do Especialista:
+                  </label>
+                  <Textarea
+                    value={promptTexto}
+                    onChange={(e) => setPromptTexto(e.target.value)}
+                    rows={5}
+                    className="text-xs text-gray-800 bg-gray-50 resize-y"
+                    placeholder="Defina o papel do especialista e foco da análise..."
+                  />
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={handleRestaurarPadrao}
+                      className="text-[11px] text-gray-500 hover:text-gray-700 underline"
+                    >
+                      Restaurar padrão
+                    </button>
+                    <Button
+                      size="sm"
+                      onClick={handleSalvarPrompt}
+                      className="h-7 px-2.5 text-xs bg-emerald-700 hover:bg-emerald-800 text-white"
+                    >
+                      <Check className="h-3 w-3 mr-1" /> Salvar prompt
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-gray-50 rounded-lg p-2.5 border border-gray-100 max-h-36 overflow-y-auto text-[11.5px] text-gray-600 italic leading-relaxed">
+                  "{promptTexto}"
+                </div>
+              )}
+
+              {salvoFeedback && (
+                <div className="text-[11px] text-emerald-600 font-medium">
+                  ✓ Prompt salvo com sucesso para esta aba.
+                </div>
+              )}
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-gray-100">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPopoverAberto(false)}
+                  className="h-8 text-xs"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={emitirParecer}
+                  disabled={carregando}
+                  className="h-8 text-xs bg-[#1B5E20] hover:bg-[#0F3D13] text-white font-medium"
+                >
+                  {carregando ? (
+                    <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                  )}
+                  Gerar Parecer
+                </Button>
+              </div>
             </div>
-          </div>
-        </PopoverContent>
-      </Popover>
+          </PopoverContent>
+        </Popover>
+      </TooltipProvider>
 
       {/* Dialog exibindo o parecer nos 4 blocos */}
       <Dialog open={dialogAberto} onOpenChange={setDialogAberto}>
