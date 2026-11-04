@@ -4,6 +4,7 @@ import {
   Upload,
   FileSpreadsheet,
   CheckCircle2,
+  AlertCircle,
   Clock,
   MapPin,
   User,
@@ -65,6 +66,7 @@ export function AudienciasModal({
     total: number
     novas: number
     atualizadas: number
+    falhas?: { processo: string; motivo: string }[]
   } | null>(null)
   const [erroImportacao, setErroImportacao] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -102,18 +104,28 @@ export function AudienciasModal({
     try {
       const buf = await file.arrayBuffer()
       const wb = XLSX.read(buf, { type: 'array' })
+      if (!wb || !Array.isArray(wb.SheetNames) || wb.SheetNames.length === 0) {
+        throw new Error('A planilha selecionada não possui abas legíveis.')
+      }
       const wsName = wb.SheetNames[0]
       const ws = wb.Sheets[wsName]
-      const rawRows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, raw: false })
+      if (!ws) {
+        throw new Error('Não foi possível ler a primeira aba da planilha.')
+      }
 
-      if (!rawRows || rawRows.length < 2) {
+      const rawRows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, raw: false }) || []
+
+      if (!Array.isArray(rawRows) || rawRows.length < 2) {
         throw new Error('A planilha selecionada está vazia ou não possui cabeçalho válido.')
       }
 
-      // Localizar linha de cabeçalho (pode ser linha 1 ou 2)
+      // Localizar linha de cabeçalho defensivamente (pode ser linha 1, 2 ou 3)
       let headerIdx = 0
-      for (let r = 0; r < Math.min(rawRows.length, 5); r++) {
-        const rowText = (rawRows[r] || []).map((c) => String(c || '').toLowerCase()).join(' ')
+      for (let r = 0; r < Math.min(rawRows.length, 10); r++) {
+        const rowArr = Array.isArray(rawRows[r]) ? rawRows[r] : []
+        const rowText = rowArr
+          .map((c) => (c !== null && c !== undefined ? String(c).toLowerCase() : ''))
+          .join(' ')
         if (
           rowText.includes('pasta') ||
           rowText.includes('processo') ||
@@ -126,53 +138,73 @@ export function AudienciasModal({
         }
       }
 
-      const headers = (rawRows[headerIdx] || []).map((h) =>
-        String(h || '')
-          .trim()
-          .toLowerCase(),
+      const headerRow = Array.isArray(rawRows[headerIdx]) ? rawRows[headerIdx] : []
+      const headers = headerRow.map((h) =>
+        (h !== null && h !== undefined ? String(h) : '').trim().toLowerCase(),
       )
 
       // Mapeamento das colunas conforme a Pauta de Audiências anexada:
       // Pasta | Número do processo | Nº da vara | Cidade - UF | Natureza - Posição | Cliente principal | Parte contrária | Audiência | Data/hora de início | Advogado Responsável | Tipo de audiência
-      const colPasta = headers.findIndex((h) => h.includes('pasta'))
+      const colPasta = headers.findIndex((h) => typeof h === 'string' && h.includes('pasta'))
       const colProcesso = headers.findIndex(
-        (h) => h.includes('número') || h.includes('numero') || h.includes('processo'),
+        (h) =>
+          typeof h === 'string' &&
+          (h.includes('número') || h.includes('numero') || h.includes('processo')),
       )
-      const colVara = headers.findIndex((h) => h.includes('vara'))
-      const colCidade = headers.findIndex((h) => h.includes('cidade') || h.includes('uf'))
+      const colVara = headers.findIndex((h) => typeof h === 'string' && h.includes('vara'))
+      const colCidade = headers.findIndex(
+        (h) => typeof h === 'string' && (h.includes('cidade') || h.includes('uf')),
+      )
       const colNatureza = headers.findIndex(
-        (h) => h.includes('natureza') || h.includes('posição') || h.includes('posicao'),
+        (h) =>
+          typeof h === 'string' &&
+          (h.includes('natureza') || h.includes('posição') || h.includes('posicao')),
       )
-      const colCliente = headers.findIndex((h) => h.includes('cliente'))
+      const colCliente = headers.findIndex((h) => typeof h === 'string' && h.includes('cliente'))
       const colContrario = headers.findIndex(
-        (h) => h.includes('contrária') || h.includes('contraria') || h.includes('parte'),
+        (h) =>
+          typeof h === 'string' &&
+          (h.includes('contrária') || h.includes('contraria') || h.includes('parte')),
       )
       const colAudiencia = headers.findIndex(
-        (h) => h.includes('audiência') || h.includes('audiencia') || h.includes('tipo de ato'),
+        (h) =>
+          typeof h === 'string' &&
+          (h.includes('audiência') || h.includes('audiencia') || h.includes('tipo de ato')),
       )
       const colData = headers.findIndex(
-        (h) => h.includes('data') || h.includes('início') || h.includes('inicio'),
+        (h) =>
+          typeof h === 'string' &&
+          (h.includes('data') || h.includes('início') || h.includes('inicio')),
       )
       const colAdvogado = headers.findIndex(
-        (h) => h.includes('advogado') || h.includes('responsável') || h.includes('responsavel'),
+        (h) =>
+          typeof h === 'string' &&
+          (h.includes('advogado') || h.includes('responsável') || h.includes('responsavel')),
       )
       const colTipo = headers.findIndex(
         (h) =>
-          h.includes('tipo de audiência') ||
-          h.includes('tipo de audiencia') ||
-          h.includes('formato'),
+          typeof h === 'string' &&
+          (h.includes('tipo de audiência') ||
+            h.includes('tipo de audiencia') ||
+            h.includes('formato')),
       )
 
       const dataRows = rawRows.slice(headerIdx + 1).filter((r) => {
-        if (!r || r.length === 0) return false
-        return r.some((c: any) => String(c || '').trim() !== '')
+        if (!r || !Array.isArray(r) || r.length === 0) return false
+        return r.some((c: any) => c !== null && c !== undefined && String(c).trim() !== '')
       })
 
       const parsed: AudienciaRegistro[] = []
 
       for (const row of dataRows) {
-        const getCol = (idx: number) =>
-          idx >= 0 && row[idx] !== undefined ? String(row[idx]).trim() : ''
+        if (!Array.isArray(row)) continue
+
+        const getCol = (idx: number) => {
+          if (idx < 0 || idx >= row.length) return ''
+          const val = row[idx]
+          if (val === null || val === undefined) return ''
+          return String(val).trim()
+        }
 
         const pasta = getCol(colPasta >= 0 ? colPasta : 0)
         let numProc = getCol(colProcesso >= 0 ? colProcesso : 1)
@@ -191,24 +223,27 @@ export function AudienciasModal({
         const advogado = getCol(colAdvogado >= 0 ? colAdvogado : 9)
         const tipoAud = getCol(colTipo >= 0 ? colTipo : 10)
 
-        // Converter data para ISO string
+        // Converter data para ISO string defensivamente
         let isoData = ''
         if (dataStr) {
           const parsedDate = new Date(dataStr)
           if (!isNaN(parsedDate.getTime())) {
             isoData = parsedDate.toISOString()
           } else {
-            // Tenta formato brasileiro DD/MM/AAAA HH:mm
+            // Tenta formato brasileiro DD/MM/AAAA HH:mm ou DD/MM/AAAA
             const matchBR = /(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/.exec(dataStr)
             if (matchBR) {
               const [_, dia, mes, ano, h = '00', m = '00'] = matchBR
-              isoData = new Date(
+              const parsedBR = new Date(
                 Number(ano),
                 Number(mes) - 1,
                 Number(dia),
                 Number(h),
                 Number(m),
-              ).toISOString()
+              )
+              if (!isNaN(parsedBR.getTime())) {
+                isoData = parsedBR.toISOString()
+              }
             }
           }
         }
@@ -231,12 +266,13 @@ export function AudienciasModal({
 
       if (parsed.length === 0) {
         throw new Error(
-          'Nenhuma linha de audiência com número de pasta ou processo foi identificada.',
+          'Nenhuma linha de audiência com número de pasta ou processo foi identificada na planilha.',
         )
       }
 
       setLinhasExtraidas(parsed)
     } catch (err: any) {
+      console.error('Erro ao processar arquivo XLSX:', err)
       setErroImportacao(err?.message || 'Falha ao processar a pauta de audiências.')
     } finally {
       setProcessandoArquivo(false)
@@ -244,13 +280,14 @@ export function AudienciasModal({
     }
   }
 
-  // Grava as audiências no PocketBase com Upsert (evita duplicar por processo + data_hora_inicio)
+  // Grava as audiências no PocketBase com Upsert defensivo (evita duplicar por processo + data_hora_inicio)
   const handleConfirmarImportacao = async () => {
     setSalvandoImportacao(true)
     setErroImportacao(null)
 
     let novas = 0
     let atualizadas = 0
+    const falhas: { processo: string; motivo: string }[] = []
 
     try {
       // Carregar mapa de processos para vincular CNJ/código com processo_id
@@ -259,56 +296,73 @@ export function AudienciasModal({
         const procs = await pb.collection('processos_juridicos').getFullList({
           fields: 'id,numero_processo,numero_cnj,processo_codigo',
         })
-        procs.forEach((p) => {
-          if (p.numero_processo) processosMap[p.numero_processo.trim()] = p.id
-          if (p.numero_cnj) processosMap[p.numero_cnj.trim()] = p.id
-          if (p.processo_codigo) processosMap[p.processo_codigo.trim()] = p.id
-        })
+        if (Array.isArray(procs)) {
+          procs.forEach((p) => {
+            if (p.numero_processo) processosMap[String(p.numero_processo).trim()] = p.id
+            if (p.numero_cnj) processosMap[String(p.numero_cnj).trim()] = p.id
+            if (p.processo_codigo) processosMap[String(p.processo_codigo).trim()] = p.id
+          })
+        }
       } catch (err) {
         console.warn('Aviso ao carregar mapa de processos:', err)
       }
 
       for (const item of linhasExtraidas) {
-        const numProc = item.numero_processo.trim()
-        const cnj = item.numero_cnj.trim()
-        const pasta = item.pasta.trim()
-        const dataInicio = item.data_hora_inicio
+        const numProc = String(item.numero_processo || '').trim()
+        const cnj = String(item.numero_cnj || '').trim()
+        const pasta = String(item.pasta || '').trim()
+        const dataInicio = item.data_hora_inicio || new Date().toISOString()
 
-        // Tentar vincular processo_id
-        const procIdVinculado =
-          processosMap[cnj] || processosMap[numProc] || processosMap[pasta] || null
-
-        // Verificar se já existe audiência para este processo nesta mesma data/hora (upsert)
-        let existente: any = null
         try {
-          const filtro = `(numero_cnj = "${cnj}" || numero_processo = "${numProc}" || pasta = "${pasta}") && data_hora_inicio = "${dataInicio}"`
-          existente = await pb.collection('audiencias').getFirstListItem(filtro)
-        } catch (_) {
-          existente = null
-        }
+          // Tentar vincular processo_id
+          const procIdVinculado =
+            processosMap[cnj] || processosMap[numProc] || processosMap[pasta] || null
 
-        const dadosPayload: any = {
-          pasta,
-          numero_processo: numProc,
-          numero_cnj: cnj,
-          vara: item.vara,
-          cidade_uf: item.cidade_uf,
-          natureza_posicao: item.natureza_posicao,
-          cliente_principal: item.cliente_principal,
-          parte_contraria: item.parte_contraria,
-          audiencia_tipo: item.audiencia_tipo,
-          data_hora_inicio: dataInicio,
-          advogado_responsavel: item.advogado_responsavel,
-          tipo_audiencia: item.tipo_audiencia,
-          processo_id: procIdVinculado || existente?.processo_id || '',
-        }
+          // Verificar se já existe audiência para este processo nesta mesma data/hora (upsert)
+          let existente: any = null
+          try {
+            const condicoes: string[] = []
+            if (cnj) condicoes.push(`numero_cnj = "${cnj}"`)
+            if (numProc) condicoes.push(`numero_processo = "${numProc}"`)
+            if (pasta) condicoes.push(`pasta = "${pasta}"`)
 
-        if (existente) {
-          await pb.collection('audiencias').update(existente.id, dadosPayload)
-          atualizadas++
-        } else {
-          await pb.collection('audiencias').create(dadosPayload)
-          novas++
+            if (condicoes.length > 0) {
+              const filtro = `(${condicoes.join(' || ')}) && data_hora_inicio = "${dataInicio}"`
+              existente = await pb.collection('audiencias').getFirstListItem(filtro)
+            }
+          } catch (_) {
+            existente = null
+          }
+
+          const dadosPayload: Record<string, any> = {
+            pasta: pasta || '',
+            numero_processo: numProc || pasta,
+            numero_cnj: cnj || numProc || pasta,
+            vara: item.vara || '',
+            cidade_uf: item.cidade_uf || '',
+            natureza_posicao: item.natureza_posicao || '',
+            cliente_principal: item.cliente_principal || 'Extrafruti',
+            parte_contraria: item.parte_contraria || '',
+            audiencia_tipo: item.audiencia_tipo || 'Audiência',
+            data_hora_inicio: dataInicio,
+            advogado_responsavel: item.advogado_responsavel || '',
+            tipo_audiencia: item.tipo_audiencia || 'Presencial',
+            processo_id: procIdVinculado || existente?.processo_id || '',
+          }
+
+          if (existente) {
+            await pb.collection('audiencias').update(existente.id, dadosPayload)
+            atualizadas++
+          } else {
+            await pb.collection('audiencias').create(dadosPayload)
+            novas++
+          }
+        } catch (itemErr: any) {
+          console.warn(`Erro ao salvar audiência (${numProc || pasta}):`, itemErr)
+          falhas.push({
+            processo: numProc || pasta || 'Audiência',
+            motivo: itemErr?.message || 'Erro ao gravar no banco de dados',
+          })
         }
       }
 
@@ -316,11 +370,12 @@ export function AudienciasModal({
         total: linhasExtraidas.length,
         novas,
         atualizadas,
+        falhas,
       })
       await carregarAudiencias()
       if (onAudienciasAlteradas) onAudienciasAlteradas()
     } catch (err: any) {
-      console.error('Erro na importação de audiências:', err)
+      console.error('Erro geral na importação de audiências:', err)
       setErroImportacao(err?.message || 'Falha ao salvar audiências no banco de dados.')
     } finally {
       setSalvandoImportacao(false)
@@ -331,6 +386,7 @@ export function AudienciasModal({
     if (!dataStr) return '—'
     try {
       const d = new Date(dataStr)
+      if (isNaN(d.getTime())) return dataStr
       return (
         d.toLocaleDateString('pt-BR') +
         ' às ' +
@@ -341,17 +397,32 @@ export function AudienciasModal({
     }
   }
 
-  const audienciasFiltradas = audiencias.filter((a) => {
+  const audienciasFiltradas = (Array.isArray(audiencias) ? audiencias : []).filter((a) => {
+    if (!a) return false
     if (!busca.trim()) return true
     const termo = busca.toLowerCase()
     return (
-      (a.numero_processo || '').toLowerCase().includes(termo) ||
-      (a.numero_cnj || '').toLowerCase().includes(termo) ||
-      (a.pasta || '').toLowerCase().includes(termo) ||
-      (a.parte_contraria || '').toLowerCase().includes(termo) ||
-      (a.audiencia_tipo || '').toLowerCase().includes(termo) ||
-      (a.advogado_responsavel || '').toLowerCase().includes(termo) ||
-      (a.vara || '').toLowerCase().includes(termo)
+      String(a.numero_processo || '')
+        .toLowerCase()
+        .includes(termo) ||
+      String(a.numero_cnj || '')
+        .toLowerCase()
+        .includes(termo) ||
+      String(a.pasta || '')
+        .toLowerCase()
+        .includes(termo) ||
+      String(a.parte_contraria || '')
+        .toLowerCase()
+        .includes(termo) ||
+      String(a.audiencia_tipo || '')
+        .toLowerCase()
+        .includes(termo) ||
+      String(a.advogado_responsavel || '')
+        .toLowerCase()
+        .includes(termo) ||
+      String(a.vara || '')
+        .toLowerCase()
+        .includes(termo)
     )
   })
 
@@ -525,13 +596,31 @@ export function AudienciasModal({
             )}
 
             {resultadoImportacao ? (
-              <div className="py-8 text-center space-y-4 bg-emerald-50/40 rounded-xl border border-emerald-100 p-6">
-                <div className="h-12 w-12 rounded-full bg-emerald-100 text-[#1B5E20] flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="h-6 w-6" />
+              <div
+                className={`py-8 text-center space-y-4 rounded-xl border p-6 ${
+                  resultadoImportacao.falhas && resultadoImportacao.falhas.length > 0
+                    ? 'bg-amber-50/40 border-amber-200'
+                    : 'bg-emerald-50/40 border-emerald-100'
+                }`}
+              >
+                <div
+                  className={`h-12 w-12 rounded-full flex items-center justify-center mx-auto ${
+                    resultadoImportacao.falhas && resultadoImportacao.falhas.length > 0
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-emerald-100 text-[#1B5E20]'
+                  }`}
+                >
+                  {resultadoImportacao.falhas && resultadoImportacao.falhas.length > 0 ? (
+                    <AlertCircle className="h-6 w-6" />
+                  ) : (
+                    <CheckCircle2 className="h-6 w-6" />
+                  )}
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-gray-900">
-                    Pauta de audiências importada com sucesso!
+                    {resultadoImportacao.falhas && resultadoImportacao.falhas.length > 0
+                      ? 'Pauta de audiências processada com avisos'
+                      : 'Pauta de audiências importada com sucesso!'}
                   </h3>
                   <p className="text-xs text-gray-600 mt-1">
                     Total de <strong>{resultadoImportacao.total}</strong> audiências processadas:{' '}
@@ -543,6 +632,20 @@ export function AudienciasModal({
                     sem duplicidades.
                   </p>
                 </div>
+
+                {resultadoImportacao.falhas && resultadoImportacao.falhas.length > 0 && (
+                  <div className="text-left bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs max-h-36 overflow-y-auto space-y-1">
+                    <div className="font-semibold text-amber-900">
+                      {resultadoImportacao.falhas.length} audiência(s) com erro ao gravar:
+                    </div>
+                    {resultadoImportacao.falhas.map((f, i) => (
+                      <div key={i} className="text-amber-800 text-[11px]">
+                        • <strong>{f.processo}:</strong> {f.motivo}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <Button
                   type="button"
                   size="sm"

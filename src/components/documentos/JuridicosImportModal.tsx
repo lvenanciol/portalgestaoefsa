@@ -5,6 +5,7 @@ import {
   FileText,
   CheckCircle2,
   AlertTriangle,
+  AlertCircle,
   Loader2,
   Database,
   Layers,
@@ -370,6 +371,7 @@ export function JuridicosImportModal({
     total: number
     novos: number
     atualizadosComHistorico: number
+    falhas?: { processo: string; motivo: string }[]
   } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -531,189 +533,235 @@ export function JuridicosImportModal({
     }
   }
 
-  // Grava processos identificados com versionamento e histórico
+  // Grava processos identificados com versionamento e histórico de forma defensiva
   const handleConfirmarImportacao = async () => {
     setSalvando(true)
     setErro(null)
 
     let novos = 0
     let atualizadosComHistorico = 0
+    const falhas: { processo: string; motivo: string }[] = []
+
+    const normalizarNumero = (val: any, padrao = 0): number => {
+      if (val === undefined || val === null || val === '') return padrao
+      const n = typeof val === 'number' ? val : Number(val)
+      return Number.isFinite(n) ? n : padrao
+    }
+
+    const normalizarStatus = (st?: string): string => {
+      const s = String(st || '').toLowerCase()
+      if (s.includes('arquiv') || s.includes('encerrad')) return 'encerrado'
+      if (s.includes('suspens')) return 'suspenso'
+      if (s.includes('acord')) return 'acordo'
+      if (s.includes('recurs')) return 'em_recurso'
+      return 'ativo'
+    }
+
+    const normalizarRisco = (prob?: string): string => {
+      const p = String(prob || '').toLowerCase()
+      if (p.includes('prov')) return 'provavel'
+      if (p.includes('remot')) return 'remoto'
+      return 'possivel'
+    }
 
     try {
       const dataHoje = new Date().toISOString()
       const usuarioLogado = pb.authStore.model?.email || pb.authStore.model?.name || 'Sistema'
 
       for (const item of processosExtraidos) {
-        if (!item.numero_processo || item.numero_processo.trim().length < 2) continue
+        if (!item.numero_processo || String(item.numero_processo).trim().length < 2) continue
 
-        const numProcLimpo = item.numero_processo.trim()
-        const cnjLimpo = item.numero_cnj?.trim() || numProcLimpo
-        const codLimpo = item.processo_codigo?.trim() || ''
+        const numProcLimpo = String(item.numero_processo).trim()
+        const cnjLimpo = item.numero_cnj ? String(item.numero_cnj).trim() : numProcLimpo
+        const codLimpo = item.processo_codigo ? String(item.processo_codigo).trim() : ''
 
-        // Verifica se processo já existe no banco (pelo número_processo, numero_cnj ou processo_codigo)
-        let existente: any = null
         try {
-          // Busca primeiro por numero_processo exato
-          existente = await pb
-            .collection('processos_juridicos')
-            .getFirstListItem(
-              `numero_processo = "${numProcLimpo}" || (numero_cnj != "" && numero_cnj = "${cnjLimpo}")`,
-            )
-        } catch (_) {
-          // Não encontrou
-          existente = null
-        }
-
-        if (!existente && codLimpo) {
+          // Verifica se processo já existe no banco (pelo número_processo, numero_cnj ou processo_codigo)
+          let existente: any = null
           try {
             existente = await pb
               .collection('processos_juridicos')
-              .getFirstListItem(`processo_codigo = "${codLimpo}"`)
+              .getFirstListItem(
+                `numero_processo = "${numProcLimpo}" || (numero_cnj != "" && numero_cnj = "${cnjLimpo}")`,
+              )
           } catch (_) {
             existente = null
           }
-        }
 
-        if (existente) {
-          // PROCESSO JÁ EXISTE: Salvar versão anterior em juridicos_historico e atualizar com nova versão
-          const versaoAntiga = existente.versao_atual || 1
-          const novaVersao = versaoAntiga + 1
-
-          // Snapshot dos valores anteriores
-          const valoresAnteriores = {
-            titulo: existente.titulo,
-            orgao: existente.orgao || existente.orgao_tribunal || existente.vara_comarca,
-            status: existente.status,
-            natureza: existente.natureza,
-            fase_instancia: existente.fase_instancia,
-            contrario: existente.contrario_principal || existente.reu || existente.autor,
-            responsavel: existente.responsavel_principal || existente.advogado,
-            probabilidade: existente.probabilidade || existente.risco,
-            valor_base: existente.valor_base ?? existente.valor_causa,
-            valor_corrigido: existente.valor_corrigido,
-            juros: existente.juros,
-            multa: existente.multa,
-            valor_atualizado: existente.valor_atualizado,
-            observacoes: existente.observacoes,
-          }
-
-          // Diferenças / alterações
-          const alteracoes: Record<string, { anterior: any; novo: any }> = {}
-          if (valoresAnteriores.valor_atualizado !== item.valor_atualizado) {
-            alteracoes['valor_atualizado'] = {
-              anterior: valoresAnteriores.valor_atualizado,
-              novo: item.valor_atualizado,
-            }
-          }
-          if (valoresAnteriores.probabilidade !== item.probabilidade) {
-            alteracoes['probabilidade'] = {
-              anterior: valoresAnteriores.probabilidade,
-              novo: item.probabilidade,
-            }
-          }
-          if (valoresAnteriores.status !== item.status) {
-            alteracoes['status'] = {
-              anterior: valoresAnteriores.status,
-              novo: item.status,
+          if (!existente && codLimpo) {
+            try {
+              existente = await pb
+                .collection('processos_juridicos')
+                .getFirstListItem(`processo_codigo = "${codLimpo}"`)
+            } catch (_) {
+              existente = null
             }
           }
 
-          // Grava histórico
-          try {
-            await pb.collection('juridicos_historico').create({
-              processo_id: existente.id,
+          if (existente) {
+            // PROCESSO JÁ EXISTE: Salvar versão anterior em juridicos_historico e atualizar com nova versão
+            const versaoAntiga = normalizarNumero(existente.versao_atual, 1)
+            const novaVersao = versaoAntiga + 1
+
+            // Snapshot dos valores anteriores
+            const valoresAnteriores = {
+              titulo: existente.titulo || '',
+              orgao: existente.orgao || existente.orgao_tribunal || existente.vara_comarca || '',
+              status: existente.status || 'ativo',
+              natureza: existente.natureza || '',
+              fase_instancia: existente.fase_instancia || '',
+              contrario: existente.contrario_principal || existente.reu || existente.autor || '',
+              responsavel: existente.responsavel_principal || existente.advogado || '',
+              probabilidade: existente.probabilidade || existente.risco || '',
+              valor_base: normalizarNumero(existente.valor_base ?? existente.valor_causa, 0),
+              valor_corrigido: normalizarNumero(existente.valor_corrigido, 0),
+              juros: normalizarNumero(existente.juros, 0),
+              multa: normalizarNumero(existente.multa, 0),
+              valor_atualizado: normalizarNumero(existente.valor_atualizado, 0),
+              observacoes: existente.observacoes || '',
+            }
+
+            // Diferenças / alterações
+            const alteracoes: Record<string, { anterior: any; novo: any }> = {}
+            if (valoresAnteriores.valor_atualizado !== item.valor_atualizado) {
+              alteracoes['valor_atualizado'] = {
+                anterior: valoresAnteriores.valor_atualizado,
+                novo: item.valor_atualizado,
+              }
+            }
+            if (valoresAnteriores.probabilidade !== item.probabilidade) {
+              alteracoes['probabilidade'] = {
+                anterior: valoresAnteriores.probabilidade,
+                novo: item.probabilidade,
+              }
+            }
+            if (valoresAnteriores.status !== item.status) {
+              alteracoes['status'] = {
+                anterior: valoresAnteriores.status,
+                novo: item.status,
+              }
+            }
+
+            // Grava histórico de versão de forma segura
+            try {
+              await pb.collection('juridicos_historico').create({
+                processo_id: existente.id,
+                numero_processo: numProcLimpo,
+                versao: versaoAntiga,
+                data_importacao: dataHoje,
+                valores_anteriores: valoresAnteriores,
+                alteracoes: alteracoes,
+                importado_por: usuarioLogado,
+              })
+            } catch (histErr) {
+              console.warn('Aviso ao registrar histórico do processo:', histErr)
+            }
+
+            // Payload defensivo para atualização com tipos compatíveis
+            const payloadUpdate: Record<string, any> = {
+              processo_codigo: codLimpo || existente.processo_codigo || '',
+              numeros_alternativos:
+                item.numeros_alternativos || existente.numeros_alternativos || '',
+              numero_cnj: cnjLimpo || existente.numero_cnj || numProcLimpo,
+              titulo: item.titulo || existente.titulo || `Processo ${numProcLimpo}`,
+              orgao: item.orgao || existente.orgao || 'Tribunal de Justiça',
+              orgao_tribunal: item.orgao || existente.orgao_tribunal || 'Tribunal de Justiça',
+              vara_comarca: item.orgao || existente.vara_comarca || 'Tribunal de Justiça',
+              acao: item.acao || existente.acao || 'Ação Judicial',
+              status: normalizarStatus(item.status || existente.status),
+              tipo: item.tipo || existente.tipo || 'Judicial',
+              natureza: item.natureza || existente.natureza || 'Trabalhista',
+              cliente_principal:
+                item.cliente_principal || existente.cliente_principal || 'Extrafruti',
+              contrario_principal:
+                item.contrario_principal || existente.contrario_principal || 'Parte Contrária',
+              responsavel_principal:
+                item.responsavel_principal || existente.responsavel_principal || '',
+              advogado: item.responsavel_principal || existente.advogado || '',
+              probabilidade: item.probabilidade || existente.probabilidade || 'Perda Possível',
+              risco: normalizarRisco(
+                item.probabilidade || existente.probabilidade || existente.risco,
+              ),
+              valor_base: normalizarNumero(
+                item.valor_base ?? existente.valor_base ?? existente.valor_causa,
+                0,
+              ),
+              valor_corrigido: normalizarNumero(
+                item.valor_corrigido ?? existente.valor_corrigido,
+                0,
+              ),
+              juros: normalizarNumero(item.juros ?? existente.juros, 0),
+              multa: normalizarNumero(item.multa ?? existente.multa, 0),
+              valor_causa: normalizarNumero(
+                item.valor_base ?? existente.valor_causa ?? existente.valor_base,
+                0,
+              ),
+              valor_atualizado: normalizarNumero(
+                item.valor_atualizado ?? existente.valor_atualizado,
+                0,
+              ),
+              valor_atualizado_indexado: normalizarNumero(
+                item.valor_atualizado_indexado ?? existente.valor_atualizado_indexado,
+                0,
+              ),
+              valor_envolvido: normalizarNumero(
+                item.valor_envolvido ?? existente.valor_envolvido,
+                0,
+              ),
+              observacoes: item.observacoes || existente.observacoes || '',
+              versao_atual: novaVersao,
+            }
+
+            await pb.collection('processos_juridicos').update(existente.id, payloadUpdate)
+            atualizadosComHistorico++
+          } else {
+            // NOVO PROCESSO
+            const payloadNovo: Record<string, any> = {
               numero_processo: numProcLimpo,
-              versao: versaoAntiga,
-              data_importacao: dataHoje,
-              valores_anteriores: valoresAnteriores,
-              alteracoes: alteracoes,
-              importado_por: usuarioLogado,
-            })
-          } catch (histErr) {
-            console.warn('Aviso ao registrar histórico do processo:', histErr)
+              processo_codigo: codLimpo,
+              numeros_alternativos: item.numeros_alternativos || '',
+              numero_cnj: cnjLimpo,
+              titulo: item.titulo || `Processo ${numProcLimpo}`,
+              orgao: item.orgao || 'Tribunal de Justiça',
+              orgao_tribunal: item.orgao || 'Tribunal de Justiça',
+              vara_comarca: item.orgao || 'Tribunal de Justiça',
+              acao: item.acao || 'Ação Judicial',
+              status: normalizarStatus(item.status),
+              tipo: item.tipo || 'Judicial',
+              natureza: item.natureza || 'Trabalhista',
+              cliente_principal: item.cliente_principal || 'Extrafruti',
+              empresa: item.empresa || 'Extrafruti',
+              contrario_principal: item.contrario_principal || 'Parte Contrária',
+              responsavel_principal: item.responsavel_principal || '',
+              advogado: item.responsavel_principal || '',
+              autor: item.contrario_principal || 'Parte Contrária',
+              reu: item.empresa || 'Extrafruti',
+              polo: 'Polo passivo',
+              fase_instancia: 'Em Andamento',
+              assunto_tipo: item.natureza || 'Trabalhista',
+              probabilidade: item.probabilidade || 'Perda Possível',
+              risco: normalizarRisco(item.probabilidade),
+              valor_base: normalizarNumero(item.valor_base, 0),
+              valor_corrigido: normalizarNumero(item.valor_corrigido, 0),
+              juros: normalizarNumero(item.juros, 0),
+              multa: normalizarNumero(item.multa, 0),
+              valor_causa: normalizarNumero(item.valor_base, 0),
+              valor_atualizado: normalizarNumero(item.valor_atualizado ?? item.valor_base, 0),
+              valor_atualizado_indexado: normalizarNumero(item.valor_atualizado_indexado, 0),
+              valor_envolvido: normalizarNumero(item.valor_envolvido ?? item.valor_atualizado, 0),
+              observacoes: item.observacoes || '',
+              versao_atual: 1,
+            }
+
+            await pb.collection('processos_juridicos').create(payloadNovo)
+            novos++
           }
-
-          // Atualiza registro do processo com nova versão
-          await pb.collection('processos_juridicos').update(existente.id, {
-            processo_codigo: item.processo_codigo || existente.processo_codigo,
-            numeros_alternativos: item.numeros_alternativos || existente.numeros_alternativos,
-            numero_cnj: item.numero_cnj || existente.numero_cnj,
-            titulo: item.titulo || existente.titulo,
-            orgao: item.orgao || existente.orgao,
-            orgao_tribunal: item.orgao || existente.orgao_tribunal,
-            vara_comarca: item.orgao || existente.vara_comarca,
-            acao: item.acao || existente.acao,
-            status: item.status?.toLowerCase().includes('arquiv') ? 'encerrado' : 'ativo',
-            tipo: item.tipo || existente.tipo,
-            natureza: item.natureza || existente.natureza,
-            cliente_principal: item.cliente_principal || existente.cliente_principal,
-            contrario_principal: item.contrario_principal || existente.contrario_principal,
-            responsavel_principal: item.responsavel_principal || existente.responsavel_principal,
-            advogado: item.responsavel_principal || existente.advogado,
-            probabilidade: item.probabilidade || existente.probabilidade,
-            risco: item.probabilidade?.toLowerCase().includes('prov')
-              ? 'provavel'
-              : item.probabilidade?.toLowerCase().includes('remot')
-                ? 'remoto'
-                : 'possivel',
-            valor_base: item.valor_base ?? existente.valor_base,
-            valor_corrigido: item.valor_corrigido ?? existente.valor_corrigido,
-            juros: item.juros ?? existente.juros,
-            multa: item.multa ?? existente.multa,
-            valor_causa: item.valor_base ?? existente.valor_causa,
-            valor_atualizado: item.valor_atualizado ?? existente.valor_atualizado,
-            valor_atualizado_indexado:
-              item.valor_atualizado_indexado ?? existente.valor_atualizado_indexado,
-            valor_envolvido: item.valor_envolvido ?? existente.valor_envolvido,
-            observacoes: item.observacoes || existente.observacoes,
-            versao_atual: novaVersao,
+        } catch (itemErr: any) {
+          console.warn(`Erro ao processar item ${numProcLimpo}:`, itemErr)
+          falhas.push({
+            processo: numProcLimpo,
+            motivo: itemErr?.message || 'Falha ao salvar registro no banco de dados',
           })
-
-          atualizadosComHistorico++
-        } else {
-          // NOVO PROCESSO
-          await pb.collection('processos_juridicos').create({
-            numero_processo: numProcLimpo,
-            processo_codigo: item.processo_codigo || '',
-            numeros_alternativos: item.numeros_alternativos || '',
-            numero_cnj: item.numero_cnj || numProcLimpo,
-            titulo: item.titulo || `Processo ${numProcLimpo}`,
-            orgao: item.orgao || 'Tribunal de Justiça',
-            orgao_tribunal: item.orgao || 'Tribunal de Justiça',
-            vara_comarca: item.orgao || 'Tribunal de Justiça',
-            acao: item.acao || 'Ação Judicial',
-            status: item.status?.toLowerCase().includes('arquiv') ? 'encerrado' : 'ativo',
-            tipo: item.tipo || 'Judicial',
-            natureza: item.natureza || 'Trabalhista',
-            cliente_principal: item.cliente_principal || 'Extrafruti',
-            empresa: item.empresa || 'Extrafruti',
-            contrario_principal: item.contrario_principal || 'Parte Contrária',
-            responsavel_principal: item.responsavel_principal || '',
-            advogado: item.responsavel_principal || '',
-            autor: item.contrario_principal || 'Parte Contrária',
-            reu: item.empresa || 'Extrafruti',
-            polo: 'Polo passivo',
-            fase_instancia: 'Em Andamento',
-            assunto_tipo: item.natureza || 'Trabalhista',
-            probabilidade: item.probabilidade || 'Perda Possível',
-            risco: item.probabilidade?.toLowerCase().includes('prov')
-              ? 'provavel'
-              : item.probabilidade?.toLowerCase().includes('remot')
-                ? 'remoto'
-                : 'possivel',
-            valor_base: item.valor_base || 0,
-            valor_corrigido: item.valor_corrigido || 0,
-            juros: item.juros || 0,
-            multa: item.multa || 0,
-            valor_causa: item.valor_base || 0,
-            valor_atualizado: item.valor_atualizado || item.valor_base || 0,
-            valor_atualizado_indexado: item.valor_atualizado_indexado || 0,
-            valor_envolvido: item.valor_envolvido || item.valor_atualizado || 0,
-            observacoes: item.observacoes || '',
-            versao_atual: 1,
-          })
-
-          novos++
         }
       }
 
@@ -721,12 +769,13 @@ export function JuridicosImportModal({
         total: processosExtraidos.length,
         novos,
         atualizadosComHistorico,
+        falhas,
       })
       setPasso(3)
       onImportadoSucesso()
     } catch (err: any) {
-      console.error('Erro na importação jurídica:', err)
-      setErro(err?.message || 'Falha ao salvar registros de processos jurídicos.')
+      console.error('Erro geral na importação jurídica:', err)
+      setErro(err?.message || 'Falha ao processar os registros de processos jurídicos.')
     } finally {
       setSalvando(false)
     }
@@ -929,15 +978,27 @@ export function JuridicosImportModal({
           </div>
         )}
 
-        {/* Passo 3: Sucesso */}
+        {/* Passo 3: Sucesso / Conclusão */}
         {passo === 3 && resultado && (
           <div className="py-6 text-center space-y-4">
-            <div className="h-14 w-14 rounded-full bg-emerald-100 text-[#1B5E20] flex items-center justify-center mx-auto">
-              <CheckCircle2 className="h-8 w-8" />
+            <div
+              className={`h-14 w-14 rounded-full flex items-center justify-center mx-auto ${
+                resultado.falhas && resultado.falhas.length > 0
+                  ? 'bg-amber-100 text-amber-700'
+                  : 'bg-emerald-100 text-[#1B5E20]'
+              }`}
+            >
+              {resultado.falhas && resultado.falhas.length > 0 ? (
+                <AlertCircle className="h-8 w-8" />
+              ) : (
+                <CheckCircle2 className="h-8 w-8" />
+              )}
             </div>
             <div>
               <h3 className="text-base font-bold text-gray-900">
-                Importação concluída com sucesso!
+                {resultado.falhas && resultado.falhas.length > 0
+                  ? 'Importação finalizada com avisos'
+                  : 'Importação concluída com sucesso!'}
               </h3>
               <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
                 Total de <strong>{resultado.total}</strong> processos processados:{' '}
@@ -948,6 +1009,20 @@ export function JuridicosImportModal({
                 de versão preservado.
               </p>
             </div>
+
+            {resultado.falhas && resultado.falhas.length > 0 && (
+              <div className="text-left bg-amber-50/70 border border-amber-200 rounded-xl p-3 text-xs max-h-40 overflow-y-auto space-y-1.5">
+                <div className="font-semibold text-amber-900">
+                  {resultado.falhas.length} processo(s) com falha ao gravar:
+                </div>
+                {resultado.falhas.map((f, i) => (
+                  <div key={i} className="text-amber-800 text-[11px]">
+                    • <strong>{f.processo}:</strong> {f.motivo}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <Button
               type="button"
               onClick={() => {
