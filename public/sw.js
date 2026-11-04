@@ -12,7 +12,9 @@
 // v5 (03/11/2026): rebuild para purgar caches anteriores e servir bundle atualizado.
 // v6 (04/11/2026): rebuild para garantir exibição imediata do bundle mais recente no preview.
 // v7 (04/11/2026): rebuild tela /documentos (grade com título, empresa com ícone, botão excluir, anexo viewer blob).
-const CACHE_NAME = 'pge-pwa-v8'
+// v8 (04/11/2026): rebuild evolução de documentos e persistência de dados.
+// v9 (04/11/2026): bump de versão para forçar purga de caches antigos e servir bundle mais recente no preview.
+const CACHE_NAME = 'pge-pwa-v9'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
