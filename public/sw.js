@@ -17,7 +17,7 @@
 // v10 (04/11/2026): rebuild evolução aba Jurídico (importação de relatórios PDF/XLSX, histórico de versões e módulo de audiências).
 // v11 (04/11/2026): correção de importação em lote jurídica defensiva e módulo de audiências resiliente a células vazias.
 // v12 (04/11/2026): grade Jurídicos com 13 colunas exatas e Parecer/Excluir como ícones com tooltip nas 5 abas.
-const CACHE_NAME = 'pge-pwa-v12'
+const CACHE_NAME = 'pge-pwa-v13'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

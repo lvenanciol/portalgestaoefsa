@@ -31,10 +31,11 @@ export function DocumentosDataTable<T>({
   onLinhaClick,
   emptyMessage = 'Nenhum documento encontrado.',
 }: DocumentosDataTableProps<T>) {
-  // Ordem das colunas carregada do localStorage
+  // Ordem das colunas carregada do localStorage (v3 para forçar reset e exibir as 13 colunas na ordem padrão)
+  const storageKey = `pge_colunas_ordem_v3_${tabelaId}`
   const [colunasOrdem, setColunasOrdem] = useState<string[]>(() => {
     try {
-      const salvo = localStorage.getItem(`pge_colunas_ordem_${tabelaId}`)
+      const salvo = localStorage.getItem(storageKey)
       if (salvo) {
         const parsed = JSON.parse(salvo)
         if (Array.isArray(parsed) && parsed.length > 0) {
@@ -73,7 +74,7 @@ export function DocumentosDataTable<T>({
   const salvarNovaOrdem = (novaOrdem: string[]) => {
     setColunasOrdem(novaOrdem)
     try {
-      localStorage.setItem(`pge_colunas_ordem_${tabelaId}`, JSON.stringify(novaOrdem))
+      localStorage.setItem(storageKey, JSON.stringify(novaOrdem))
     } catch {
       /* intentionally ignored */
     }
