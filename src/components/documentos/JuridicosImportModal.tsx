@@ -137,6 +137,87 @@ const removerAcentos = (v: any) =>
 
 const STATUS_VALIDOS = ['ativo', 'suspenso', 'acordo', 'encerrado', 'em_recurso'] as const
 const RISCO_VALIDOS = ['provavel', 'possivel', 'remoto'] as const
+=======
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+  if (val === undefined || val === null || val === '') return padrao
+  if (typeof val === 'number') return Number.isFinite(val) ? val : padrao
+  if (typeof val === 'boolean') return padrao
+  const limpo = String(val)
+    .replace(/[R$\s\u00A0]/gi, '')
+    .replace(/\u2212/g, '-')
+  if (!limpo || limpo === '-' || limpo === '+') return padrao
+  let bruto: string
+  if (limpo.includes(',') && limpo.includes('.')) {
+    // Formato BR: pontos de milhar + vírgula decimal (ex: 73.585,59)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else if (limpo.includes(',')) {
+    // Apenas vírgula: decimal BR (ex: 0,00)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else {
+    // Apenas ponto: decimal simples (ex: 1234.56)
+    bruto = limpo
+  }
+  const n = parseFloat(bruto)
+  return Number.isFinite(n) ? n : padrao
+}
+
+// Canoniza um processo extraído: enums nos valores aceitos e números garantidos.
+=======
+=======
+  const num = (v: any) => normalizarNumeroRobusto(v, 0)
+  return {
+    ...p,
+    status: canonizarStatus(p.status),
+    acao: truncarTexto(p.acao, 150) || 'Ação Judicial',
+    probabilidade: sanitizarProbabilidade(p.probabilidade),
+    valor_base: num(p.valor_base),
+    valor_corrigido: num(p.valor_corrigido),
+    juros: num(p.juros),
+    multa: num(p.multa),
+    valor_atualizado: num(p.valor_atualizado),
+    valor_atualizado_indexado: num(p.valor_atualizado_indexado),
+    valor_envolvido: num(p.valor_envolvido),
+  }
+}
+=======
+const removerAcentos = (v: any) =>
+  String(v ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+const STATUS_VALIDOS = ['ativo', 'suspenso', 'acordo', 'encerrado', 'em_recurso'] as const
+const RISCO_VALIDOS = ['provavel', 'possivel', 'remoto'] as const
+=======
+// --------------------------------------------------------------------------------
+// Canonização de enums para os selects de lista FECHADA do PocketBase.
+// A coleção 'processos_juridicos' valida:
+//   status: ativo | suspenso | acordo | encerrado | em_recurso
+//   risco:  provavel | possivel | remoto
+// Qualquer texto vindo do PDF/XLSX é canonizado ANTES de gravar, para que o
+// PocketBase nunca rejeite o registro por valor fora da lista.
+// --------------------------------------------------------------------------------
+=======
+// --------------------------------------------------------------------------------
+// Canonização de enums para os selects de lista FECHADA do PocketBase.
+// A coleção 'processos_juridicos' valida:
+//   status: ativo | suspenso | acordo | encerrado | em_recurso
+//   risco:  provavel | possivel | remoto
+// Qualquer texto vindo do PDF/XLSX é canonizado ANTES de gravar, para que o
+// PocketBase nunca rejeite o registro por valor fora da lista.
+// --------------------------------------------------------------------------------
+
+const removerAcentos = (v: any) =>
+  String(v ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+const STATUS_VALIDOS = ['ativo', 'suspenso', 'acordo', 'encerrado', 'em_recurso'] as const
+const RISCO_VALIDOS = ['provavel', 'possivel', 'remoto'] as const
 
 export function canonizarStatus(valor: any): string {
   const s = removerAcentos(valor)
@@ -164,6 +245,36 @@ export function canonizarStatus(valor: any): string {
 export function canonizarRisco(valor: any): string {
   const s = removerAcentos(valor)
   if (!s) return 'possivel'
+  if (RISCO_VALIDOS.includes(s as any)) return s
+  if (s.includes('remot')) return 'remoto'
+  if (s.includes('prov') && !s.includes('improv')) return 'provavel'
+  if (s.includes('exito') || s.includes('favoravel')) return 'provavel'
+  return 'possivel'
+}
+
+// Trunca qualquer texto ao limite máximo do campo no PocketBase, sem estourar a
+// validação "Must be no more than N character(s)". Nunca grava texto bruto longo.
+export function truncarTexto(valor: any, max: number): string {
+  const s = String(valor ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+  return s.length > max ? s.slice(0, max).trim() : s
+}
+
+// Mapeia QUALQUER texto de probabilidade vindo do PDF/XLSX para um rótulo canônico
+// curto (sempre <= 100 caracteres), alinhado ao enum de risco (provavel/possivel/remoto).
+// NUNCA grava o texto bruto do relatório no campo probabilidade.
+export function sanitizarProbabilidade(valor: any): string {
+  const s = removerAcentos(valor)
+  const risco = canonizarRisco(valor)
+  if (!s) return 'Perda Possível'
+  const exito = s.includes('exito') || s.includes('favoravel')
+  if (exito) {
+    return risco === 'remoto'
+      ? 'Êxito Remoto'
+      : risco === 'possivel'
+        ? 'Êxito Possível'
+        : 'Êxito Provável'
   }
   if (risco === 'remoto') return 'Perda Remota'
   if (risco === 'possivel') return 'Perda Possível'
@@ -173,6 +284,570 @@ export function canonizarRisco(valor: any): string {
 // Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
 // "1234.56", número ou string) para um number válido — nunca NaN.
 export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+  if (val === undefined || val === null || val === '') return padrao
+  if (typeof val === 'number') return Number.isFinite(val) ? val : padrao
+  if (typeof val === 'boolean') return padrao
+  const limpo = String(val)
+    .replace(/[R$\s\u00A0]/gi, '')
+    .replace(/\u2212/g, '-')
+  if (!limpo || limpo === '-' || limpo === '+') return padrao
+  let bruto: string
+  if (limpo.includes(',') && limpo.includes('.')) {
+    // Formato BR: pontos de milhar + vírgula decimal (ex: 73.585,59)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else if (limpo.includes(',')) {
+    // Apenas vírgula: decimal BR (ex: 0,00)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else {
+    // Apenas ponto: decimal simples (ex: 1234.56)
+    bruto = limpo
+  }
+  const n = parseFloat(bruto)
+  return Number.isFinite(n) ? n : padrao
+}
+
+// Canoniza um processo extraído: enums nos valores aceitos e números garantidos.
+export function canonizarProcessoExtraido(p: ProcessoExtraido): ProcessoExtraido {
+  const num = (v: any) => normalizarNumeroRobusto(v, 0)
+  return {
+    ...p,
+    status: canonizarStatus(p.status),
+    acao: truncarTexto(p.acao, 150) || 'Ação Judicial',
+    probabilidade: sanitizarProbabilidade(p.probabilidade),
+    valor_base: num(p.valor_base),
+    valor_corrigido: num(p.valor_corrigido),
+    juros: num(p.juros),
+    multa: num(p.multa),
+    valor_atualizado: num(p.valor_atualizado),
+    valor_atualizado_indexado: num(p.valor_atualizado_indexado),
+    valor_envolvido: num(p.valor_envolvido),
+  }
+}
+=======
+// --------------------------------------------------------------------------------
+// Canonização de enums para os selects de lista FECHADA do PocketBase.
+// A coleção 'processos_juridicos' valida:
+//   status: ativo | suspenso | acordo | encerrado | em_recurso
+//   risco:  provavel | possivel | remoto
+// Qualquer texto vindo do PDF/XLSX é canonizado ANTES de gravar, para que o
+// PocketBase nunca rejeite o registro por valor fora da lista.
+// --------------------------------------------------------------------------------
+
+const removerAcentos = (v: any) =>
+  String(v ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+const STATUS_VALIDOS = ['ativo', 'suspenso', 'acordo', 'encerrado', 'em_recurso'] as const
+const RISCO_VALIDOS = ['provavel', 'possivel', 'remoto'] as const
+=======
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+  if (val === undefined || val === null || val === '') return padrao
+  if (typeof val === 'number') return Number.isFinite(val) ? val : padrao
+  if (typeof val === 'boolean') return padrao
+  const limpo = String(val)
+    .replace(/[R$\s\u00A0]/gi, '')
+    .replace(/\u2212/g, '-')
+  if (!limpo || limpo === '-' || limpo === '+') return padrao
+  let bruto: string
+  if (limpo.includes(',') && limpo.includes('.')) {
+    // Formato BR: pontos de milhar + vírgula decimal (ex: 73.585,59)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else if (limpo.includes(',')) {
+    // Apenas vírgula: decimal BR (ex: 0,00)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else {
+    // Apenas ponto: decimal simples (ex: 1234.56)
+    bruto = limpo
+  }
+  const n = parseFloat(bruto)
+  return Number.isFinite(n) ? n : padrao
+}
+
+// Canoniza um processo extraído: enums nos valores aceitos e números garantidos.
+=======
+=======
+  const num = (v: any) => normalizarNumeroRobusto(v, 0)
+  return {
+    ...p,
+    status: canonizarStatus(p.status),
+    acao: truncarTexto(p.acao, 150) || 'Ação Judicial',
+    probabilidade: sanitizarProbabilidade(p.probabilidade),
+    valor_base: num(p.valor_base),
+    valor_corrigido: num(p.valor_corrigido),
+    juros: num(p.juros),
+    multa: num(p.multa),
+    valor_atualizado: num(p.valor_atualizado),
+    valor_atualizado_indexado: num(p.valor_atualizado_indexado),
+    valor_envolvido: num(p.valor_envolvido),
+  }
+}
+=======
+const removerAcentos = (v: any) =>
+  String(v ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+const STATUS_VALIDOS = ['ativo', 'suspenso', 'acordo', 'encerrado', 'em_recurso'] as const
+const RISCO_VALIDOS = ['provavel', 'possivel', 'remoto'] as const
+=======
+// --------------------------------------------------------------------------------
+// Canonização de enums para os selects de lista FECHADA do PocketBase.
+// A coleção 'processos_juridicos' valida:
+//   status: ativo | suspenso | acordo | encerrado | em_recurso
+//   risco:  provavel | possivel | remoto
+// Qualquer texto vindo do PDF/XLSX é canonizado ANTES de gravar, para que o
+// PocketBase nunca rejeite o registro por valor fora da lista.
+// --------------------------------------------------------------------------------
+
+const removerAcentos = (v: any) =>
+  String(v ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+const STATUS_VALIDOS = ['ativo', 'suspenso', 'acordo', 'encerrado', 'em_recurso'] as const
+const RISCO_VALIDOS = ['provavel', 'possivel', 'remoto'] as const
+=======
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+  if (val === undefined || val === null || val === '') return padrao
+  if (typeof val === 'number') return Number.isFinite(val) ? val : padrao
+  if (typeof val === 'boolean') return padrao
+  const limpo = String(val)
+    .replace(/[R$\s\u00A0]/gi, '')
+    .replace(/\u2212/g, '-')
+  if (!limpo || limpo === '-' || limpo === '+') return padrao
+  let bruto: string
+  if (limpo.includes(',') && limpo.includes('.')) {
+    // Formato BR: pontos de milhar + vírgula decimal (ex: 73.585,59)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else if (limpo.includes(',')) {
+    // Apenas vírgula: decimal BR (ex: 0,00)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else {
+    // Apenas ponto: decimal simples (ex: 1234.56)
+    bruto = limpo
+  }
+  const n = parseFloat(bruto)
+  return Number.isFinite(n) ? n : padrao
+}
+
+// Canoniza um processo extraído: enums nos valores aceitos e números garantidos.
+=======
+const removerAcentos = (v: any) =>
+  String(v ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+const STATUS_VALIDOS = ['ativo', 'suspenso', 'acordo', 'encerrado', 'em_recurso'] as const
+const RISCO_VALIDOS = ['provavel', 'possivel', 'remoto'] as const
+
+export function canonizarStatus(valor: any): string {
+  const s = removerAcentos(valor)
+  if (!s) return 'ativo'
+  if (STATUS_VALIDOS.includes(s as any)) return s
+  if (s.includes('inativo')) return 'encerrado'
+  if (s.includes('recurso')) return 'em_recurso'
+  if (s.includes('acord') || s.includes('concili') || s.includes('transacao')) return 'acordo'
+  if (s.includes('suspens') || s.includes('sobrestad')) return 'suspenso'
+  if (
+    s.includes('encerrad') ||
+    s.includes('arquivad') ||
+    s.includes('extint') ||
+    s.includes('baixad') ||
+    s.includes('concluid') ||
+    s.includes('finalizad') ||
+    s.includes('resolvid') ||
+    s.includes('transitad')
+  ) {
+    return 'encerrado'
+  }
+  return 'ativo'
+}
+
+export function canonizarRisco(valor: any): string {
+  const s = removerAcentos(valor)
+  if (!s) return 'possivel'
+  if (RISCO_VALIDOS.includes(s as any)) return s
+  if (s.includes('remot')) return 'remoto'
+  if (s.includes('prov') && !s.includes('improv')) return 'provavel'
+  if (s.includes('exito') || s.includes('favoravel')) return 'provavel'
+  return 'possivel'
+}
+
+// Trunca qualquer texto ao limite máximo do campo no PocketBase, sem estourar a
+// validação "Must be no more than N character(s)". Nunca grava texto bruto longo.
+export function truncarTexto(valor: any, max: number): string {
+  const s = String(valor ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+  return s.length > max ? s.slice(0, max).trim() : s
+}
+
+// Mapeia QUALQUER texto de probabilidade vindo do PDF/XLSX para um rótulo canônico
+// curto (sempre <= 100 caracteres), alinhado ao enum de risco (provavel/possivel/remoto).
+// NUNCA grava o texto bruto do relatório no campo probabilidade.
+export function sanitizarProbabilidade(valor: any): string {
+  const s = removerAcentos(valor)
+  const risco = canonizarRisco(valor)
+  if (!s) return 'Perda Possível'
+  const exito = s.includes('exito') || s.includes('favoravel')
+  if (exito) {
+    return risco === 'remoto'
+      ? 'Êxito Remoto'
+      : risco === 'possivel'
+        ? 'Êxito Possível'
+        : 'Êxito Provável'
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+  if (val === undefined || val === null || val === '') return padrao
+  if (typeof val === 'number') return Number.isFinite(val) ? val : padrao
+  if (typeof val === 'boolean') return padrao
+  const limpo = String(val)
+    .replace(/[R$\s\u00A0]/gi, '')
+    .replace(/\u2212/g, '-')
+  if (!limpo || limpo === '-' || limpo === '+') return padrao
+  let bruto: string
+  if (limpo.includes(',') && limpo.includes('.')) {
+    // Formato BR: pontos de milhar + vírgula decimal (ex: 73.585,59)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else if (limpo.includes(',')) {
+    // Apenas vírgula: decimal BR (ex: 0,00)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else {
+    // Apenas ponto: decimal simples (ex: 1234.56)
+    bruto = limpo
+  }
+  const n = parseFloat(bruto)
+  return Number.isFinite(n) ? n : padrao
+}
+
+// Canoniza um processo extraído: enums nos valores aceitos e números garantidos.
+=======
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+=======
+  if (RISCO_VALIDOS.includes(s as any)) return s
+  if (s.includes('remot')) return 'remoto'
+  if (s.includes('prov') && !s.includes('improv')) return 'provavel'
+  if (s.includes('exito') || s.includes('favoravel')) return 'provavel'
+  return 'possivel'
+}
+
+// Trunca qualquer texto ao limite máximo do campo no PocketBase, sem estourar a
+// validação "Must be no more than N character(s)". Nunca grava texto bruto longo.
+export function truncarTexto(valor: any, max: number): string {
+  const s = String(valor ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+  return s.length > max ? s.slice(0, max).trim() : s
+}
+
+// Mapeia QUALQUER texto de probabilidade vindo do PDF/XLSX para um rótulo canônico
+// curto (sempre <= 100 caracteres), alinhado ao enum de risco (provavel/possivel/remoto).
+// NUNCA grava o texto bruto do relatório no campo probabilidade.
+export function sanitizarProbabilidade(valor: any): string {
+  const s = removerAcentos(valor)
+  const risco = canonizarRisco(valor)
+  if (!s) return 'Perda Possível'
+  const exito = s.includes('exito') || s.includes('favoravel')
+  if (exito) {
+    return risco === 'remoto'
+      ? 'Êxito Remoto'
+      : risco === 'possivel'
+        ? 'Êxito Possível'
+        : 'Êxito Provável'
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+=======
+  if (RISCO_VALIDOS.includes(s as any)) return s
+  if (s.includes('remot')) return 'remoto'
+  if (s.includes('prov') && !s.includes('improv')) return 'provavel'
+  if (s.includes('exito') || s.includes('favoravel')) return 'provavel'
+  return 'possivel'
+}
+
+// Trunca qualquer texto ao limite máximo do campo no PocketBase, sem estourar a
+// validação "Must be no more than N character(s)". Nunca grava texto bruto longo.
+export function truncarTexto(valor: any, max: number): string {
+  const s = String(valor ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+  return s.length > max ? s.slice(0, max).trim() : s
+}
+
+// Mapeia QUALQUER texto de probabilidade vindo do PDF/XLSX para um rótulo canônico
+// curto (sempre <= 100 caracteres), alinhado ao enum de risco (provavel/possivel/remoto).
+// NUNCA grava o texto bruto do relatório no campo probabilidade.
+export function sanitizarProbabilidade(valor: any): string {
+  const s = removerAcentos(valor)
+  const risco = canonizarRisco(valor)
+  if (!s) return 'Perda Possível'
+  const exito = s.includes('exito') || s.includes('favoravel')
+  if (exito) {
+    return risco === 'remoto'
+      ? 'Êxito Remoto'
+      : risco === 'possivel'
+        ? 'Êxito Possível'
+        : 'Êxito Provável'
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+  if (val === undefined || val === null || val === '') return padrao
+  if (typeof val === 'number') return Number.isFinite(val) ? val : padrao
+  if (typeof val === 'boolean') return padrao
+  const limpo = String(val)
+    .replace(/[R$\s\u00A0]/gi, '')
+    .replace(/\u2212/g, '-')
+  if (!limpo || limpo === '-' || limpo === '+') return padrao
+  let bruto: string
+  if (limpo.includes(',') && limpo.includes('.')) {
+    // Formato BR: pontos de milhar + vírgula decimal (ex: 73.585,59)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else if (limpo.includes(',')) {
+    // Apenas vírgula: decimal BR (ex: 0,00)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else {
+    // Apenas ponto: decimal simples (ex: 1234.56)
+    bruto = limpo
+  }
+  const n = parseFloat(bruto)
+  return Number.isFinite(n) ? n : padrao
+}
+=======
+export function canonizarStatus(valor: any): string {
+  const s = removerAcentos(valor)
+  if (!s) return 'ativo'
+  if (STATUS_VALIDOS.includes(s as any)) return s
+  if (s.includes('inativo')) return 'encerrado'
+  if (s.includes('recurso')) return 'em_recurso'
+  if (s.includes('acord') || s.includes('concili') || s.includes('transacao')) return 'acordo'
+  if (s.includes('suspens') || s.includes('sobrestad')) return 'suspenso'
+  if (
+    s.includes('encerrad') ||
+    s.includes('arquivad') ||
+    s.includes('extint') ||
+    s.includes('baixad') ||
+    s.includes('concluid') ||
+    s.includes('finalizad') ||
+    s.includes('resolvid') ||
+    s.includes('transitad')
+  ) {
+    return 'encerrado'
+  }
+  return 'ativo'
+}
+
+export function canonizarRisco(valor: any): string {
+  const s = removerAcentos(valor)
+  if (!s) return 'possivel'
+  if (RISCO_VALIDOS.includes(s as any)) return s
+  if (s.includes('remot')) return 'remoto'
+  if (s.includes('prov') && !s.includes('improv')) return 'provavel'
+  if (s.includes('exito') || s.includes('favoravel')) return 'provavel'
+  return 'possivel'
+}
+
+// Trunca qualquer texto ao limite máximo do campo no PocketBase, sem estourar a
+// validação "Must be no more than N character(s)". Nunca grava texto bruto longo.
+export function truncarTexto(valor: any, max: number): string {
+  const s = String(valor ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+  return s.length > max ? s.slice(0, max).trim() : s
+}
+
+// Mapeia QUALQUER texto de probabilidade vindo do PDF/XLSX para um rótulo canônico
+// curto (sempre <= 100 caracteres), alinhado ao enum de risco (provavel/possivel/remoto).
+// NUNCA grava o texto bruto do relatório no campo probabilidade.
+export function sanitizarProbabilidade(valor: any): string {
+  const s = removerAcentos(valor)
+  const risco = canonizarRisco(valor)
+  if (!s) return 'Perda Possível'
+  const exito = s.includes('exito') || s.includes('favoravel')
+  if (exito) {
+    return risco === 'remoto'
+      ? 'Êxito Remoto'
+      : risco === 'possivel'
+        ? 'Êxito Possível'
+        : 'Êxito Provável'
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+  if (val === undefined || val === null || val === '') return padrao
+  if (typeof val === 'number') return Number.isFinite(val) ? val : padrao
+  if (typeof val === 'boolean') return padrao
+  const limpo = String(val)
+    .replace(/[R$\s\u00A0]/gi, '')
+    .replace(/\u2212/g, '-')
+  if (!limpo || limpo === '-' || limpo === '+') return padrao
+  let bruto: string
+  if (limpo.includes(',') && limpo.includes('.')) {
+    // Formato BR: pontos de milhar + vírgula decimal (ex: 73.585,59)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else if (limpo.includes(',')) {
+    // Apenas vírgula: decimal BR (ex: 0,00)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else {
+    // Apenas ponto: decimal simples (ex: 1234.56)
+    bruto = limpo
+  }
+  const n = parseFloat(bruto)
+  return Number.isFinite(n) ? n : padrao
+}
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+=======
+  if (RISCO_VALIDOS.includes(s as any)) return s
+  if (s.includes('remot')) return 'remoto'
+  if (s.includes('prov') && !s.includes('improv')) return 'provavel'
+  if (s.includes('exito') || s.includes('favoravel')) return 'provavel'
+  return 'possivel'
+}
+
+// Trunca qualquer texto ao limite máximo do campo no PocketBase, sem estourar a
+// validação "Must be no more than N character(s)". Nunca grava texto bruto longo.
+export function truncarTexto(valor: any, max: number): string {
+  const s = String(valor ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+  return s.length > max ? s.slice(0, max).trim() : s
+}
+
+// Mapeia QUALQUER texto de probabilidade vindo do PDF/XLSX para um rótulo canônico
+// curto (sempre <= 100 caracteres), alinhado ao enum de risco (provavel/possivel/remoto).
+// NUNCA grava o texto bruto do relatório no campo probabilidade.
+export function sanitizarProbabilidade(valor: any): string {
+  const s = removerAcentos(valor)
+  const risco = canonizarRisco(valor)
+  if (!s) return 'Perda Possível'
+  const exito = s.includes('exito') || s.includes('favoravel')
+  if (exito) {
+    return risco === 'remoto'
+      ? 'Êxito Remoto'
+      : risco === 'possivel'
+        ? 'Êxito Possível'
+        : 'Êxito Provável'
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+=======
+  if (RISCO_VALIDOS.includes(s as any)) return s
+  if (s.includes('remot')) return 'remoto'
+  if (s.includes('prov') && !s.includes('improv')) return 'provavel'
+  if (s.includes('exito') || s.includes('favoravel')) return 'provavel'
+  return 'possivel'
+}
+
+// Trunca qualquer texto ao limite máximo do campo no PocketBase, sem estourar a
+// validação "Must be no more than N character(s)". Nunca grava texto bruto longo.
+export function truncarTexto(valor: any, max: number): string {
+  const s = String(valor ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+  return s.length > max ? s.slice(0, max).trim() : s
+}
+
+// Mapeia QUALQUER texto de probabilidade vindo do PDF/XLSX para um rótulo canônico
+// curto (sempre <= 100 caracteres), alinhado ao enum de risco (provavel/possivel/remoto).
+// NUNCA grava o texto bruto do relatório no campo probabilidade.
+export function sanitizarProbabilidade(valor: any): string {
+  const s = removerAcentos(valor)
+  const risco = canonizarRisco(valor)
+  if (!s) return 'Perda Possível'
+  const exito = s.includes('exito') || s.includes('favoravel')
+  if (exito) {
+    return risco === 'remoto'
+      ? 'Êxito Remoto'
+      : risco === 'possivel'
+        ? 'Êxito Possível'
+        : 'Êxito Provável'
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+  if (val === undefined || val === null || val === '') return padrao
+  if (typeof val === 'number') return Number.isFinite(val) ? val : padrao
+  if (typeof val === 'boolean') return padrao
+  const limpo = String(val)
+    .replace(/[R$\s\u00A0]/gi, '')
+    .replace(/\u2212/g, '-')
+  if (!limpo || limpo === '-' || limpo === '+') return padrao
+  let bruto: string
+  if (limpo.includes(',') && limpo.includes('.')) {
+    // Formato BR: pontos de milhar + vírgula decimal (ex: 73.585,59)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else if (limpo.includes(',')) {
+    // Apenas vírgula: decimal BR (ex: 0,00)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else {
+    // Apenas ponto: decimal simples (ex: 1234.56)
+    bruto = limpo
+  }
+  const n = parseFloat(bruto)
+  return Number.isFinite(n) ? n : padrao
+}
 =======
   }
   if (risco === 'remoto') return 'Perda Remota'
@@ -600,8 +1275,6 @@ export function canonizarProcessoExtraido(p: ProcessoExtraido): ProcessoExtraido
   return {
     ...p,
     status: canonizarStatus(p.status),
-    // Campos de texto com limite no PocketBase: probabilidade mapeada para rótulo
-    // canônico (nunca texto bruto) e ação truncada a 150 caracteres.
     acao: truncarTexto(p.acao, 150) || 'Ação Judicial',
     probabilidade: sanitizarProbabilidade(p.probabilidade),
     valor_base: num(p.valor_base),
@@ -1194,31 +1867,50 @@ export function JuridicosImportModal({
               console.warn('Aviso ao registrar histórico do processo:', histErr)
             }
 
-            // Payload defensivo para atualização com tipos compatíveis
+            // Payload defensivo para atualização com tipos compatíveis e limites de caracteres
+            const probBrutaUpdate = item.probabilidade || existente.probabilidade || 'Perda Possível'
             const payloadUpdate: Record<string, any> = {
-              processo_codigo: codLimpo || existente.processo_codigo || '',
-              numeros_alternativos:
+              processo_codigo: truncarTexto(codLimpo || existente.processo_codigo || '', 100),
+              numeros_alternativos: truncarTexto(
                 item.numeros_alternativos || existente.numeros_alternativos || '',
-              numero_cnj: cnjLimpo || existente.numero_cnj || numProcLimpo,
-              titulo: item.titulo || existente.titulo || `Processo ${numProcLimpo}`,
-              orgao: item.orgao || existente.orgao || 'Tribunal de Justiça',
-              orgao_tribunal: item.orgao || existente.orgao_tribunal || 'Tribunal de Justiça',
-              vara_comarca: item.orgao || existente.vara_comarca || 'Tribunal de Justiça',
-              acao: item.acao || existente.acao || 'Ação Judicial',
-              status: canonizarStatus(item.status || existente.status),
-              tipo: item.tipo || existente.tipo || 'Judicial',
-              natureza: item.natureza || existente.natureza || 'Trabalhista',
-              cliente_principal:
-                item.cliente_principal || existente.cliente_principal || 'Extrafruti',
-              contrario_principal:
-                item.contrario_principal || existente.contrario_principal || 'Parte Contrária',
-              responsavel_principal:
-                item.responsavel_principal || existente.responsavel_principal || '',
-              advogado: item.responsavel_principal || existente.advogado || '',
-              probabilidade: item.probabilidade || existente.probabilidade || 'Perda Possível',
-              risco: canonizarRisco(
-                item.probabilidade || existente.probabilidade || existente.risco,
+                255,
               ),
+              numero_cnj: truncarTexto(cnjLimpo || existente.numero_cnj || numProcLimpo, 100),
+              titulo: truncarTexto(
+                item.titulo || existente.titulo || `Processo ${numProcLimpo}`,
+                255,
+              ),
+              orgao: truncarTexto(item.orgao || existente.orgao || 'Tribunal de Justiça', 200),
+              orgao_tribunal: truncarTexto(
+                item.orgao || existente.orgao_tribunal || 'Tribunal de Justiça',
+                200,
+              ),
+              vara_comarca: truncarTexto(
+                item.orgao || existente.vara_comarca || 'Tribunal de Justiça',
+                200,
+              ),
+              acao: truncarTexto(item.acao || existente.acao || 'Ação Judicial', 150),
+              status: canonizarStatus(item.status || existente.status),
+              tipo: truncarTexto(item.tipo || existente.tipo || 'Judicial', 100),
+              natureza: truncarTexto(item.natureza || existente.natureza || 'Trabalhista', 100),
+              cliente_principal: truncarTexto(
+                item.cliente_principal || existente.cliente_principal || 'Extrafruti',
+                200,
+              ),
+              contrario_principal: truncarTexto(
+                item.contrario_principal || existente.contrario_principal || 'Parte Contrária',
+                255,
+              ),
+              responsavel_principal: truncarTexto(
+                item.responsavel_principal || existente.responsavel_principal || '',
+                200,
+              ),
+              advogado: truncarTexto(
+                item.responsavel_principal || existente.advogado || '',
+                200,
+              ),
+              probabilidade: sanitizarProbabilidade(probBrutaUpdate),
+              risco: canonizarRisco(probBrutaUpdate || existente.risco),
               valor_base: normalizarNumero(
                 item.valor_base ?? existente.valor_base ?? existente.valor_causa,
                 0,
@@ -1252,32 +1944,33 @@ export function JuridicosImportModal({
             await pb.collection('processos_juridicos').update(existente.id, payloadUpdate)
             atualizadosComHistorico++
           } else {
-            // NOVO PROCESSO
+            // NOVO PROCESSO com limites rigorosos e probabilidade/ação sanitizadas
+            const probBrutaNovo = item.probabilidade || 'Perda Possível'
             const payloadNovo: Record<string, any> = {
-              numero_processo: numProcLimpo,
-              processo_codigo: codLimpo,
-              numeros_alternativos: item.numeros_alternativos || '',
-              numero_cnj: cnjLimpo,
-              titulo: item.titulo || `Processo ${numProcLimpo}`,
-              orgao: item.orgao || 'Tribunal de Justiça',
-              orgao_tribunal: item.orgao || 'Tribunal de Justiça',
-              vara_comarca: item.orgao || 'Tribunal de Justiça',
-              acao: item.acao || 'Ação Judicial',
+              numero_processo: truncarTexto(numProcLimpo, 100),
+              processo_codigo: truncarTexto(codLimpo, 100),
+              numeros_alternativos: truncarTexto(item.numeros_alternativos || '', 255),
+              numero_cnj: truncarTexto(cnjLimpo, 100),
+              titulo: truncarTexto(item.titulo || `Processo ${numProcLimpo}`, 255),
+              orgao: truncarTexto(item.orgao || 'Tribunal de Justiça', 200),
+              orgao_tribunal: truncarTexto(item.orgao || 'Tribunal de Justiça', 200),
+              vara_comarca: truncarTexto(item.orgao || 'Tribunal de Justiça', 200),
+              acao: truncarTexto(item.acao || 'Ação Judicial', 150),
               status: canonizarStatus(item.status),
-              tipo: item.tipo || 'Judicial',
-              natureza: item.natureza || 'Trabalhista',
-              cliente_principal: item.cliente_principal || 'Extrafruti',
-              empresa: item.empresa || 'Extrafruti',
-              contrario_principal: item.contrario_principal || 'Parte Contrária',
-              responsavel_principal: item.responsavel_principal || '',
-              advogado: item.responsavel_principal || '',
-              autor: item.contrario_principal || 'Parte Contrária',
-              reu: item.empresa || 'Extrafruti',
+              tipo: truncarTexto(item.tipo || 'Judicial', 100),
+              natureza: truncarTexto(item.natureza || 'Trabalhista', 100),
+              cliente_principal: truncarTexto(item.cliente_principal || 'Extrafruti', 200),
+              empresa: truncarTexto(item.empresa || 'Extrafruti', 200),
+              contrario_principal: truncarTexto(item.contrario_principal || 'Parte Contrária', 255),
+              responsavel_principal: truncarTexto(item.responsavel_principal || '', 200),
+              advogado: truncarTexto(item.responsavel_principal || '', 200),
+              autor: truncarTexto(item.contrario_principal || 'Parte Contrária', 255),
+              reu: truncarTexto(item.empresa || 'Extrafruti', 200),
               polo: 'Polo passivo',
               fase_instancia: 'Em Andamento',
-              assunto_tipo: item.natureza || 'Trabalhista',
-              probabilidade: item.probabilidade || 'Perda Possível',
-              risco: canonizarRisco(item.probabilidade),
+              assunto_tipo: truncarTexto(item.natureza || 'Trabalhista', 100),
+              probabilidade: sanitizarProbabilidade(probBrutaNovo),
+              risco: canonizarRisco(probBrutaNovo),
               valor_base: normalizarNumero(item.valor_base, 0),
               valor_corrigido: normalizarNumero(item.valor_corrigido, 0),
               juros: normalizarNumero(item.juros, 0),
