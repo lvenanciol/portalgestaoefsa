@@ -47,21 +47,48 @@ export function DocumentoDetalheModal({
   onAbrirAnexos,
 }: DocumentoDetalheModalProps) {
   const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
+  const [blobUrlPdf, setBlobUrlPdf] = useState<string | null>(null)
+  const [carregandoPdf, setCarregandoPdf] = useState(false)
 
   if (!documento) return null
-
-  const colecaoMap: Record<string, string> = {
-    alvaras: 'alvaras',
-    contratos: 'contratos',
-    locacoes: 'contratos',
-    atas: 'atas',
-    juridicos: 'processos_juridicos',
-  }
-  const colecao = colecaoMap[tipoAba] || 'contratos'
 
   const nomeArquivoAnexo = documento.anexo || ''
   const urlAnexo = nomeArquivoAnexo ? pb.files.getURL(documento, nomeArquivoAnexo) : ''
   const isPdf = nomeArquivoAnexo.toLowerCase().endsWith('.pdf')
+
+  // Ao alternar visualização do PDF no detalhe, busca como blob
+  const toggleVisualizarPdf = async () => {
+    if (visualizandoAnexo) {
+      setVisualizandoAnexo(false)
+      if (blobUrlPdf) {
+        URL.revokeObjectURL(blobUrlPdf)
+        setBlobUrlPdf(null)
+      }
+      return
+    }
+
+    setVisualizandoAnexo(true)
+    if (!urlAnexo || !isPdf) return
+
+    setCarregandoPdf(true)
+    try {
+      const headers: Record<string, string> = {}
+      if (pb.authStore.token) {
+        headers['Authorization'] = pb.authStore.token
+      }
+      const resp = await fetch(urlAnexo, { headers })
+      if (!resp.ok) throw new Error('HTTP ' + resp.status)
+      const rawBlob = await resp.blob()
+      const pdfBlob = new Blob([rawBlob], { type: 'application/pdf' })
+      const objectUrl = URL.createObjectURL(pdfBlob)
+      setBlobUrlPdf(objectUrl)
+    } catch (e) {
+      console.warn('Erro ao carregar PDF como blob no detalhe:', e)
+      setBlobUrlPdf(urlAnexo)
+    } finally {
+      setCarregandoPdf(false)
+    }
+  }
 
   const formatarData = (d?: string) => {
     if (!d) return '—'
@@ -228,23 +255,49 @@ export function DocumentoDetalheModal({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setVisualizandoAnexo(!visualizandoAnexo)}
+                      onClick={toggleVisualizarPdf}
                       className="h-8 text-xs font-medium border-gray-200 text-gray-700 hover:bg-white"
                     >
                       <Eye className="h-3.5 w-3.5 mr-1 text-gray-600" />
                       {visualizandoAnexo ? 'Ocultar' : 'Visualizar'}
                     </Button>
                   )}
-                  <a
-                    href={urlAnexo}
-                    target="_blank"
-                    rel="noreferrer"
-                    download
-                    className="inline-flex items-center justify-center h-8 px-3 text-xs font-semibold text-white bg-[#1B5E20] hover:bg-[#1B5E20]/90 rounded-md shadow-sm transition-colors"
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const headers: Record<string, string> = {}
+                        if (pb.authStore.token) headers['Authorization'] = pb.authStore.token
+                        const resp = await fetch(urlAnexo, { headers })
+                        if (resp.ok) {
+                          const blob = await resp.blob()
+                          const dUrl = URL.createObjectURL(blob)
+                          const a = document.createElement('a')
+                          a.href = dUrl
+                          a.download = nomeArquivoAnexo || 'documento'
+                          document.body.appendChild(a)
+                          a.click()
+                          document.body.removeChild(a)
+                          setTimeout(() => URL.revokeObjectURL(dUrl), 1000)
+                          return
+                        }
+                      } catch {
+                        /* fallback */
+                      }
+                      const a = document.createElement('a')
+                      a.href = urlAnexo
+                      a.download = nomeArquivoAnexo || 'documento'
+                      a.target = '_blank'
+                      document.body.appendChild(a)
+                      a.click()
+                      document.body.removeChild(a)
+                    }}
+                    className="h-8 px-3 text-xs font-semibold text-white bg-[#1B5E20] hover:bg-[#1B5E20]/90 rounded-md shadow-sm"
                   >
                     <Download className="h-3.5 w-3.5 mr-1" />
                     Baixar arquivo
-                  </a>
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -264,13 +317,26 @@ export function DocumentoDetalheModal({
             )}
 
             {/* Visualizador de PDF embutido */}
-            {visualizandoAnexo && urlAnexo && isPdf && (
-              <div className="mt-4 border border-gray-200 rounded-xl overflow-hidden bg-gray-100 shadow-inner">
-                <iframe
-                  src={urlAnexo}
-                  title="Visualizador de Documento"
-                  className="w-full h-[480px] border-0"
-                />
+            {visualizandoAnexo && isPdf && (
+              <div className="mt-4 border border-gray-200 rounded-xl overflow-hidden bg-gray-100 shadow-inner relative">
+                {carregandoPdf && (
+                  <div className="h-[480px] flex items-center justify-center bg-gray-50/90 text-xs text-gray-500">
+                    Carregando PDF...
+                  </div>
+                )}
+                {!carregandoPdf && blobUrlPdf && (
+                  <object
+                    data={`${blobUrlPdf}#toolbar=1`}
+                    type="application/pdf"
+                    className="w-full h-[480px] border-0"
+                  >
+                    <iframe
+                      src={`${blobUrlPdf}#toolbar=1`}
+                      title="Visualizador de Documento"
+                      className="w-full h-[480px] border-0"
+                    />
+                  </object>
+                )}
               </div>
             )}
           </div>

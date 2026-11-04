@@ -41,8 +41,18 @@ export function DocumentosDataTable<T>({
           // Garante que todas as colunas existem
           const idsAtuais = colunasPadrao.map((c) => c.id)
           const validos = parsed.filter((id) => idsAtuais.includes(id))
-          idsAtuais.forEach((id) => {
-            if (!validos.includes(id)) validos.push(id)
+          // Insere as novas colunas respeitando o posicionamento relativo de colunasPadrao
+          colunasPadrao.forEach((col, idxPadrao) => {
+            if (!validos.includes(col.id)) {
+              // Se tem coluna anterior no padrao já presente em validos, insere após ela
+              const idAnterior = idxPadrao > 0 ? colunasPadrao[idxPadrao - 1]?.id : null
+              const posAnterior = idAnterior ? validos.indexOf(idAnterior) : -1
+              if (posAnterior !== -1) {
+                validos.splice(posAnterior + 1, 0, col.id)
+              } else {
+                validos.push(col.id)
+              }
+            }
           })
           return validos
         }

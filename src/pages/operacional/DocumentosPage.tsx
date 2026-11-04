@@ -15,12 +15,26 @@ import {
   Shield,
   Briefcase,
   Layers,
+  Trash2,
+  Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { toast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
+import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import { DocumentosDataTable, ColunaConfig } from '@/components/documentos/DocumentosDataTable'
 import { DocumentosEmpresaPopover } from '@/components/documentos/DocumentosEmpresaPopover'
 import { DocumentoParecerButton } from '@/components/documentos/DocumentoParecerButton'
@@ -51,11 +65,18 @@ export function DocumentosPage() {
   const [docDetalheSelecionado, setDocDetalheSelecionado] = useState<any | null>(null)
   const [docAnexoSelecionado, setDocAnexoSelecionado] = useState<{
     id: string
-    titulo: string
     colecao: string
+    titulo: string
     anexoNome?: string
   } | null>(null)
 
+  // Diálogo de confirmação de exclusão
+  const [docParaExcluir, setDocParaExcluir] = useState<{
+    id: string
+    titulo: string
+    colecao: string
+  } | null>(null)
+  const [excluindoDoc, setExcluindoDoc] = useState(false)
   const [modalNovoAberto, setModalNovoAberto] = useState(false)
   const [modalImportJuridicosAberto, setModalImportJuridicosAberto] = useState(false)
 
@@ -131,6 +152,68 @@ export function DocumentosPage() {
     setModalAnexoAberto(true)
   }
 
+  // Executa a exclusão de um documento com confirmação amigável
+  const handleConfirmarExclusao = async () => {
+    if (!docParaExcluir) return
+    setExcluindoDoc(true)
+    try {
+      await pb.collection(docParaExcluir.colecao).delete(docParaExcluir.id)
+      toast({
+        title: 'Documento excluído',
+        description: `"${docParaExcluir.titulo}" foi removido com sucesso.`,
+      })
+      // Remove localmente do estado da aba
+      if (docParaExcluir.colecao === 'alvaras') {
+        setAlvaras((prev) => prev.filter((d) => d.id !== docParaExcluir.id))
+      } else if (docParaExcluir.colecao === 'atas') {
+        setAtas((prev) => prev.filter((d) => d.id !== docParaExcluir.id))
+      } else if (docParaExcluir.colecao === 'processos_juridicos') {
+        setJuridicos((prev) => prev.filter((d) => d.id !== docParaExcluir.id))
+      } else if (docParaExcluir.colecao === 'contratos') {
+        setContratos((prev) => prev.filter((d) => d.id !== docParaExcluir.id))
+        setLocacoes((prev) => prev.filter((d) => d.id !== docParaExcluir.id))
+      }
+      setDocParaExcluir(null)
+    } catch (err: any) {
+      console.error('Erro ao excluir documento:', err)
+      toast({
+        title: 'Erro ao excluir',
+        description: err?.message || 'Não foi possível excluir o documento.',
+        variant: 'destructive',
+      })
+    } finally {
+      setExcluindoDoc(false)
+    }
+  }
+
+  // Obter o nome da coleção PocketBase com base na aba atual
+  const obterColecaoPorAba = (aba: string) => {
+    switch (aba) {
+      case 'alvaras':
+        return 'alvaras'
+      case 'atas':
+        return 'atas'
+      case 'juridicos':
+        return 'processos_juridicos'
+      case 'contratos':
+      case 'locacoes':
+      default:
+        return 'contratos'
+    }
+  }
+
+  // Título amigável de exibição do documento para exclusão
+  const obterTituloExibicao = (item: any) => {
+    return (
+      item.titulo ||
+      item.tipo ||
+      item.numero ||
+      item.numero_processo ||
+      item.assunto_tipo ||
+      'Documento'
+    )
+  }
+
   const formatarMoeda = (val: number) => {
     if (!val && val !== 0) return '—'
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
@@ -146,6 +229,19 @@ export function DocumentosPage() {
     }
   }
 
+  // Helper para renderizar célula de Empresa com ícone nativo
+  const renderCelulaEmpresa = (nomeEmpresa?: string) => {
+    if (!nomeEmpresa) return <span className="text-gray-400">—</span>
+    return (
+      <EmpresaIcon
+        nome={nomeEmpresa}
+        mostrarNome
+        className="h-4 w-4 shrink-0 rounded-xs"
+        nomeClassName="font-medium text-gray-800"
+      />
+    )
+  }
+
   // --- COLUNAS: ALVARÁS ---
   const colunasAlvaras: ColunaConfig<any>[] = useMemo(
     () => [
@@ -156,7 +252,24 @@ export function DocumentosPage() {
         render: (item) => <span className="font-semibold text-gray-900">{item.numero}</span>,
       },
       { id: 'tipo', label: 'Tipo', sortable: true },
-      { id: 'empresa', label: 'Empresa', sortable: true },
+      {
+        id: 'empresa',
+        label: 'Empresa',
+        sortable: true,
+        render: (item) => renderCelulaEmpresa(item.empresa),
+      },
+      {
+        id: 'titulo_documento',
+        label: 'Título do documento',
+        sortable: true,
+        sortValue: (i) => i.titulo || i.tipo || i.numero || '',
+        render: (item) => {
+          const tit =
+            item.titulo ||
+            (item.tipo ? `${item.tipo} - ${item.empresa || ''}` : `Alvará ${item.numero}`)
+          return <span className="font-medium text-gray-900">{tit}</span>
+        },
+      },
       { id: 'orgao_emissor', label: 'Órgão Emissor', sortable: true },
       { id: 'municipio', label: 'Município', sortable: true },
       {
@@ -208,7 +321,7 @@ export function DocumentosPage() {
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => abrirModalAnexo(item, 'alvaras', `Alvará ${item.numero}`)}
+            onClick={() => abrirModalAnexo(item, 'alvaras', item.titulo || `Alvará ${item.numero}`)}
             className="h-7 px-2 text-xs text-gray-600 hover:text-emerald-700"
           >
             <Paperclip
@@ -225,10 +338,18 @@ export function DocumentosPage() {
   // --- COLUNAS: CONTRATOS & LOCAÇÕES ---
   const colunasContratosLocacoes: ColunaConfig<any>[] = useMemo(
     () => [
+      { id: 'parte', label: 'Contraparte / Locador', sortable: true },
       {
-        id: 'titulo',
-        label: 'Título / Objeto',
+        id: 'empresa',
+        label: 'Empresa',
         sortable: true,
+        render: (item) => renderCelulaEmpresa(item.empresa),
+      },
+      {
+        id: 'titulo_documento',
+        label: 'Título do documento',
+        sortable: true,
+        sortValue: (i) => i.titulo || '',
         render: (item) => (
           <div>
             <div className="font-semibold text-gray-900">{item.titulo}</div>
@@ -238,11 +359,9 @@ export function DocumentosPage() {
           </div>
         ),
       },
-      { id: 'parte', label: 'Contraparte / Locador', sortable: true },
-      { id: 'empresa', label: 'Empresa', sortable: true },
       {
         id: 'valor_mensal',
-        label: 'Valor',
+        label: 'Valor Mensal',
         sortable: true,
         sortValue: (i) => i.valor_mensal || 0,
         render: (item) => <span className="font-medium">{formatarMoeda(item.valor_mensal)}</span>,
@@ -319,9 +438,26 @@ export function DocumentosPage() {
   const colunasAtas: ColunaConfig<any>[] = useMemo(
     () => [
       {
-        id: 'titulo',
-        label: 'Título da Ata',
+        id: 'tipo_ata',
+        label: 'Tipo',
         sortable: true,
+        render: (item) => (
+          <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">
+            {item.tipo_ata || 'AGE'}
+          </Badge>
+        ),
+      },
+      {
+        id: 'empresa',
+        label: 'Empresa',
+        sortable: true,
+        render: (item) => renderCelulaEmpresa(item.empresa),
+      },
+      {
+        id: 'titulo_documento',
+        label: 'Título do documento',
+        sortable: true,
+        sortValue: (i) => i.titulo || '',
         render: (item) => (
           <div>
             <div className="font-semibold text-gray-900">{item.titulo}</div>
@@ -332,19 +468,8 @@ export function DocumentosPage() {
         ),
       },
       {
-        id: 'tipo_ata',
-        label: 'Tipo',
-        sortable: true,
-        render: (item) => (
-          <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">
-            {item.tipo_ata || 'AGE'}
-          </Badge>
-        ),
-      },
-      { id: 'empresa', label: 'Empresa', sortable: true },
-      {
         id: 'data',
-        label: 'Data da Reunião',
+        label: 'Data',
         sortable: true,
         render: (item) => formatarData(item.data),
       },
@@ -416,7 +541,26 @@ export function DocumentosPage() {
       { id: 'vara_comarca', label: 'Vara / Comarca', sortable: true },
       { id: 'autor', label: 'Autor', sortable: true },
       { id: 'reu', label: 'Réu', sortable: true },
-      { id: 'empresa', label: 'Empresa', sortable: true },
+      {
+        id: 'empresa',
+        label: 'Empresa',
+        sortable: true,
+        render: (item) => renderCelulaEmpresa(item.empresa),
+      },
+      {
+        id: 'titulo_documento',
+        label: 'Título do documento',
+        sortable: true,
+        sortValue: (i) => i.titulo || i.assunto_tipo || i.numero_processo || '',
+        render: (item) => {
+          const tit =
+            item.titulo ||
+            (item.assunto_tipo
+              ? `${item.assunto_tipo} (${item.numero_processo || 'Proc.'})`
+              : `Processo ${item.numero_processo || ''}`)
+          return <span className="font-medium text-gray-900">{tit}</span>
+        },
+      },
       { id: 'fase_instancia', label: 'Fase', sortable: true },
       { id: 'assunto_tipo', label: 'Assunto / Tipo', sortable: true },
       {
@@ -688,11 +832,66 @@ export function DocumentosPage() {
           setModalDetalheAberto(true)
         }}
         acoes={(item) => (
-          <div className="flex items-center justify-end gap-1.5">
+          <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
             <DocumentoParecerButton documento={item} tipoAba={abaAtiva} promptPadrao="" />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                setDocParaExcluir({
+                  id: item.id,
+                  titulo: String(obterTituloExibicao(item)),
+                  colecao: obterColecaoPorAba(abaAtiva),
+                })
+              }}
+              className="h-8 px-2.5 text-xs text-rose-700 hover:text-rose-800 hover:bg-rose-50 border-rose-200"
+              title="Excluir documento"
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1 text-rose-600" />
+              Excluir
+            </Button>
           </div>
         )}
       />
+
+      {/* Diálogo Amigável de Confirmação de Exclusão */}
+      <AlertDialog
+        open={!!docParaExcluir}
+        onOpenChange={(aberto) => {
+          if (!aberto && !excluindoDoc) setDocParaExcluir(null)
+        }}
+      >
+        <AlertDialogContent className="bg-white max-w-md rounded-2xl shadow-xl border border-gray-200">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base font-bold text-gray-900">
+              Excluir este documento?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-gray-600 pt-1">
+              Você está prestes a excluir o documento{' '}
+              <span className="font-semibold text-gray-900">"{docParaExcluir?.titulo}"</span>. Esta
+              ação não pode ser desfeita e removerá os dados e arquivos anexos vinculados a ele.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4 gap-2">
+            <AlertDialogCancel disabled={excluindoDoc} className="text-xs h-8">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleConfirmarExclusao()
+              }}
+              disabled={excluindoDoc}
+              className="text-xs h-8 bg-rose-600 hover:bg-rose-700 text-white font-medium"
+            >
+              {excluindoDoc ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+              Sim, excluir documento
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Rodapé Informativo */}
       <div className="text-[11px] text-gray-400 flex items-center justify-between pt-1">
