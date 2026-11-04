@@ -1067,99 +1067,181 @@ export function DocumentoDetalheModal({
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-gray-500">
-                    Número do Processo
+                    Título do Processo / Ação
                   </label>
                   <Input
-                    value={formData.numero_processo || ''}
-                    onChange={(e) => setCampo('numero_processo', e.target.value)}
+                    value={formData.titulo || ''}
+                    onChange={(e) => setCampo('titulo', e.target.value)}
+                    className="h-9 text-xs font-semibold text-gray-900"
+                    placeholder="Ex: Rescisão Indireta / Horas Extras"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-gray-500">
+                    Número do Processo (CNJ)
+                  </label>
+                  <Input
+                    value={formData.numero_cnj || formData.numero_processo || ''}
+                    onChange={(e) => {
+                      setCampo('numero_cnj', e.target.value)
+                      setCampo('numero_processo', e.target.value)
+                    }}
                     className="h-9 text-xs font-mono font-bold"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-gray-500">
-                    Vara / Comarca
+                    Código Interno / Pasta
                   </label>
                   <Input
-                    value={formData.vara_comarca || ''}
-                    onChange={(e) => setCampo('vara_comarca', e.target.value)}
+                    value={formData.processo_codigo || ''}
+                    onChange={(e) => setCampo('processo_codigo', e.target.value)}
+                    className="h-9 text-xs font-mono"
+                    placeholder="Ex: 1.0010944"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-gray-500">
+                    Órgão / Vara
+                  </label>
+                  <Input
+                    value={formData.orgao || formData.vara_comarca || ''}
+                    onChange={(e) => {
+                      setCampo('orgao', e.target.value)
+                      setCampo('vara_comarca', e.target.value)
+                    }}
+                    className="h-9 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-gray-500">Status</label>
+                  <Input
+                    value={formData.status || 'Ativo'}
+                    onChange={(e) => setCampo('status', e.target.value)}
+                    className="h-9 text-xs font-medium"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-gray-500">Natureza</label>
+                  <Input
+                    value={formData.natureza || 'Trabalhista'}
+                    onChange={(e) => setCampo('natureza', e.target.value)}
                     className="h-9 text-xs"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-gray-500">
-                    Valor da Causa (R$)
+                    Parte Contrária
                   </label>
                   <Input
-                    value={formData.valor_causa ?? ''}
-                    onChange={(e) => setCampo('valor_causa', e.target.value)}
+                    value={formData.contrario_principal || formData.autor || ''}
+                    onChange={(e) => {
+                      setCampo('contrario_principal', e.target.value)
+                      setCampo('autor', e.target.value)
+                    }}
+                    className="h-9 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-gray-500">
+                    Responsável / Advogado
+                  </label>
+                  <Input
+                    value={formData.responsavel_principal || formData.advogado || ''}
+                    onChange={(e) => {
+                      setCampo('responsavel_principal', e.target.value)
+                      setCampo('advogado', e.target.value)
+                    }}
+                    className="h-9 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-gray-500">
+                    Probabilidade / Risco
+                  </label>
+                  <Input
+                    value={formData.probabilidade || formData.risco || 'Perda Possível'}
+                    onChange={(e) => setCampo('probabilidade', e.target.value)}
+                    className="h-9 text-xs"
+                  />
+                </div>
+
+                {/* Bloco de Valores */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-gray-500">
+                    Valor Base (R$)
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.valor_base ?? formData.valor_causa ?? ''}
+                    onChange={(e) => {
+                      setCampo('valor_base', parseFloat(e.target.value) || 0)
+                      setCampo('valor_causa', parseFloat(e.target.value) || 0)
+                    }}
+                    className="h-9 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-gray-500">
+                    Valor Corrigido (R$)
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.valor_corrigido ?? ''}
+                    onChange={(e) => setCampo('valor_corrigido', parseFloat(e.target.value) || 0)}
+                    className="h-9 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-gray-500">
+                    Juros (R$)
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.juros ?? ''}
+                    onChange={(e) => setCampo('juros', parseFloat(e.target.value) || 0)}
+                    className="h-9 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-gray-500">
+                    Multa (R$)
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.multa ?? ''}
+                    onChange={(e) => setCampo('multa', parseFloat(e.target.value) || 0)}
+                    className="h-9 text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-gray-500">
+                    Valor Atualizado (R$)
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={formData.valor_atualizado ?? ''}
+                    onChange={(e) => setCampo('valor_atualizado', parseFloat(e.target.value) || 0)}
                     className="h-9 text-xs font-bold text-emerald-800"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-gray-500">
-                    Polo Ativo (Autor)
+                    Versão do Registro
                   </label>
                   <Input
-                    value={formData.autor || ''}
-                    onChange={(e) => setCampo('autor', e.target.value)}
-                    className="h-9 text-xs"
+                    readOnly
+                    disabled
+                    value={`v${formData.versao_atual || 1}`}
+                    className="h-9 text-xs bg-gray-50 font-bold"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-gray-500">
-                    Polo Passivo (Réu)
-                  </label>
-                  <Input
-                    value={formData.reu || ''}
-                    onChange={(e) => setCampo('reu', e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-gray-500">
-                    Classificação de Risco
-                  </label>
-                  <select
-                    value={formData.risco || 'possivel'}
-                    onChange={(e) => setCampo('risco', e.target.value)}
-                    className="w-full h-9 rounded-md border border-gray-300 bg-white px-3 text-xs text-gray-800"
-                  >
-                    <option value="provavel">Provável</option>
-                    <option value="possivel">Possível</option>
-                    <option value="remoto">Remoto</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-gray-500">
-                    Fase / Instância
-                  </label>
-                  <Input
-                    value={formData.fase_instancia || ''}
-                    onChange={(e) => setCampo('fase_instancia', e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-gray-500">
-                    Advogado Responsável
-                  </label>
-                  <Input
-                    value={formData.advogado || ''}
-                    onChange={(e) => setCampo('advogado', e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-gray-500">
-                    Próxima Audiência / Prazo
-                  </label>
-                  <Input
-                    type="date"
-                    value={formatarDataInput(formData.proxima_audiencia)}
-                    onChange={(e) => setCampo('proxima_audiencia', e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                </div>
+
                 <div className="col-span-full space-y-1">
                   <label className="text-[10px] font-bold uppercase text-gray-500">
                     Resumo dos Fatos / Andamento Processual

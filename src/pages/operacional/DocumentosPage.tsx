@@ -41,7 +41,10 @@ import { DocumentoParecerButton } from '@/components/documentos/DocumentoParecer
 import { DocumentoAnexoModal } from '@/components/documentos/DocumentoAnexoModal'
 import { DocumentoDetalheModal } from '@/components/documentos/DocumentoDetalheModal'
 import { JuridicosImportModal } from '@/components/documentos/JuridicosImportModal'
+import { ProcessoHistoricoModal } from '@/components/documentos/ProcessoHistoricoModal'
+import { AudienciasModal } from '@/components/documentos/AudienciasModal'
 import { NovoDocumentoModal } from '@/components/documentos/NovoDocumentoModal'
+import { CalendarDays, History, Upload } from 'lucide-react'
 
 type TipoAba = 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
 
@@ -79,6 +82,9 @@ export function DocumentosPage() {
   const [excluindoDoc, setExcluindoDoc] = useState(false)
   const [modalNovoAberto, setModalNovoAberto] = useState(false)
   const [modalImportJuridicosAberto, setModalImportJuridicosAberto] = useState(false)
+  const [modalAudienciasAberto, setModalAudienciasAberto] = useState(false)
+  const [modalHistoricoAberto, setModalHistoricoAberto] = useState(false)
+  const [processoHistoricoSelecionado, setProcessoHistoricoSelecionado] = useState<any>(null)
 
   // Carrega empresas cadastradas
   useEffect(() => {
@@ -528,59 +534,18 @@ export function DocumentosPage() {
   )
 
   // --- COLUNAS: JURÍDICOS ---
+  // Requisito b3: Empresa (ícone à esquerda do nome), Título, Órgão, Status, Natureza, Contrário, Responsável, Probabilidade, Valor base, Valor corrigido, Juros, Multa e Valor atualizado.
   const colunasJuridicos: ColunaConfig<any>[] = useMemo(
     () => [
-      {
-        id: 'numero_processo',
-        label: 'Nº do Processo',
-        sortable: true,
-        render: (item) => (
-          <span className="font-semibold text-gray-900">{item.numero_processo}</span>
-        ),
-      },
-      {
-        id: 'polo',
-        label: 'Polo',
-        sortable: true,
-        render: (item) => {
-          const p = item.polo || (item.autor === item.empresa ? 'Polo ativo' : 'Polo passivo')
-          const isAtivo = p.toLowerCase().includes('ativo')
-          return (
-            <Badge
-              variant="outline"
-              className={`text-[10px] px-2 py-0.5 ${
-                isAtivo
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-blue-50 text-blue-700 border-blue-200'
-              }`}
-            >
-              {p}
-            </Badge>
-          )
-        },
-      },
       {
         id: 'empresa',
         label: 'Empresa',
         sortable: true,
-        render: (item) => renderCelulaEmpresa(item.empresa),
+        render: (item) => renderCelulaEmpresa(item.empresa || item.cliente_principal),
       },
       {
-        id: 'contrario',
-        label: 'Parte Contrária',
-        sortable: true,
-        render: (item) => (
-          <span
-            className="text-xs text-gray-800 line-clamp-1 max-w-[200px]"
-            title={item.autor === item.empresa ? item.reu : item.autor}
-          >
-            {item.autor === item.empresa ? item.reu : item.autor || '—'}
-          </span>
-        ),
-      },
-      {
-        id: 'titulo_documento',
-        label: 'Título do documento',
+        id: 'titulo',
+        label: 'Título',
         sortable: true,
         sortValue: (i) => i.titulo || i.assunto_tipo || i.numero_processo || '',
         render: (item) => {
@@ -589,37 +554,107 @@ export function DocumentosPage() {
             (item.assunto_tipo
               ? `${item.assunto_tipo} (${item.numero_processo || 'Proc.'})`
               : `Processo ${item.numero_processo || ''}`)
-          return <span className="font-medium text-gray-900 line-clamp-1">{tit}</span>
+          return (
+            <div className="space-y-0.5">
+              <span className="font-medium text-gray-900 line-clamp-1" title={tit}>
+                {tit}
+              </span>
+              <div className="flex items-center gap-1.5 text-[11px] text-gray-500 font-mono">
+                <span>{item.numero_cnj || item.numero_processo}</span>
+                {item.versao_atual && item.versao_atual > 1 && (
+                  <Badge
+                    variant="outline"
+                    className="text-[9px] px-1 py-0 bg-blue-50 text-blue-700 border-blue-200 cursor-pointer hover:bg-blue-100"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setProcessoHistoricoSelecionado(item)
+                      setModalHistoricoAberto(true)
+                    }}
+                    title="Ver histórico de alterações"
+                  >
+                    v{item.versao_atual}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          )
         },
       },
-      { id: 'fase_instancia', label: 'Fase', sortable: true },
       {
-        id: 'valor_causa',
-        label: 'Valor Bruto',
-        sortable: true,
-        sortValue: (i) => i.valor_causa || 0,
-        render: (item) => formatarMoeda(item.valor_causa),
-      },
-      {
-        id: 'valor_atualizado',
-        label: 'Valor Atualizado',
-        sortable: true,
-        sortValue: (i) => i.valor_atualizado || 0,
-        render: (item) =>
-          item.valor_atualizado ? (
-            <span className="font-medium text-emerald-900">
-              {formatarMoeda(item.valor_atualizado)}
-            </span>
-          ) : (
-            <span className="text-gray-400">—</span>
-          ),
-      },
-      {
-        id: 'risco',
-        label: 'Probabilidade / Risco',
+        id: 'orgao',
+        label: 'Órgão',
         sortable: true,
         render: (item) => {
-          const texto = item.probabilidade || item.risco || 'possível'
+          const org = item.orgao || item.orgao_tribunal || item.vara_comarca || '—'
+          return (
+            <span className="text-xs text-gray-700 line-clamp-1 max-w-[180px]" title={org}>
+              {org}
+            </span>
+          )
+        },
+      },
+      {
+        id: 'status',
+        label: 'Status',
+        sortable: true,
+        render: (item) => {
+          const st = String(item.status || 'Ativo')
+          const isAtivo = st.toLowerCase().includes('ativo')
+          return (
+            <Badge
+              variant="outline"
+              className={`text-[10px] px-2 py-0.5 ${
+                isAtivo
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-gray-100 text-gray-700 border-gray-200'
+              }`}
+            >
+              {st}
+            </Badge>
+          )
+        },
+      },
+      {
+        id: 'natureza',
+        label: 'Natureza',
+        sortable: true,
+        render: (item) => (
+          <span className="text-xs text-gray-700">{item.natureza || 'Trabalhista'}</span>
+        ),
+      },
+      {
+        id: 'contrario',
+        label: 'Contrário',
+        sortable: true,
+        render: (item) => {
+          const cont =
+            item.contrario_principal || (item.autor === item.empresa ? item.reu : item.autor) || '—'
+          return (
+            <span className="text-xs text-gray-800 line-clamp-1 max-w-[180px]" title={cont}>
+              {cont}
+            </span>
+          )
+        },
+      },
+      {
+        id: 'responsavel',
+        label: 'Responsável',
+        sortable: true,
+        render: (item) => {
+          const resp = item.responsavel_principal || item.advogado || '—'
+          return (
+            <span className="text-xs text-gray-700 line-clamp-1 max-w-[160px]" title={resp}>
+              {resp}
+            </span>
+          )
+        },
+      },
+      {
+        id: 'probabilidade',
+        label: 'Probabilidade',
+        sortable: true,
+        render: (item) => {
+          const texto = item.probabilidade || item.risco || 'Perda Possível'
           const l = String(texto).toLowerCase()
           let classe = 'bg-gray-100 text-gray-600'
           if (l.includes('prov')) classe = 'bg-rose-50 text-rose-700 border-rose-200'
@@ -635,36 +670,63 @@ export function DocumentosPage() {
         },
       },
       {
-        id: 'orgao_tribunal',
-        label: 'Órgão / Tribunal',
+        id: 'valor_base',
+        label: 'Valor base',
         sortable: true,
+        sortValue: (i) => i.valor_base ?? i.valor_causa ?? 0,
+        render: (item) => formatarMoeda(item.valor_base ?? item.valor_causa),
+      },
+      {
+        id: 'valor_corrigido',
+        label: 'Valor corrigido',
+        sortable: true,
+        sortValue: (i) => i.valor_corrigido ?? 0,
+        render: (item) => formatarMoeda(item.valor_corrigido),
+      },
+      {
+        id: 'juros',
+        label: 'Juros',
+        sortable: true,
+        sortValue: (i) => i.juros ?? 0,
+        render: (item) => formatarMoeda(item.juros),
+      },
+      {
+        id: 'multa',
+        label: 'Multa',
+        sortable: true,
+        sortValue: (i) => i.multa ?? 0,
+        render: (item) => formatarMoeda(item.multa),
+      },
+      {
+        id: 'valor_atualizado',
+        label: 'Valor atualizado',
+        sortable: true,
+        sortValue: (i) => i.valor_atualizado ?? i.valor_causa ?? 0,
         render: (item) => (
-          <span
-            className="text-[11px] text-gray-600 line-clamp-1 max-w-[180px]"
-            title={item.orgao_tribunal || item.vara_comarca}
-          >
-            {item.orgao_tribunal || item.vara_comarca || '—'}
+          <span className="font-semibold text-emerald-900">
+            {formatarMoeda(item.valor_atualizado ?? item.valor_causa)}
           </span>
         ),
       },
       {
-        id: 'anexo',
-        label: 'Anexo',
+        id: 'historico_btn',
+        label: 'Histórico',
         sortable: false,
         render: (item) => (
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() =>
-              abrirModalAnexo(item, 'processos_juridicos', `Processo ${item.numero_processo}`)
-            }
-            className="h-7 px-2 text-xs text-gray-600 hover:text-emerald-700"
+            onClick={(e) => {
+              e.stopPropagation()
+              setProcessoHistoricoSelecionado(item)
+              setModalHistoricoAberto(true)
+            }}
+            className="h-7 px-2 text-xs text-gray-500 hover:text-emerald-700 hover:bg-emerald-50"
+            title="Visualizar histórico de versões e alterações"
           >
-            <Paperclip
-              className={`h-3.5 w-3.5 mr-1 ${item.anexo ? 'text-emerald-600' : 'text-gray-400'}`}
-            />
-            {item.anexo ? 'Ver anexo' : 'Anexar'}
+            <History className="h-3.5 w-3.5 mr-1 text-gray-500" />
+            Histórico
           </Button>
         ),
       },
@@ -760,8 +822,8 @@ export function DocumentosPage() {
               onClick={() => setModalImportJuridicosAberto(true)}
               className="h-8 text-xs font-semibold text-emerald-800 border-emerald-300 hover:bg-emerald-50"
             >
-              <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5 text-emerald-700" />
-              Importar XLSX
+              <Upload className="h-3.5 w-3.5 mr-1.5 text-emerald-700" />
+              Importar
             </Button>
           )}
 
@@ -774,6 +836,19 @@ export function DocumentosPage() {
             <Plus className="h-3.5 w-3.5 mr-1" />
             Novo Documento
           </Button>
+
+          {abaAtiva === 'juridicos' && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setModalAudienciasAberto(true)}
+              className="h-8 text-xs font-semibold text-blue-800 border-blue-300 hover:bg-blue-50"
+            >
+              <CalendarDays className="h-3.5 w-3.5 mr-1.5 text-blue-700" />
+              Audiências
+            </Button>
+          )}
 
           <Button
             type="button"
@@ -1001,6 +1076,24 @@ export function DocumentosPage() {
         aberto={modalImportJuridicosAberto}
         onOpenChange={setModalImportJuridicosAberto}
         onImportadoSucesso={carregarDados}
+      />
+
+      <AudienciasModal
+        aberto={modalAudienciasAberto}
+        onOpenChange={setModalAudienciasAberto}
+        onAudienciasAlteradas={carregarDados}
+      />
+
+      <ProcessoHistoricoModal
+        aberto={modalHistoricoAberto}
+        onOpenChange={setModalHistoricoAberto}
+        processoId={processoHistoricoSelecionado?.id || null}
+        numeroProcesso={
+          processoHistoricoSelecionado?.numero_cnj ||
+          processoHistoricoSelecionado?.numero_processo ||
+          ''
+        }
+        tituloProcesso={processoHistoricoSelecionado?.titulo}
       />
     </div>
   )

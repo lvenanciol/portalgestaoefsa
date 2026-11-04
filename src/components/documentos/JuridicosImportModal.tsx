@@ -2,17 +2,20 @@ import { useState, useRef } from 'react'
 import {
   Upload,
   FileSpreadsheet,
+  FileText,
   CheckCircle2,
   AlertTriangle,
   Loader2,
-  X,
-  ArrowRight,
   Database,
+  Layers,
+  ArrowRight,
+  Info,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -22,76 +25,328 @@ import {
 } from '@/components/ui/select'
 import pb from '@/lib/pocketbase/client'
 
+// Helper para carregar o worker/lib do PDF.js sob demanda caso o usuário importe PDF
+declare global {
+  interface Window {
+    pdfjsLib?: any
+  }
+}
+
+async function carregarPdfJs(): Promise<any> {
+  if (typeof window === 'undefined') {
+    throw new Error('Window indisponível')
+  }
+  if (window.pdfjsLib) return window.pdfjsLib
+
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+    script.async = true
+    script.onload = () => {
+      try {
+        if (window.pdfjsLib) {
+          window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+            'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+          resolve(window.pdfjsLib)
+        } else {
+          reject(new Error('pdfjsLib não encontrado'))
+        }
+      } catch (err) {
+        reject(err)
+      }
+    }
+    script.onerror = () => reject(new Error('Falha ao carregar PDF.js'))
+    document.head.appendChild(script)
+  })
+}
+
+// Extrai texto completo de todas as páginas de um arquivo PDF
+async function extrairTextoDePdf(file: File): Promise<string> {
+  const pdfjs = await carregarPdfJs()
+  const arrayBuffer = await file.arrayBuffer()
+  const loadingTask = pdfjs.getDocument({
+    data: new Uint8Array(arrayBuffer),
+    cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+    cMapPacked: true,
+  })
+  const pdfDoc = await loadingTask.promise
+  let textoCompleto = ''
+
+  for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+    const page = await pdfDoc.getPage(pageNum)
+    const textContent = await page.getTextContent()
+    const pageText = textContent.items.map((item: any) => item.str).join(' ')
+    textoCompleto += `\n--- PAGINA_${pageNum} ---\n` + pageText
+  }
+
+  return textoCompleto
+}
+
+export interface ProcessoExtraido {
+  processo_codigo?: string // ex: 1.0010944
+  numero_processo: string // ex: CNJ ou código
+  numero_cnj?: string
+  numeros_alternativos?: string // Número antigo / MTE
+  titulo?: string
+  orgao?: string
+  acao?: string
+  status?: string // Ativo, Arquivado, Encerrado etc.
+  tipo?: string // Judicial, Administrativo
+  natureza?: string // Trabalhista, Cível etc.
+  cliente_principal?: string
+  contrario_principal?: string
+  responsavel_principal?: string
+  probabilidade?: string // ex: Perda Possível, Êxito Provável
+  observacoes?: string
+  valor_base?: number
+  valor_corrigido?: number
+  juros?: number
+  multa?: number
+  valor_atualizado?: number
+  valor_atualizado_indexado?: number
+  valor_envolvido?: number
+  empresa?: string
+}
+
+function parsearNumeroBr(val: any): number {
+  if (!val) return 0
+  const str = String(val)
+    .replace(/[R$\s]/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.')
+  const n = parseFloat(str)
+  return isNaN(n) ? 0 : n
+}
+
+// Parser inteligente de texto do Relatório de Processos (PDF)
+export function parsearRelatorioProcessosPdf(
+  texto: string,
+  empresaPadrao = 'Extrafruti',
+): ProcessoExtraido[] {
+  // Segmenta o texto por ocorrências de "Processo:\s*([0-9]+\.[0-9]+|[0-9]+)"
+  const regexProcesso = /Processo:\s*([0-9]+(?:\.[0-9]+)?)/gi
+  const indices: { codigo: string; index: number }[] = []
+  let match: RegExpExecArray | null
+
+  while ((match = regexProcesso.exec(texto)) !== null) {
+    indices.push({
+      codigo: match[1].trim(),
+      index: match.index,
+    })
+  }
+
+  if (indices.length === 0) return []
+
+  const processos: ProcessoExtraido[] = []
+
+  for (let i = 0; i < indices.length; i++) {
+    const inicio = indices[i].index
+    const fim = i < indices.length - 1 ? indices[i + 1].index : texto.length
+    const bloco = texto.substring(inicio, fim)
+    const procCod = indices[i].codigo
+
+    // Extração de campos via regex do bloco estruturado
+    // Números (CNJ / antigo / MTE)
+    let cnj = ''
+    const matchCnj = /Número CNJ:\s*([0-9.\-/]+)/i.exec(bloco)
+    if (matchCnj) cnj = matchCnj[1].trim()
+
+    let numerosAlt = ''
+    const matchAntigo = /Número antigo:\s*([0-9.\-/]+)/i.exec(bloco)
+    if (matchAntigo) numerosAlt += `Antigo: ${matchAntigo[1].trim()} `
+    const matchMte = /MTE:\s*([0-9.\-/]+)/i.exec(bloco)
+    if (matchMte) numerosAlt += `MTE: ${matchMte[1].trim()}`
+
+    // Título
+    let titulo = ''
+    const matchTitulo = /Título:\s*([^]+?)(?=Órgão:|Ação:|Status:|Tipo:|Natureza:|$)/i.exec(bloco)
+    if (matchTitulo) {
+      titulo = matchTitulo[1].replace(/[\r\n]+/g, ' ').trim()
+    }
+
+    // Órgão
+    let orgao = ''
+    const matchOrgao =
+      /Órgão:\s*([^]+?)(?=Ação:|Status:|Tipo:|Natureza:|Cliente principal:|$)/i.exec(bloco)
+    if (matchOrgao) {
+      orgao = matchOrgao[1].replace(/[\r\n]+/g, ' ').trim()
+    }
+
+    // Ação
+    let acao = ''
+    const matchAcao =
+      /Ação:\s*([^]+?)(?=Status:|Tipo:|Natureza:|Cliente principal:|Contrário principal:|$)/i.exec(
+        bloco,
+      )
+    if (matchAcao) {
+      acao = matchAcao[1].replace(/[\r\n]+/g, ' ').trim()
+    }
+
+    // Status
+    let status = 'Ativo'
+    const matchStatus =
+      /Status:\s*([^]+?)(?=Tipo:|Natureza:|Cliente principal:|Contrário principal:|$)/i.exec(bloco)
+    if (matchStatus) {
+      status = matchStatus[1].replace(/[\r\n]+/g, ' ').trim()
+    }
+
+    // Tipo
+    let tipo = 'Judicial'
+    const matchTipo =
+      /Tipo:\s*([^]+?)(?=Natureza:|Cliente principal:|Contrário principal:|$)/i.exec(bloco)
+    if (matchTipo) {
+      tipo = matchTipo[1].replace(/[\r\n]+/g, ' ').trim()
+    }
+
+    // Natureza
+    let natureza = 'Trabalhista'
+    const matchNatureza =
+      /Natureza:\s*([^]+?)(?=Cliente principal:|Contrário principal:|Responsável principal:|$)/i.exec(
+        bloco,
+      )
+    if (matchNatureza) {
+      natureza = matchNatureza[1].replace(/[\r\n]+/g, ' ').trim()
+    }
+
+    // Cliente principal
+    let clientePrincipal = empresaPadrao
+    const matchCliente =
+      /Cliente principal:\s*([^]+?)(?=Contrário principal:|Responsável principal:|Probabilidade:|$)/i.exec(
+        bloco,
+      )
+    if (matchCliente) {
+      clientePrincipal = matchCliente[1].replace(/[\r\n]+/g, ' ').trim()
+    }
+
+    // Contrário principal
+    let contrarioPrincipal = ''
+    const matchContrario =
+      /Contrário principal:\s*([^]+?)(?=Responsável principal:|Probabilidade:|Observações:|Valores|$)/i.exec(
+        bloco,
+      )
+    if (matchContrario) {
+      contrarioPrincipal = matchContrario[1].replace(/[\r\n]+/g, ' ').trim()
+    }
+
+    // Responsável principal
+    let responsavelPrincipal = ''
+    const matchResp =
+      /Responsável principal:\s*([^]+?)(?=Probabilidade:|Observações:|Valores|$)/i.exec(bloco)
+    if (matchResp) {
+      responsavelPrincipal = matchResp[1].replace(/[\r\n]+/g, ' ').trim()
+    }
+
+    // Probabilidade
+    let probabilidade = 'Perda Possível'
+    const matchProb = /Probabilidade:\s*([^]+?)(?=Observações:|Valores|$)/i.exec(bloco)
+    if (matchProb) {
+      probabilidade = matchProb[1].replace(/[\r\n]+/g, ' ').trim()
+    }
+
+    // Observações
+    let observacoes = ''
+    const matchObs = /Observações:\s*([^]+?)(?=Valores|$)/i.exec(bloco)
+    if (matchObs) {
+      observacoes = matchObs[1].replace(/[\r\n]+/g, ' ').trim()
+      if (observacoes.length > 2500) {
+        observacoes = observacoes.substring(0, 2500) + '...'
+      }
+    }
+
+    // Bloco de Valores:
+    // "Valor da causa: R$ 73.585,59 (Determinada) R$ 83.600,96 R$ 28.229,26 R$ 0,00 R$ 111.830,22 R$ 0,00"
+    // Valores típicos: Base, Corrigido, Juros, Multa, Atualizado, Atualizado indexado
+    let valorBase = 0
+    let valorCorrigido = 0
+    let juros = 0
+    let multa = 0
+    let valorAtualizado = 0
+    let valorAtualizadoIndexado = 0
+    let valorEnvolvido = 0
+
+    const matchValoresBloco =
+      /Valores[\s\S]*?(?:Valor da causa:?|Valor envolvido:?)([\s\S]*?)(?=01\/11|Página|\n--- PAGINA|$)/i.exec(
+        bloco,
+      )
+    if (matchValoresBloco) {
+      const trechoValores = matchValoresBloco[0]
+
+      // Linha do Valor da causa
+      const matchLinhaCausa =
+        /Valor da causa:\s*R\$\s*([0-9.,]+)[^R$]*?R\$\s*([0-9.,]+)\s*R\$\s*([0-9.,]+)\s*R\$\s*([0-9.,]+)\s*R\$\s*([0-9.,]+)(?:\s*R\$\s*([0-9.,]+))?/i.exec(
+          trechoValores,
+        )
+      if (matchLinhaCausa) {
+        valorBase = parsearNumeroBr(matchLinhaCausa[1])
+        valorCorrigido = parsearNumeroBr(matchLinhaCausa[2])
+        juros = parsearNumeroBr(matchLinhaCausa[3])
+        multa = parsearNumeroBr(matchLinhaCausa[4])
+        valorAtualizado = parsearNumeroBr(matchLinhaCausa[5])
+        if (matchLinhaCausa[6]) valorAtualizadoIndexado = parsearNumeroBr(matchLinhaCausa[6])
+      } else {
+        // Fallback: pega ocorrências individuais de R$
+        const todasOcorrenciasRs = [
+          ...trechoValores.matchAll(/R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,[0-9]{2})/g),
+        ]
+        if (todasOcorrenciasRs.length >= 1) valorBase = parsearNumeroBr(todasOcorrenciasRs[0][1])
+        if (todasOcorrenciasRs.length >= 2)
+          valorCorrigido = parsearNumeroBr(todasOcorrenciasRs[1][1])
+        if (todasOcorrenciasRs.length >= 3) juros = parsearNumeroBr(todasOcorrenciasRs[2][1])
+        if (todasOcorrenciasRs.length >= 4) multa = parsearNumeroBr(todasOcorrenciasRs[3][1])
+        if (todasOcorrenciasRs.length >= 5)
+          valorAtualizado = parsearNumeroBr(todasOcorrenciasRs[4][1])
+        if (todasOcorrenciasRs.length >= 6)
+          valorAtualizadoIndexado = parsearNumeroBr(todasOcorrenciasRs[5][1])
+      }
+
+      // Linha do Valor envolvido se houver
+      const matchLinhaEnv = /Valor envolvido:\s*R\$\s*([0-9.,]+)/i.exec(trechoValores)
+      if (matchLinhaEnv) {
+        valorEnvolvido = parsearNumeroBr(matchLinhaEnv[1])
+      }
+    }
+
+    const numPrincipal = cnj || procCod
+
+    processos.push({
+      processo_codigo: procCod,
+      numero_processo: numPrincipal,
+      numero_cnj: cnj || procCod,
+      numeros_alternativos: numerosAlt.trim(),
+      titulo: titulo || `Processo ${procCod}`,
+      orgao: orgao || 'Tribunal do Trabalho',
+      acao: acao || 'Ação Trabalhista',
+      status: status || 'Ativo',
+      tipo: tipo || 'Judicial',
+      natureza: natureza || 'Trabalhista',
+      cliente_principal: clientePrincipal,
+      contrario_principal: contrarioPrincipal || 'Parte Contrária',
+      responsavel_principal: responsavelPrincipal,
+      probabilidade: probabilidade || 'Perda Possível',
+      observacoes,
+      valor_base: valorBase,
+      valor_corrigido: valorCorrigido,
+      juros,
+      multa,
+      valor_atualizado: valorAtualizado || valorCorrigido || valorBase,
+      valor_atualizado_indexado: valorAtualizadoIndexado,
+      valor_envolvido: valorEnvolvido || valorAtualizado,
+      empresa: clientePrincipal.toLowerCase().includes('casafruti')
+        ? 'Casafruti'
+        : clientePrincipal.toLowerCase().includes('agrofruti')
+          ? 'Agrofruti'
+          : 'Extrafruti',
+    })
+  }
+
+  return processos
+}
+
 interface JuridicosImportModalProps {
   aberto: boolean
   onOpenChange: (aberto: boolean) => void
   onImportadoSucesso: () => void
 }
-
-const CAMPOS_DESTINO = [
-  {
-    key: 'numero_processo',
-    label: 'Número do Processo *',
-    padroes: ['número principal', 'numero principal', 'processo', 'numero', 'nº'],
-  },
-  {
-    key: 'contrario_principal',
-    label: 'Contrário Principal / Réu ou Autor',
-    padroes: [
-      'contrário principal',
-      'contrario principal',
-      'contrario',
-      'parte contraria',
-      'requerido',
-      'reu',
-    ],
-  },
-  {
-    key: 'polo_posicao',
-    label: 'Cliente / Posição (Polo)',
-    padroes: ['cliente principal / posição', 'cliente principal', 'posição', 'posicao', 'polo'],
-  },
-  {
-    key: 'fase_instancia',
-    label: 'Fase / Instância',
-    padroes: ['fase', 'instancia', 'etapa'],
-  },
-  {
-    key: 'valor_causa',
-    label: 'Valor Envolvido Bruto / Causa (R$)',
-    padroes: ['valor envolvido bruto', 'valor bruto', 'valor da causa', 'pedido'],
-  },
-  {
-    key: 'valor_atualizado',
-    label: 'Valor Envolvido Atualizado (R$)',
-    padroes: ['valor envolvido atualizado', 'valor atualizado', 'atualizado'],
-  },
-  {
-    key: 'probabilidade_risco',
-    label: 'Probabilidade / Risco (ex: Possível - Perda)',
-    padroes: ['faixa de probabilidade', 'probabilidade', 'tipo da probabilidade', 'risco'],
-  },
-  {
-    key: 'orgao_tribunal',
-    label: 'Órgão / Tribunal / Vara',
-    padroes: ['órgão', 'orgao', 'tribunal', 'vara', 'comarca', 'juízo', 'juizo'],
-  },
-  {
-    key: 'empresa',
-    label: 'Empresa Vinculada',
-    padroes: ['empresa', 'unidade', 'cliente'],
-  },
-  {
-    key: 'assunto_tipo',
-    label: 'Assunto / Tipo de Ação',
-    padroes: ['assunto', 'tipo', 'natureza'],
-  },
-  {
-    key: 'advogado',
-    label: 'Advogado / Responsável',
-    padroes: ['advogado', 'patrono', 'responsavel'],
-  },
-]
 
 export function JuridicosImportModal({
   aberto,
@@ -99,22 +354,35 @@ export function JuridicosImportModal({
   onImportadoSucesso,
 }: JuridicosImportModalProps) {
   const [passo, setPasso] = useState<1 | 2 | 3>(1)
+  const [tipoArquivo, setTipoArquivo] = useState<'pdf' | 'xlsx' | null>(null)
   const [arquivo, setArquivo] = useState<File | null>(null)
+  const [processosExtraidos, setProcessosExtraidos] = useState<ProcessoExtraido[]>([])
+
+  // Caso seja XLSX com mapeamento de colunas
   const [colunasPlanilha, setColunasPlanilha] = useState<string[]>([])
-  const [linhasBrutas, setLinhasBrutas] = useState<any[][]>([])
-  const [mapeamento, setMapeamento] = useState<Record<string, number>>({})
+  const [linhasBrutasXlsx, setLinhasBrutasXlsx] = useState<any[][]>()
+  const [mapeamentoXlsx, setMapeamentoXlsx] = useState<Record<string, number>>({})
+
   const [salvando, setSalvando] = useState(false)
+  const [processandoArquivo, setProcessandoArquivo] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
-  const [resultado, setResultado] = useState<{ total: number; inseridos: number } | null>(null)
+  const [resultado, setResultado] = useState<{
+    total: number
+    novos: number
+    atualizadosComHistorico: number
+  } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const reiniciar = () => {
     setPasso(1)
+    setTipoArquivo(null)
     setArquivo(null)
+    setProcessosExtraidos([])
     setColunasPlanilha([])
-    setLinhasBrutas([])
-    setMapeamento({})
+    setLinhasBrutasXlsx(undefined)
+    setMapeamentoXlsx({})
     setSalvando(false)
+    setProcessandoArquivo(false)
     setErro(null)
     setResultado(null)
   }
@@ -125,224 +393,348 @@ export function JuridicosImportModal({
 
     setErro(null)
     setArquivo(file)
+    setProcessandoArquivo(true)
+
+    const isPdf = file.name.toLowerCase().endsWith('.pdf')
+    const isXlsx =
+      file.name.toLowerCase().endsWith('.xlsx') ||
+      file.name.toLowerCase().endsWith('.xls') ||
+      file.name.toLowerCase().endsWith('.csv')
 
     try {
-      const buf = await file.arrayBuffer()
-      const wb = XLSX.read(buf, { type: 'array' })
-      const wsName = wb.SheetNames[0]
-      const ws = wb.Sheets[wsName]
-      const rawRows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, raw: false })
-
-      if (!rawRows || rawRows.length === 0) {
-        throw new Error('A planilha selecionada está vazia.')
-      }
-
-      // Localizar linha de cabeçalho: ignora linha 1 quando for apenas data/título
-      // Procura a linha que contém "número principal" ou "processo" ou termos jurídicos
-      let headerRowIndex = 0
-      for (let r = 0; r < Math.min(rawRows.length, 10); r++) {
-        const rowStr = (rawRows[r] || []).map((c) => String(c || '').toLowerCase()).join(' ')
-        if (
-          rowStr.includes('número principal') ||
-          rowStr.includes('numero principal') ||
-          rowStr.includes('contrário principal') ||
-          rowStr.includes('contrario principal') ||
-          (rowStr.includes('processo') && rowStr.includes('vara')) ||
-          (rowStr.includes('fase') && rowStr.includes('valor'))
-        ) {
-          headerRowIndex = r
-          break
+      if (isPdf) {
+        setTipoArquivo('pdf')
+        const texto = await extrairTextoDePdf(file)
+        const lista = parsearRelatorioProcessosPdf(texto)
+        if (lista.length === 0) {
+          throw new Error(
+            'Não foi possível identificar blocos de "Processo: NNNNNN" no PDF selecionado. Verifique se o relatório contém o formato padrão.',
+          )
         }
-      }
+        setProcessosExtraidos(lista)
+        setPasso(2)
+      } else if (isXlsx) {
+        setTipoArquivo('xlsx')
+        const buf = await file.arrayBuffer()
+        const wb = XLSX.read(buf, { type: 'array' })
+        const wsName = wb.SheetNames[0]
+        const ws = wb.Sheets[wsName]
+        const rawRows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, raw: false })
 
-      const headers = (rawRows[headerRowIndex] || []).map((h, i) =>
-        String(h || `Coluna ${i + 1}`).trim(),
-      )
-      setColunasPlanilha(headers)
+        if (!rawRows || rawRows.length === 0) {
+          throw new Error('A planilha selecionada está vazia.')
+        }
 
-      // Identifica o índice da coluna de número de processo para filtrar linhas válidas
-      const idxProcHeader = headers.findIndex((h) => {
-        const l = h.toLowerCase()
-        return (
-          l.includes('número principal') ||
-          l.includes('numero principal') ||
-          l.includes('processo') ||
-          l.includes('nº')
+        // Localizar linha de cabeçalho
+        let headerRowIndex = 0
+        for (let r = 0; r < Math.min(rawRows.length, 10); r++) {
+          const rowStr = (rawRows[r] || []).map((c) => String(c || '').toLowerCase()).join(' ')
+          if (
+            rowStr.includes('processo') ||
+            rowStr.includes('número') ||
+            rowStr.includes('numero') ||
+            rowStr.includes('contrário') ||
+            rowStr.includes('contrario') ||
+            rowStr.includes('fase')
+          ) {
+            headerRowIndex = r
+            break
+          }
+        }
+
+        const headers = (rawRows[headerRowIndex] || []).map((h, i) =>
+          String(h || `Coluna ${i + 1}`).trim(),
         )
-      })
+        setColunasPlanilha(headers)
 
-      // Linhas de dados a partir da linha seguinte ao cabeçalho
-      const dadosFiltrados = rawRows.slice(headerRowIndex + 1).filter((r) => {
-        if (!r || r.length === 0) return false
-        // Se encontramos a coluna de número de processo, exige que não esteja vazia
-        if (idxProcHeader !== -1) {
-          const valProc = String(r[idxProcHeader] ?? '').trim()
-          // Pelo menos algum dígito ou formato de processo
-          return valProc.length > 3 && /[0-9]/.test(valProc)
-        }
-        return r.some((c: any) => String(c || '').trim() !== '')
-      })
-
-      setLinhasBrutas(dadosFiltrados)
-
-      // Auto-mapear colunas baseado nos nomes
-      const novoMap: Record<string, number> = {}
-      CAMPOS_DESTINO.forEach((campo) => {
-        const idx = headers.findIndex((h) => {
-          const limpo = h.toLowerCase()
-          return campo.padroes.some((p) => limpo.includes(p))
+        const dadosFiltrados = rawRows.slice(headerRowIndex + 1).filter((r) => {
+          if (!r || r.length === 0) return false
+          return r.some((c: any) => String(c || '').trim() !== '')
         })
-        if (idx !== -1) {
-          novoMap[campo.key] = idx
+
+        setLinhasBrutasXlsx(dadosFiltrados)
+
+        // Converter linhas XLSX para ProcessoExtraido
+        const autoMap: Record<string, number> = {}
+        const mapaCampos: Record<string, string[]> = {
+          numero_processo: ['número principal', 'numero principal', 'processo', 'numero', 'nº'],
+          contrario_principal: [
+            'contrário principal',
+            'contrario principal',
+            'contrario',
+            'parte contraria',
+            'reu',
+          ],
+          titulo: ['título', 'titulo', 'assunto', 'ação', 'acao'],
+          orgao: ['órgão', 'orgao', 'tribunal', 'vara', 'comarca'],
+          fase_instancia: ['fase', 'instancia'],
+          valor_base: ['valor da causa', 'valor bruto', 'pedido', 'valor base'],
+          valor_atualizado: ['valor atualizado', 'atualizado', 'valor envolvido'],
+          probabilidade: ['probabilidade', 'risco'],
+          empresa: ['empresa', 'cliente', 'cliente principal'],
+          advogado: ['advogado', 'responsável', 'responsavel'],
         }
-      })
-      setMapeamento(novoMap)
-      setPasso(2)
+
+        Object.entries(mapaCampos).forEach(([chave, padroes]) => {
+          const idx = headers.findIndex((h) => {
+            const limpo = h.toLowerCase()
+            return padroes.some((p) => limpo.includes(p))
+          })
+          if (idx !== -1) autoMap[chave] = idx
+        })
+
+        setMapeamentoXlsx(autoMap)
+
+        // Mapeia prévia
+        const listaXlsx: ProcessoExtraido[] = dadosFiltrados.map((linha, idx) => {
+          const getVal = (k: string) => {
+            const col = autoMap[k]
+            return col !== undefined && col >= 0 ? String(linha[col] ?? '').trim() : ''
+          }
+          const num = getVal('numero_processo') || `Proc-${idx + 1}`
+          const vBase = parsearNumeroBr(getVal('valor_base'))
+          const vAtu = parsearNumeroBr(getVal('valor_atualizado'))
+          return {
+            numero_processo: num,
+            numero_cnj: num,
+            processo_codigo: num,
+            titulo: getVal('titulo') || `Processo ${num}`,
+            orgao: getVal('orgao') || 'Tribunal de Justiça',
+            status: 'Ativo',
+            tipo: 'Judicial',
+            natureza: 'Cível',
+            cliente_principal: getVal('empresa') || 'Extrafruti',
+            contrario_principal: getVal('contrario_principal') || 'Parte Contrária',
+            responsavel_principal: getVal('advogado'),
+            probabilidade: getVal('probabilidade') || 'Perda Possível',
+            valor_base: vBase,
+            valor_corrigido: vBase,
+            juros: 0,
+            multa: 0,
+            valor_atualizado: vAtu || vBase,
+            empresa: getVal('empresa') || 'Extrafruti',
+          }
+        })
+
+        setProcessosExtraidos(listaXlsx)
+        setPasso(2)
+      } else {
+        throw new Error(
+          'Formato não suportado. Por favor, envie um arquivo PDF ou Excel (.xlsx / .xls).',
+        )
+      }
     } catch (err: any) {
-      setErro(err?.message || 'Falha ao processar arquivo XLSX.')
+      setErro(err?.message || 'Falha ao processar o arquivo.')
     } finally {
+      setProcessandoArquivo(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
-  const limparNumero = (val: any): number => {
-    if (!val) return 0
-    const str = String(val)
-      .replace(/[R$\s]/g, '')
-      .replace(/\./g, '')
-      .replace(',', '.')
-    const n = parseFloat(str)
-    return isNaN(n) ? 0 : n
-  }
-
-  const formatarDataIso = (val: any): string | null => {
-    if (!val) return null
-    const str = String(val).trim()
-    // tenta DD/MM/AAAA
-    const partes = str.split(/[/-]/)
-    if (partes.length === 3) {
-      if (partes[2].length === 4) {
-        return `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')} 00:00:00.000Z`
-      }
-      if (partes[0].length === 4) {
-        return `${partes[0]}-${partes[1].padStart(2, '0')}-${partes[2].padStart(2, '0')} 00:00:00.000Z`
-      }
-    }
-    return null
-  }
-
-  const mapearStatus = (s: any): 'ativo' | 'suspenso' | 'acordo' | 'encerrado' | 'em_recurso' => {
-    const txt = String(s || '').toLowerCase()
-    if (txt.includes('susp')) return 'suspenso'
-    if (txt.includes('acord')) return 'acordo'
-    if (txt.includes('encerr') || txt.includes('arquiv') || txt.includes('baixa'))
-      return 'encerrado'
-    if (txt.includes('recurs')) return 'em_recurso'
-    return 'ativo'
-  }
-
-  const mapearRisco = (r: any): 'provavel' | 'possivel' | 'remoto' => {
-    const txt = String(r || '').toLowerCase()
-    if (txt.includes('prov')) return 'provavel'
-    if (txt.includes('remot')) return 'remoto'
-    return 'possivel'
-  }
-
+  // Grava processos identificados com versionamento e histórico
   const handleConfirmarImportacao = async () => {
     setSalvando(true)
     setErro(null)
 
-    let inseridos = 0
-    const errosLinha: string[] = []
+    let novos = 0
+    let atualizadosComHistorico = 0
 
     try {
-      for (let i = 0; i < linhasBrutas.length; i++) {
-        const linha = linhasBrutas[i]
+      const dataHoje = new Date().toISOString()
+      const usuarioLogado = pb.authStore.model?.email || pb.authStore.model?.name || 'Sistema'
 
-        const getValor = (campo: string) => {
-          const colIdx = mapeamento[campo]
-          if (colIdx === undefined || colIdx === null || colIdx < 0) return ''
-          return String(linha[colIdx] ?? '').trim()
-        }
+      for (const item of processosExtraidos) {
+        if (!item.numero_processo || item.numero_processo.trim().length < 2) continue
 
-        const numProc = getValor('numero_processo')
-        if (!numProc || numProc.length < 3 || !/[0-9]/.test(numProc)) continue
+        const numProcLimpo = item.numero_processo.trim()
+        const cnjLimpo = item.numero_cnj?.trim() || numProcLimpo
+        const codLimpo = item.processo_codigo?.trim() || ''
 
-        const contrario = getValor('contrario_principal')
-        const poloRaw = getValor('polo_posicao') // "Polo ativo", "Polo passivo", "Interessado"
-        const faseRaw = getValor('fase_instancia')
-        const vBruto = limparNumero(getValor('valor_causa'))
-        const vAtualizado = limparNumero(getValor('valor_atualizado'))
-        const probRaw = getValor('probabilidade_risco')
-        const orgaoRaw = getValor('orgao_tribunal')
-        const empresaRaw = getValor('empresa') || 'Extrafruti'
-        const assuntoRaw = getValor('assunto_tipo') || 'Cível / Trabalhista'
-        const advRaw = getValor('advogado')
-
-        // Determina autor e réu coerentes com o polo
-        let autor = ''
-        let reu = ''
-        const poloLower = poloRaw.toLowerCase()
-        if (poloLower.includes('ativo')) {
-          autor = empresaRaw
-          reu = contrario || 'Parte Contrária'
-        } else if (poloLower.includes('passivo')) {
-          autor = contrario || 'Parte Contrária'
-          reu = empresaRaw
-        } else if (poloLower.includes('interessado')) {
-          autor = contrario || empresaRaw
-          reu = 'Interessado'
-        } else {
-          autor = contrario || 'Parte Contrária'
-          reu = empresaRaw
-        }
-
-        const recordData: Record<string, any> = {
-          numero_processo: numProc,
-          vara_comarca: orgaoRaw || 'Tribunal de Justiça',
-          autor: autor || 'Parte Autora',
-          reu: reu || 'Parte Ré',
-          empresa: empresaRaw,
-          fase_instancia: faseRaw || 'Inicial',
-          assunto_tipo: assuntoRaw,
-          valor_causa: vBruto,
-          valor_atualizado: vAtualizado,
-          polo: poloRaw || (poloLower.includes('ativo') ? 'Polo ativo' : 'Polo passivo'),
-          probabilidade: probRaw,
-          orgao_tribunal: orgaoRaw,
-          advogado: advRaw || '',
-          status: mapearStatus(faseRaw),
-          risco: mapearRisco(probRaw),
-          observacoes: [
-            probRaw ? `Probabilidade: ${probRaw}` : '',
-            orgaoRaw ? `Órgão: ${orgaoRaw}` : '',
-            vAtualizado > 0
-              ? `Valor atualizado: R$ ${vAtualizado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-              : '',
-          ]
-            .filter(Boolean)
-            .join(' · '),
-        }
-
+        // Verifica se processo já existe no banco (pelo número_processo, numero_cnj ou processo_codigo)
+        let existente: any = null
         try {
-          await pb.collection('processos_juridicos').create(recordData)
-          inseridos++
-        } catch (e: any) {
-          errosLinha.push(`Linha ${i + 2}: ${e.message}`)
+          // Busca primeiro por numero_processo exato
+          existente = await pb
+            .collection('processos_juridicos')
+            .getFirstListItem(
+              `numero_processo = "${numProcLimpo}" || (numero_cnj != "" && numero_cnj = "${cnjLimpo}")`,
+            )
+        } catch (_) {
+          // Não encontrou
+          existente = null
+        }
+
+        if (!existente && codLimpo) {
+          try {
+            existente = await pb
+              .collection('processos_juridicos')
+              .getFirstListItem(`processo_codigo = "${codLimpo}"`)
+          } catch (_) {
+            existente = null
+          }
+        }
+
+        if (existente) {
+          // PROCESSO JÁ EXISTE: Salvar versão anterior em juridicos_historico e atualizar com nova versão
+          const versaoAntiga = existente.versao_atual || 1
+          const novaVersao = versaoAntiga + 1
+
+          // Snapshot dos valores anteriores
+          const valoresAnteriores = {
+            titulo: existente.titulo,
+            orgao: existente.orgao || existente.orgao_tribunal || existente.vara_comarca,
+            status: existente.status,
+            natureza: existente.natureza,
+            fase_instancia: existente.fase_instancia,
+            contrario: existente.contrario_principal || existente.reu || existente.autor,
+            responsavel: existente.responsavel_principal || existente.advogado,
+            probabilidade: existente.probabilidade || existente.risco,
+            valor_base: existente.valor_base ?? existente.valor_causa,
+            valor_corrigido: existente.valor_corrigido,
+            juros: existente.juros,
+            multa: existente.multa,
+            valor_atualizado: existente.valor_atualizado,
+            observacoes: existente.observacoes,
+          }
+
+          // Diferenças / alterações
+          const alteracoes: Record<string, { anterior: any; novo: any }> = {}
+          if (valoresAnteriores.valor_atualizado !== item.valor_atualizado) {
+            alteracoes['valor_atualizado'] = {
+              anterior: valoresAnteriores.valor_atualizado,
+              novo: item.valor_atualizado,
+            }
+          }
+          if (valoresAnteriores.probabilidade !== item.probabilidade) {
+            alteracoes['probabilidade'] = {
+              anterior: valoresAnteriores.probabilidade,
+              novo: item.probabilidade,
+            }
+          }
+          if (valoresAnteriores.status !== item.status) {
+            alteracoes['status'] = {
+              anterior: valoresAnteriores.status,
+              novo: item.status,
+            }
+          }
+
+          // Grava histórico
+          try {
+            await pb.collection('juridicos_historico').create({
+              processo_id: existente.id,
+              numero_processo: numProcLimpo,
+              versao: versaoAntiga,
+              data_importacao: dataHoje,
+              valores_anteriores: valoresAnteriores,
+              alteracoes: alteracoes,
+              importado_por: usuarioLogado,
+            })
+          } catch (histErr) {
+            console.warn('Aviso ao registrar histórico do processo:', histErr)
+          }
+
+          // Atualiza registro do processo com nova versão
+          await pb.collection('processos_juridicos').update(existente.id, {
+            processo_codigo: item.processo_codigo || existente.processo_codigo,
+            numeros_alternativos: item.numeros_alternativos || existente.numeros_alternativos,
+            numero_cnj: item.numero_cnj || existente.numero_cnj,
+            titulo: item.titulo || existente.titulo,
+            orgao: item.orgao || existente.orgao,
+            orgao_tribunal: item.orgao || existente.orgao_tribunal,
+            vara_comarca: item.orgao || existente.vara_comarca,
+            acao: item.acao || existente.acao,
+            status: item.status?.toLowerCase().includes('arquiv') ? 'encerrado' : 'ativo',
+            tipo: item.tipo || existente.tipo,
+            natureza: item.natureza || existente.natureza,
+            cliente_principal: item.cliente_principal || existente.cliente_principal,
+            contrario_principal: item.contrario_principal || existente.contrario_principal,
+            responsavel_principal: item.responsavel_principal || existente.responsavel_principal,
+            advogado: item.responsavel_principal || existente.advogado,
+            probabilidade: item.probabilidade || existente.probabilidade,
+            risco: item.probabilidade?.toLowerCase().includes('prov')
+              ? 'provavel'
+              : item.probabilidade?.toLowerCase().includes('remot')
+                ? 'remoto'
+                : 'possivel',
+            valor_base: item.valor_base ?? existente.valor_base,
+            valor_corrigido: item.valor_corrigido ?? existente.valor_corrigido,
+            juros: item.juros ?? existente.juros,
+            multa: item.multa ?? existente.multa,
+            valor_causa: item.valor_base ?? existente.valor_causa,
+            valor_atualizado: item.valor_atualizado ?? existente.valor_atualizado,
+            valor_atualizado_indexado:
+              item.valor_atualizado_indexado ?? existente.valor_atualizado_indexado,
+            valor_envolvido: item.valor_envolvido ?? existente.valor_envolvido,
+            observacoes: item.observacoes || existente.observacoes,
+            versao_atual: novaVersao,
+          })
+
+          atualizadosComHistorico++
+        } else {
+          // NOVO PROCESSO
+          await pb.collection('processos_juridicos').create({
+            numero_processo: numProcLimpo,
+            processo_codigo: item.processo_codigo || '',
+            numeros_alternativos: item.numeros_alternativos || '',
+            numero_cnj: item.numero_cnj || numProcLimpo,
+            titulo: item.titulo || `Processo ${numProcLimpo}`,
+            orgao: item.orgao || 'Tribunal de Justiça',
+            orgao_tribunal: item.orgao || 'Tribunal de Justiça',
+            vara_comarca: item.orgao || 'Tribunal de Justiça',
+            acao: item.acao || 'Ação Judicial',
+            status: item.status?.toLowerCase().includes('arquiv') ? 'encerrado' : 'ativo',
+            tipo: item.tipo || 'Judicial',
+            natureza: item.natureza || 'Trabalhista',
+            cliente_principal: item.cliente_principal || 'Extrafruti',
+            empresa: item.empresa || 'Extrafruti',
+            contrario_principal: item.contrario_principal || 'Parte Contrária',
+            responsavel_principal: item.responsavel_principal || '',
+            advogado: item.responsavel_principal || '',
+            autor: item.contrario_principal || 'Parte Contrária',
+            reu: item.empresa || 'Extrafruti',
+            polo: 'Polo passivo',
+            fase_instancia: 'Em Andamento',
+            assunto_tipo: item.natureza || 'Trabalhista',
+            probabilidade: item.probabilidade || 'Perda Possível',
+            risco: item.probabilidade?.toLowerCase().includes('prov')
+              ? 'provavel'
+              : item.probabilidade?.toLowerCase().includes('remot')
+                ? 'remoto'
+                : 'possivel',
+            valor_base: item.valor_base || 0,
+            valor_corrigido: item.valor_corrigido || 0,
+            juros: item.juros || 0,
+            multa: item.multa || 0,
+            valor_causa: item.valor_base || 0,
+            valor_atualizado: item.valor_atualizado || item.valor_base || 0,
+            valor_atualizado_indexado: item.valor_atualizado_indexado || 0,
+            valor_envolvido: item.valor_envolvido || item.valor_atualizado || 0,
+            observacoes: item.observacoes || '',
+            versao_atual: 1,
+          })
+
+          novos++
         }
       }
 
       setResultado({
-        total: linhasBrutas.length,
-        inseridos,
+        total: processosExtraidos.length,
+        novos,
+        atualizadosComHistorico,
       })
       setPasso(3)
       onImportadoSucesso()
     } catch (err: any) {
+      console.error('Erro na importação jurídica:', err)
       setErro(err?.message || 'Falha ao salvar registros de processos jurídicos.')
     } finally {
       setSalvando(false)
     }
+  }
+
+  const formatarMoeda = (val?: number) => {
+    if (!val && val !== 0) return 'R$ 0,00'
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
   }
 
   return (
@@ -353,11 +745,11 @@ export function JuridicosImportModal({
         onOpenChange(o)
       }}
     >
-      <DialogContent className="bg-white max-w-2xl max-h-[85vh] overflow-y-auto p-6 rounded-2xl shadow-xl border border-gray-200">
+      <DialogContent className="bg-white max-w-3xl max-h-[85vh] overflow-y-auto p-6 rounded-2xl shadow-xl border border-gray-200">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base font-bold text-gray-900 pb-2 border-b border-gray-100">
-            <FileSpreadsheet className="h-5 w-5 text-[#1B5E20]" />
-            Importar Relatório de Processos Jurídicos (XLSX)
+            <FileText className="h-5 w-5 text-[#1B5E20]" />
+            Importar Processos Jurídicos (PDF / XLSX)
           </DialogTitle>
         </DialogHeader>
 
@@ -367,28 +759,39 @@ export function JuridicosImportModal({
           </div>
         )}
 
-        {/* Passo 1: Selecionar Arquivo */}
+        {/* Passo 1: Selecionar Arquivo (PDF ou Excel) */}
         {passo === 1 && (
           <div className="space-y-4 pt-2">
             <p className="text-xs text-gray-600 leading-relaxed">
-              Faça upload do relatório de processos em Excel (ex: Extrafruti - Demais Áreas). A
-              planilha será lida e você poderá mapear as colunas antes da gravação no banco de
-              dados.
+              Faça upload do relatório de processos em <strong>PDF</strong> (ex: Relatório
+              trabalhista / demais áreas) ou <strong>Excel</strong>. O sistema extrai
+              automaticamente código, números CNJ, órgão, partes, responsável, probabilidade e os
+              blocos de valores (base, corrigido, juros, multa e atualizado).
             </p>
 
             <div
-              onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-gray-300 hover:border-emerald-600 rounded-xl p-8 text-center cursor-pointer bg-gray-50/50 hover:bg-emerald-50/20 transition-all space-y-3"
+              onClick={() => !processandoArquivo && fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all space-y-3 ${
+                processandoArquivo
+                  ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
+                  : 'border-gray-300 hover:border-emerald-600 bg-gray-50/50 hover:bg-emerald-50/20'
+              }`}
             >
               <div className="h-12 w-12 rounded-full bg-emerald-100 text-[#1B5E20] flex items-center justify-center mx-auto">
-                <Upload className="h-6 w-6" />
+                {processandoArquivo ? (
+                  <Loader2 className="h-6 w-6 animate-spin text-emerald-800" />
+                ) : (
+                  <Upload className="h-6 w-6" />
+                )}
               </div>
               <div>
                 <div className="text-sm font-semibold text-gray-800">
-                  Clique para selecionar a planilha (.xlsx ou .xls)
+                  {processandoArquivo
+                    ? 'Processando relatório...'
+                    : 'Clique para selecionar o relatório (.pdf, .xlsx, .xls)'}
                 </div>
                 <div className="text-xs text-gray-400 mt-1">
-                  Espelhamento de colunas de processos jurídicos
+                  Suporta relatórios PDF com blocos "Processo: NNNNNN" e planilhas eletrônicas
                 </div>
               </div>
             </div>
@@ -396,59 +799,106 @@ export function JuridicosImportModal({
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,.xls,.csv"
+              accept=".pdf,.xlsx,.xls,.csv"
               onChange={handleArquivoSelecionado}
               className="hidden"
             />
           </div>
         )}
 
-        {/* Passo 2: Mapeamento e Prévia */}
+        {/* Passo 2: Prévia dos Processos Identificados e Mapeamento */}
         {passo === 2 && (
           <div className="space-y-4 pt-2">
-            <div className="flex items-center justify-between bg-emerald-50/60 p-3 rounded-lg border border-emerald-200/80 text-xs">
-              <span className="font-semibold text-emerald-950">Arquivo: {arquivo?.name}</span>
-              <span className="text-emerald-800 font-medium">
-                {linhasBrutas.length} linhas detectadas
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-emerald-50/80 p-3 rounded-xl border border-emerald-200 text-xs">
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="bg-white text-emerald-900 border-emerald-300 font-mono"
+                >
+                  {tipoArquivo?.toUpperCase()}
+                </Badge>
+                <span className="font-semibold text-emerald-950 truncate max-w-sm">
+                  {arquivo?.name}
+                </span>
+              </div>
+              <div className="text-emerald-900 font-bold bg-emerald-100/80 px-2.5 py-1 rounded-lg">
+                {processosExtraidos.length} processos identificados
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-xs text-gray-600">
+              <Info className="h-3.5 w-3.5 text-emerald-700 shrink-0" />
+              <span>
+                Processos existentes serão atualizados criando uma{' '}
+                <strong>nova versão com histórico</strong> das alterações. Novos processos serão
+                incluídos como versão 1.
               </span>
             </div>
 
-            <div className="text-xs text-gray-600">
-              Revise o mapeamento das colunas da sua planilha com os campos do sistema:
-            </div>
+            {/* Lista com Amostra dos Processos Extraídos */}
+            <div className="border border-gray-200 rounded-xl overflow-hidden shadow-2xs">
+              <div className="bg-gray-50 px-3 py-2 border-b border-gray-200 text-[11px] font-bold text-gray-700 flex justify-between items-center">
+                <span>
+                  Pré-visualização dos Processos (primeiros 5 de {processosExtraidos.length})
+                </span>
+                <span className="text-gray-400 font-normal">Valores e campos segmentados</span>
+              </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-64 overflow-y-auto p-1 border border-gray-100 rounded-lg bg-gray-50/50">
-              {CAMPOS_DESTINO.map((campo) => (
-                <div
-                  key={campo.key}
-                  className="space-y-1 bg-white p-2.5 rounded-md border border-gray-200 shadow-2xs"
-                >
-                  <Label className="text-[11px] font-bold text-gray-700">{campo.label}</Label>
-                  <Select
-                    value={
-                      mapeamento[campo.key] !== undefined ? String(mapeamento[campo.key]) : 'none'
-                    }
-                    onValueChange={(val) => {
-                      setMapeamento((prev) => ({
-                        ...prev,
-                        [campo.key]: val === 'none' ? -1 : parseInt(val, 10),
-                      }))
-                    }}
+              <div className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
+                {processosExtraidos.slice(0, 5).map((proc, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 text-xs space-y-1.5 hover:bg-gray-50/60 transition-colors"
                   >
-                    <SelectTrigger className="h-8 text-xs bg-gray-50 border-gray-200">
-                      <SelectValue placeholder="Ignorar campo" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">-- Ignorar campo --</SelectItem>
-                      {colunasPlanilha.map((col, idx) => (
-                        <SelectItem key={idx} value={String(idx)}>
-                          {col} (Col. {idx + 1})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ))}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-semibold text-gray-900 flex items-center gap-1.5">
+                          <span className="font-mono text-emerald-800">
+                            {proc.processo_codigo ? `[${proc.processo_codigo}]` : ''}
+                          </span>
+                          <span>{proc.numero_processo}</span>
+                        </div>
+                        <div className="text-[11px] text-gray-600 mt-0.5 line-clamp-1">
+                          {proc.titulo}
+                        </div>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 shrink-0"
+                      >
+                        {proc.natureza || 'Trabalhista'}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-gray-600 bg-gray-50 p-2 rounded-lg">
+                      <div>
+                        <span className="text-gray-400 block text-[10px]">Contrário:</span>
+                        <span className="font-medium text-gray-800 truncate block">
+                          {proc.contrario_principal || '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 block text-[10px]">Órgão:</span>
+                        <span className="truncate block" title={proc.orgao}>
+                          {proc.orgao || '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 block text-[10px]">Probabilidade:</span>
+                        <span className="font-medium text-amber-700 truncate block">
+                          {proc.probabilidade || '—'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 block text-[10px]">Valor Atualizado:</span>
+                        <span className="font-bold text-emerald-800 truncate block">
+                          {formatarMoeda(proc.valor_atualizado)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="flex justify-between items-center pt-3 border-t border-gray-100">
@@ -473,7 +923,7 @@ export function JuridicosImportModal({
                 ) : (
                   <Database className="h-3.5 w-3.5 mr-1.5" />
                 )}
-                Gravar {linhasBrutas.length} processos no Banco
+                Confirmar e Gravar {processosExtraidos.length} processos no Banco
               </Button>
             </div>
           </div>
@@ -489,9 +939,13 @@ export function JuridicosImportModal({
               <h3 className="text-base font-bold text-gray-900">
                 Importação concluída com sucesso!
               </h3>
-              <p className="text-xs text-gray-500 mt-1">
-                Foram inseridos <strong>{resultado.inseridos}</strong> de {resultado.total}{' '}
-                processos no banco de dados.
+              <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
+                Total de <strong>{resultado.total}</strong> processos processados:{' '}
+                <strong className="text-emerald-700">{resultado.novos} novos</strong> inseridos e{' '}
+                <strong className="text-blue-700">
+                  {resultado.atualizadosComHistorico} atualizados com histórico
+                </strong>{' '}
+                de versão preservado.
               </p>
             </div>
             <Button
@@ -500,7 +954,7 @@ export function JuridicosImportModal({
                 reiniciar()
                 onOpenChange(false)
               }}
-              className="bg-[#1B5E20] hover:bg-[#0F3D13] text-white text-xs h-9"
+              className="bg-[#1B5E20] hover:bg-[#0F3D13] text-white text-xs h-9 px-6"
             >
               Concluir
             </Button>

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-04T15:31:34.237Z",
+  "generatedAt": "2026-11-04T15:56:26.092Z",
   "collections": [
     {
       "name": "users",
@@ -2886,11 +2886,313 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "processo_codigo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "numeros_alternativos",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "numero_cnj",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "titulo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "orgao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "acao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "natureza",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cliente_principal",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contrario_principal",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "responsavel_principal",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_base",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_corrigido",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "juros",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "multa",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_atualizado_indexado",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_envolvido",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "versao_atual",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
         "CREATE INDEX idx_juridicos_empresa ON processos_juridicos (empresa)",
-        "CREATE INDEX idx_juridicos_status ON processos_juridicos (status)"
+        "CREATE INDEX idx_juridicos_status ON processos_juridicos (status)",
+        "CREATE INDEX `idx_juridicos_numcnj` ON `processos_juridicos` (numero_cnj)",
+        "CREATE INDEX `idx_juridicos_proccod` ON `processos_juridicos` (processo_codigo)"
+      ]
+    },
+    {
+      "name": "juridicos_historico",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "processo_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "processos_juridicos"
+        },
+        {
+          "name": "numero_processo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "versao",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_importacao",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valores_anteriores",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "alteracoes",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "importado_por",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_jurhist_proc ON juridicos_historico (processo_id)",
+        "CREATE INDEX idx_jurhist_num ON juridicos_historico (numero_processo)"
+      ]
+    },
+    {
+      "name": "audiencias",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "pasta",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "numero_processo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "numero_cnj",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vara",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cidade_uf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "natureza_posicao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cliente_principal",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "parte_contraria",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "audiencia_tipo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_hora_inicio",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "advogado_responsavel",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_audiencia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "processo_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "processos_juridicos"
+        },
+        {
+          "name": "observacoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_aud_data ON audiencias (data_hora_inicio)",
+        "CREATE INDEX idx_aud_cnj ON audiencias (numero_cnj)",
+        "CREATE INDEX idx_aud_pasta ON audiencias (pasta)",
+        "CREATE INDEX idx_aud_proc ON audiencias (processo_id)"
       ]
     }
   ]

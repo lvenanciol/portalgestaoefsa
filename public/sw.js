@@ -14,7 +14,8 @@
 // v7 (04/11/2026): rebuild tela /documentos (grade com título, empresa com ícone, botão excluir, anexo viewer blob).
 // v8 (04/11/2026): rebuild evolução de documentos e persistência de dados.
 // v9 (04/11/2026): bump de versão para forçar purga de caches antigos e servir bundle mais recente no preview.
-const CACHE_NAME = 'pge-pwa-v9'
+// v10 (04/11/2026): rebuild evolução aba Jurídico (importação de relatórios PDF/XLSX, histórico de versões e módulo de audiências).
+const CACHE_NAME = 'pge-pwa-v10'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
