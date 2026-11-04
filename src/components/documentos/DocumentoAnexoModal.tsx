@@ -13,6 +13,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import pb from '@/lib/pocketbase/client'
+import { PdfViewer } from './PdfViewer'
 
 interface DocumentoAnexoModalProps {
   aberto: boolean
@@ -36,15 +37,18 @@ export function DocumentoAnexoModal({
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [modalVisualizarAberto, setModalVisualizarAberto] = useState(false)
+  const [urlVisualizacao, setUrlVisualizacao] = useState<string | null>(null)
   const [carregandoVisualizacao, setCarregandoVisualizacao] = useState(false)
-  const [blobUrlVisualizacao, setBlobUrlVisualizacao] = useState<string | null>(null)
   const [erroVisualizacao, setErroVisualizacao] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const temAnexo = !!anexoAtual && String(anexoAtual).trim() !== ''
 
+  // URL autenticada direta do PocketBase para o arquivo
   const urlArquivo = temAnexo
-    ? `${pb.baseUrl}/api/files/${collectionName}/${recordId}/${anexoAtual}`
+    ? `${pb.baseUrl}/api/files/${collectionName}/${recordId}/${anexoAtual}${
+        pb.authStore.token ? `?token=${encodeURIComponent(pb.authStore.token)}` : ''
+      }`
     : ''
 
   const isPdf = temAnexo && !!anexoAtual && anexoAtual.toLowerCase().endsWith('.pdf')
@@ -52,17 +56,17 @@ export function DocumentoAnexoModal({
   // Limpa Blob URL ao fechar ou desmontar
   useEffect(() => {
     return () => {
-      if (blobUrlVisualizacao) {
-        URL.revokeObjectURL(blobUrlVisualizacao)
+      if (urlVisualizacao && urlVisualizacao.startsWith('blob:')) {
+        URL.revokeObjectURL(urlVisualizacao)
       }
     }
-  }, [blobUrlVisualizacao])
+  }, [urlVisualizacao])
 
   const fecharVisualizador = () => {
     setModalVisualizarAberto(false)
-    if (blobUrlVisualizacao) {
-      URL.revokeObjectURL(blobUrlVisualizacao)
-      setBlobUrlVisualizacao(null)
+    if (urlVisualizacao && urlVisualizacao.startsWith('blob:')) {
+      URL.revokeObjectURL(urlVisualizacao)
+      setUrlVisualizacao(null)
     }
     setErroVisualizacao(null)
   }
@@ -110,7 +114,6 @@ export function DocumentoAnexoModal({
     if (!urlArquivo) return
 
     if (!isPdf) {
-      // DOCX, XLSX, imagens ou outros abrem em nova aba/fazem download
       window.open(urlArquivo, '_blank', 'noopener,noreferrer')
       return
     }
@@ -120,33 +123,24 @@ export function DocumentoAnexoModal({
     setErroVisualizacao(null)
 
     try {
-      // Obter file token do PocketBase se disponível para passar no header
       const headers: Record<string, string> = {}
       if (pb.authStore.token) {
         headers['Authorization'] = pb.authStore.token
       }
-
-      // Baixa via fetch com credenciais para criar um Blob URL seguro
-      // Isso evita o bloqueio do Chrome ("This page has been blocked by Chrome")
-      // que ocorre ao embutir cross-origin headers com X-Frame-Options/CSP ou Content-Disposition restritivo
       const resp = await fetch(urlArquivo, { headers })
       if (!resp.ok) {
-        throw new Error(`Falha ao obter arquivo: HTTP ${resp.status}`)
+        throw new Error(`HTTP ${resp.status}`)
       }
       const rawBlob = await resp.blob()
-      // Força MIME type application/pdf explicitamente no Blob
       const pdfBlob = new Blob([rawBlob], { type: 'application/pdf' })
       const objectUrl = URL.createObjectURL(pdfBlob)
-
-      if (blobUrlVisualizacao) {
-        URL.revokeObjectURL(blobUrlVisualizacao)
+      if (urlVisualizacao && urlVisualizacao.startsWith('blob:')) {
+        URL.revokeObjectURL(urlVisualizacao)
       }
-      setBlobUrlVisualizacao(objectUrl)
+      setUrlVisualizacao(objectUrl)
     } catch (err: any) {
-      console.error('Erro ao preparar visualização do PDF:', err)
-      setErroVisualizacao(
-        'Não foi possível carregar a pré-visualização embutida. Use o botão abaixo para abrir ou baixar.',
-      )
+      console.warn('Fallback para URL direta do arquivo no modal:', err)
+      setUrlVisualizacao(urlArquivo)
     } finally {
       setCarregandoVisualizacao(false)
     }
@@ -352,8 +346,8 @@ export function DocumentoAnexoModal({
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    if (blobUrlVisualizacao) {
-                      window.open(blobUrlVisualizacao, '_blank', 'noopener,noreferrer')
+                    if (urlVisualizacao) {
+                      window.open(urlVisualizacao, '_blank', 'noopener,noreferrer')
                     } else if (urlArquivo) {
                       window.open(urlArquivo, '_blank', 'noopener,noreferrer')
                     }
@@ -395,27 +389,13 @@ export function DocumentoAnexoModal({
                     </Button>
                   </div>
                 </div>
-              ) : blobUrlVisualizacao ? (
-                <object
-                  data={`${blobUrlVisualizacao}#toolbar=1&navpanes=0`}
-                  type="application/pdf"
-                  className="w-full h-full border-0"
-                >
-                  <iframe
-                    src={`${blobUrlVisualizacao}#toolbar=1`}
-                    title={anexoAtual || 'Visualizador'}
-                    className="w-full h-full border-0"
-                  >
-                    <div className="p-6 text-center">
-                      <p className="text-xs text-gray-600 mb-2">
-                        Seu navegador não suporta visualização direta de PDF embutido.
-                      </p>
-                      <Button size="sm" onClick={handleBaixar}>
-                        <Download className="h-3.5 w-3.5 mr-1" /> Baixar PDF
-                      </Button>
-                    </div>
-                  </iframe>
-                </object>
+              ) : urlVisualizacao ? (
+                <PdfViewer
+                  url={urlVisualizacao}
+                  fileName={anexoAtual || 'documento.pdf'}
+                  minHeight={580}
+                  className="w-full h-full border-0 rounded-none"
+                />
               ) : null}
             </div>
           </DialogContent>

@@ -911,6 +911,10 @@ export function DocumentosPage() {
           onOpenChange={setModalDetalheAberto}
           tipoAba={abaAtiva}
           documento={docDetalheSelecionado}
+          empresas={empresas}
+          onAtualizado={() => {
+            carregarDados()
+          }}
           onAbrirAnexos={(doc) => {
             const colecaoNome =
               abaAtiva === 'alvaras'
