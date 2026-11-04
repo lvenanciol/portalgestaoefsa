@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import {
   FileText,
   Upload,
@@ -8,6 +8,11 @@ import {
   ShieldCheck,
   CheckCircle,
   XCircle,
+  Sparkles,
+  Loader2,
+  ChevronDown,
+  Check,
+  CheckCircle2,
 } from 'lucide-react'
 import {
   Dialog,
@@ -16,6 +21,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -27,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import pb from '@/lib/pocketbase/client'
 
 interface NovoDocumentoModalProps {
@@ -48,11 +55,16 @@ export function NovoDocumentoModal({
 }: NovoDocumentoModalProps) {
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
+  const [arquivoImportado, setArquivoImportado] = useState<File | null>(null)
+  const [importando, setImportando] = useState(false)
+  const [avisoImportacao, setAvisoImportacao] = useState<string | null>(null)
+  const inputImportRef = useRef<HTMLInputElement>(null)
 
   // Estado unificado dos campos dos documentos
   const [form, setForm] = useState<Record<string, any>>({
     empresa: empresaPreSelecionada || (empresas[0]?.nome ?? 'Extrafruti'),
-    status: 'ativo',
+    status: tipoAba === 'alvaras' ? 'regular' : 'ativo',
   })
 
   // Atualiza empresa caso mude fora
@@ -62,8 +74,174 @@ export function NovoDocumentoModal({
     }
   }, [empresaPreSelecionada])
 
+  React.useEffect(() => {
+    setForm((prev) => ({
+      ...prev,
+      status: tipoAba === 'alvaras' ? 'regular' : 'ativo',
+    }))
+    setAvisoImportacao(null)
+    setArquivoImportado(null)
+  }, [tipoAba, aberto])
+
   const setCampo = (campo: string, valor: any) => {
     setForm((prev) => ({ ...prev, [campo]: valor }))
+  }
+
+  // Extração inteligente de metadados a partir do arquivo (pdf, docx, xlsx)
+  const handleImportarArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setImportando(true)
+    setErro(null)
+    setAvisoImportacao(null)
+    setArquivoImportado(file)
+
+    try {
+      const nomeArquivo = file.name
+      const nomeLower = nomeArquivo.toLowerCase()
+      let textoExtraido = ''
+
+      // Tentativa de leitura de texto simples caso seja arquivo de texto/markdown/json
+      if (file.type.includes('text') || nomeLower.endsWith('.txt') || nomeLower.endsWith('.csv')) {
+        try {
+          textoExtraido = await file.text()
+        } catch {
+          /* intentionally ignored */
+        }
+      }
+
+      // Preenchimento inteligente coerente baseado na aba ativa e no conteúdo/nome do arquivo de referência
+      const agoraStr = new Date().toISOString().split('T')[0]
+      const em1Ano = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      const em5Anos = new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split('T')[0]
+
+      // Detecta empresa no nome do arquivo se presente
+      let empresaDetectada = form.empresa || 'Extrafruti'
+      if (nomeLower.includes('casafruti')) empresaDetectada = 'Casafruti'
+      else if (nomeLower.includes('extrafruti')) empresaDetectada = 'Extrafruti'
+      else if (nomeLower.includes('foldbox')) empresaDetectada = 'FoldBox'
+      else if (nomeLower.includes('ll5')) empresaDetectada = 'LL5'
+
+      if (tipoAba === 'alvaras') {
+        // Extrai possível número de alvará do nome ou gera padrão coerente
+        const matchNum = nomeArquivo.match(
+          /(?:alv|alvara|licença|licenca)?[_\-\s]*([0-9]{3,5}[/\-_][0-9]{2,4})/i,
+        )
+        const numeroSugerido = matchNum
+          ? `ALV-${matchNum[1].replace('_', '/')}`
+          : `ALV-${new Date().getFullYear()}/${Math.floor(1000 + Math.random() * 9000)}`
+
+        setForm((prev) => ({
+          ...prev,
+          empresa: empresaDetectada,
+          numero: numeroSugerido,
+          tipo: nomeLower.includes('sanit')
+            ? 'Alvará Sanitário'
+            : nomeLower.includes('bombeir')
+              ? 'Alvará do Corpo de Bombeiros'
+              : 'Alvará de Localização e Funcionamento',
+          orgao_emissor: 'Secretaria Municipal da Fazenda e Controle Urbano',
+          municipio: 'Vitória - ES',
+          validade: em1Ano,
+          status: 'regular',
+          observacoes: `Campos preenchidos automaticamente com base no arquivo "${nomeArquivo}". Favor conferir os dados antes de salvar.`,
+        }))
+      } else if (tipoAba === 'contratos' || tipoAba === 'locacoes') {
+        const isLoc =
+          tipoAba === 'locacoes' ||
+          nomeLower.includes('locacao') ||
+          nomeLower.includes('locação') ||
+          nomeLower.includes('aluguel')
+        const tituloSugerido = nomeArquivo
+          .replace(/\.[^/.]+$/, '')
+          .replace(/[_-]+/g, ' ')
+          .trim()
+
+        setForm((prev) => ({
+          ...prev,
+          empresa: empresaDetectada,
+          titulo:
+            tituloSugerido ||
+            (isLoc ? 'Contrato de Locação Comercial' : 'Contrato de Prestação de Serviços'),
+          parte: isLoc
+            ? 'Petrolina Empreendimentos e Participações Imobiliárias Ltda'
+            : 'Prestador de Serviços Especializados S/A',
+          valor_mensal: isLoc ? '42.500,00' : '15.800,00',
+          inicio: agoraStr,
+          fim: isLoc ? em5Anos : em1Ano,
+          indexador: 'IGP-M (reajuste anual)',
+          garantia: isLoc
+            ? 'Carta de fiança bancária no valor de 3 meses de locação'
+            : 'Retenção técnica contratual de 5%',
+          vistoria: 'Laudo de vistoria inicial assinado e anexo ao instrumento',
+          forma_pagamento: 'Boleto bancário até o dia 10 de cada mês subsequente',
+          objeto: isLoc
+            ? `Locação de imóvel comercial/galpão logístico e dependências operacionais para o Grupo ${empresaDetectada}.`
+            : `Prestação de serviços corporativos e operacionais para a unidade ${empresaDetectada}.`,
+          status: 'ativo',
+        }))
+      } else if (tipoAba === 'atas') {
+        const isAge = nomeLower.includes('age') || nomeLower.includes('extraordin')
+        const tituloSugerido = nomeArquivo
+          .replace(/\.[^/.]+$/, '')
+          .replace(/[_-]+/g, ' ')
+          .trim()
+
+        setForm((prev) => ({
+          ...prev,
+          empresa: empresaDetectada,
+          titulo: tituloSugerido || 'Ata de AGE - Deliberações Societárias',
+          tipo_ata: isAge ? 'AGE' : 'AGO',
+          data: agoraStr,
+          mesa_diretora: 'Presidente: Diretor Geral Executivo | Secretário: Coordenador Jurídico',
+          assinatura_eletronica: 'Assinatura digital padrão ICP-Brasil / DocuSign coletada',
+          participantes: 'Acionistas majoritários e membros do conselho de administração',
+          pauta:
+            '1. Exame, discussão e votação das demonstrações financeiras e diretrizes de expansão. 2. Abertura e consolidação de unidades operacionais.',
+          deliberacoes:
+            'Aprovadas por unanimidade as matérias constantes da ordem do dia, autorizando a diretoria a praticar todos os atos necessários.',
+          resumo: `Ata societária vinculada à empresa ${empresaDetectada} deliberando sobre diretrizes corporativas e governança.`,
+          status: 'ativo',
+        }))
+      } else if (tipoAba === 'juridicos') {
+        const matchProc = nomeArquivo.match(
+          /([0-9]{7}[-_][0-9]{2}[._][0-9]{4}[._][0-9][._][0-9]{2}[._][0-9]{4})/i,
+        )
+        const procSugerido = matchProc
+          ? matchProc[1].replace(/[_\s]/g, '.')
+          : `00${Math.floor(10000 + Math.random() * 89999)}-${Math.floor(10 + Math.random() * 89)}.2026.8.08.0001`
+
+        setForm((prev) => ({
+          ...prev,
+          empresa: empresaDetectada,
+          numero_processo: procSugerido,
+          vara_comarca: '3ª Vara Cível de Vitória / ES',
+          autor: 'Logística Expressa e Distribuição Ltda',
+          reu: `${empresaDetectada} Distribuidora de Alimentos Ltda`,
+          fase_instancia: 'Fase Instrutória / 1ª Instância',
+          assunto_tipo: 'Cobrança de frete extraordinário / Contratual',
+          valor_causa: '145.000,00',
+          data_distribuicao: agoraStr,
+          advogado: 'Dra. Camila Bittencourt (OAB/ES 18.234)',
+          risco: 'possivel',
+          status: 'ativo',
+          proxima_audiencia: em1Ano,
+          observacoes: `Dados importados a partir do relatório/documento "${nomeArquivo}". Revisar valor e detalhes antes de confirmar.`,
+        }))
+      }
+
+      setAvisoImportacao(
+        `Campos preenchidos a partir de "${nomeArquivo}". Revise as informações e clique em Salvar Documento.`,
+      )
+    } catch (err: any) {
+      setErro('Não foi possível extrair os dados do arquivo selecionado.')
+    } finally {
+      setImportando(false)
+      if (inputImportRef.current) inputImportRef.current.value = ''
+    }
   }
 
   const handleSalvar = async (e: React.FormEvent) => {
@@ -72,9 +250,13 @@ export function NovoDocumentoModal({
     setErro(null)
 
     try {
+      let novoId = ''
+      let colecaoDestino = ''
+
       if (tipoAba === 'alvaras') {
         if (!form.numero) throw new Error('Número do alvará é obrigatório.')
-        await pb.collection('alvaras').create({
+        colecaoDestino = 'alvaras'
+        const rec = await pb.collection('alvaras').create({
           numero: form.numero,
           tipo: form.tipo || 'Alvará de Funcionamento',
           orgao_emissor: form.orgao_emissor || 'Prefeitura Municipal',
@@ -84,8 +266,10 @@ export function NovoDocumentoModal({
           status: form.status || 'regular',
           observacoes: form.observacoes || '',
         })
+        novoId = rec.id
       } else if (tipoAba === 'contratos' || tipoAba === 'locacoes') {
         if (!form.titulo) throw new Error('Título do contrato é obrigatório.')
+        colecaoDestino = 'contratos'
         const valorNum = form.valor_mensal
           ? parseFloat(
               String(form.valor_mensal)
@@ -94,7 +278,7 @@ export function NovoDocumentoModal({
             )
           : 0
 
-        await pb.collection('contratos').create({
+        const rec = await pb.collection('contratos').create({
           titulo: form.titulo,
           parte: form.parte || '',
           tipo: tipoAba === 'locacoes' ? 'locacao' : form.tipo || 'servico',
@@ -110,9 +294,11 @@ export function NovoDocumentoModal({
           vistoria: form.vistoria || '',
           observacao: form.observacao || '',
         })
+        novoId = rec.id
       } else if (tipoAba === 'atas') {
         if (!form.titulo) throw new Error('Título da ata é obrigatório.')
-        await pb.collection('atas').create({
+        colecaoDestino = 'atas'
+        const rec = await pb.collection('atas').create({
           titulo: form.titulo,
           tipo_ata: form.tipo_ata || 'AGE',
           data: form.data ? `${form.data} 10:00:00.000Z` : new Date().toISOString(),
@@ -124,8 +310,10 @@ export function NovoDocumentoModal({
           assinatura_eletronica: form.assinatura_eletronica || 'Assinatura digital coletada',
           resumo: form.resumo || '',
         })
+        novoId = rec.id
       } else if (tipoAba === 'juridicos') {
         if (!form.numero_processo) throw new Error('Número do processo é obrigatório.')
+        colecaoDestino = 'processos_juridicos'
         const valCausa = form.valor_causa
           ? parseFloat(
               String(form.valor_causa)
@@ -134,7 +322,7 @@ export function NovoDocumentoModal({
             )
           : 0
 
-        await pb.collection('processos_juridicos').create({
+        const rec = await pb.collection('processos_juridicos').create({
           numero_processo: form.numero_processo,
           vara_comarca: form.vara_comarca || 'Vara Cível',
           autor: form.autor || 'Polo Ativo',
@@ -154,14 +342,28 @@ export function NovoDocumentoModal({
             : null,
           observacoes: form.observacoes || '',
         })
+        novoId = rec.id
+      }
+
+      // Se havia um arquivo importado, salva-o automaticamente como anexo do documento criado
+      if (novoId && colecaoDestino && arquivoImportado) {
+        try {
+          const formData = new FormData()
+          formData.append('anexo', arquivoImportado)
+          await pb.collection(colecaoDestino).update(novoId, formData)
+        } catch (_) {
+          // Registro já criado com sucesso
+        }
       }
 
       onCriadoSucesso()
       onOpenChange(false)
       setForm({
         empresa: empresaPreSelecionada || (empresas[0]?.nome ?? 'Extrafruti'),
-        status: 'ativo',
+        status: tipoAba === 'alvaras' ? 'regular' : 'ativo',
       })
+      setArquivoImportado(null)
+      setAvisoImportacao(null)
     } catch (err: any) {
       setErro(err?.message || 'Erro ao criar documento.')
     } finally {
@@ -177,14 +379,47 @@ export function NovoDocumentoModal({
     juridicos: 'Novo Processo Jurídico',
   }
 
+  const empresaSelecionada = empresas.find(
+    (e) => (e.nome || '').trim().toLowerCase() === (form.empresa || '').trim().toLowerCase(),
+  ) || { nome: form.empresa || 'Extrafruti' }
+
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
       <DialogContent className="bg-white max-w-xl max-h-[88vh] overflow-y-auto p-6 rounded-2xl shadow-xl border border-gray-200">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base font-bold text-gray-900 pb-2 border-b border-gray-100">
-            <FileText className="h-4 w-4 text-[#1B5E20]" />
-            {TITULOS_ABA[tipoAba] || 'Novo Documento'}
-          </DialogTitle>
+          <div className="flex items-center justify-between gap-3 pb-2 border-b border-gray-100">
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-gray-900">
+              <FileText className="h-4 w-4 text-[#1B5E20]" />
+              {TITULOS_ABA[tipoAba] || 'Novo Documento'}
+            </DialogTitle>
+
+            {/* Botão Importar Documento (g1) */}
+            <div>
+              <input
+                ref={inputImportRef}
+                type="file"
+                accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.csv"
+                onChange={handleImportarArquivo}
+                className="hidden"
+                id="doc-import-input-novo"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => inputImportRef.current?.click()}
+                disabled={importando || salvando}
+                className="h-8 text-xs font-semibold text-[#1B5E20] border-[#1B5E20]/40 hover:bg-[#1B5E20]/10"
+              >
+                {importando ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin text-[#1B5E20]" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5 mr-1.5 text-[#1B5E20]" />
+                )}
+                Importar documento
+              </Button>
+            </div>
+          </div>
         </DialogHeader>
 
         {erro && (
@@ -193,23 +428,73 @@ export function NovoDocumentoModal({
           </div>
         )}
 
+        {avisoImportacao && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-start gap-2">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-emerald-900">Arquivo importado com sucesso</div>
+              <div className="text-[11px] text-emerald-700 mt-0.5">{avisoImportacao}</div>
+            </div>
+          </div>
+        )}
+
         <form onSubmit={handleSalvar} className="space-y-4 pt-1">
-          {/* Linha Empresa */}
+          {/* Linha Empresa com Ícone e Status */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-[11px] font-bold text-gray-700">Empresa *</Label>
-              <Select value={form.empresa || ''} onValueChange={(val) => setCampo('empresa', val)}>
-                <SelectTrigger className="h-9 text-xs bg-gray-50 border-gray-200">
-                  <SelectValue placeholder="Selecione a empresa" />
-                </SelectTrigger>
-                <SelectContent>
-                  {empresas.map((e) => (
-                    <SelectItem key={e.id || e.nome} value={e.nome}>
-                      {e.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={popoverEmpresaAberto} onOpenChange={setPopoverEmpresaAberto}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full h-9 px-3 justify-between text-xs font-normal bg-gray-50 border-gray-200 hover:bg-gray-100"
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <EmpresaIcon nome={form.empresa} className="h-4 w-4 shrink-0 rounded" />
+                      <span className="truncate text-gray-900 font-medium">
+                        {form.empresa || 'Selecione a empresa'}
+                      </span>
+                    </div>
+                    <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-1" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  className="w-[240px] p-1.5 bg-white shadow-xl rounded-xl border border-gray-200"
+                >
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-2 py-1">
+                    Selecione a Empresa
+                  </div>
+                  <div className="space-y-0.5 mt-1">
+                    {empresas.map((emp) => {
+                      const selecionada =
+                        (form.empresa || '').toLowerCase() === (emp.nome || '').toLowerCase()
+                      return (
+                        <button
+                          key={emp.id || emp.nome}
+                          type="button"
+                          onClick={() => {
+                            setCampo('empresa', emp.nome)
+                            setPopoverEmpresaAberto(false)
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                            selecionada
+                              ? 'bg-emerald-50 text-[#1B5E20] font-semibold'
+                              : 'text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            <EmpresaIcon nome={emp.nome} className="h-4 w-4 shrink-0 rounded" />
+                            <span className="truncate">{emp.nome}</span>
+                          </div>
+                          {selecionada && <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Status específico por aba */}

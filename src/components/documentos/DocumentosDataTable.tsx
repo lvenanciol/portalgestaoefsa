@@ -18,6 +18,7 @@ interface DocumentosDataTableProps<T> {
   dados: T[]
   keyExtractor: (item: T) => string
   acoes?: (item: T) => React.ReactNode
+  onLinhaClick?: (item: T) => void
   emptyMessage?: string
 }
 
@@ -27,6 +28,7 @@ export function DocumentosDataTable<T>({
   dados,
   keyExtractor,
   acoes,
+  onLinhaClick,
   emptyMessage = 'Nenhum documento encontrado.',
 }: DocumentosDataTableProps<T>) {
   // Ordem das colunas carregada do localStorage
@@ -203,7 +205,16 @@ export function DocumentosDataTable<T>({
               dadosOrdenados.map((item) => {
                 const key = keyExtractor(item)
                 return (
-                  <tr key={key} className="hover:bg-emerald-50/20 transition-colors group">
+                  <tr
+                    key={key}
+                    onClick={() => onLinhaClick && onLinhaClick(item)}
+                    className={cn(
+                      'transition-colors group',
+                      onLinhaClick
+                        ? 'cursor-pointer hover:bg-emerald-50/40'
+                        : 'hover:bg-emerald-50/20',
+                    )}
+                  >
                     {colunasExibidas.map((col) => {
                       const valor = col.render ? col.render(item) : ((item as any)[col.id] ?? '—')
                       return (
@@ -213,7 +224,10 @@ export function DocumentosDataTable<T>({
                       )
                     })}
                     {acoes && (
-                      <td className="px-3 py-2.5 text-right align-middle shrink-0">
+                      <td
+                        className="px-3 py-2.5 text-right align-middle shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         {acoes(item)}
                       </td>
                     )}

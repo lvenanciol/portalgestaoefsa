@@ -25,6 +25,7 @@ import { DocumentosDataTable, ColunaConfig } from '@/components/documentos/Docum
 import { DocumentosEmpresaPopover } from '@/components/documentos/DocumentosEmpresaPopover'
 import { DocumentoParecerButton } from '@/components/documentos/DocumentoParecerButton'
 import { DocumentoAnexoModal } from '@/components/documentos/DocumentoAnexoModal'
+import { DocumentoDetalheModal } from '@/components/documentos/DocumentoDetalheModal'
 import { JuridicosImportModal } from '@/components/documentos/JuridicosImportModal'
 import { NovoDocumentoModal } from '@/components/documentos/NovoDocumentoModal'
 
@@ -46,6 +47,8 @@ export function DocumentosPage() {
 
   // Modais
   const [modalAnexoAberto, setModalAnexoAberto] = useState(false)
+  const [modalDetalheAberto, setModalDetalheAberto] = useState(false)
+  const [docDetalheSelecionado, setDocDetalheSelecionado] = useState<any | null>(null)
   const [docAnexoSelecionado, setDocAnexoSelecionado] = useState<{
     id: string
     titulo: string
@@ -673,13 +676,17 @@ export function DocumentosPage() {
         </div>
       </div>
 
-      {/* Tabela de Dados com DnD de Colunas, Ordenação por Clique e Botão Parecer */}
+      {/* Tabela de Dados com DnD de Colunas, Ordenação por Clique, Botão Parecer e Clique na Linha */}
       <DocumentosDataTable
         tabelaId={`docs_${abaAtiva}`}
         colunasPadrao={colunasAtuais}
         dados={dadosAtuais}
         keyExtractor={(item) => item.id}
         emptyMessage={`Nenhum registro encontrado para a aba ${abaAtiva}.`}
+        onLinhaClick={(item) => {
+          setDocDetalheSelecionado(item)
+          setModalDetalheAberto(true)
+        }}
         acoes={(item) => (
           <div className="flex items-center justify-end gap-1.5">
             <DocumentoParecerButton documento={item} tipoAba={abaAtiva} promptPadrao="" />
@@ -698,7 +705,29 @@ export function DocumentosPage() {
         </span>
       </div>
 
-      {/* Modal de Anexo: Upload de PDF / DOCX / XLSX, Visualizar e Baixar */}
+      {/* Modal de Detalhe Completo do Documento (d1) */}
+      {modalDetalheAberto && docDetalheSelecionado && (
+        <DocumentoDetalheModal
+          aberto={modalDetalheAberto}
+          onOpenChange={setModalDetalheAberto}
+          tipoAba={abaAtiva}
+          documento={docDetalheSelecionado}
+          onAbrirAnexos={(doc) => {
+            const colecaoNome =
+              abaAtiva === 'alvaras'
+                ? 'alvaras'
+                : abaAtiva === 'atas'
+                  ? 'atas'
+                  : abaAtiva === 'juridicos'
+                    ? 'processos_juridicos'
+                    : 'contratos'
+            const tit = doc.titulo || doc.numero || doc.numero_processo || 'Documento'
+            abrirModalAnexo(doc, colecaoNome, tit)
+          }}
+        />
+      )}
+
+      {/* Modal de Anexo: Upload de PDF / DOCX / XLSX, Visualizar e Baixar para todas as abas */}
       {modalAnexoAberto && docAnexoSelecionado && (
         <DocumentoAnexoModal
           aberto={modalAnexoAberto}
@@ -707,7 +736,16 @@ export function DocumentosPage() {
           recordId={docAnexoSelecionado.id}
           tituloDocumento={docAnexoSelecionado.titulo}
           anexoAtual={docAnexoSelecionado.anexoNome}
-          onAnexoAtualizado={() => carregarDados()}
+          onAnexoAtualizado={() => {
+            carregarDados()
+            // Se o documento aberto no modal de detalhe for o mesmo, atualiza-o
+            if (docDetalheSelecionado && docDetalheSelecionado.id === docAnexoSelecionado.id) {
+              pb.collection(docAnexoSelecionado.colecao)
+                .getOne(docAnexoSelecionado.id)
+                .then((atualizado) => setDocDetalheSelecionado(atualizado))
+                .catch(() => {})
+            }
+          }}
         />
       )}
 

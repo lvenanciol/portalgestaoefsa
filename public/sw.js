@@ -10,7 +10,8 @@
 // v4 (03/11/2026): novo bump junto do rebuild do preview — garante que nenhum
 // cliente continue servindo o bundle anterior por cache do service worker.
 // v5 (03/11/2026): rebuild para purgar caches anteriores e servir bundle atualizado.
-const CACHE_NAME = 'pge-pwa-v5'
+// v6 (04/11/2026): rebuild para garantir exibição imediata do bundle mais recente no preview.
+const CACHE_NAME = 'pge-pwa-v6'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

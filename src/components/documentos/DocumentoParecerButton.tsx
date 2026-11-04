@@ -8,6 +8,7 @@ import {
   TrendingUp,
   ShieldAlert,
   Lightbulb,
+  FileText,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -16,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import pb from '@/lib/pocketbase/client'
 
 export interface ParecerResultado {
+  resumo?: string | string[]
   riscos: string | string[]
   oportunidades: string | string[]
   ameacas: string | string[]
@@ -99,6 +101,7 @@ export function DocumentoParecerButton({
       const emp = documento.empresa || 'Grupo'
 
       setParecer({
+        resumo: `Panorama geral: trata-se do documento "${nomeDoc}" vinculado à empresa ${emp} sob a categoria de ${tipoAba}. O instrumento formaliza parâmetros regulatórios, operacionais ou contratuais com impactos de conformidade e governança corporativa.`,
         riscos: [
           `Avaliação regulatória e compliance para ${nomeDoc} vinculada a ${emp}.`,
           'Monitoramento de possíveis penalidades contratuais e prazos prescricionais/decadenciais.',
@@ -176,7 +179,8 @@ export function DocumentoParecerButton({
             </div>
 
             <div className="text-[11px] text-gray-500">
-              O parecer analisa Riscos, Oportunidades, Ameaças e Sugestões do documento:{' '}
+              O parecer emite um resumo com panorama geral seguido de Riscos, Oportunidades, Ameaças
+              e Sugestões do documento:{' '}
               <strong className="text-gray-800">
                 {documento.titulo ||
                   documento.numero ||
@@ -292,6 +296,17 @@ export function DocumentoParecerButton({
                   Aba: <strong className="text-gray-700 uppercase">{tipoAba}</strong>
                 </span>
               </div>
+
+              {/* 0. RESUMO E PANORAMA GERAL */}
+              {parecer.resumo && (
+                <div className="p-3.5 rounded-xl border border-gray-200 bg-gray-50/80 space-y-2">
+                  <div className="flex items-center gap-2 text-gray-900 font-bold text-xs uppercase tracking-wider">
+                    <FileText className="h-4 w-4 text-[#1B5E20]" />
+                    Resumo Executivo & Panorama Geral
+                  </div>
+                  {renderBlocoTexto(parecer.resumo)}
+                </div>
+              )}
 
               {/* 1. RISCOS */}
               <div className="p-3.5 rounded-xl border border-red-200/80 bg-red-50/50 space-y-2">
