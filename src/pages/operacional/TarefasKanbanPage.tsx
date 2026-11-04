@@ -33,6 +33,7 @@ import {
   CheckCircle2,
   MoreHorizontal,
   SlidersHorizontal,
+  Link2,
 } from 'lucide-react'
 import {
   DropdownMenu,
