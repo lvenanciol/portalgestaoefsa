@@ -59,7 +59,7 @@ const navSections: NavSection[] = [
   {
     title: 'OPERAÇÃO',
     items: [
-      { label: 'Documentos & Importações', rota: '/documentos', icon: FileText },
+      { label: 'Documentos', rota: '/documentos', icon: FileText },
       { label: 'Tarefas & Agenda', rota: '/tarefas', icon: CalendarDays },
       { label: 'Projetos', rota: '/projetos', icon: FolderKanban },
       { label: 'Atas & Reuniões', rota: '/atas', icon: Users },

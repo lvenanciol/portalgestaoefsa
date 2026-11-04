@@ -136,10 +136,10 @@ const BUSCA_TELAS_FALLBACK: BuscaItem[] = [
     chaves: 'indicadores kpi meta semaforo',
   },
   {
-    label: 'Documentos & Importações',
+    label: 'Documentos',
     rota: '/documentos',
     tipo: 'tela',
-    chaves: 'documentos importacao balancete arquivo',
+    chaves: 'documentos alvaras contratos locacoes atas juridicos arquivo',
   },
   {
     label: 'Tarefas & Agenda',

@@ -32,7 +32,7 @@ const PT: Dict = {
   financeiro: 'Financeiro & Contábil',
   desempenho: 'Desempenho por Unidade',
   indicadores: 'Indicadores',
-  documentos: 'Documentos & Importações',
+  documentos: 'Documentos',
   tarefas: 'Tarefas & Agenda',
   projetos: 'Projetos',
   atas: 'Atas & Reuniões',

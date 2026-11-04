@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-04T00:16:45.896Z",
+  "generatedAt": "2026-11-04T10:28:02.312Z",
   "collections": [
     {
       "name": "users",
@@ -1061,6 +1061,43 @@
           "type": "file",
           "required": false,
           "system": false
+        },
+        {
+          "name": "tipo_ata",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["AGE", "AGO", "Reunião Diretoria", "Comitê", "Outro"]
+        },
+        {
+          "name": "mesa_diretora",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "deliberacoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "assinatura_eletronica",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "empresa",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "anexo",
+          "type": "file",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_atas_data ON atas (data)"]
@@ -1268,6 +1305,18 @@
         {
           "name": "aditivos",
           "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "garantia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vistoria",
+          "type": "text",
           "required": false,
           "system": false
         }
@@ -2529,6 +2578,212 @@
         }
       ],
       "indexes": ["CREATE INDEX idx_marcos_projeto ON marcos (projeto_id)"]
+    },
+    {
+      "name": "alvaras",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "numero",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "tipo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "orgao_emissor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "municipio",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "empresa",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "validade",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["regular", "vencendo", "vencido", "em_renovacao"]
+        },
+        {
+          "name": "observacoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "anexo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_alvaras_empresa ON alvaras (empresa)"]
+    },
+    {
+      "name": "processos_juridicos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "numero_processo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "vara_comarca",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "autor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reu",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "empresa",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fase_instancia",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "assunto_tipo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_causa",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_distribuicao",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "advogado",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["ativo", "suspenso", "acordo", "encerrado", "em_recurso"]
+        },
+        {
+          "name": "risco",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["provavel", "possivel", "remoto"]
+        },
+        {
+          "name": "proxima_audiencia",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "anexo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_juridicos_empresa ON processos_juridicos (empresa)",
+        "CREATE INDEX idx_juridicos_status ON processos_juridicos (status)"
+      ]
     }
   ]
 }
