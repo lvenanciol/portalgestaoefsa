@@ -164,6 +164,42 @@ export function canonizarStatus(valor: any): string {
 export function canonizarRisco(valor: any): string {
   const s = removerAcentos(valor)
   if (!s) return 'possivel'
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+=======
   if (RISCO_VALIDOS.includes(s as any)) return s
   if (s.includes('remot')) return 'remoto'
   if (s.includes('prov') && !s.includes('improv')) return 'provavel'
@@ -171,7 +207,369 @@ export function canonizarRisco(valor: any): string {
   return 'possivel'
 }
 
+// Trunca qualquer texto ao limite máximo do campo no PocketBase, sem estourar a
+// validação "Must be no more than N character(s)". Nunca grava texto bruto longo.
+export function truncarTexto(valor: any, max: number): string {
+  const s = String(valor ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+  return s.length > max ? s.slice(0, max).trim() : s
+}
+
+// Mapeia QUALQUER texto de probabilidade vindo do PDF/XLSX para um rótulo canônico
+// curto (sempre <= 100 caracteres), alinhado ao enum de risco (provavel/possivel/remoto).
+// NUNCA grava o texto bruto do relatório no campo probabilidade.
+export function sanitizarProbabilidade(valor: any): string {
+  const s = removerAcentos(valor)
+  const risco = canonizarRisco(valor)
+  if (!s) return 'Perda Possível'
+  const exito = s.includes('exito') || s.includes('favoravel')
+  if (exito) {
+    return risco === 'remoto'
+      ? 'Êxito Remoto'
+      : risco === 'possivel'
+        ? 'Êxito Possível'
+        : 'Êxito Provável'
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
 // Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+=======
+  if (s.includes('remot')) return 'remoto'
+  if (s.includes('prov') && !s.includes('improv')) return 'provavel'
+  if (s.includes('exito') || s.includes('favoravel')) return 'provavel'
+  return 'possivel'
+}
+
+// Trunca qualquer texto ao limite máximo do campo no PocketBase, sem estourar a
+// validação "Must be no more than N character(s)". Nunca grava texto bruto longo.
+export function truncarTexto(valor: any, max: number): string {
+  const s = String(valor ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+  return s.length > max ? s.slice(0, max).trim() : s
+}
+
+// Mapeia QUALQUER texto de probabilidade vindo do PDF/XLSX para um rótulo canônico
+// curto (sempre <= 100 caracteres), alinhado ao enum de risco (provavel/possivel/remoto).
+// NUNCA grava o texto bruto do relatório no campo probabilidade.
+export function sanitizarProbabilidade(valor: any): string {
+  const s = removerAcentos(valor)
+  const risco = canonizarRisco(valor)
+  if (!s) return 'Perda Possível'
+  const exito = s.includes('exito') || s.includes('favoravel')
+  if (exito) {
+    return risco === 'remoto'
+      ? 'Êxito Remoto'
+      : risco === 'possivel'
+        ? 'Êxito Possível'
+        : 'Êxito Provável'
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+=======
+// Trunca qualquer texto ao limite máximo do campo no PocketBase, sem estourar a
+// validação "Must be no more than N character(s)". Nunca grava texto bruto longo.
+export function truncarTexto(valor: any, max: number): string {
+  const s = String(valor ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+  return s.length > max ? s.slice(0, max).trim() : s
+}
+
+// Mapeia QUALQUER texto de probabilidade vindo do PDF/XLSX para um rótulo canônico
+// curto (sempre <= 100 caracteres), alinhado ao enum de risco (provavel/possivel/remoto).
+// NUNCA grava o texto bruto do relatório no campo probabilidade.
+export function sanitizarProbabilidade(valor: any): string {
+  const s = removerAcentos(valor)
+  const risco = canonizarRisco(valor)
+  if (!s) return 'Perda Possível'
+  const exito = s.includes('exito') || s.includes('favoravel')
+  if (exito) {
+    return risco === 'remoto'
+      ? 'Êxito Remoto'
+      : risco === 'possivel'
+        ? 'Êxito Possível'
+        : 'Êxito Provável'
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+=======
+export function truncarTexto(valor: any, max: number): string {
+  const s = String(valor ?? '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim()
+  return s.length > max ? s.slice(0, max).trim() : s
+}
+
+// Mapeia QUALQUER texto de probabilidade vindo do PDF/XLSX para um rótulo canônico
+// curto (sempre <= 100 caracteres), alinhado ao enum de risco (provavel/possivel/remoto).
+// NUNCA grava o texto bruto do relatório no campo probabilidade.
+export function sanitizarProbabilidade(valor: any): string {
+  const s = removerAcentos(valor)
+  const risco = canonizarRisco(valor)
+  if (!s) return 'Perda Possível'
+  const exito = s.includes('exito') || s.includes('favoravel')
+  if (exito) {
+    return risco === 'remoto'
+      ? 'Êxito Remoto'
+      : risco === 'possivel'
+        ? 'Êxito Possível'
+        : 'Êxito Provável'
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+=======
+// Mapeia QUALQUER texto de probabilidade vindo do PDF/XLSX para um rótulo canônico
+// curto (sempre <= 100 caracteres), alinhado ao enum de risco (provavel/possivel/remoto).
+// NUNCA grava o texto bruto do relatório no campo probabilidade.
+export function sanitizarProbabilidade(valor: any): string {
+  const s = removerAcentos(valor)
+  const risco = canonizarRisco(valor)
+  if (!s) return 'Perda Possível'
+  const exito = s.includes('exito') || s.includes('favoravel')
+  if (exito) {
+    return risco === 'remoto'
+      ? 'Êxito Remoto'
+      : risco === 'possivel'
+        ? 'Êxito Possível'
+        : 'Êxito Provável'
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  }
+  if (risco === 'remoto') return 'Perda Remota'
+  if (risco === 'possivel') return 'Perda Possível'
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+=======
+  return 'Perda Provável'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+=======
 // "1234.56", número ou string) para um number válido — nunca NaN.
 export function normalizarNumeroRobusto(val: any, padrao = 0): number {
   if (val === undefined || val === null || val === '') return padrao
@@ -202,6 +600,10 @@ export function canonizarProcessoExtraido(p: ProcessoExtraido): ProcessoExtraido
   return {
     ...p,
     status: canonizarStatus(p.status),
+    // Campos de texto com limite no PocketBase: probabilidade mapeada para rótulo
+    // canônico (nunca texto bruto) e ação truncada a 150 caracteres.
+    acao: truncarTexto(p.acao, 150) || 'Ação Judicial',
+    probabilidade: sanitizarProbabilidade(p.probabilidade),
     valor_base: num(p.valor_base),
     valor_corrigido: num(p.valor_corrigido),
     juros: num(p.juros),
