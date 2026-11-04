@@ -119,6 +119,161 @@ function parsearNumeroBr(val: any): number {
   return isNaN(n) ? 0 : n
 }
 
+// --------------------------------------------------------------------------------
+// Canonização de enums para os selects de lista FECHADA do PocketBase.
+// A coleção 'processos_juridicos' valida:
+//   status: ativo | suspenso | acordo | encerrado | em_recurso
+//   risco:  provavel | possivel | remoto
+// Qualquer texto vindo do PDF/XLSX é canonizado ANTES de gravar, para que o
+// PocketBase nunca rejeite o registro por valor fora da lista.
+// --------------------------------------------------------------------------------
+
+const removerAcentos = (v: any) =>
+  String(v ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+
+const STATUS_VALIDOS = ['ativo', 'suspenso', 'acordo', 'encerrado', 'em_recurso'] as const
+const RISCO_VALIDOS = ['provavel', 'possivel', 'remoto'] as const
+
+export function canonizarStatus(valor: any): string {
+  const s = removerAcentos(valor)
+  if (!s) return 'ativo'
+  if (STATUS_VALIDOS.includes(s as any)) return s
+  if (s.includes('inativo')) return 'encerrado'
+  if (s.includes('recurso')) return 'em_recurso'
+  if (s.includes('acord') || s.includes('concili') || s.includes('transacao')) return 'acordo'
+  if (s.includes('suspens') || s.includes('sobrestad')) return 'suspenso'
+  if (
+    s.includes('encerrad') ||
+    s.includes('arquivad') ||
+    s.includes('extint') ||
+    s.includes('baixad') ||
+    s.includes('concluid') ||
+    s.includes('finalizad') ||
+    s.includes('resolvid') ||
+    s.includes('transitad')
+  ) {
+    return 'encerrado'
+  }
+  return 'ativo'
+}
+
+export function canonizarRisco(valor: any): string {
+  const s = removerAcentos(valor)
+  if (!s) return 'possivel'
+  if (RISCO_VALIDOS.includes(s as any)) return s
+  if (s.includes('remot')) return 'remoto'
+  if (s.includes('prov') && !s.includes('improv')) return 'provavel'
+  if (s.includes('exito') || s.includes('favoravel')) return 'provavel'
+  return 'possivel'
+}
+
+// Normaliza QUALQUER valor numérico vindo do relatório ("R$ 1.234,56", "1.234,56",
+// "1234.56", número ou string) para um number válido — nunca NaN.
+export function normalizarNumeroRobusto(val: any, padrao = 0): number {
+  if (val === undefined || val === null || val === '') return padrao
+  if (typeof val === 'number') return Number.isFinite(val) ? val : padrao
+  if (typeof val === 'boolean') return padrao
+  const limpo = String(val)
+    .replace(/[R$\s\u00A0]/gi, '')
+    .replace(/\u2212/g, '-')
+  if (!limpo || limpo === '-' || limpo === '+') return padrao
+  let bruto: string
+  if (limpo.includes(',') && limpo.includes('.')) {
+    // Formato BR: pontos de milhar + vírgula decimal (ex: 73.585,59)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else if (limpo.includes(',')) {
+    // Apenas vírgula: decimal BR (ex: 0,00)
+    bruto = limpo.replace(/\./g, '').replace(',', '.')
+  } else {
+    // Apenas ponto: decimal simples (ex: 1234.56)
+    bruto = limpo
+  }
+  const n = parseFloat(bruto)
+  return Number.isFinite(n) ? n : padrao
+}
+
+// Canoniza um processo extraído: enums nos valores aceitos e números garantidos.
+export function canonizarProcessoExtraido(p: ProcessoExtraido): ProcessoExtraido {
+  const num = (v: any) => normalizarNumeroRobusto(v, 0)
+  return {
+    ...p,
+    status: canonizarStatus(p.status),
+    valor_base: num(p.valor_base),
+    valor_corrigido: num(p.valor_corrigido),
+    juros: num(p.juros),
+    multa: num(p.multa),
+    valor_atualizado: num(p.valor_atualizado),
+    valor_atualizado_indexado: num(p.valor_atualizado_indexado),
+    valor_envolvido: num(p.valor_envolvido),
+  }
+}
+
+// Traduz o erro REAL do PocketBase para PT-BR (nunca exibir "Failed to create record." cru).
+const NOMES_CAMPOS_PT: Record<string, string> = {
+  numero_processo: 'Número do processo',
+  numero_cnj: 'Número CNJ',
+  processo_codigo: 'Código do processo',
+  status: 'Status',
+  risco: 'Probabilidade',
+  probabilidade: 'Probabilidade',
+  empresa: 'Empresa',
+  titulo: 'Título',
+  orgao: 'Órgão',
+  valor_base: 'Valor base',
+  valor_corrigido: 'Valor corrigido',
+  valor_atualizado: 'Valor atualizado',
+  valor_atualizado_indexado: 'Valor atualizado indexado',
+  valor_envolvido: 'Valor envolvido',
+  juros: 'Juros',
+  multa: 'Multa',
+  valor_causa: 'Valor da causa',
+  versao_atual: 'Versão',
+}
+
+const TRADUCOES_ERRO: Array<[RegExp, string]> = [
+  [/cannot be blank/i, 'não pode ficar em branco'],
+  [/must be a valid date/i, 'deve ser uma data válida'],
+  [/must be a valid email/i, 'deve ser um e-mail válido'],
+  [/must be a valid number/i, 'deve ser um número válido'],
+  [/must be less than/i, 'excede o tamanho máximo permitido'],
+  [/value must be greater than/i, 'deve ser maior que o valor mínimo'],
+  [/validation_not_in_list/i, 'valor fora da lista permitida'],
+  [/missing required/i, 'campo obrigatório ausente'],
+  [/invalid or expired/i, 'inválido ou expirado'],
+]
+
+function traduzirMensagem(m: string): string {
+  return TRADUCOES_ERRO.reduce((acc, [re, pt]) => acc.replace(re, pt), m).replace(/\.$/, '')
+}
+
+export function mensagemErroPocketbase(err: any): string {
+  const resp = err?.response || err?.data?.response || null
+  const msgCrua: string = err?.message || err?.data?.message || resp?.message || ''
+
+  // Erros por campo devolvidos pelo PocketBase (response.data.{campo}.message)
+  const errosPorCampo = resp?.data || err?.data?.data
+  if (errosPorCampo && typeof errosPorCampo === 'object') {
+    const partes = Object.entries(errosPorCampo).map(([campo, info]: [string, any]) => {
+      const rotulo = NOMES_CAMPOS_PT[campo] || campo
+      const detalhe = traduzirMensagem(String(info?.message || info?.code || 'valor inválido'))
+      return `${rotulo}: ${detalhe}`
+    })
+    if (partes.length > 0) return partes.join('; ')
+  }
+
+  // Mensagem genérica do PocketBase → texto amigável em PT-BR
+  if (/failed to (create|update|delete) record/i.test(msgCrua)) {
+    return 'Não foi possível gravar o processo no banco: algum campo ficou com valor fora do padrão aceito (status, probabilidade, números ou datas). Revise o registro no relatório original e tente novamente.'
+  }
+
+  const traduzida = traduzirMensagem(msgCrua)
+  return traduzida || 'Falha ao salvar registro no banco de dados'
+}
+
 // Parser inteligente de texto do Relatório de Processos (PDF)
 export function parsearRelatorioProcessosPdf(
   texto: string,
@@ -407,7 +562,7 @@ export function JuridicosImportModal({
       if (isPdf) {
         setTipoArquivo('pdf')
         const texto = await extrairTextoDePdf(file)
-        const lista = parsearRelatorioProcessosPdf(texto)
+        const lista = parsearRelatorioProcessosPdf(texto).map(canonizarProcessoExtraido)
         if (lista.length === 0) {
           throw new Error(
             'Não foi possível identificar blocos de "Processo: NNNNNN" no PDF selecionado. Verifique se o relatório contém o formato padrão.',
@@ -518,7 +673,7 @@ export function JuridicosImportModal({
           }
         })
 
-        setProcessosExtraidos(listaXlsx)
+        setProcessosExtraidos(listaXlsx.map(canonizarProcessoExtraido))
         setPasso(2)
       } else {
         throw new Error(
@@ -542,27 +697,7 @@ export function JuridicosImportModal({
     let atualizadosComHistorico = 0
     const falhas: { processo: string; motivo: string }[] = []
 
-    const normalizarNumero = (val: any, padrao = 0): number => {
-      if (val === undefined || val === null || val === '') return padrao
-      const n = typeof val === 'number' ? val : Number(val)
-      return Number.isFinite(n) ? n : padrao
-    }
-
-    const normalizarStatus = (st?: string): string => {
-      const s = String(st || '').toLowerCase()
-      if (s.includes('arquiv') || s.includes('encerrad')) return 'encerrado'
-      if (s.includes('suspens')) return 'suspenso'
-      if (s.includes('acord')) return 'acordo'
-      if (s.includes('recurs')) return 'em_recurso'
-      return 'ativo'
-    }
-
-    const normalizarRisco = (prob?: string): string => {
-      const p = String(prob || '').toLowerCase()
-      if (p.includes('prov')) return 'provavel'
-      if (p.includes('remot')) return 'remoto'
-      return 'possivel'
-    }
+    const normalizarNumero = normalizarNumeroRobusto
 
     try {
       const dataHoje = new Date().toISOString()
@@ -668,7 +803,7 @@ export function JuridicosImportModal({
               orgao_tribunal: item.orgao || existente.orgao_tribunal || 'Tribunal de Justiça',
               vara_comarca: item.orgao || existente.vara_comarca || 'Tribunal de Justiça',
               acao: item.acao || existente.acao || 'Ação Judicial',
-              status: normalizarStatus(item.status || existente.status),
+              status: canonizarStatus(item.status || existente.status),
               tipo: item.tipo || existente.tipo || 'Judicial',
               natureza: item.natureza || existente.natureza || 'Trabalhista',
               cliente_principal:
@@ -679,7 +814,7 @@ export function JuridicosImportModal({
                 item.responsavel_principal || existente.responsavel_principal || '',
               advogado: item.responsavel_principal || existente.advogado || '',
               probabilidade: item.probabilidade || existente.probabilidade || 'Perda Possível',
-              risco: normalizarRisco(
+              risco: canonizarRisco(
                 item.probabilidade || existente.probabilidade || existente.risco,
               ),
               valor_base: normalizarNumero(
@@ -726,7 +861,7 @@ export function JuridicosImportModal({
               orgao_tribunal: item.orgao || 'Tribunal de Justiça',
               vara_comarca: item.orgao || 'Tribunal de Justiça',
               acao: item.acao || 'Ação Judicial',
-              status: normalizarStatus(item.status),
+              status: canonizarStatus(item.status),
               tipo: item.tipo || 'Judicial',
               natureza: item.natureza || 'Trabalhista',
               cliente_principal: item.cliente_principal || 'Extrafruti',
@@ -740,7 +875,7 @@ export function JuridicosImportModal({
               fase_instancia: 'Em Andamento',
               assunto_tipo: item.natureza || 'Trabalhista',
               probabilidade: item.probabilidade || 'Perda Possível',
-              risco: normalizarRisco(item.probabilidade),
+              risco: canonizarRisco(item.probabilidade),
               valor_base: normalizarNumero(item.valor_base, 0),
               valor_corrigido: normalizarNumero(item.valor_corrigido, 0),
               juros: normalizarNumero(item.juros, 0),
@@ -760,7 +895,7 @@ export function JuridicosImportModal({
           console.warn(`Erro ao processar item ${numProcLimpo}:`, itemErr)
           falhas.push({
             processo: numProcLimpo,
-            motivo: itemErr?.message || 'Falha ao salvar registro no banco de dados',
+            motivo: mensagemErroPocketbase(itemErr),
           })
         }
       }
