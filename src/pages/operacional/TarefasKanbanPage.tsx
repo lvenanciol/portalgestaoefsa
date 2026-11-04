@@ -128,10 +128,13 @@ export default function TarefasKanbanPage() {
   const [arrastandoTarefa, setArrastandoTarefa] = useState<any | null>(null)
   const [colunaHover, setColunaHover] = useState<string | null>(null)
 
-  // Filtros de cabeçalho: Período da agenda (dataRange) e Parceiros & Contatos (multisseleção)
+  // Filtros de cabeçalho: Período da agenda (dataRange), Parceiros & Contatos (multisseleção) e Origem (Prompt 7)
   const [filtroPeriodo, setFiltroPeriodo] = useState<{ from?: Date; to?: Date } | undefined>(
     undefined,
   )
+  const [filtroOrigem, setFiltroOrigem] = useState<
+    'todos' | 'projeto' | 'contrato' | 'ata' | 'tarefa' | 'avulsa'
+  >('todos')
   const [filtroParceiros, setFiltroParceiros] = useState<string[]>([])
   const [parceiros, setParceiros] = useState<any[]>([])
   const [dialogErro, setDialogErro] = useState('')
@@ -341,9 +344,35 @@ export default function TarefasKanbanPage() {
         if (!match) return false
       }
 
+      // 4. Filtro de Origem / Vínculo (Prompt 7): Todos | De projeto | De contrato | De ata | Subtarefas | Avulsas
+      if (filtroOrigem !== 'todos') {
+        const vt = String(t.vinculo_tipo || '')
+          .trim()
+          .toLowerCase()
+        const orig = String(t.origem || '')
+          .trim()
+          .toLowerCase()
+        const ehProjeto = orig === 'projeto' || vt === 'projeto' || !!t.projeto_id
+
+        if (filtroOrigem === 'projeto') {
+          if (!ehProjeto) return false
+        } else if (filtroOrigem === 'contrato') {
+          if (vt !== 'contrato') return false
+        } else if (filtroOrigem === 'ata') {
+          if (vt !== 'ata') return false
+        } else if (filtroOrigem === 'tarefa') {
+          if (vt !== 'tarefa') return false
+        } else if (filtroOrigem === 'avulsa') {
+          // Avulsa: não é projeto, nem contrato, nem ata, nem subtarefa (ou origem='avulsa' sem outros)
+          if (ehProjeto || vt === 'contrato' || vt === 'ata' || vt === 'tarefa') {
+            return false
+          }
+        }
+      }
+
       return true
     })
-  }, [itens, empresaFiltroAtiva, filtroPeriodo, filtroParceiros, parceiros])
+  }, [itens, empresaFiltroAtiva, filtroPeriodo, filtroOrigem, filtroParceiros, parceiros])
 
   const hoje = new Date().toISOString().slice(0, 10)
 
@@ -1586,6 +1615,73 @@ export default function TarefasKanbanPage() {
             </SelectContent>
           </Select>
 
+          {/* Dropdown "Origem ▾" (Prompt 7: Todos | De projeto | De contrato | De ata | Subtarefas | Avulsas) */}
+          <Select value={filtroOrigem} onValueChange={(v: any) => setFiltroOrigem(v)}>
+            <SelectTrigger
+              className={cn(
+                'h-9 min-w-[130px] max-w-[170px] bg-white border-gray-200 text-xs font-medium text-gray-800 shadow-2xs focus:ring-[#1B5E20] rounded-lg cursor-pointer',
+                filtroOrigem !== 'todos' &&
+                  'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50 font-semibold',
+              )}
+              aria-label="Filtro por origem da tarefa"
+            >
+              <div className="flex items-center gap-1.5 truncate">
+                <Link2 className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                <span className="truncate">
+                  {filtroOrigem === 'todos'
+                    ? 'Origem'
+                    : filtroOrigem === 'projeto'
+                      ? 'De projeto'
+                      : filtroOrigem === 'contrato'
+                        ? 'De contrato'
+                        : filtroOrigem === 'ata'
+                          ? 'De ata'
+                          : filtroOrigem === 'tarefa'
+                            ? 'Subtarefas'
+                            : 'Avulsas'}
+                </span>
+              </div>
+            </SelectTrigger>
+            <SelectContent align="start" className="w-[180px] bg-white">
+              <SelectItem value="todos" className="text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-gray-400" />
+                  <span>Todos</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="projeto" className="text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-600" />
+                  <span>De projeto</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="contrato" className="text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  <span>De contrato</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="ata" className="text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                  <span>De ata</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="tarefa" className="text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-blue-500" />
+                  <span>Subtarefas</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="avulsa" className="text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-gray-500" />
+                  <span>Avulsas</span>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+
           {/* Botão Enviar (para ciência e acompanhamento) */}
           <TarefasEnviarPopover
             tarefasVisiveis={itensLista}
@@ -1606,6 +1702,7 @@ export default function TarefasKanbanPage() {
         {(buscaTexto ||
           filtroRapido !== 'todos' ||
           filtroPeriodo?.from ||
+          filtroOrigem !== 'todos' ||
           empresaFiltroAtiva !== 'todas') && (
           <button
             type="button"
@@ -1613,6 +1710,7 @@ export default function TarefasKanbanPage() {
               setBuscaTexto('')
               setFiltroRapido('todos')
               setFiltroPeriodo(undefined)
+              setFiltroOrigem('todos')
               setFiltroEmpresa('todas')
             }}
             className="text-xs text-gray-500 hover:text-red-600 font-medium inline-flex items-center gap-1 shrink-0 cursor-pointer"

@@ -625,6 +625,14 @@ export function ProjetoTarefasAba({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Nota discreta de rodapé (Prompt 7) */}
+      <div className="pt-3 pb-1 border-t border-gray-100">
+        <p className="text-[11px] text-gray-500">
+          Tarefas de contrato, ata e avulsas não aparecem aqui e não afetam o progresso deste
+          projeto.
+        </p>
+      </div>
     </div>
   )
 }
