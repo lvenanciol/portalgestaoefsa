@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft,
   Pencil,
@@ -26,20 +27,46 @@ import {
   FileText,
   Upload,
   X,
+  AlertTriangle,
+  Loader2,
+  FolderGit2,
+  Milestone,
+  ScrollText,
 } from 'lucide-react'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
 import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import { limparTextoResponsavel, obterIniciaisResponsavel } from '@/lib/responsavel-utils'
+import {
+  vincularTarefaAoProjeto,
+  desvincularTarefaDeProjeto,
+  listarMarcosProjeto,
+  MarcoRegistro,
+} from '@/services/tarefas-projetos-service'
+import { toast } from '@/hooks/use-toast'
 
 export interface TarefaDetalheModalProps {
   detalhe: any | null
@@ -49,6 +76,8 @@ export interface TarefaDetalheModalProps {
   onExcluir: (tarefa: any) => void
   onMover: (tarefa: any, novoStatus: string) => Promise<void>
   onSubtarefasAtualizadas?: (tarefa: any) => void
+  onVincularProjeto?: (tarefa: any) => void
+  onDesvincularProjeto?: (tarefa: any) => void
   chatMsgs: any[]
   novoChat: string
   setNovoChat: (v: string) => void
@@ -96,6 +125,8 @@ export function TarefaDetalheModal({
   onExcluir,
   onMover,
   onSubtarefasAtualizadas,
+  onVincularProjeto,
+  onDesvincularProjeto,
   chatMsgs,
   novoChat,
   setNovoChat,
@@ -104,6 +135,7 @@ export function TarefaDetalheModal({
   enviarChat,
   chatErro,
 }: TarefaDetalheModalProps) {
+  const navigate = useNavigate()
   const [expandDescricao, setExpandDescricao] = useState(true)
   const [expandSubtarefas, setExpandSubtarefas] = useState(true)
   const [expandAnexos, setExpandAnexos] = useState(true)
@@ -118,6 +150,75 @@ export function TarefaDetalheModal({
     tipo: 'imagem' | 'video'
     nome: string
   } | null>(null)
+
+  // Estados locais para ação atômica Vincular a projeto
+  const [modalVincularAberto, setModalVincularAberto] = useState(false)
+  const [projetosParaVincular, setProjetosParaVincular] = useState<
+    Array<{ id: string; nome: string }>
+  >([])
+  const [projetoVincularId, setProjetoVincularId] = useState('')
+  const [marcosParaVincular, setMarcosParaVincular] = useState<MarcoRegistro[]>([])
+  const [marcoVincularId, setMarcoVincularId] = useState('')
+  const [carregandoMarcosVincular, setCarregandoMarcosVincular] = useState(false)
+  const [salvandoVinculo, setSalvandoVinculo] = useState(false)
+  const [erroVinculoModal, setErroVinculoModal] = useState('')
+
+  // Estados locais para ação atômica Desvincular do projeto
+  const [modalDesvincularAberto, setModalDesvincularAberto] = useState(false)
+  const [salvandoDesvinculo, setSalvandoDesvinculo] = useState(false)
+
+  // Título legível do contrato, ata ou tarefa de origem
+  const [vinculoTitulo, setVinculoTitulo] = useState<string>('')
+
+  // Carrega título de contrato/ata/tarefa quando aplicável
+  useEffect(() => {
+    let ativo = true
+    if (!detalhe) return
+
+    const vt = String(detalhe.vinculo_tipo || '')
+      .trim()
+      .toLowerCase()
+    const vid = detalhe.vinculo_id
+
+    if (vt === 'contrato' && vid) {
+      pb.collection('contratos')
+        .getOne(vid, { fields: 'id,titulo,parte' })
+        .then((res: any) => {
+          if (ativo) {
+            setVinculoTitulo(
+              res.titulo ? `${res.titulo}${res.parte ? ` — ${res.parte}` : ''}` : `Contrato ${vid}`,
+            )
+          }
+        })
+        .catch(() => {
+          if (ativo) setVinculoTitulo(`Contrato ${vid}`)
+        })
+    } else if (vt === 'ata' && vid) {
+      pb.collection('atas')
+        .getOne(vid, { fields: 'id,titulo' })
+        .then((res: any) => {
+          if (ativo) setVinculoTitulo(res.titulo || `Ata ${vid}`)
+        })
+        .catch(() => {
+          if (ativo) setVinculoTitulo(`Ata ${vid}`)
+        })
+    } else if (vt === 'tarefa' && vid) {
+      pb.collection('tarefas')
+        .getOne(vid, { fields: 'id,titulo' })
+        .then((res: any) => {
+          if (ativo) setVinculoTitulo(res.titulo || `Tarefa ${vid}`)
+        })
+        .catch(() => {
+          if (ativo) setVinculoTitulo(`Tarefa ${vid}`)
+        })
+    } else {
+      setVinculoTitulo('')
+    }
+
+    return () => {
+      ativo = false
+    }
+  }, [detalhe])
 
   if (!detalhe) return null
 
@@ -236,12 +337,202 @@ export function TarefaDetalheModal({
     ? limparTextoResponsavel(detalhe.responsavel)
     : 'Não definido'
   const iniciaisResp = detalhe.responsavel ? getIniciais(detalhe.responsavel) : '—'
+
+  // Identificação do Vínculo de Origem (PROMPT 7)
+  const ehProjeto =
+    detalhe.origem === 'projeto' || detalhe.vinculo_tipo === 'projeto' || !!detalhe.projeto_id
+
+  const tipoVinculo: 'projeto' | 'contrato' | 'ata' | 'tarefa' | 'nenhum' = ehProjeto
+    ? 'projeto'
+    : detalhe.vinculo_tipo === 'contrato'
+      ? 'contrato'
+      : detalhe.vinculo_tipo === 'ata'
+        ? 'ata'
+        : detalhe.vinculo_tipo === 'tarefa'
+          ? 'tarefa'
+          : 'nenhum'
+
+  // Dados do projeto e marco quando vínculo = projeto
+  const projetoId =
+    detalhe.projeto_id || (detalhe.vinculo_tipo === 'projeto' ? detalhe.vinculo_id : '')
+  const nomeProjeto =
+    detalhe.expand?.projeto_id?.nome ||
+    detalhe.projeto_nome ||
+    (projetoId ? `Projeto ${projetoId}` : '')
+
+  const marcoId = detalhe.marco_id || ''
+  const nomeMarco =
+    detalhe.expand?.marco_id?.nome || detalhe.marco_nome || (marcoId ? `Marco ${marcoId}` : '')
+
   const vinculoLabel =
-    detalhe.vinculo_tipo && detalhe.vinculo_id
-      ? `${detalhe.vinculo_tipo}: ${detalhe.vinculo_id}`
-      : 'Nenhum'
+    tipoVinculo === 'projeto'
+      ? `Projeto: ${nomeProjeto || projetoId || 'Sim'}`
+      : tipoVinculo === 'contrato'
+        ? `Contrato: ${vinculoTitulo || detalhe.vinculo_id || 'Sim'}`
+        : tipoVinculo === 'ata'
+          ? `Ata: ${vinculoTitulo || detalhe.vinculo_id || 'Sim'}`
+          : tipoVinculo === 'tarefa'
+            ? `Subtarefa: ${vinculoTitulo || detalhe.vinculo_id || 'Sim'}`
+            : 'Nenhum'
+
   const recorrenciaLabel =
     detalhe.recorrencia && detalhe.recorrencia !== 'Nenhuma' ? detalhe.recorrencia : 'Nenhuma'
+
+  // Navegações de links de vínculo
+  const irParaProjeto = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (projetoId) {
+      navigate(`/projetos/${projetoId}`)
+      onClose()
+    }
+  }
+
+  const irParaMarco = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (projetoId) {
+      navigate(`/projetos/${projetoId}?tab=marcos`)
+      onClose()
+    }
+  }
+
+  const irParaContrato = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    navigate('/contratos')
+    onClose()
+  }
+
+  const irParaAta = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    navigate('/atas')
+    onClose()
+  }
+
+  const irParaTarefaOrigem = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (detalhe.vinculo_id) {
+      navigate(`/tarefas?busca=${encodeURIComponent(vinculoTitulo || detalhe.vinculo_id)}`)
+      onClose()
+    }
+  }
+
+  // Ações de vincular / desvincular
+  const handleAbrirVincular = async () => {
+    if (onVincularProjeto) {
+      onVincularProjeto(detalhe)
+      return
+    }
+    setProjetoVincularId('')
+    setMarcoVincularId('')
+    setMarcosParaVincular([])
+    setErroVinculoModal('')
+    setModalVincularAberto(true)
+    try {
+      const projs = await pb
+        .collection('projetos')
+        .getFullList<{ id: string; nome: string }>({ sort: 'nome', fields: 'id,nome' })
+      setProjetosParaVincular(projs)
+    } catch (err) {
+      console.error('Erro ao listar projetos para vincular:', err)
+    }
+  }
+
+  const handleSelecionarProjeto = async (pId: string) => {
+    setProjetoVincularId(pId)
+    setMarcoVincularId('')
+    setErroVinculoModal('')
+    if (!pId) {
+      setMarcosParaVincular([])
+      return
+    }
+    setCarregandoMarcosVincular(true)
+    try {
+      const ms = await listarMarcosProjeto(pId)
+      setMarcosParaVincular(ms)
+    } catch (err) {
+      console.error('Erro ao listar marcos:', err)
+      setMarcosParaVincular([])
+    } finally {
+      setCarregandoMarcosVincular(false)
+    }
+  }
+
+  const handleConfirmarVinculo = async () => {
+    if (!projetoVincularId) {
+      setErroVinculoModal('Selecione um projeto para continuar.')
+      return
+    }
+    if (!marcoVincularId) {
+      setErroVinculoModal('Escolha o marco para concluir o vínculo com o projeto.')
+      return
+    }
+    setSalvandoVinculo(true)
+    setErroVinculoModal('')
+    try {
+      await vincularTarefaAoProjeto({
+        tarefaId: detalhe.id,
+        projetoId: projetoVincularId,
+        marcoId: marcoVincularId,
+      })
+      toast({
+        title: 'Tarefa vinculada ao projeto',
+        description: 'A tarefa agora faz parte do projeto e conta no cálculo de progresso.',
+      })
+      setModalVincularAberto(false)
+      const upd = await pb.collection('tarefas').getOne(detalhe.id, {
+        expand: 'projeto_id,marco_id',
+      })
+      if (onSubtarefasAtualizadas) {
+        onSubtarefasAtualizadas(upd)
+      }
+    } catch (err: any) {
+      const msg = err?.message || 'Falha ao vincular tarefa ao projeto.'
+      if (msg.includes('chk_tarefa_marco_obrigatorio') || msg.includes('marco')) {
+        setErroVinculoModal('Selecione um marco para esta tarefa.')
+      } else if (msg.includes('pertence')) {
+        setErroVinculoModal('O marco escolhido não pertence a este projeto. Escolha outro marco.')
+      } else if (msg.includes('cancelado')) {
+        setErroVinculoModal('Este marco foi cancelado. Escolha um marco ativo.')
+      } else {
+        setErroVinculoModal(msg)
+      }
+    } finally {
+      setSalvandoVinculo(false)
+    }
+  }
+
+  const handleAbrirDesvincular = () => {
+    if (onDesvincularProjeto) {
+      onDesvincularProjeto(detalhe)
+      return
+    }
+    setModalDesvincularAberto(true)
+  }
+
+  const handleConfirmarDesvinculo = async () => {
+    setSalvandoDesvinculo(true)
+    try {
+      await desvincularTarefaDeProjeto(detalhe.id)
+      toast({
+        title: 'Tarefa desvinculada',
+        description: 'A tarefa agora é avulsa e deixou de contar no progresso do projeto.',
+      })
+      setModalDesvincularAberto(false)
+      const upd = await pb.collection('tarefas').getOne(detalhe.id, {
+        expand: 'projeto_id,marco_id',
+      })
+      if (onSubtarefasAtualizadas) {
+        onSubtarefasAtualizadas(upd)
+      }
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao desvincular',
+        description: err?.message || 'Não foi possível desvincular a tarefa do projeto.',
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoDesvinculo(false)
+    }
+  }
 
   return (
     <Dialog open={!!detalhe} onOpenChange={(aberto) => !aberto && onClose()}>
@@ -356,7 +647,182 @@ export function TarefaDetalheModal({
           {/* ------------------------------------------------------- */}
           {/* ZONA 2 — Coluna Principal                               */}
           {/* ------------------------------------------------------- */}
-          <main className="flex-1 overflow-y-auto px-5 sm:px-8 py-5 space-y-6 min-w-0 bg-white">
+          <main className="flex-1 overflow-y-auto px-5 sm:px-8 py-5 space-y-5 min-w-0 bg-white">
+            {/* ========================================================= */}
+            {/* Campo informativo de vínculo no topo da ficha (PROMPT 7)  */}
+            {/* ========================================================= */}
+            <section className="p-3.5 sm:p-4 rounded-xl border border-gray-200/90 bg-gray-50/70 shadow-2xs space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                    Vínculo
+                  </span>
+
+                  {/* Badges de tipo */}
+                  {tipoVinculo === 'projeto' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      <FolderGit2 className="h-3 w-3 text-emerald-700" />
+                      <span>Projeto</span>
+                    </span>
+                  )}
+                  {tipoVinculo === 'contrato' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50/80 text-emerald-800 border border-emerald-200">
+                      <FileText className="h-3 w-3 text-emerald-700" />
+                      <span>Contrato</span>
+                    </span>
+                  )}
+                  {tipoVinculo === 'ata' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50/80 text-emerald-800 border border-emerald-200">
+                      <ScrollText className="h-3 w-3 text-emerald-700" />
+                      <span>Ata</span>
+                    </span>
+                  )}
+                  {tipoVinculo === 'tarefa' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-gray-100 text-gray-700 border border-gray-200">
+                      <ListTodo className="h-3 w-3 text-gray-600" />
+                      <span>Subtarefa</span>
+                    </span>
+                  )}
+                  {tipoVinculo === 'nenhum' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+                      <Link2 className="h-3 w-3 text-gray-500" />
+                      <span>Avulsa (Nenhum)</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Ações: Vincular a projeto / Desvincular do projeto */}
+                <div className="shrink-0 flex items-center gap-2">
+                  {tipoVinculo === 'projeto' ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAbrirDesvincular}
+                      className="h-7 px-2.5 text-xs font-medium text-amber-700 border-amber-200 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 shadow-2xs flex items-center gap-1.5"
+                      title="Desvincular esta tarefa do projeto"
+                    >
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                      <span>Desvincular do projeto</span>
+                    </Button>
+                  ) : tipoVinculo === 'contrato' ||
+                    tipoVinculo === 'ata' ||
+                    tipoVinculo === 'nenhum' ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAbrirVincular}
+                      className="h-7 px-2.5 text-xs font-semibold text-[#1B5E20] border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100 hover:text-[#0F3D13] shadow-2xs flex items-center gap-1.5"
+                      title="Vincular esta tarefa a um projeto com marco obrigatório"
+                    >
+                      <Link2 className="h-3.5 w-3.5 text-[#1B5E20]" />
+                      <span>Vincular a projeto</span>
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Se Vínculo = Projeto: projeto e marco como LINKS clicáveis */}
+              {tipoVinculo === 'projeto' ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1.5 border-t border-gray-200/70">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-gray-500 shrink-0 font-medium">Projeto:</span>
+                    <button
+                      type="button"
+                      onClick={irParaProjeto}
+                      className="inline-flex items-center gap-1 font-semibold text-[#1B5E20] hover:underline truncate"
+                      title="Abrir detalhe do projeto"
+                    >
+                      <span className="truncate">{nomeProjeto || 'Projeto vinculado'}</span>
+                      <ExternalLink className="h-3 w-3 shrink-0 text-emerald-700" />
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-gray-500 shrink-0 font-medium">Marco:</span>
+                    <button
+                      type="button"
+                      onClick={irParaMarco}
+                      className="inline-flex items-center gap-1 font-semibold text-gray-800 hover:text-[#1B5E20] hover:underline truncate"
+                      title="Ver marco no cronograma do projeto"
+                    >
+                      <Milestone className="h-3 w-3 shrink-0 text-gray-400" />
+                      <span className="truncate">{nomeMarco || 'Marco vinculado'}</span>
+                      <ExternalLink className="h-3 w-3 shrink-0 text-gray-400" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Se Vínculo = Contrato / Ata / Tarefa / Nenhum */
+                <div className="space-y-1 pt-1.5 border-t border-gray-200/70 text-xs">
+                  {tipoVinculo === 'contrato' && (
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-gray-500 shrink-0 font-medium">
+                        Contrato de origem:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={irParaContrato}
+                        className="inline-flex items-center gap-1 font-semibold text-[#1B5E20] hover:underline truncate"
+                        title="Ir para Contratos"
+                      >
+                        <span className="truncate">
+                          {vinculoTitulo || detalhe.vinculo_id || 'Contrato'}
+                        </span>
+                        <ExternalLink className="h-3 w-3 shrink-0 text-emerald-700" />
+                      </button>
+                    </div>
+                  )}
+
+                  {tipoVinculo === 'ata' && (
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-gray-500 shrink-0 font-medium">Ata de reunião:</span>
+                      <button
+                        type="button"
+                        onClick={irParaAta}
+                        className="inline-flex items-center gap-1 font-semibold text-[#1B5E20] hover:underline truncate"
+                        title="Ir para Atas"
+                      >
+                        <span className="truncate">
+                          {vinculoTitulo || detalhe.vinculo_id || 'Ata'}
+                        </span>
+                        <ExternalLink className="h-3 w-3 shrink-0 text-emerald-700" />
+                      </button>
+                    </div>
+                  )}
+
+                  {tipoVinculo === 'tarefa' && (
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-gray-500 shrink-0 font-medium">Tarefa pai:</span>
+                      <button
+                        type="button"
+                        onClick={irParaTarefaOrigem}
+                        className="inline-flex items-center gap-1 font-semibold text-gray-800 hover:text-[#1B5E20] hover:underline truncate"
+                        title="Buscar tarefa pai"
+                      >
+                        <span className="truncate">
+                          {vinculoTitulo || detalhe.vinculo_id || 'Tarefa pai'}
+                        </span>
+                        <ExternalLink className="h-3 w-3 shrink-0 text-gray-400" />
+                      </button>
+                    </div>
+                  )}
+
+                  {tipoVinculo === 'nenhum' && (
+                    <p className="text-gray-600">
+                      Tarefa avulsa sem vínculo com contrato, ata ou projeto.
+                    </p>
+                  )}
+
+                  {/* Linha exata de 11px cinza (PROMPT 7) */}
+                  <p className="text-[11px] text-gray-500">
+                    Esta tarefa não entra no progresso de projetos.
+                  </p>
+                </div>
+              )}
+            </section>
+
             {/* Linha única de etiquetas compactas sem quebrar */}
             <div className="flex items-center gap-2.5 overflow-x-auto pb-1 text-xs text-gray-700 scrollbar-none flex-nowrap">
               {/* Prioridade */}
@@ -795,19 +1261,60 @@ export function TarefaDetalheModal({
                 </div>
 
                 {/* Vínculo */}
-                <div className="flex items-center justify-between py-1 border-b border-gray-100 text-gray-600">
-                  <span className="flex items-center gap-1.5 text-gray-500">
-                    <Link2 className="h-3.5 w-3.5 text-gray-400" /> Vínculo
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => onEditar(detalhe)}
-                    className="flex items-center gap-1 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline max-w-[170px] truncate"
-                    title="Editar vínculo"
-                  >
-                    <span className="truncate">{vinculoLabel}</span>
-                    <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
-                  </button>
+                <div className="py-1 border-b border-gray-100 text-gray-600 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 text-gray-500">
+                      <Link2 className="h-3.5 w-3.5 text-gray-400" /> Vínculo
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onEditar(detalhe)}
+                      className="flex items-center gap-1 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline max-w-[170px] truncate"
+                      title="Editar vínculo"
+                    >
+                      <span className="truncate">
+                        {tipoVinculo === 'projeto'
+                          ? 'Projeto'
+                          : tipoVinculo === 'contrato'
+                            ? 'Contrato'
+                            : tipoVinculo === 'ata'
+                              ? 'Ata'
+                              : tipoVinculo === 'tarefa'
+                                ? 'Subtarefa'
+                                : 'Avulsa'}
+                      </span>
+                      <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
+                    </button>
+                  </div>
+
+                  {tipoVinculo === 'projeto' ? (
+                    <div className="pl-5 text-[11px] space-y-0.5 text-gray-500">
+                      <div className="truncate">
+                        Proj:{' '}
+                        <button
+                          type="button"
+                          onClick={irParaProjeto}
+                          className="text-[#1B5E20] font-medium hover:underline"
+                        >
+                          {nomeProjeto || 'Projeto'}
+                        </button>
+                      </div>
+                      <div className="truncate">
+                        Marco:{' '}
+                        <button
+                          type="button"
+                          onClick={irParaMarco}
+                          className="text-gray-700 font-medium hover:underline"
+                        >
+                          {nomeMarco || 'Marco'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="pl-5 text-[11px] text-gray-500">
+                      <p>Esta tarefa não entra no progresso de projetos.</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* Prazo */}
@@ -1074,6 +1581,148 @@ export function TarefaDetalheModal({
             </div>
           </aside>
         </div>
+
+        {/* ========================================================= */}
+        {/* Diálogo atômico: Vincular tarefa a projeto (Prompt 7)      */}
+        {/* ========================================================= */}
+        <Dialog open={modalVincularAberto} onOpenChange={setModalVincularAberto}>
+          <DialogContent className="bg-white max-w-md p-6 rounded-xl shadow-xl">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold text-gray-900">
+                Vincular tarefa a projeto
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2 text-xs">
+              <p className="text-gray-600">
+                Ao vincular a tarefa <strong className="text-gray-900">"{detalhe.titulo}"</strong> a
+                um projeto, ela passa a contar no progresso do projeto e precisa obrigatoriamente
+                estar associada a um marco.
+              </p>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-gray-700">
+                  Projeto <span className="text-red-500">*</span>
+                </Label>
+                <Select value={projetoVincularId} onValueChange={handleSelecionarProjeto}>
+                  <SelectTrigger className="h-9 text-xs bg-white">
+                    <SelectValue placeholder="Selecione o projeto" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white max-h-56">
+                    {projetosParaVincular.map((p) => (
+                      <SelectItem key={p.id} value={p.id} className="text-xs">
+                        {p.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {projetoVincularId && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-gray-700">
+                    Marco <span className="text-red-500">*</span>
+                  </Label>
+                  {carregandoMarcosVincular ? (
+                    <div className="flex items-center gap-2 text-gray-500 text-xs py-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-[#1B5E20]" />
+                      <span>Carregando marcos do projeto...</span>
+                    </div>
+                  ) : marcosParaVincular.length === 0 ? (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs">
+                      Este projeto ainda não possui marcos cadastrados. Crie um marco no projeto
+                      antes de vincular esta tarefa.
+                    </div>
+                  ) : (
+                    <Select
+                      value={marcoVincularId}
+                      onValueChange={(v) => {
+                        setMarcoVincularId(v)
+                        setErroVinculoModal('')
+                      }}
+                    >
+                      <SelectTrigger className="h-9 text-xs bg-white">
+                        <SelectValue placeholder="Selecione o marco" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white max-h-56">
+                        {marcosParaVincular.map((m) => (
+                          <SelectItem key={m.id} value={m.id} className="text-xs">
+                            {m.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              )}
+
+              {erroVinculoModal && (
+                <p role="alert" className="text-xs text-red-600 font-medium">
+                  {erroVinculoModal}
+                </p>
+              )}
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-gray-100">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setModalVincularAberto(false)}
+                disabled={salvandoVinculo}
+                className="h-9 text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConfirmarVinculo}
+                disabled={salvandoVinculo || !projetoVincularId || !marcoVincularId}
+                className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white text-xs font-semibold"
+              >
+                {salvandoVinculo ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
+                Confirmar vínculo
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ========================================================= */}
+        {/* Diálogo atômico: Desvincular do projeto (Prompt 7)         */}
+        {/* ========================================================= */}
+        <Dialog open={modalDesvincularAberto} onOpenChange={setModalDesvincularAberto}>
+          <DialogContent className="bg-white max-w-sm p-6 rounded-xl shadow-xl">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold text-amber-700 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" /> Desvincular do projeto
+              </DialogTitle>
+            </DialogHeader>
+            <div className="py-2 text-[13px] text-gray-700 leading-relaxed">
+              Esta tarefa deixará de contar no progresso do projeto{' '}
+              <strong className="text-gray-900 font-semibold">{nomeProjeto || 'vinculado'}</strong>.
+              Confirmar?
+            </div>
+            <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-gray-100">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setModalDesvincularAberto(false)}
+                disabled={salvandoDesvinculo}
+                className="h-9 text-xs"
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleConfirmarDesvinculo}
+                disabled={salvandoDesvinculo}
+                className="h-9 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold"
+              >
+                {salvandoDesvinculo ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                ) : null}
+                Confirmar desvinculação
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   )

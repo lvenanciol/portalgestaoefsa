@@ -236,8 +236,19 @@ export default function TarefasKanbanPage() {
         title: 'Tarefa vinculada ao projeto',
         description: 'A tarefa agora faz parte do projeto e conta no cálculo de progresso.',
       })
+      const idAtualizado = vincularModalTarefa.id
       setVincularModalTarefa(null)
       await carregar()
+      if (detalhe && detalhe.id === idAtualizado) {
+        try {
+          const upd = await pb.collection('tarefas').getOne(idAtualizado, {
+            expand: 'projeto_id,marco_id',
+          })
+          setDetalhe(upd)
+        } catch {
+          /* intentionally ignored */
+        }
+      }
     } catch (err: any) {
       const msg = err?.message || 'Falha ao vincular tarefa ao projeto.'
       if (msg.includes('chk_tarefa_marco_obrigatorio') || msg.includes('marco')) {
@@ -262,6 +273,7 @@ export default function TarefasKanbanPage() {
     if (!desvincularModalTarefa) return
     setSalvandoDesvinculo(true)
     try {
+      const idAtualizado = desvincularModalTarefa.id
       await desvincularTarefaDeProjeto(desvincularModalTarefa.id)
       toast({
         title: 'Tarefa desvinculada',
@@ -269,6 +281,16 @@ export default function TarefasKanbanPage() {
       })
       setDesvincularModalTarefa(null)
       await carregar()
+      if (detalhe && detalhe.id === idAtualizado) {
+        try {
+          const upd = await pb.collection('tarefas').getOne(idAtualizado, {
+            expand: 'projeto_id,marco_id',
+          })
+          setDetalhe(upd)
+        } catch {
+          /* intentionally ignored */
+        }
+      }
     } catch (err: any) {
       toast({
         title: 'Erro ao desvincular',
@@ -2176,6 +2198,8 @@ export default function TarefasKanbanPage() {
           setDetalhe(upd)
           carregar()
         }}
+        onVincularProjeto={(t) => abrirVincularProjeto(t)}
+        onDesvincularProjeto={(t) => abrirDesvincularProjeto(t)}
         chatMsgs={chatMsgs}
         novoChat={novoChat}
         setNovoChat={setNovoChat}
