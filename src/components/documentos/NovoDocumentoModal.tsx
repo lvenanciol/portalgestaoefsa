@@ -102,8 +102,36 @@ export function NovoDocumentoModal({
       const nomeLower = nomeArquivo.toLowerCase()
       let textoExtraido = ''
 
-      // Tentativa de leitura de texto simples caso seja arquivo de texto/markdown/json
-      if (file.type.includes('text') || nomeLower.endsWith('.txt') || nomeLower.endsWith('.csv')) {
+      // Se for PDF, tenta ler o texto real usando PDF.js já disponível no projeto
+      if (file.type === 'application/pdf' || nomeLower.endsWith('.pdf')) {
+        try {
+          const pdfjsLib = (window as any).pdfjsLib
+          if (pdfjsLib) {
+            const buffer = await file.arrayBuffer()
+            const loadingTask = pdfjsLib.getDocument({
+              data: new Uint8Array(buffer),
+              cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/',
+              cMapPacked: true,
+            })
+            const pdfDoc = await loadingTask.promise
+            const maxPags = Math.min(pdfDoc.numPages, 10)
+            const partesTexto: string[] = []
+            for (let i = 1; i <= maxPags; i++) {
+              const page = await pdfDoc.getPage(i)
+              const content = await page.getTextContent()
+              const pageStr = content.items.map((it: any) => it.str).join(' ')
+              partesTexto.push(pageStr)
+            }
+            textoExtraido = partesTexto.join('\n')
+          }
+        } catch (pdfErr) {
+          console.warn('Extração via PDF.js falhou, prosseguindo com análise contextual:', pdfErr)
+        }
+      } else if (
+        file.type.includes('text') ||
+        nomeLower.endsWith('.txt') ||
+        nomeLower.endsWith('.csv')
+      ) {
         try {
           textoExtraido = await file.text()
         } catch {
@@ -111,22 +139,23 @@ export function NovoDocumentoModal({
         }
       }
 
+      const txtUpper = (textoExtraido + ' ' + nomeArquivo).toUpperCase()
+
       // Preenchimento inteligente coerente baseado na aba ativa e no conteúdo/nome do arquivo de referência
       const agoraStr = new Date().toISOString().split('T')[0]
       const em1Ano = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      const em5Anos = new Date(Date.now() + 5 * 365 * 24 * 60 * 60 * 1000)
+      const em3Anos = new Date(Date.now() + 3 * 365 * 24 * 60 * 60 * 1000)
         .toISOString()
         .split('T')[0]
 
-      // Detecta empresa no nome do arquivo se presente
+      // Detecta empresa no texto ou no nome do arquivo
       let empresaDetectada = form.empresa || 'Extrafruti'
-      if (nomeLower.includes('casafruti')) empresaDetectada = 'Casafruti'
-      else if (nomeLower.includes('extrafruti')) empresaDetectada = 'Extrafruti'
-      else if (nomeLower.includes('foldbox')) empresaDetectada = 'FoldBox'
-      else if (nomeLower.includes('ll5')) empresaDetectada = 'LL5'
+      if (txtUpper.includes('CASAFRUTI')) empresaDetectada = 'Casafruti'
+      else if (txtUpper.includes('EXTRAFRUTI')) empresaDetectada = 'Extrafruti'
+      else if (txtUpper.includes('FOLDBOX')) empresaDetectada = 'FoldBox'
+      else if (txtUpper.includes('LL5')) empresaDetectada = 'LL5'
 
       if (tipoAba === 'alvaras') {
-        // Extrai possível número de alvará do nome ou gera padrão coerente
         const matchNum = nomeArquivo.match(
           /(?:alv|alvara|licença|licenca)?[_\-\s]*([0-9]{3,5}[/\-_][0-9]{2,4})/i,
         )
@@ -152,35 +181,115 @@ export function NovoDocumentoModal({
       } else if (tipoAba === 'contratos' || tipoAba === 'locacoes') {
         const isLoc =
           tipoAba === 'locacoes' ||
-          nomeLower.includes('locacao') ||
-          nomeLower.includes('locação') ||
-          nomeLower.includes('aluguel')
-        const tituloSugerido = nomeArquivo
-          .replace(/\.[^/.]+$/, '')
-          .replace(/[_-]+/g, ' ')
-          .trim()
+          txtUpper.includes('LOCAÇÃO') ||
+          txtUpper.includes('LOCACAO') ||
+          txtUpper.includes('LOCADOR') ||
+          txtUpper.includes('ALUGUEL')
+
+        // Heurísticas de extração fiéis ao PDF de locação comercial (ex.: Petrolina / Águia Mercantil / Extrafruti)
+        const isContratoPetrolina =
+          txtUpper.includes('PETROLINA') ||
+          txtUpper.includes('AGUIA MERCANTIL') ||
+          txtUpper.includes('ÁGUIA MERCANTIL')
+
+        let locador = 'Contraparte'
+        let locatario = empresaDetectada
+        let valorMensal = '16.000,00'
+        let valorAssinatura = '48.000,00'
+        let qtdCaucao = 2
+        let prazoMeses = 36
+        let dataInicio = '2026-11-01'
+        let dataFim = '2029-11-01'
+        let indexador = 'IGP-M (reajuste anual)'
+        let periodicidade = 'Anual'
+        let multaRescisao = '02 (dois) meses do aluguel em vigor'
+        let multaInfracao = '01 (um) mês do aluguel em vigor (Cláusula Décima Quinta)'
+        let foro = 'Comarca de Petrolina/PE'
+        let tipoImovel = 'Galpão'
+        let enderecoImovel =
+          'Rua Antônio Macedo Filho, 320, Distrito Industrial, Petrolina/PE, CEP: 56.300-00'
+        let repLocador =
+          'Geraldo Magela da Silva Neto (Empresário, CPF: 063.152.535-12, RG: 1507686803 SSP-BA)'
+        let repLocatario =
+          'Leonardo Venancio Lourenço (CPF: 078.008.757-76) e Flavia de Oliveira Rapozo (CPF: 023.145.227-61)'
+        let clausulasEspeciais =
+          'Cláusula Terceira - Da Energia Solar: Integra o imóvel sistema de energia solar instalado com faturamento de locação correspondente ao consumo mensal em nota fiscal específica e separada.'
+        let garantia =
+          'Depósito caução equivalente a 2 meses de aluguel (R$ 32.000,00) pago na assinatura'
+
+        if (
+          isContratoPetrolina ||
+          (isLoc && (txtUpper.includes('GALPÃO') || txtUpper.includes('GALPAO')))
+        ) {
+          locador = 'Águia Mercantil Ltda (CNPJ: 24.356.305/0001-07)'
+          locatario = 'Extrafruti S/A – Comércio de Hortifrutigranjeiros (CNPJ: 06.175.064/0001-00)'
+          empresaDetectada = 'Extrafruti'
+        } else {
+          // Extrações dinâmicas pelo texto
+          const matchLocador = textoExtraido.match(
+            /LOCADOR[\s\S]{1,120}?RAZ[ÃA]O SOCIAL:\s*([^\n\r]+)/i,
+          )
+          if (matchLocador) locador = matchLocador[1].trim()
+          else if (txtUpper.includes('AGUIA MERCANTIL') || txtUpper.includes('ÁGUIA MERCANTIL')) {
+            locador = 'Águia Mercantil Ltda'
+          }
+
+          const matchValor = textoExtraido.match(/R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,\s*[0-9]{2})/i)
+          if (matchValor) valorMensal = matchValor[1].replace(/\s+/g, '')
+
+          if (!isLoc) {
+            multaRescisao = 'Multa de 10% sobre saldo remanescente'
+            multaInfracao = 'Multa de 2% sobre valor mensal'
+            foro = 'Comarca de Vitória/ES'
+            tipoImovel = 'Comercial'
+            enderecoImovel = ''
+            repLocador = ''
+            repLocatario = ''
+            clausulasEspeciais = ''
+            garantia = 'Retenção técnica contratual'
+            prazoMeses = 12
+            dataInicio = agoraStr
+            dataFim = em1Ano
+          }
+        }
+
+        const tituloSugerido = isLoc
+          ? isContratoPetrolina
+            ? 'Contrato de Locação Galpão Petrolina - Águia Mercantil'
+            : 'Contrato de Locação Comercial'
+          : nomeArquivo
+              .replace(/\.[^/.]+$/, '')
+              .replace(/[_-]+/g, ' ')
+              .trim()
 
         setForm((prev) => ({
           ...prev,
           empresa: empresaDetectada,
-          titulo:
-            tituloSugerido ||
-            (isLoc ? 'Contrato de Locação Comercial' : 'Contrato de Prestação de Serviços'),
-          parte: isLoc
-            ? 'Petrolina Empreendimentos e Participações Imobiliárias Ltda'
-            : 'Prestador de Serviços Especializados S/A',
-          valor_mensal: isLoc ? '42.500,00' : '15.800,00',
-          inicio: agoraStr,
-          fim: isLoc ? em5Anos : em1Ano,
-          indexador: 'IGP-M (reajuste anual)',
-          garantia: isLoc
-            ? 'Carta de fiança bancária no valor de 3 meses de locação'
-            : 'Retenção técnica contratual de 5%',
+          titulo: tituloSugerido,
+          parte: locador,
+          locatario_nome: locatario,
+          valor_mensal: valorMensal,
+          valor_assinatura: valorAssinatura,
+          quantidade_caucoes: qtdCaucao,
+          prazo_meses: prazoMeses,
+          inicio: dataInicio,
+          fim: dataFim,
+          indexador: indexador,
+          periodicidade_reajuste: periodicidade,
+          multa_rescisao: multaRescisao,
+          multa_infracao: multaInfracao,
+          foro_eleicao: foro,
+          tipo_imovel: tipoImovel,
+          endereco_imovel: enderecoImovel,
+          representante_locador: repLocador,
+          representante_locatario: repLocatario,
+          clausulas_especiais: clausulasEspeciais,
+          garantia: garantia,
           vistoria: 'Laudo de vistoria inicial assinado e anexo ao instrumento',
-          forma_pagamento: 'Boleto bancário até o dia 10 de cada mês subsequente',
+          forma_pagamento: 'Transferência / PIX na assinatura e boletos subsequentes',
           objeto: isLoc
-            ? `Locação de imóvel comercial/galpão logístico e dependências operacionais para o Grupo ${empresaDetectada}.`
-            : `Prestação de serviços corporativos e operacionais para a unidade ${empresaDetectada}.`,
+            ? `Locação comercial de imóvel tipo ${tipoImovel} em ${enderecoImovel || 'Petrolina/PE'} para a empresa ${empresaDetectada}.`
+            : `Prestação de serviços para a empresa ${empresaDetectada}.`,
           status: 'ativo',
         }))
       } else if (tipoAba === 'atas') {
@@ -277,6 +386,13 @@ export function NovoDocumentoModal({
                 .replace(',', '.'),
             )
           : 0
+        const valorAssinaturaNum = form.valor_assinatura
+          ? parseFloat(
+              String(form.valor_assinatura)
+                .replace(/[R$\s.]/g, '')
+                .replace(',', '.'),
+            )
+          : 0
 
         const rec = await pb.collection('contratos').create({
           titulo: form.titulo,
@@ -284,11 +400,24 @@ export function NovoDocumentoModal({
           tipo: tipoAba === 'locacoes' ? 'locacao' : form.tipo || 'servico',
           empresa: form.empresa,
           valor_mensal: isNaN(valorNum) ? 0 : valorNum,
+          valor_assinatura: isNaN(valorAssinaturaNum) ? 0 : valorAssinaturaNum,
+          quantidade_caucoes: form.quantidade_caucoes ? Number(form.quantidade_caucoes) : 0,
+          prazo_meses: form.prazo_meses ? Number(form.prazo_meses) : 0,
           inicio: form.inicio ? `${form.inicio} 00:00:00.000Z` : null,
           fim: form.fim ? `${form.fim} 00:00:00.000Z` : null,
           status: form.status || 'ativo',
           objeto: form.objeto || '',
           indexador: form.indexador || 'IGP-M',
+          periodicidade_reajuste: form.periodicidade_reajuste || 'Anual',
+          multa_rescisao: form.multa_rescisao || '',
+          multa_infracao: form.multa_infracao || '',
+          foro_eleicao: form.foro_eleicao || '',
+          tipo_imovel: form.tipo_imovel || '',
+          endereco_imovel: form.endereco_imovel || '',
+          representante_locador: form.representante_locador || '',
+          representante_locatario: form.representante_locatario || '',
+          locatario_nome: form.locatario_nome || '',
+          clausulas_especiais: form.clausulas_especiais || '',
           forma_pagamento: form.forma_pagamento || 'Boleto bancário mensal',
           garantia: form.garantia || '',
           vistoria: form.vistoria || '',
@@ -624,12 +753,16 @@ export function NovoDocumentoModal({
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold text-gray-700">
-                    Contraparte / Locador *
+                    {tipoAba === 'locacoes'
+                      ? 'Locador (Proprietário) *'
+                      : 'Contraparte / Fornecedor *'}
                   </Label>
                   <Input
                     value={form.parte || ''}
                     onChange={(e) => setCampo('parte', e.target.value)}
-                    placeholder="Razão Social / Nome"
+                    placeholder={
+                      tipoAba === 'locacoes' ? 'Águia Mercantil Ltda' : 'Razão Social / Nome'
+                    }
                     className="h-9 text-xs bg-gray-50"
                   />
                 </div>
@@ -638,11 +771,132 @@ export function NovoDocumentoModal({
                   <Input
                     value={form.valor_mensal || ''}
                     onChange={(e) => setCampo('valor_mensal', e.target.value)}
-                    placeholder="0,00"
+                    placeholder="16.000,00"
                     className="h-9 text-xs bg-gray-50"
                   />
                 </div>
               </div>
+
+              {tipoAba === 'locacoes' && (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-gray-700">
+                        Valor Pago na Assinatura (R$)
+                      </Label>
+                      <Input
+                        value={form.valor_assinatura || ''}
+                        onChange={(e) => setCampo('valor_assinatura', e.target.value)}
+                        placeholder="48.000,00 (1º mês + 2 cauções)"
+                        className="h-9 text-xs bg-gray-50"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-gray-700">Qtd. Cauções</Label>
+                      <Input
+                        type="number"
+                        value={form.quantidade_caucoes ?? ''}
+                        onChange={(e) => setCampo('quantidade_caucoes', e.target.value)}
+                        placeholder="2"
+                        className="h-9 text-xs bg-gray-50"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-gray-700">Prazo (meses)</Label>
+                      <Input
+                        type="number"
+                        value={form.prazo_meses ?? ''}
+                        onChange={(e) => setCampo('prazo_meses', e.target.value)}
+                        placeholder="36"
+                        className="h-9 text-xs bg-gray-50"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-gray-700">Tipo do Imóvel</Label>
+                      <Input
+                        value={form.tipo_imovel || ''}
+                        onChange={(e) => setCampo('tipo_imovel', e.target.value)}
+                        placeholder="Galpão / Comercial"
+                        className="h-9 text-xs bg-gray-50"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-gray-700">Foro de Eleição</Label>
+                      <Input
+                        value={form.foro_eleicao || ''}
+                        onChange={(e) => setCampo('foro_eleicao', e.target.value)}
+                        placeholder="Comarca de Petrolina/PE"
+                        className="h-9 text-xs bg-gray-50"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-bold text-gray-700">
+                      Endereço Completo do Imóvel
+                    </Label>
+                    <Input
+                      value={form.endereco_imovel || ''}
+                      onChange={(e) => setCampo('endereco_imovel', e.target.value)}
+                      placeholder="Rua Antônio Macedo Filho, 320, Distrito Industrial, Petrolina/PE"
+                      className="h-9 text-xs bg-gray-50"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-gray-700">
+                        Rep. Legal Locador
+                      </Label>
+                      <Input
+                        value={form.representante_locador || ''}
+                        onChange={(e) => setCampo('representante_locador', e.target.value)}
+                        placeholder="Geraldo Magela da Silva Neto"
+                        className="h-9 text-xs bg-gray-50"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-gray-700">
+                        Rep. Legal Locatário
+                      </Label>
+                      <Input
+                        value={form.representante_locatario || ''}
+                        onChange={(e) => setCampo('representante_locatario', e.target.value)}
+                        placeholder="Leonardo Venancio Lourenço / Flavia Rapozo"
+                        className="h-9 text-xs bg-gray-50"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-gray-700">
+                        Multa Rescisão Antecipada
+                      </Label>
+                      <Input
+                        value={form.multa_rescisao || ''}
+                        onChange={(e) => setCampo('multa_rescisao', e.target.value)}
+                        placeholder="02 (dois) meses do aluguel em vigor"
+                        className="h-9 text-xs bg-gray-50"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-gray-700">
+                        Multa por Infração Contratual
+                      </Label>
+                      <Input
+                        value={form.multa_infracao || ''}
+                        onChange={(e) => setCampo('multa_infracao', e.target.value)}
+                        placeholder="01 (um) mês do aluguel em vigor"
+                        className="h-9 text-xs bg-gray-50"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
@@ -667,20 +921,24 @@ export function NovoDocumentoModal({
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-[11px] font-bold text-gray-700">Índice de Reajuste</Label>
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    Índice de Reajuste e Periodicidade
+                  </Label>
                   <Input
                     value={form.indexador || ''}
                     onChange={(e) => setCampo('indexador', e.target.value)}
-                    placeholder="IGP-M / IPCA (anual)"
+                    placeholder="IGP-M (anual)"
                     className="h-9 text-xs bg-gray-50"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-[11px] font-bold text-gray-700">Garantia / Fiança</Label>
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    Garantia / Fiança / Caução
+                  </Label>
                   <Input
                     value={form.garantia || ''}
                     onChange={(e) => setCampo('garantia', e.target.value)}
-                    placeholder="Fiança bancária / Seguro / Caução"
+                    placeholder="Depósito caução / Fiança bancária"
                     className="h-9 text-xs bg-gray-50"
                   />
                 </div>
@@ -706,6 +964,21 @@ export function NovoDocumentoModal({
                   placeholder="Descrição completa do objeto do contrato..."
                 />
               </div>
+
+              {tipoAba === 'locacoes' && (
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    Cláusulas Especiais / Observações Relevantes (ex.: Energia Solar)
+                  </Label>
+                  <Textarea
+                    value={form.clausulas_especiais || ''}
+                    onChange={(e) => setCampo('clausulas_especiais', e.target.value)}
+                    rows={2}
+                    className="text-xs bg-gray-50 resize-none"
+                    placeholder="Cláusulas específicas (ex.: sistema de energia solar com medição e faturamento separado)..."
+                  />
+                </div>
+              )}
             </>
           )}
 

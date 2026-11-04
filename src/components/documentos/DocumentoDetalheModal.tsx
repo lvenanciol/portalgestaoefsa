@@ -15,12 +15,15 @@ import {
   Loader2,
   FileEdit,
   Building,
+  ChevronDown,
+  Check,
 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import { DocumentoParecerButton } from './DocumentoParecerButton'
 import { PdfViewer } from './PdfViewer'
@@ -51,6 +54,7 @@ export function DocumentoDetalheModal({
 
   // Estado dos campos editáveis do documento
   const [formData, setFormData] = useState<Record<string, any>>({})
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
   const [salvando, setSalvando] = useState(false)
   const [feedbackSalvo, setFeedbackSalvo] = useState(false)
   const [erroSalvar, setErroSalvar] = useState<string | null>(null)
@@ -156,6 +160,22 @@ export function DocumentoDetalheModal({
         payload.vistoria = formData.vistoria || ''
         payload.observacao = formData.observacao || ''
 
+        // Campos específicos de locação
+        payload.quantidade_caucoes = formData.quantidade_caucoes
+          ? Number(formData.quantidade_caucoes)
+          : 0
+        payload.prazo_meses = formData.prazo_meses ? Number(formData.prazo_meses) : 0
+        payload.periodicidade_reajuste = formData.periodicidade_reajuste || ''
+        payload.multa_rescisao = formData.multa_rescisao || ''
+        payload.multa_infracao = formData.multa_infracao || ''
+        payload.foro_eleicao = formData.foro_eleicao || ''
+        payload.tipo_imovel = formData.tipo_imovel || ''
+        payload.endereco_imovel = formData.endereco_imovel || ''
+        payload.representante_locador = formData.representante_locador || ''
+        payload.representante_locatario = formData.representante_locatario || ''
+        payload.locatario_nome = formData.locatario_nome || ''
+        payload.clausulas_especiais = formData.clausulas_especiais || ''
+
         const valNum =
           typeof formData.valor_mensal === 'number'
             ? formData.valor_mensal
@@ -165,6 +185,16 @@ export function DocumentoDetalheModal({
                   .replace(',', '.'),
               )
         if (!isNaN(valNum)) payload.valor_mensal = valNum
+
+        const valAssinaturaNum =
+          typeof formData.valor_assinatura === 'number'
+            ? formData.valor_assinatura
+            : parseFloat(
+                String(formData.valor_assinatura || '')
+                  .replace(/[R$\s.]/g, '')
+                  .replace(',', '.'),
+              )
+        if (!isNaN(valAssinaturaNum)) payload.valor_assinatura = valAssinaturaNum
 
         if (formData.inicio) {
           payload.inicio = formData.inicio.includes('T')
@@ -374,23 +404,76 @@ export function DocumentoDetalheModal({
                   Empresa Vinculada
                 </label>
                 {empresas.length > 0 ? (
-                  <select
-                    value={formData.empresa || ''}
-                    onChange={(e) => setCampo('empresa', e.target.value)}
-                    className="w-full h-9 rounded-md border border-gray-300 bg-white px-3 text-xs font-semibold text-gray-800 shadow-sm focus:border-emerald-500 focus:outline-none"
-                  >
-                    {empresas.map((emp) => (
-                      <option key={emp.id} value={emp.nome}>
-                        {emp.nome}
-                      </option>
-                    ))}
-                  </select>
+                  <Popover open={popoverEmpresaAberto} onOpenChange={setPopoverEmpresaAberto}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full h-9 px-3 justify-between text-xs font-semibold bg-white border-gray-300 hover:bg-gray-50 shadow-sm"
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <EmpresaIcon
+                            nome={formData.empresa}
+                            className="h-4 w-4 shrink-0 rounded"
+                          />
+                          <span className="truncate text-gray-900">
+                            {formData.empresa || 'Selecione a empresa'}
+                          </span>
+                        </div>
+                        <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-1" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      className="w-[240px] p-1.5 bg-white shadow-xl rounded-xl border border-gray-200 z-[9999]"
+                    >
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-2 py-1">
+                        Selecione a Empresa
+                      </div>
+                      <div className="space-y-0.5 mt-1 max-h-56 overflow-y-auto">
+                        {empresas.map((emp) => {
+                          const selecionada =
+                            (formData.empresa || '').toLowerCase() ===
+                            (emp.nome || '').toLowerCase()
+                          return (
+                            <button
+                              key={emp.id || emp.nome}
+                              type="button"
+                              onClick={() => {
+                                setCampo('empresa', emp.nome)
+                                setPopoverEmpresaAberto(false)
+                              }}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                                selecionada
+                                  ? 'bg-emerald-50 text-[#1B5E20] font-semibold'
+                                  : 'text-gray-700 hover:bg-gray-100'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <EmpresaIcon nome={emp.nome} className="h-4 w-4 shrink-0 rounded" />
+                                <span className="truncate">{emp.nome}</span>
+                              </div>
+                              {selecionada && (
+                                <Check className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
+                              )}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 ) : (
-                  <Input
-                    value={formData.empresa || ''}
-                    onChange={(e) => setCampo('empresa', e.target.value)}
-                    className="text-xs font-semibold text-gray-800 h-9"
-                  />
+                  <div className="relative flex items-center">
+                    <EmpresaIcon
+                      nome={formData.empresa}
+                      className="h-4 w-4 absolute left-3 pointer-events-none rounded"
+                    />
+                    <Input
+                      value={formData.empresa || ''}
+                      onChange={(e) => setCampo('empresa', e.target.value)}
+                      className="text-xs font-semibold text-gray-800 h-9 pl-9"
+                    />
+                  </div>
                 )}
               </div>
             </div>
@@ -618,12 +701,13 @@ export function DocumentoDetalheModal({
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-gray-500">
-                    {tipoAba === 'locacoes' ? 'Locador / Proprietário' : 'Contraparte / Fornecedor'}
+                    {tipoAba === 'locacoes' ? 'Locador (Proprietário)' : 'Contraparte / Fornecedor'}
                   </label>
                   <Input
                     value={formData.parte || ''}
                     onChange={(e) => setCampo('parte', e.target.value)}
-                    className="h-9 text-xs"
+                    className="h-9 text-xs font-medium"
+                    placeholder="Razão Social / Nome"
                   />
                 </div>
                 <div className="space-y-1">
@@ -634,6 +718,7 @@ export function DocumentoDetalheModal({
                     value={formData.valor_mensal ?? ''}
                     onChange={(e) => setCampo('valor_mensal', e.target.value)}
                     className="h-9 text-xs font-semibold text-emerald-800"
+                    placeholder="16.000,00"
                   />
                 </div>
                 <div className="space-y-1">
@@ -644,8 +729,138 @@ export function DocumentoDetalheModal({
                     value={formData.indexador || ''}
                     onChange={(e) => setCampo('indexador', e.target.value)}
                     className="h-9 text-xs"
+                    placeholder="IGP-M"
                   />
                 </div>
+
+                {tipoAba === 'locacoes' && (
+                  <>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-gray-500">
+                        Valor Pago na Assinatura (R$)
+                      </label>
+                      <Input
+                        value={formData.valor_assinatura ?? ''}
+                        onChange={(e) => setCampo('valor_assinatura', e.target.value)}
+                        className="h-9 text-xs font-semibold text-gray-900"
+                        placeholder="48.000,00 (1º aluguel + cauções)"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-gray-500">
+                        Qtd. de Cauções
+                      </label>
+                      <Input
+                        type="number"
+                        value={formData.quantidade_caucoes ?? ''}
+                        onChange={(e) => setCampo('quantidade_caucoes', e.target.value)}
+                        className="h-9 text-xs"
+                        placeholder="2"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-gray-500">
+                        Prazo da Locação (meses)
+                      </label>
+                      <Input
+                        type="number"
+                        value={formData.prazo_meses ?? ''}
+                        onChange={(e) => setCampo('prazo_meses', e.target.value)}
+                        className="h-9 text-xs"
+                        placeholder="36"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-gray-500">
+                        Periodicidade do Reajuste
+                      </label>
+                      <Input
+                        value={formData.periodicidade_reajuste || 'Anual'}
+                        onChange={(e) => setCampo('periodicidade_reajuste', e.target.value)}
+                        className="h-9 text-xs"
+                        placeholder="Anual"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-gray-500">
+                        Tipo do Imóvel
+                      </label>
+                      <Input
+                        value={formData.tipo_imovel || ''}
+                        onChange={(e) => setCampo('tipo_imovel', e.target.value)}
+                        className="h-9 text-xs"
+                        placeholder="Galpão"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-gray-500">
+                        Foro de Eleição
+                      </label>
+                      <Input
+                        value={formData.foro_eleicao || ''}
+                        onChange={(e) => setCampo('foro_eleicao', e.target.value)}
+                        className="h-9 text-xs"
+                        placeholder="Comarca de Petrolina/PE"
+                      />
+                    </div>
+                    <div className="col-span-full space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-gray-500">
+                        Endereço Completo do Imóvel
+                      </label>
+                      <Input
+                        value={formData.endereco_imovel || ''}
+                        onChange={(e) => setCampo('endereco_imovel', e.target.value)}
+                        className="h-9 text-xs"
+                        placeholder="Rua Antônio Macedo Filho, 320, Distrito Industrial, Petrolina/PE"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-gray-500">
+                        Representante Legal do Locador
+                      </label>
+                      <Input
+                        value={formData.representante_locador || ''}
+                        onChange={(e) => setCampo('representante_locador', e.target.value)}
+                        className="h-9 text-xs"
+                        placeholder="Geraldo Magela da Silva Neto"
+                      />
+                    </div>
+                    <div className="col-span-full md:col-span-2 space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-gray-500">
+                        Representante(s) Legal(is) do Locatário
+                      </label>
+                      <Input
+                        value={formData.representante_locatario || ''}
+                        onChange={(e) => setCampo('representante_locatario', e.target.value)}
+                        className="h-9 text-xs"
+                        placeholder="Leonardo Venancio Lourenço / Flavia Rapozo"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-gray-500">
+                        Multa por Rescisão Antecipada
+                      </label>
+                      <Input
+                        value={formData.multa_rescisao || ''}
+                        onChange={(e) => setCampo('multa_rescisao', e.target.value)}
+                        className="h-9 text-xs"
+                        placeholder="02 (dois) meses do aluguel em vigor"
+                      />
+                    </div>
+                    <div className="col-span-full md:col-span-2 space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-gray-500">
+                        Multa por Infração Contratual
+                      </label>
+                      <Input
+                        value={formData.multa_infracao || ''}
+                        onChange={(e) => setCampo('multa_infracao', e.target.value)}
+                        className="h-9 text-xs"
+                        placeholder="01 (um) mês do aluguel em vigor"
+                      />
+                    </div>
+                  </>
+                )}
+
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-gray-500">
                     Início da Vigência
@@ -723,6 +938,20 @@ export function DocumentoDetalheModal({
                     className="text-xs"
                   />
                 </div>
+                {tipoAba === 'locacoes' && (
+                  <div className="col-span-full space-y-1">
+                    <label className="text-[10px] font-bold uppercase text-gray-500">
+                      Cláusulas Especiais Relevantes (ex.: Sistema de Energia Solar)
+                    </label>
+                    <Textarea
+                      rows={2}
+                      value={formData.clausulas_especiais || ''}
+                      onChange={(e) => setCampo('clausulas_especiais', e.target.value)}
+                      className="text-xs"
+                      placeholder="Ex: Cláusula Terceira de Energia Solar com faturamento e medição separados..."
+                    />
+                  </div>
+                )}
                 <div className="col-span-full space-y-1">
                   <label className="text-[10px] font-bold uppercase text-gray-500">
                     Observações Adicionais

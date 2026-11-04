@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-04T15:00:56.170Z",
+  "generatedAt": "2026-11-04T15:23:12.874Z",
   "collections": [
     {
       "name": "users",
@@ -1316,6 +1316,90 @@
         },
         {
           "name": "vistoria",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_assinatura",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "qtd_caucoes",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_caucao",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "prazo_meses",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "periodicidade_reajuste",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "multa_rescisao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "multa_infracao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "foro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "representantes_locador",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "representantes_locatario",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_imovel",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "endereco_imovel",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "clausulas_especiais",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "dados_bancarios_locador",
           "type": "text",
           "required": false,
           "system": false
@@ -2778,6 +2862,30 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "polo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_atualizado",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "probabilidade",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "orgao_tribunal",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

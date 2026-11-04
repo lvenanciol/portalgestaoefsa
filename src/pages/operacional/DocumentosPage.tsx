@@ -538,14 +538,45 @@ export function DocumentosPage() {
           <span className="font-semibold text-gray-900">{item.numero_processo}</span>
         ),
       },
-      { id: 'vara_comarca', label: 'Vara / Comarca', sortable: true },
-      { id: 'autor', label: 'Autor', sortable: true },
-      { id: 'reu', label: 'Réu', sortable: true },
+      {
+        id: 'polo',
+        label: 'Polo',
+        sortable: true,
+        render: (item) => {
+          const p = item.polo || (item.autor === item.empresa ? 'Polo ativo' : 'Polo passivo')
+          const isAtivo = p.toLowerCase().includes('ativo')
+          return (
+            <Badge
+              variant="outline"
+              className={`text-[10px] px-2 py-0.5 ${
+                isAtivo
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-blue-50 text-blue-700 border-blue-200'
+              }`}
+            >
+              {p}
+            </Badge>
+          )
+        },
+      },
       {
         id: 'empresa',
         label: 'Empresa',
         sortable: true,
         render: (item) => renderCelulaEmpresa(item.empresa),
+      },
+      {
+        id: 'contrario',
+        label: 'Parte Contrária',
+        sortable: true,
+        render: (item) => (
+          <span
+            className="text-xs text-gray-800 line-clamp-1 max-w-[200px]"
+            title={item.autor === item.empresa ? item.reu : item.autor}
+          >
+            {item.autor === item.empresa ? item.reu : item.autor || '—'}
+          </span>
+        ),
       },
       {
         id: 'titulo_documento',
@@ -558,60 +589,63 @@ export function DocumentosPage() {
             (item.assunto_tipo
               ? `${item.assunto_tipo} (${item.numero_processo || 'Proc.'})`
               : `Processo ${item.numero_processo || ''}`)
-          return <span className="font-medium text-gray-900">{tit}</span>
+          return <span className="font-medium text-gray-900 line-clamp-1">{tit}</span>
         },
       },
       { id: 'fase_instancia', label: 'Fase', sortable: true },
-      { id: 'assunto_tipo', label: 'Assunto / Tipo', sortable: true },
       {
         id: 'valor_causa',
-        label: 'Valor da Causa',
+        label: 'Valor Bruto',
         sortable: true,
         sortValue: (i) => i.valor_causa || 0,
         render: (item) => formatarMoeda(item.valor_causa),
       },
       {
+        id: 'valor_atualizado',
+        label: 'Valor Atualizado',
+        sortable: true,
+        sortValue: (i) => i.valor_atualizado || 0,
+        render: (item) =>
+          item.valor_atualizado ? (
+            <span className="font-medium text-emerald-900">
+              {formatarMoeda(item.valor_atualizado)}
+            </span>
+          ) : (
+            <span className="text-gray-400">—</span>
+          ),
+      },
+      {
         id: 'risco',
-        label: 'Risco',
+        label: 'Probabilidade / Risco',
         sortable: true,
         render: (item) => {
-          const mapa: Record<string, { label: string; classe: string }> = {
-            provavel: { label: 'Provável', classe: 'bg-rose-50 text-rose-700 border-rose-200' },
-            possivel: { label: 'Possível', classe: 'bg-amber-50 text-amber-700 border-amber-200' },
-            remoto: {
-              label: 'Remoto',
-              classe: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-            },
-          }
-          const info = mapa[item.risco] || {
-            label: item.risco || 'possível',
-            classe: 'bg-gray-100 text-gray-600',
-          }
+          const texto = item.probabilidade || item.risco || 'possível'
+          const l = String(texto).toLowerCase()
+          let classe = 'bg-gray-100 text-gray-600'
+          if (l.includes('prov')) classe = 'bg-rose-50 text-rose-700 border-rose-200'
+          else if (l.includes('poss')) classe = 'bg-amber-50 text-amber-700 border-amber-200'
+          else if (l.includes('remot') || l.includes('êxito') || l.includes('exito'))
+            classe = 'bg-emerald-50 text-emerald-700 border-emerald-200'
+
           return (
-            <Badge variant="outline" className={`text-[10px] px-2 py-0.5 ${info.classe}`}>
-              {info.label}
+            <Badge variant="outline" className={`text-[10px] px-2 py-0.5 ${classe}`}>
+              {texto}
             </Badge>
           )
         },
       },
       {
-        id: 'status',
-        label: 'Status',
+        id: 'orgao_tribunal',
+        label: 'Órgão / Tribunal',
         sortable: true,
         render: (item) => (
-          <Badge
-            variant="outline"
-            className="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-700 border-blue-200"
+          <span
+            className="text-[11px] text-gray-600 line-clamp-1 max-w-[180px]"
+            title={item.orgao_tribunal || item.vara_comarca}
           >
-            {item.status || 'ativo'}
-          </Badge>
+            {item.orgao_tribunal || item.vara_comarca || '—'}
+          </span>
         ),
-      },
-      {
-        id: 'proxima_audiencia',
-        label: 'Próx. Audiência',
-        sortable: true,
-        render: (item) => formatarData(item.proxima_audiencia),
       },
       {
         id: 'anexo',

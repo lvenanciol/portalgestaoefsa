@@ -29,35 +29,67 @@ interface JuridicosImportModalProps {
 }
 
 const CAMPOS_DESTINO = [
-  { key: 'numero_processo', label: 'Número do Processo *', padroes: ['processo', 'numero', 'nº'] },
-  { key: 'vara_comarca', label: 'Vara / Comarca', padroes: ['vara', 'comarca', 'juizo'] },
-  { key: 'autor', label: 'Autor / Requerente', padroes: ['autor', 'requerente', 'polo ativo'] },
-  { key: 'reu', label: 'Réu / Requerido', padroes: ['reu', 'réu', 'requerido', 'polo passivo'] },
-  { key: 'empresa', label: 'Empresa', padroes: ['empresa', 'unidade', 'cliente'] },
-  { key: 'fase_instancia', label: 'Fase / Instância', padroes: ['fase', 'instancia', 'etapa'] },
-  { key: 'assunto_tipo', label: 'Assunto / Tipo', padroes: ['assunto', 'tipo', 'natureza'] },
-  { key: 'valor_causa', label: 'Valor da Causa', padroes: ['valor', 'causa', 'pedido'] },
   {
-    key: 'data_distribuicao',
-    label: 'Data de Distribuição',
-    padroes: ['distribuicao', 'distribuição', 'data'],
+    key: 'numero_processo',
+    label: 'Número do Processo *',
+    padroes: ['número principal', 'numero principal', 'processo', 'numero', 'nº'],
+  },
+  {
+    key: 'contrario_principal',
+    label: 'Contrário Principal / Réu ou Autor',
+    padroes: [
+      'contrário principal',
+      'contrario principal',
+      'contrario',
+      'parte contraria',
+      'requerido',
+      'reu',
+    ],
+  },
+  {
+    key: 'polo_posicao',
+    label: 'Cliente / Posição (Polo)',
+    padroes: ['cliente principal / posição', 'cliente principal', 'posição', 'posicao', 'polo'],
+  },
+  {
+    key: 'fase_instancia',
+    label: 'Fase / Instância',
+    padroes: ['fase', 'instancia', 'etapa'],
+  },
+  {
+    key: 'valor_causa',
+    label: 'Valor Envolvido Bruto / Causa (R$)',
+    padroes: ['valor envolvido bruto', 'valor bruto', 'valor da causa', 'pedido'],
+  },
+  {
+    key: 'valor_atualizado',
+    label: 'Valor Envolvido Atualizado (R$)',
+    padroes: ['valor envolvido atualizado', 'valor atualizado', 'atualizado'],
+  },
+  {
+    key: 'probabilidade_risco',
+    label: 'Probabilidade / Risco (ex: Possível - Perda)',
+    padroes: ['faixa de probabilidade', 'probabilidade', 'tipo da probabilidade', 'risco'],
+  },
+  {
+    key: 'orgao_tribunal',
+    label: 'Órgão / Tribunal / Vara',
+    padroes: ['órgão', 'orgao', 'tribunal', 'vara', 'comarca', 'juízo', 'juizo'],
+  },
+  {
+    key: 'empresa',
+    label: 'Empresa Vinculada',
+    padroes: ['empresa', 'unidade', 'cliente'],
+  },
+  {
+    key: 'assunto_tipo',
+    label: 'Assunto / Tipo de Ação',
+    padroes: ['assunto', 'tipo', 'natureza'],
   },
   {
     key: 'advogado',
     label: 'Advogado / Responsável',
     padroes: ['advogado', 'patrono', 'responsavel'],
-  },
-  { key: 'status', label: 'Status', padroes: ['status', 'situacao', 'situação'] },
-  { key: 'risco', label: 'Risco', padroes: ['risco', 'contingencia'] },
-  {
-    key: 'proxima_audiencia',
-    label: 'Próxima Audiência',
-    padroes: ['audiencia', 'audiência', 'prazo'],
-  },
-  {
-    key: 'observacoes',
-    label: 'Observações',
-    padroes: ['observacao', 'observações', 'obs', 'detalhe'],
   },
 ]
 
@@ -99,17 +131,59 @@ export function JuridicosImportModal({
       const wb = XLSX.read(buf, { type: 'array' })
       const wsName = wb.SheetNames[0]
       const ws = wb.Sheets[wsName]
-      const rows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, raw: false })
+      const rawRows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1, raw: false })
 
-      if (!rows || rows.length === 0) {
+      if (!rawRows || rawRows.length === 0) {
         throw new Error('A planilha selecionada está vazia.')
       }
 
-      const headers = (rows[0] || []).map((h, i) => String(h || `Coluna ${i + 1}`).trim())
-      setColunasPlanilha(headers)
-      setLinhasBrutas(
-        rows.slice(1).filter((r) => r && r.length > 0 && r.some((c) => String(c).trim() !== '')),
+      // Localizar linha de cabeçalho: ignora linha 1 quando for apenas data/título
+      // Procura a linha que contém "número principal" ou "processo" ou termos jurídicos
+      let headerRowIndex = 0
+      for (let r = 0; r < Math.min(rawRows.length, 10); r++) {
+        const rowStr = (rawRows[r] || []).map((c) => String(c || '').toLowerCase()).join(' ')
+        if (
+          rowStr.includes('número principal') ||
+          rowStr.includes('numero principal') ||
+          rowStr.includes('contrário principal') ||
+          rowStr.includes('contrario principal') ||
+          (rowStr.includes('processo') && rowStr.includes('vara')) ||
+          (rowStr.includes('fase') && rowStr.includes('valor'))
+        ) {
+          headerRowIndex = r
+          break
+        }
+      }
+
+      const headers = (rawRows[headerRowIndex] || []).map((h, i) =>
+        String(h || `Coluna ${i + 1}`).trim(),
       )
+      setColunasPlanilha(headers)
+
+      // Identifica o índice da coluna de número de processo para filtrar linhas válidas
+      const idxProcHeader = headers.findIndex((h) => {
+        const l = h.toLowerCase()
+        return (
+          l.includes('número principal') ||
+          l.includes('numero principal') ||
+          l.includes('processo') ||
+          l.includes('nº')
+        )
+      })
+
+      // Linhas de dados a partir da linha seguinte ao cabeçalho
+      const dadosFiltrados = rawRows.slice(headerRowIndex + 1).filter((r) => {
+        if (!r || r.length === 0) return false
+        // Se encontramos a coluna de número de processo, exige que não esteja vazia
+        if (idxProcHeader !== -1) {
+          const valProc = String(r[idxProcHeader] ?? '').trim()
+          // Pelo menos algum dígito ou formato de processo
+          return valProc.length > 3 && /[0-9]/.test(valProc)
+        }
+        return r.some((c: any) => String(c || '').trim() !== '')
+      })
+
+      setLinhasBrutas(dadosFiltrados)
 
       // Auto-mapear colunas baseado nos nomes
       const novoMap: Record<string, number> = {}
@@ -192,28 +266,63 @@ export function JuridicosImportModal({
         }
 
         const numProc = getValor('numero_processo')
-        if (!numProc) continue // ignora linha sem número de processo
+        if (!numProc || numProc.length < 3 || !/[0-9]/.test(numProc)) continue
+
+        const contrario = getValor('contrario_principal')
+        const poloRaw = getValor('polo_posicao') // "Polo ativo", "Polo passivo", "Interessado"
+        const faseRaw = getValor('fase_instancia')
+        const vBruto = limparNumero(getValor('valor_causa'))
+        const vAtualizado = limparNumero(getValor('valor_atualizado'))
+        const probRaw = getValor('probabilidade_risco')
+        const orgaoRaw = getValor('orgao_tribunal')
+        const empresaRaw = getValor('empresa') || 'Extrafruti'
+        const assuntoRaw = getValor('assunto_tipo') || 'Cível / Trabalhista'
+        const advRaw = getValor('advogado')
+
+        // Determina autor e réu coerentes com o polo
+        let autor = ''
+        let reu = ''
+        const poloLower = poloRaw.toLowerCase()
+        if (poloLower.includes('ativo')) {
+          autor = empresaRaw
+          reu = contrario || 'Parte Contrária'
+        } else if (poloLower.includes('passivo')) {
+          autor = contrario || 'Parte Contrária'
+          reu = empresaRaw
+        } else if (poloLower.includes('interessado')) {
+          autor = contrario || empresaRaw
+          reu = 'Interessado'
+        } else {
+          autor = contrario || 'Parte Contrária'
+          reu = empresaRaw
+        }
 
         const recordData: Record<string, any> = {
           numero_processo: numProc,
-          vara_comarca: getValor('vara_comarca') || 'Vara Cível',
-          autor: getValor('autor') || 'Polo Ativo',
-          reu: getValor('reu') || 'Extrafruti Distribuidora Ltda',
-          empresa: getValor('empresa') || 'Extrafruti',
-          fase_instancia: getValor('fase_instancia') || '1ª Instância',
-          assunto_tipo: getValor('assunto_tipo') || 'Geral / Cível',
-          valor_causa: limparNumero(getValor('valor_causa')),
-          advogado: getValor('advogado') || '',
-          status: mapearStatus(getValor('status')),
-          risco: mapearRisco(getValor('risco')),
-          observacoes: getValor('observacoes') || '',
+          vara_comarca: orgaoRaw || 'Tribunal de Justiça',
+          autor: autor || 'Parte Autora',
+          reu: reu || 'Parte Ré',
+          empresa: empresaRaw,
+          fase_instancia: faseRaw || 'Inicial',
+          assunto_tipo: assuntoRaw,
+          valor_causa: vBruto,
+          valor_atualizado: vAtualizado,
+          polo: poloRaw || (poloLower.includes('ativo') ? 'Polo ativo' : 'Polo passivo'),
+          probabilidade: probRaw,
+          orgao_tribunal: orgaoRaw,
+          advogado: advRaw || '',
+          status: mapearStatus(faseRaw),
+          risco: mapearRisco(probRaw),
+          observacoes: [
+            probRaw ? `Probabilidade: ${probRaw}` : '',
+            orgaoRaw ? `Órgão: ${orgaoRaw}` : '',
+            vAtualizado > 0
+              ? `Valor atualizado: R$ ${vAtualizado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+              : '',
+          ]
+            .filter(Boolean)
+            .join(' · '),
         }
-
-        const dtDist = formatarDataIso(getValor('data_distribuicao'))
-        if (dtDist) recordData.data_distribuicao = dtDist
-
-        const dtAud = formatarDataIso(getValor('proxima_audiencia'))
-        if (dtAud) recordData.proxima_audiencia = dtAud
 
         try {
           await pb.collection('processos_juridicos').create(recordData)
