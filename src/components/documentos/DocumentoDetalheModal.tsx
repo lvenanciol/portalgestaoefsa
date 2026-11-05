@@ -28,6 +28,8 @@ import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import { DocumentoParecerButton } from './DocumentoParecerButton'
 import { PdfViewer } from './PdfViewer'
 import { ProcessoObservacoesTimeline } from './ProcessoObservacoesTimeline'
+import { canonizarNatureza } from './JuridicosImportModal'
+import { limparPartes } from './juridicos-texto-utils'
 import pb from '@/lib/pocketbase/client'
 
 export interface DocumentoDetalheModalProps {
@@ -63,11 +65,35 @@ export function DocumentoDetalheModal({
   // Ao receber/mudar documento, inicializa o formulário
   useEffect(() => {
     if (documento) {
-      setFormData({ ...documento })
+      const dados = { ...documento }
+      // Em processos jurídicos, canoniza natureza e limpa partes antigas poluídas
+      // (ex.: "Trabalhista Cliente principal: EXTRAFRUTI" -> "Trabalhista" e
+      // "JOSE CARLOS SILVA... Responsável principal: NEIMAR ZAVARIZE" -> "JOSE CARLOS SILVA")
+      if (tipoAba === 'juridicos') {
+        if (dados.natureza) {
+          dados.natureza = canonizarNatureza(dados.natureza)
+        }
+        if (dados.contrario_principal) {
+          dados.contrario_principal = limparPartes(dados.contrario_principal)
+        }
+        if (dados.autor) {
+          dados.autor = limparPartes(dados.autor)
+        }
+        if (dados.responsavel_principal) {
+          dados.responsavel_principal = limparPartes(dados.responsavel_principal)
+        }
+        if (dados.advogado) {
+          dados.advogado = limparPartes(dados.advogado)
+        }
+        if (dados.cliente_principal) {
+          dados.cliente_principal = limparPartes(dados.cliente_principal)
+        }
+      }
+      setFormData(dados)
       setFeedbackSalvo(false)
       setErroSalvar(null)
     }
-  }, [documento])
+  }, [documento, tipoAba])
 
   // Limpa Blob URL ao fechar modal
   useEffect(() => {

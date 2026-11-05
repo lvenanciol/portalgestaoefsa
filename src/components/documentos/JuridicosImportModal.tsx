@@ -222,23 +222,48 @@ export function extrairClienteEPolo(val: any): { cliente: string; polo?: string 
   }
 }
 
-// Extrai o bloco completo de Observações e Andamento Processual preservando toda a cronologia
+import { removerRodapesDePagina } from './juridicos-texto-utils'
+
+/**
+ * Extrai o bloco completo de Observações e Andamento Processual preservando toda a cronologia.
+ * Também cobre os casos em que o PDF traz o texto datado logo após "Órgão:" SEM o rótulo
+ * "Observações:" — nesse caso usamos a primeira linha datada legítima como início do bloco,
+ * para que nenhuma entrada da cronologia se perca (ex.: processo JOÃO PAULO).
+ */
 export function extrairBlocoObservacoes(bloco: string): string {
   if (!bloco) return ''
+
+  // Rodapés de página ("R$ 0,0001/11/2026 00:44Pagina 50 de 71") são removidos
+  // ANTES da extração para não gerar entradas datadas espúrias nem truncar o bloco.
+  const blocoLimpo = removerRodapesDePagina(bloco)
 
   // 1. Tenta encontrar a seção iniciada por "Observações e Andamento Processual", "Observações", etc.
   // Aceita variações de acento, pontuação e espaços
   const regexSecao =
     /(?:Observa[cç][oõ]es(?:\s+e\s+Andamento(?:\s+Processual)?)?|Andamento\s+Processual|Andamento(?:\s+Geral)?|Hist[oó]rico\s+Processual|Andamentos)\s*[:-]?\s*([\s\S]*)/i
-  const matchSecao = bloco.match(regexSecao)
+  const matchSecao = blocoLimpo.match(regexSecao)
 
   let textoCandidato = matchSecao ? matchSecao[1] : ''
 
-  // Se não achou pelo cabeçalho da seção, procura a primeira ocorrência de data dd/mm/aaaa ou d/m/aaaa
+  // 1b. Sem rótulo: cronologia datada imediatamente após "Órgão:" (ex.: JOÃO PAULO).
+  // O PDF às vezes concatena a primeira entrada datada na mesma linha do "Órgão:"
+  // ("Órgão: 02/10/2026 (CJ): ..."), então a busca começa no próprio "Órgão:".
   if (!textoCandidato) {
-    const idxData = bloco.search(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/)
+    const idxOrgaoData = blocoLimpo.search(
+      /Órg[aã]o\s*[:-]\s*(?:R\$\s*)?\d{1,2}[/.-]\d{1,2}[/.-]\d{4}/i,
+    )
+    if (idxOrgaoData !== -1) {
+      const depoisDoRotulo = blocoLimpo.slice(idxOrgaoData)
+      const m = depoisDoRotulo.match(/Órg[aã]o\s*[:-]\s*/i)
+      textoCandidato = m ? depoisDoRotulo.slice(m.index! + m[0].length) : depoisDoRotulo
+    }
+  }
+
+  // 2. Ainda sem seção: procura a primeira ocorrência de data dd/mm/aaaa ou d/m/aaaa
+  if (!textoCandidato) {
+    const idxData = blocoLimpo.search(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/)
     if (idxData !== -1) {
-      textoCandidato = bloco.slice(idxData)
+      textoCandidato = blocoLimpo.slice(idxData)
     }
   }
 

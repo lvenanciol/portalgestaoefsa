@@ -12,6 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { ehRodapePagina, removerRodapesDePagina } from './juridicos-texto-utils'
 import pb from '@/lib/pocketbase/client'
 
 export interface ObservacaoItem {
@@ -44,7 +45,10 @@ export function extrairEntradasDeObservacoes(
 ): ObservacaoItem[] {
   if (!texto || !texto.trim()) return []
 
-  const trimmed = texto.trim()
+  // Remove qualquer rodapé de página remanescente antes de segmentar as entradas
+  const textoSemRodapes = removerRodapesDePagina(texto)
+  const trimmed = textoSemRodapes.trim()
+  if (!trimmed) return []
 
   // Regex flexível para identificar inícios de entrada datada:
   // Aceita:
@@ -94,7 +98,7 @@ export function extrairEntradasDeObservacoes(
   const primeiroMatch = matches[0]
   if (primeiroMatch && primeiroMatch.index! > 0) {
     const textoPreliminar = trimmed.substring(0, primeiroMatch.index!).trim()
-    if (textoPreliminar) {
+    if (textoPreliminar && !ehRodapePagina(textoPreliminar)) {
       itens.push({
         id: 'entrada-preliminar',
         dataTexto: 'Nota inicial',
@@ -135,6 +139,11 @@ export function extrairEntradasDeObservacoes(
     const endIndex = nextMatch ? nextMatch.index! : trimmed.length
 
     const textoEntrada = trimmed.substring(startIndex, endIndex).trim()
+
+    // Ignora entradas que são rodapés de página colados ("00:44Pagina 50 de 71", etc.)
+    if (ehRodapePagina(textoEntrada)) {
+      continue
+    }
 
     itens.push({
       id: `entrada-${i}-${dataFormatada}`,

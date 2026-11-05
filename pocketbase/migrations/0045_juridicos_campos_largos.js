@@ -9,18 +9,44 @@
 // acima do max era rejeitado pelo PocketBase (validation "length cannot be more
 // than N"), e o registro aparecia na lista de "Falhas" do lote.
 //
-// Ajuste: observa-oes vira EditorField (long-form, sem limite prático),
-// campos de partes/advogado sobem para 2000 e demais textos para 1000+.
+// Correção do bug de deploy desta rodada: a versão anterior usava
+// `col.fields.indexOf(...)`, método que NÃO existe em FieldsList no JSVM
+// (ReferenceError na linha 20, derrubando o apply inteiro). A API correta é
+// `col.fields.add(...)`, que já substitui o campo existente pelo mesmo nome, e
+// para TextField existente basta atribuir `.max` no ponteiro retornado por
+// getByName (modificação direta, preserva id/ordem).
+//
+// Ajuste: observacoes vira EditorField (long-form, 2 MB), campos de
+// partes/advogado sobem para 2000 e demais textos para 400–600.
 migrate(
   (app) => {
     const col = app.findCollectionByNameOrId('processos_juridicos')
 
-    // 1. 'observacoes' -> EditorField com margem ampla (2 MB)
-    if (col.fields.getByName('observacoes')) {
-      const idx = col.fields.indexOf(col.fields.getByName('observacoes'))
-      col.fields.remove(idx)
-      col.fields.add(new EditorField({ name: 'observacoes', maxSize: 2000000 }))
+    // 1. 'observacoes' -> EditorField com margem ampla (2 MB).
+    //    O PocketBase não permite trocar o tipo de um campo existente
+    //    ("Field type cannot be changed"), então preservamos o conteúdo atual
+    //    em memória, removemos o campo de texto e recriamos como EditorField,
+    //    gravando de volta os valores preservados.
+    const obsSalvas = []
+    try {
+      const registros = app.findRecordsByFilter(
+        'processos_juridicos',
+        "observacoes != ''",
+        '-created',
+        0,
+        0,
+      )
+      for (const r of registros) {
+        const valor = r.getString('observacoes')
+        if (valor) {
+          obsSalvas.push({ id: r.id, valor: valor })
+        }
+      }
+    } catch (e) {
+      console.log('0045: leitura de observacoes existentes falhou: ' + e)
     }
+    col.fields.removeByName('observacoes')
+    col.fields.add(new EditorField({ name: 'observacoes', maxSize: 2000000 }))
 
     // 2. Campos de partes que hoje acumulam vários dados concatenados
     const partes = [
@@ -31,10 +57,9 @@ migrate(
       'responsavel_principal',
     ]
     for (const nome of partes) {
-      if (col.fields.getByName(nome)) {
-        const idx = col.fields.indexOf(col.fields.getByName(nome))
-        col.fields.remove(idx)
-        col.fields.add(new TextField({ name: nome, max: 2000 }))
+      const f = col.fields.getByName(nome)
+      if (f && f.type === 'text') {
+        f.max = 2000
       }
     }
 
@@ -54,19 +79,32 @@ migrate(
       { name: 'empresa', max: 200 },
       { name: 'polo', max: 150 },
       { name: 'probabilidade', max: 150 },
+      { name: 'fase_instancia', max: 400 },
+      { name: 'tipo', max: 400 },
     ]
     for (const c of textos) {
-      if (col.fields.getByName(c.name)) {
-        const idx = col.fields.indexOf(col.fields.getByName(c.name))
-        col.fields.remove(idx)
-        col.fields.add(new TextField({ name: c.name, max: c.max }))
+      const f = col.fields.getByName(c.name)
+      if (f && f.type === 'text') {
+        f.max = c.max
       }
     }
 
     app.save(col)
+
+    // Restaura as observações preservadas (agora sem limite prático de tamanho)
+    for (const item of obsSalvas) {
+      try {
+        const rec = app.findRecordById('processos_juridicos', item.id)
+        rec.set('observacoes', item.valor)
+        app.save(rec)
+      } catch (e) {
+        console.log('0045: restauracao de observacoes falhou para ' + item.id + ': ' + e)
+      }
+    }
   },
   (app) => {
-    // Reverso: volta aos limites originais (melhor esforço; dados maiores são truncados pelo PB)
+    // Reverso: volta aos limites originais (melhor esforço; add() substitui
+    // o campo existente pelo mesmo nome).
     const col = app.findCollectionByNameOrId('processos_juridicos')
     const revert = [
       { name: 'observacoes', type: 'editor', maxSize: 500000 },
@@ -91,16 +129,14 @@ migrate(
       { name: 'probabilidade', max: 150 },
     ]
     for (const c of revert) {
-      try {
+      if (c.type === 'editor') {
+        col.fields.add(new EditorField({ name: c.name, maxSize: c.maxSize }))
+      } else {
         const f = col.fields.getByName(c.name)
-        const idx = col.fields.indexOf(f)
-        col.fields.remove(idx)
-        if (c.type === 'editor') {
-          col.fields.add(new EditorField({ name: c.name, maxSize: c.maxSize }))
-        } else {
-          col.fields.add(new TextField({ name: c.name, max: c.max }))
+        if (f && f.type === 'text') {
+          f.max = c.max
         }
-      } catch (_) {}
+      }
     }
     app.save(col)
   },

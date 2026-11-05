@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-05T15:41:32.733Z",
+  "generatedAt": "2026-11-05T16:29:49.146Z",
   "collections": [
     {
       "name": "users",
@@ -2838,12 +2838,6 @@
           "system": false
         },
         {
-          "name": "observacoes",
-          "type": "text",
-          "required": false,
-          "system": false
-        },
-        {
           "name": "anexo",
           "type": "file",
           "required": false,
@@ -2992,6 +2986,12 @@
         {
           "name": "versao_atual",
           "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacoes",
+          "type": "editor",
           "required": false,
           "system": false
         }
