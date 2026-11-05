@@ -655,7 +655,7 @@ export function DocumentoDetalheModal({
               <div className="flex items-center gap-2">
                 <Paperclip className="h-4 w-4 text-emerald-700" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700">
-                  Arquivos Anexos do Documento ({listaAnexosDetalhe.length})
+                  ARQUIVOS ANEXOS DO DOCUMENTO ({listaAnexosDetalhe.length})
                 </h3>
               </div>
               <div className="flex items-center gap-2">

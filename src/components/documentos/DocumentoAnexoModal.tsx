@@ -268,7 +268,7 @@ export function DocumentoAnexoModal({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold text-gray-900 pb-2 border-b border-gray-100">
               <Paperclip className="h-4 w-4 text-[#1B5E20]" />
-              Anexos do Documento ({listaArquivos.length})
+              ARQUIVOS ANEXOS DO DOCUMENTO ({listaArquivos.length})
             </DialogTitle>
           </DialogHeader>
 

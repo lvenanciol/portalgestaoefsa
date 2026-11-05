@@ -248,28 +248,34 @@ export function extrairBlocoObservacoes(bloco: string): string {
   // 1b. Sem rótulo "Observações:": cronologia datada após a linha "Órgão:" (ex.: JOÃO PAULO).
   // Em vários processos o texto datado ("dd/mm/aaaa (SIGLA): ...") vem logo após a linha
   // do Órgão (ou linhas seguintes) sem rótulo de bloco conhecido entre eles.
+  // Deve capturar TODAS as linhas datadas contíguas até o próximo processo ou bloco estruturado.
   if (!textoCandidato) {
     const matchOrgao = blocoLimpo.match(/(?:^|\n)\s*Órg[aã]o\s*[:-]/i)
     if (matchOrgao && matchOrgao.index !== undefined) {
-      const inicioAposOrgao = matchOrgao.index + matchOrgao[0].length
+      // Pula a linha do Órgão (pois o valor do órgão pode estar na mesma linha)
+      const indiceFimLinhaOrgao = blocoLimpo.indexOf('\n', matchOrgao.index + matchOrgao[0].length)
+      const inicioAposOrgao =
+        indiceFimLinhaOrgao !== -1
+          ? indiceFimLinhaOrgao + 1
+          : matchOrgao.index + matchOrgao[0].length
+
       const trechoAposOrgao = blocoLimpo.slice(inicioAposOrgao)
 
-      // Se logo após ou nas linhas seguintes após Órgão vier data de cronologia
-      // antes de qualquer outro bloco estruturado de fechamento (Valores, Garantias, Providências...)
+      // Procura a primeira linha datada ("dd/mm/aaaa", "d/m/aaaa") após o Órgão
       const matchPrimeiraData = trechoAposOrgao.match(
-        /(?:^|\n)\s*(\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{4}(?:\s*[([]?[A-Za-z0-9_\- ]+[)\]]?)?\s*[:-]?)/,
+        /(?:^|\n)\s*(\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{2,4}(?:\s*[([]?[A-Za-z0-9_\- ]+[)\]]?)?\s*[:-]?)/,
       )
 
       if (matchPrimeiraData && matchPrimeiraData.index !== undefined) {
-        // Verifica se antes dessa data surgiu algum rótulo conhecido de outro bloco
+        // Verifica se antes dessa data surgiu algum rótulo conhecido de fechamento
         const textoIntermediario = trechoAposOrgao.slice(0, matchPrimeiraData.index)
         const temOutroBlocoAntes =
-          /(?:^|\n)\s*(?:Valores|Valor\s+Base|Garantias|Provid[eê]ncias|Data\s+da\s+[uú]ltima|Processo)\s*[:]/i.test(
+          /(?:^|\n)\s*(?:Valores|Valor\s+Base|Garantias|Provid[eê]ncias|Processo|Proc\.?|N[uú]mero\s+do\s+Processo)\s*[:]/i.test(
             textoIntermediario,
           )
 
         if (!temOutroBlocoAntes) {
-          // A cronologia começa na primeira data identificada após o Órgão
+          // A cronologia começa na primeira data identificada após a linha do Órgão
           textoCandidato = trechoAposOrgao.slice(matchPrimeiraData.index).trim()
         }
       }
@@ -279,7 +285,7 @@ export function extrairBlocoObservacoes(bloco: string): string {
   // 2. Ainda sem seção: procura a primeira ocorrência de data dd/mm/aaaa ou d/m/aaaa no bloco
   if (!textoCandidato) {
     const matchData = blocoLimpo.match(
-      /(?:^|\n|\b)(\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{4}\b(?:\s*[([]?[A-Za-z0-9_\- ]+[)\]]?)?\s*[:-]?)/,
+      /(?:^|\n|\b)(\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{2,4}\b(?:\s*[([]?[A-Za-z0-9_\- ]+[)\]]?)?\s*[:-]?)/,
     )
     if (matchData && matchData.index !== undefined) {
       textoCandidato = blocoLimpo.slice(matchData.index).trim()
@@ -289,23 +295,19 @@ export function extrairBlocoObservacoes(bloco: string): string {
   if (!textoCandidato) return ''
 
   // 2. Delimitadores de fim EXAUSTIVOS com cabeçalhos reais dos relatórios de processos jurídicos
-  // (Valores, Garantias, Providências, Andamento, Data da última atualização, Dados Financeiros, etc.)
+  // (Valores, Garantias, Providências, etc.)
   // CUIDADO ABSOLUTO: NUNCA parar em palavras soltas no meio do texto da nota.
   // Exigimos início de linha / quebra de linha + cabeçalho estruturado com dois pontos ou traço
   const delimitadoresProximoBloco = [
     // Início de outro processo no mesmo lote/relatório
     /(?:^|\n)\s*(?:Processo|Proc\.?|N[uú]mero\s+do\s+Processo|CNJ)\s*[:]\s*[0-9A-Za-z.\-/]+/i,
-    // Cabeçalhos de valores e dados financeiros
+    // Cabeçalhos estruturados de valores e dados financeiros
     /(?:^|\n)\s*(?:Valores|Dados\s+Financeiros|Hist[oó]rico\s+Financeiro|Resumo\s+Financeiro|Planilha\s+de\s+C[aá]lculos?)\s*[:]/i,
     /(?:^|\n)\s*(?:Valor\s+Base|Valor\s+da\s+Causa|Valor\s+Causa|Valor\s+Inicial|Valor\s+Corrigido|Valor\s+Atualizado(?:\s+Indexado)?|Valor\s+Envolvido|Risco\s+Total)\s*[:]\s*(?:R\$\s*)?[0-9]/i,
     // Garantias, depósitos, penhoras e cauções
     /(?:^|\n)\s*(?:Garantias(?:\s+e\s+Dep[oó]sitos)?|Dep[oó]sitos(?:\s+Recursais)?|Penhoras?|Bens\s+Penhorados|Bloqueios?\s+Judiciais?)\s*[:]/i,
     // Providências, tarefas, prazos e pendências
     /(?:^|\n)\s*(?:Provid[eê]ncias|Pr[oó]ximas?\s+Provid[eê]ncias?|Pend[eê]ncias|Prazos?\s+Processuais?|Prazos?)\s*[:]/i,
-    // Metadados de fechamento do relatório / sistema jurídico
-    /(?:^|\n)\s*(?:Data\s+da\s+[uú]ltima\s+atualiza[cç][aã]o|Data\s+[uú]ltima\s+atualiza[cç][aã]o|[UuÚú]ltima\s+Atualiza[cç][aã]o)\s*[:]/i,
-    /(?:^|\n)\s*(?:Risco(?:\s+Processual)?|Progn[oó]stico|Probabilidade|Fase\s+Atual|Status\s+Processual)\s*[:]\s*(?:Prov[aá]vel|Poss[ií]vel|Remoto|Execu[cç][aã]o|Conhecimento|Recursal|Ativo|Encerrado|Suspenso)/i,
-    /(?:^|\n)\s*(?:Audi[eê]ncias?(?:\s+Designadas?|\s+Pautadas?)?)\s*[:]\s*\d{1,2}\/\d{1,2}\/\d{4}/i,
     // Separador visual explícito entre processos
     /(?:^|\n)\s*(?:===+|---+|\*\*\*+)\s*(?:\n|$)/,
   ]
@@ -932,11 +934,35 @@ export function JuridicosImportModal({
             payloadUpdate.observacoes = p.observacoes
           }
 
-          const registroAtualizado = await pb
-            .collection('processos_juridicos')
-            .update(existente.id, payloadUpdate)
+          // Atualização individual isolada
+          let registroAtualizado: any = null
+          try {
+            registroAtualizado = await pb
+              .collection('processos_juridicos')
+              .update(existente.id, payloadUpdate)
+          } catch (errUpdate: any) {
+            // Tratamento detalhado de erro em PT-BR
+            let msg =
+              errUpdate?.data?.message || errUpdate?.message || 'Falha ao atualizar processo'
+            const fieldData = errUpdate?.response?.data || errUpdate?.data?.data
+            if (fieldData && typeof fieldData === 'object') {
+              const errosCampos = Object.entries(fieldData)
+                .map(([campo, detalhe]: [string, any]) => {
+                  const detalheMsg =
+                    typeof detalhe === 'object' && detalhe?.message
+                      ? detalhe.message
+                      : String(detalhe)
+                  return `${campo}: ${detalheMsg}`
+                })
+                .join(', ')
+              if (errosCampos) msg = `${msg} (${errosCampos})`
+            }
+            erros++
+            detalhesErros.push(`Processo ${numIdentificador}: Atualização falhou - ${msg}`)
+            continue
+          }
 
-          // Salva histórico da alteração
+          // Salva histórico da alteração com isolamento estrito
           try {
             await pb.collection('juridicos_historico').create({
               processo_id: registroAtualizado.id,
@@ -961,8 +987,12 @@ export function JuridicosImportModal({
               },
               importado_por: pb.authStore.model?.email || 'sistema',
             })
-          } catch {
-            // Histórico não bloqueia fluxo principal
+          } catch (errHist: any) {
+            console.warn(
+              `Aviso: Histórico v${novaVersao} do processo ${numIdentificador} não pôde ser gravado:`,
+              errHist,
+            )
+            // Histórico não aborta o lote nem invalida o processo atualizado
           }
 
           atualizados++
@@ -1002,9 +1032,31 @@ export function JuridicosImportModal({
             versao_atual: 1,
           }
 
-          const novoRegistro = await pb.collection('processos_juridicos').create(payloadCreate)
+          let novoRegistro: any = null
+          try {
+            novoRegistro = await pb.collection('processos_juridicos').create(payloadCreate)
+          } catch (errCreate: any) {
+            let msg =
+              errCreate?.data?.message || errCreate?.message || 'Falha ao cadastrar processo'
+            const fieldData = errCreate?.response?.data || errCreate?.data?.data
+            if (fieldData && typeof fieldData === 'object') {
+              const errosCampos = Object.entries(fieldData)
+                .map(([campo, detalhe]: [string, any]) => {
+                  const detalheMsg =
+                    typeof detalhe === 'object' && detalhe?.message
+                      ? detalhe.message
+                      : String(detalhe)
+                  return `${campo}: ${detalheMsg}`
+                })
+                .join(', ')
+              if (errosCampos) msg = `${msg} (${errosCampos})`
+            }
+            erros++
+            detalhesErros.push(`Processo ${numIdentificador}: Cadastro falhou - ${msg}`)
+            continue
+          }
 
-          // Cria histórico inicial v1
+          // Cria histórico inicial v1 isolado
           try {
             await pb.collection('juridicos_historico').create({
               processo_id: novoRegistro.id,
@@ -1020,16 +1072,18 @@ export function JuridicosImportModal({
               },
               importado_por: pb.authStore.model?.email || 'sistema',
             })
-          } catch {
-            // Histórico não bloqueia
+          } catch (errHist: any) {
+            console.warn(
+              `Aviso: Histórico v1 do processo ${numIdentificador} não pôde ser gravado:`,
+              errHist,
+            )
           }
 
           criados++
         }
       } catch (err: any) {
         erros++
-        let msg = err?.data?.message || err?.message || 'Erro desconhecido'
-        // Se houver detalhes nos campos (erros de validação do PocketBase)
+        let msg = err?.data?.message || err?.message || 'Erro inesperado no registro'
         const fieldData = err?.response?.data || err?.data?.data
         if (fieldData && typeof fieldData === 'object') {
           const errosCampos = Object.entries(fieldData)

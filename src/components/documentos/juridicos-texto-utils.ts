@@ -28,6 +28,11 @@ export function removerRodapesDePagina(texto: string): string {
   t = t.replace(/(?:^|\n)\s*Relat[oó]rio\s+de\s+processos[^\n]*(?:\n|$)/gi, '\n')
   // 5. Linhas de rodapé isoladas no padrão "Pagina N de M" em qualquer posição
   t = t.replace(/P[aá]gina\s*\d+(?:\s*de\s*\d*)?/gi, '')
+  // 6. Linhas de metadados de emissão ou data de atualização como ruído
+  t = t.replace(
+    /(?:^|\n)\s*(?:Data\s+da\s+[uú]ltima\s+atualiza[cç][aã]o|Data\s+[uú]ltima\s+atualiza[cç][aã]o|[UuÚú]ltima\s+Atualiza[cç][aã]o)\s*[:][^\n]*(?:\n|$)/gi,
+    '\n',
+  )
   return t
 }
 
@@ -44,7 +49,10 @@ export function ehRodapePagina(texto: string): boolean {
     /\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\s*\d{1,2}:\d{2}\s*P[aá]gina/i.test(t) ||
     /\d{1,2}:\d{2}\s*P[aá]gina/i.test(t) ||
     /P[aá]gina\s*\d+(?:\s*de\s*\d*)?/i.test(t) ||
-    /Relat[oó]rio\s+de\s+processos/i.test(t)
+    /Relat[oó]rio\s+de\s+processos/i.test(t) ||
+    /^(?:Data\s+da\s+[uú]ltima\s+atualiza[cç][aã]o|Data\s+[uú]ltima\s+atualiza[cç][aã]o|[UuÚú]ltima\s+Atualiza[cç][aã]o)\s*[:]/i.test(
+      t,
+    )
   )
 }
 

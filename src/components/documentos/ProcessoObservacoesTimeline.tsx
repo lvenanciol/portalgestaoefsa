@@ -54,11 +54,12 @@ export function extrairEntradasDeObservacoes(
   // Aceita:
   // - "09/10/2026 (CJ):", "09/10/2026 -", "09/10/2026 às 14:00:", "09/10/2026:"
   // - Dias e meses sem zero à esquerda: "9/10/2026", "03/6/2026", "3/6/2026"
+  // - Anos de 2 ou 4 dígitos: "09/10/26" ou "09/10/2026"
   // - Espaços flexíveis entre barras: "09 / 10 / 2026"
   // - Delimitadores com hífen, ponto ou barra: "09-10-2026", "09.10.2026"
-  // - Tags com ou sem parênteses: "(CJ):", "- CJ -", "[CJ]:"
+  // - Tags com ou sem parênteses: "(CJ):", "- CJ -", "[CJ]:", "CJ:"
   const dataRegex =
-    /(?:^|\n|\r\n)\s*(\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{4})(?:\s+(?:[aàá]s\s+)?\d{1,2}:\d{2}(?::\d{2})?)?(?:\s*(?:[([]([A-Za-z0-9_\- ]+)[)\]]|-\s*([A-Za-z0-9_\- ]+)\s*-))?\s*[:\-—]?\s*/gi
+    /(?:^|\n|\r\n)\s*(\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*(?:\d{4}|\d{2}))(?:\s+(?:[aàá]s\s+)?\d{1,2}:\d{2}(?::\d{2})?)?(?:\s*(?:[([]([A-Za-z0-9_\- ]+)[)\]]|-\s*([A-Za-z0-9_\- ]+)\s*-))?\s*[:\-—]?\s*/gi
 
   const matches = [...trimmed.matchAll(dataRegex)]
 
@@ -119,7 +120,10 @@ export function extrairEntradasDeObservacoes(
     if (partesSeparadas.length === 3) {
       const dia = partesSeparadas[0].padStart(2, '0')
       const mes = partesSeparadas[1].padStart(2, '0')
-      const ano = partesSeparadas[2]
+      let ano = partesSeparadas[2]
+      if (ano.length === 2) {
+        ano = Number(ano) < 70 ? `20${ano}` : `19${ano}`
+      }
       dataFormatada = `${dia}/${mes}/${ano}`
 
       try {

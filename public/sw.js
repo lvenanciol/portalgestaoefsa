@@ -24,7 +24,8 @@
 // v17 (05/11/2026): extração exaustiva da cronologia do bloco de observações/andamentos em processos jurídicos,
 // detecção flexível de datas na timeline sem descartar entradas e persistência íntegra sem truncamento.
 // v19 (05/11/2026): suporte a múltiplos anexos em todas as abas de Documentos (criação, detalhe, gerenciador).
-const CACHE_NAME = 'pge-pwa-v19'
+// v20 (05/11/2026): parser de observações sem descarte de cronologia contígua, isolamento try/catch por registro no lote e caixa ARQUIVOS ANEXOS DO DOCUMENTO padronizada.
+const CACHE_NAME = 'pge-pwa-v20'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
