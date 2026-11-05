@@ -167,6 +167,33 @@ export function DocumentosPage() {
     setModalAnexoAberto(true)
   }
 
+  // Helper para rótulo e contagem de anexos na tabela
+  const renderBotaoAnexoTabela = (item: any, colecao: string, tituloFallback: string) => {
+    const rawAnexo = item.anexo || item.arquivo
+    let qtd = 0
+    if (Array.isArray(rawAnexo)) {
+      qtd = rawAnexo.filter(Boolean).length
+    } else if (typeof rawAnexo === 'string' && rawAnexo.trim()) {
+      qtd = 1
+    }
+    const temAnexo = qtd > 0
+
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => abrirModalAnexo(item, colecao, item.titulo || tituloFallback)}
+        className="h-7 px-2 text-xs text-gray-600 hover:text-emerald-700 font-medium"
+      >
+        <Paperclip
+          className={`h-3.5 w-3.5 mr-1 ${temAnexo ? 'text-emerald-600' : 'text-gray-400'}`}
+        />
+        {temAnexo ? (qtd > 1 ? `${qtd} anexos` : '1 anexo') : 'Anexar'}
+      </Button>
+    )
+  }
+
   // Executa a exclusão de um documento com confirmação amigável
   const handleConfirmarExclusao = async () => {
     if (!docParaExcluir) return
@@ -331,20 +358,7 @@ export function DocumentosPage() {
         id: 'anexo',
         label: 'Anexo',
         sortable: false,
-        render: (item) => (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => abrirModalAnexo(item, 'alvaras', item.titulo || `Alvará ${item.numero}`)}
-            className="h-7 px-2 text-xs text-gray-600 hover:text-emerald-700"
-          >
-            <Paperclip
-              className={`h-3.5 w-3.5 mr-1 ${item.anexo ? 'text-emerald-600' : 'text-gray-400'}`}
-            />
-            {item.anexo ? 'Ver anexo' : 'Anexar'}
-          </Button>
-        ),
+        render: (item) => renderBotaoAnexoTabela(item, 'alvaras', `Alvará ${item.numero || ''}`),
       },
     ],
     [],
@@ -430,20 +444,7 @@ export function DocumentosPage() {
         id: 'anexo',
         label: 'Anexo',
         sortable: false,
-        render: (item) => (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => abrirModalAnexo(item, 'contratos', item.titulo)}
-            className="h-7 px-2 text-xs text-gray-600 hover:text-emerald-700"
-          >
-            <Paperclip
-              className={`h-3.5 w-3.5 mr-1 ${item.anexo ? 'text-emerald-600' : 'text-gray-400'}`}
-            />
-            {item.anexo ? 'Ver anexo' : 'Anexar'}
-          </Button>
-        ),
+        render: (item) => renderBotaoAnexoTabela(item, 'contratos', item.titulo || 'Contrato'),
       },
     ],
     [],
@@ -523,20 +524,7 @@ export function DocumentosPage() {
         id: 'anexo',
         label: 'Anexo',
         sortable: false,
-        render: (item) => (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => abrirModalAnexo(item, 'atas', item.titulo)}
-            className="h-7 px-2 text-xs text-gray-600 hover:text-emerald-700"
-          >
-            <Paperclip
-              className={`h-3.5 w-3.5 mr-1 ${item.anexo ? 'text-emerald-600' : 'text-gray-400'}`}
-            />
-            {item.anexo ? 'Ver anexo' : 'Anexar'}
-          </Button>
-        ),
+        render: (item) => renderBotaoAnexoTabela(item, 'atas', item.titulo || 'Ata'),
       },
     ],
     [],

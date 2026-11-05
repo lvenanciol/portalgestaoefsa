@@ -58,9 +58,11 @@ export function NovoDocumentoModal({
   const [erro, setErro] = useState<string | null>(null)
   const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
   const [arquivoImportado, setArquivoImportado] = useState<File | null>(null)
+  const [arquivosAnexos, setArquivosAnexos] = useState<File[]>([])
   const [importando, setImportando] = useState(false)
   const [avisoImportacao, setAvisoImportacao] = useState<string | null>(null)
   const inputImportRef = useRef<HTMLInputElement>(null)
+  const inputAnexosRef = useRef<HTMLInputElement>(null)
 
   // Função utilitária para gerar o estado inicial completamente limpo
   const criarEstadoLimpo = React.useCallback(
@@ -84,8 +86,12 @@ export function NovoDocumentoModal({
       setErro(null)
       setAvisoImportacao(null)
       setArquivoImportado(null)
+      setArquivosAnexos([])
       if (inputImportRef.current) {
         inputImportRef.current.value = ''
+      }
+      if (inputAnexosRef.current) {
+        inputAnexosRef.current.value = ''
       }
     }
   }, [aberto, tipoAba, criarEstadoLimpo])
@@ -110,6 +116,10 @@ export function NovoDocumentoModal({
     setErro(null)
     setAvisoImportacao(null)
     setArquivoImportado(file)
+    setArquivosAnexos((prev) => {
+      if (prev.some((f) => f.name === file.name && f.size === file.size)) return prev
+      return [file, ...prev]
+    })
 
     try {
       const nomeArquivo = file.name
@@ -416,14 +426,26 @@ export function NovoDocumentoModal({
         novoId = rec.id
       }
 
-      // Se havia um arquivo importado, salva-o automaticamente como anexo do documento criado
-      if (novoId && colecaoDestino && arquivoImportado) {
+      // Se há arquivos anexados (seja por importação ou adicionados manualmente na criação),
+      // anexa todos ao documento criado via FormData com append('anexo', f)
+      if (novoId && colecaoDestino && arquivosAnexos.length > 0) {
+        try {
+          const formData = new FormData()
+          for (const f of arquivosAnexos) {
+            formData.append('anexo', f)
+          }
+          await pb.collection(colecaoDestino).update(novoId, formData)
+        } catch (uploadErr) {
+          console.warn('Erro ao anexar arquivos no documento criado:', uploadErr)
+        }
+      } else if (novoId && colecaoDestino && arquivoImportado) {
+        // Fallback defensivo
         try {
           const formData = new FormData()
           formData.append('anexo', arquivoImportado)
           await pb.collection(colecaoDestino).update(novoId, formData)
-        } catch (_) {
-          // Registro já criado com sucesso
+        } catch {
+          /* intentionally ignored */
         }
       }
 
@@ -434,6 +456,7 @@ export function NovoDocumentoModal({
         status: tipoAba === 'alvaras' ? 'regular' : 'ativo',
       })
       setArquivoImportado(null)
+      setArquivosAnexos([])
       setAvisoImportacao(null)
     } catch (err: any) {
       setErro(err?.message || 'Erro ao criar documento.')
@@ -1126,6 +1149,83 @@ export function NovoDocumentoModal({
               </div>
             </>
           )}
+
+          {/* SEÇÃO DE ARQUIVOS ANEXOS (SUPORTE A MÚLTIPLOS ANEXOS NA CRIAÇÃO) */}
+          <div className="pt-3 border-t border-gray-100 space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-[11px] font-bold text-gray-700 flex items-center gap-1.5">
+                <Paperclip className="h-3.5 w-3.5 text-emerald-700" />
+                Arquivos Anexos ({arquivosAnexos.length})
+              </Label>
+              <div>
+                <input
+                  ref={inputAnexosRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.docx,.doc,.xlsx,.xls,.png,.jpg,.jpeg,.txt"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || [])
+                    if (files.length === 0) return
+                    setArquivosAnexos((prev) => {
+                      const novos = files.filter(
+                        (f) => !prev.some((p) => p.name === f.name && p.size === f.size),
+                      )
+                      return [...prev, ...novos]
+                    })
+                    if (inputAnexosRef.current) inputAnexosRef.current.value = ''
+                  }}
+                  className="hidden"
+                  id="doc-anexos-multiplos-novo"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => inputAnexosRef.current?.click()}
+                  className="h-7 text-xs text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+                >
+                  <Upload className="h-3 w-3 mr-1" />
+                  {arquivosAnexos.length === 0 ? 'Adicionar anexo(s)' : 'Adicionar mais anexos'}
+                </Button>
+              </div>
+            </div>
+
+            {arquivosAnexos.length > 0 ? (
+              <div className="space-y-1.5 max-h-36 overflow-y-auto p-2 bg-gray-50 border border-gray-200 rounded-lg">
+                {arquivosAnexos.map((file, idx) => (
+                  <div
+                    key={`${file.name}-${file.size}-${idx}`}
+                    className="flex items-center justify-between gap-2 p-1.5 bg-white border border-gray-200/80 rounded-md text-xs"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileText className="h-3.5 w-3.5 text-emerald-700 shrink-0" />
+                      <span className="truncate text-gray-800 font-medium">{file.name}</span>
+                      <span className="text-[10px] text-gray-400 shrink-0">
+                        ({(file.size / 1024).toFixed(0)} KB)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setArquivosAnexos((prev) => prev.filter((_, i) => i !== idx))
+                        if (arquivoImportado?.name === file.name) {
+                          setArquivoImportado(null)
+                        }
+                      }}
+                      className="text-gray-400 hover:text-red-600 p-1 rounded"
+                      title="Remover anexo"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-3 text-center border border-dashed border-gray-200 rounded-lg text-[11px] text-gray-500 bg-gray-50/50">
+                Nenhum arquivo anexado ainda. Você pode anexar múltiplos PDFs, DOCXs ou planilhas.
+              </div>
+            )}
+          </div>
 
           <DialogFooter className="pt-3 border-t border-gray-100 flex items-center justify-end gap-2">
             <Button

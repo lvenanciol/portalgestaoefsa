@@ -36,22 +36,49 @@ export function DocumentoAnexoModal({
 }: DocumentoAnexoModalProps) {
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
+  const [listaArquivos, setListaArquivos] = useState<string[]>([])
+  const [arquivoEmVisualizacao, setArquivoEmVisualizacao] = useState<string | null>(null)
   const [modalVisualizarAberto, setModalVisualizarAberto] = useState(false)
   const [urlVisualizacao, setUrlVisualizacao] = useState<string | null>(null)
   const [carregandoVisualizacao, setCarregandoVisualizacao] = useState(false)
   const [erroVisualizacao, setErroVisualizacao] = useState<string | null>(null)
+  const [arquivoParaRemover, setArquivoParaRemover] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const temAnexo = !!anexoAtual && String(anexoAtual).trim() !== ''
+  // Carrega lista atualizada de anexos do registro sempre que o modal abre ou anexoAtual muda
+  useEffect(() => {
+    let ativo = true
+    if (!aberto || !recordId) return
 
-  // URL autenticada direta do PocketBase para o arquivo
-  const urlArquivo = temAnexo
-    ? `${pb.baseUrl}/api/files/${collectionName}/${recordId}/${anexoAtual}${
-        pb.authStore.token ? `?token=${encodeURIComponent(pb.authStore.token)}` : ''
-      }`
-    : ''
+    const carregarArquivos = async () => {
+      try {
+        const rec = await pb.collection(collectionName).getOne(recordId)
+        if (!ativo) return
+        const val = rec.anexo
+        let lista: string[] = []
+        if (Array.isArray(val)) {
+          lista = val.map(String).filter(Boolean)
+        } else if (typeof val === 'string' && val.trim()) {
+          lista = [val.trim()]
+        }
+        setListaArquivos(lista)
+      } catch (e) {
+        console.warn('Erro ao carregar anexos do registro:', e)
+        // Fallback defensivo com prop recebida
+        if (anexoAtual) {
+          const fallback = Array.isArray(anexoAtual)
+            ? (anexoAtual as any[]).map(String).filter(Boolean)
+            : [String(anexoAtual).trim()]
+          setListaArquivos(fallback)
+        }
+      }
+    }
 
-  const isPdf = temAnexo && !!anexoAtual && anexoAtual.toLowerCase().endsWith('.pdf')
+    carregarArquivos()
+    return () => {
+      ativo = false
+    }
+  }, [aberto, recordId, collectionName, anexoAtual])
 
   // Limpa Blob URL ao fechar ou desmontar
   useEffect(() => {
@@ -64,6 +91,7 @@ export function DocumentoAnexoModal({
 
   const fecharVisualizador = () => {
     setModalVisualizarAberto(false)
+    setArquivoEmVisualizacao(null)
     if (urlVisualizacao && urlVisualizacao.startsWith('blob:')) {
       URL.revokeObjectURL(urlVisualizacao)
       setUrlVisualizacao(null)
@@ -71,38 +99,90 @@ export function DocumentoAnexoModal({
     setErroVisualizacao(null)
   }
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const obterUrlArquivo = (nomeArquivo: string) => {
+    return `${pb.baseUrl}/api/files/${collectionName}/${recordId}/${nomeArquivo}${
+      pb.authStore.token ? `?token=${encodeURIComponent(pb.authStore.token)}` : ''
+    }`
+  }
+
+  // Upload de 1 ou mais arquivos
+  const handleUploadMultiplo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
 
     setSalvando(true)
     setErro(null)
 
     try {
       const formData = new FormData()
-      formData.append('anexo', file)
+      for (const f of files) {
+        formData.append('anexo', f)
+      }
 
       const rec = await pb.collection(collectionName).update(recordId, formData)
-      onAnexoAtualizado(rec.anexo || null)
+      const novoVal = rec.anexo
+      let novaLista: string[] = []
+      if (Array.isArray(novoVal)) {
+        novaLista = novoVal.map(String).filter(Boolean)
+      } else if (typeof novoVal === 'string' && novoVal.trim()) {
+        novaLista = [novoVal.trim()]
+      }
+      setListaArquivos(novaLista)
+      onAnexoAtualizado(novaLista[0] || null)
     } catch (err: any) {
-      setErro(err?.message || 'Falha ao anexar arquivo.')
+      setErro(err?.message || 'Falha ao anexar arquivo(s).')
     } finally {
       setSalvando(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
     }
   }
 
-  const [confirmRemoverAnexo, setConfirmRemoverAnexo] = useState(false)
-
-  const handleRemoverAnexo = async () => {
+  // Remover anexo específico do array de arquivos
+  const handleRemoverAnexoIndividual = async () => {
+    if (!arquivoParaRemover) return
     setSalvando(true)
     setErro(null)
 
     try {
-      await pb.collection(collectionName).update(recordId, { anexo: null })
-      onAnexoAtualizado(null)
-      fecharVisualizador()
-      setConfirmRemoverAnexo(false)
+      // No PocketBase para campos de arquivo múltiplos:
+      // passando o objeto { 'anexo-': [nome] } ou enviando a lista atualizada sem o item
+      const listaRestante = listaArquivos.filter((nome) => nome !== arquivoParaRemover)
+      let rec: any
+
+      try {
+        // Tenta sintaxe canônica PocketBase anexo-: [nome]
+        rec = await pb.collection(collectionName).update(recordId, {
+          'anexo-': [arquivoParaRemover],
+        } as any)
+      } catch (errRemocao) {
+        console.warn(
+          'Tentativa com modificador anexo- falhou, tentando substituição direta da lista:',
+          errRemocao,
+        )
+        // Alternativa: passar array direto dos nomes restantes ou null se vazio
+        rec = await pb.collection(collectionName).update(recordId, {
+          anexo: listaRestante.length > 0 ? listaRestante : null,
+        } as any)
+      }
+
+      const novoVal = rec?.anexo
+      let novaLista: string[] = []
+      if (Array.isArray(novoVal)) {
+        novaLista = novoVal.map(String).filter(Boolean)
+      } else if (typeof novoVal === 'string' && novoVal.trim()) {
+        novaLista = [novoVal.trim()]
+      } else if (novoVal === null || novoVal === undefined) {
+        novaLista = []
+      } else {
+        novaLista = listaRestante
+      }
+
+      setListaArquivos(novaLista)
+      onAnexoAtualizado(novaLista[0] || null)
+      if (arquivoEmVisualizacao === arquivoParaRemover) {
+        fecharVisualizador()
+      }
+      setArquivoParaRemover(null)
     } catch (err: any) {
       setErro(err?.message || 'Falha ao remover arquivo.')
     } finally {
@@ -110,14 +190,16 @@ export function DocumentoAnexoModal({
     }
   }
 
-  const handleVisualizar = async () => {
-    if (!urlArquivo) return
+  const handleVisualizar = async (nomeArquivo: string) => {
+    const url = obterUrlArquivo(nomeArquivo)
+    const ehPdf = nomeArquivo.toLowerCase().endsWith('.pdf')
 
-    if (!isPdf) {
-      window.open(urlArquivo, '_blank', 'noopener,noreferrer')
+    if (!ehPdf) {
+      window.open(url, '_blank', 'noopener,noreferrer')
       return
     }
 
+    setArquivoEmVisualizacao(nomeArquivo)
     setModalVisualizarAberto(true)
     setCarregandoVisualizacao(true)
     setErroVisualizacao(null)
@@ -127,7 +209,7 @@ export function DocumentoAnexoModal({
       if (pb.authStore.token) {
         headers['Authorization'] = pb.authStore.token
       }
-      const resp = await fetch(urlArquivo, { headers })
+      const resp = await fetch(url, { headers })
       if (!resp.ok) {
         throw new Error(`HTTP ${resp.status}`)
       }
@@ -140,26 +222,26 @@ export function DocumentoAnexoModal({
       setUrlVisualizacao(objectUrl)
     } catch (err: any) {
       console.warn('Fallback para URL direta do arquivo no modal:', err)
-      setUrlVisualizacao(urlArquivo)
+      setUrlVisualizacao(url)
     } finally {
       setCarregandoVisualizacao(false)
     }
   }
 
-  const handleBaixar = async () => {
-    if (!urlArquivo) return
+  const handleBaixar = async (nomeArquivo: string) => {
+    const url = obterUrlArquivo(nomeArquivo)
     try {
       const headers: Record<string, string> = {}
       if (pb.authStore.token) {
         headers['Authorization'] = pb.authStore.token
       }
-      const resp = await fetch(urlArquivo, { headers })
+      const resp = await fetch(url, { headers })
       if (resp.ok) {
         const blob = await resp.blob()
         const downloadUrl = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = downloadUrl
-        a.download = anexoAtual || 'anexo'
+        a.download = nomeArquivo
         document.body.appendChild(a)
         a.click()
         document.body.removeChild(a)
@@ -170,10 +252,9 @@ export function DocumentoAnexoModal({
       console.warn('Fallback para download direto via link:', err)
     }
 
-    // Fallback nativo
     const a = document.createElement('a')
-    a.href = urlArquivo
-    a.download = anexoAtual || 'anexo'
+    a.href = url
+    a.download = nomeArquivo
     a.target = '_blank'
     document.body.appendChild(a)
     a.click()
@@ -183,11 +264,11 @@ export function DocumentoAnexoModal({
   return (
     <>
       <Dialog open={aberto} onOpenChange={onOpenChange}>
-        <DialogContent className="bg-white max-w-md p-6 rounded-2xl shadow-xl border border-gray-200">
+        <DialogContent className="bg-white max-w-lg p-6 rounded-2xl shadow-xl border border-gray-200">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-base font-bold text-gray-900 pb-2 border-b border-gray-100">
               <Paperclip className="h-4 w-4 text-[#1B5E20]" />
-              Anexo do Documento
+              Anexos do Documento ({listaArquivos.length})
             </DialogTitle>
           </DialogHeader>
 
@@ -205,76 +286,87 @@ export function DocumentoAnexoModal({
               </div>
             )}
 
-            {temAnexo ? (
-              <div className="p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="h-9 w-9 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                    <FileText className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
+            {listaArquivos.length > 0 ? (
+              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                {listaArquivos.map((nomeArq, idx) => {
+                  const ehPdf = nomeArq.toLowerCase().endsWith('.pdf')
+                  return (
                     <div
-                      className="text-xs font-semibold text-gray-800 truncate"
-                      title={anexoAtual}
+                      key={`${nomeArq}-${idx}`}
+                      className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2.5"
                     >
-                      {anexoAtual}
-                    </div>
-                    <div className="text-[11px] text-gray-400">
-                      {isPdf ? 'Documento PDF' : 'Arquivo anexado'}
-                    </div>
-                  </div>
-                </div>
+                      <div className="flex items-center gap-2.5">
+                        <div className="h-9 w-9 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                          <FileText className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div
+                            className="text-xs font-semibold text-gray-800 truncate"
+                            title={nomeArq}
+                          >
+                            {nomeArq}
+                          </div>
+                          <div className="text-[11px] text-gray-400">
+                            {ehPdf ? 'Documento PDF' : 'Arquivo anexado'}
+                          </div>
+                        </div>
+                      </div>
 
-                <div className="flex items-center gap-2 pt-1 border-t border-gray-200/80">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={handleVisualizar}
-                    className="flex-1 h-8 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
-                  >
-                    <Eye className="h-3.5 w-3.5 mr-1.5 text-emerald-600" />
-                    Visualizar
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={handleBaixar}
-                    className="flex-1 h-8 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
-                  >
-                    <Download className="h-3.5 w-3.5 mr-1.5 text-blue-600" />
-                    Baixar
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setConfirmRemoverAnexo(true)}
-                    disabled={salvando}
-                    className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
-                    title="Excluir anexo"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
+                      <div className="flex items-center gap-2 pt-1 border-t border-gray-200/80">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleVisualizar(nomeArq)}
+                          className="flex-1 h-7 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
+                        >
+                          <Eye className="h-3.5 w-3.5 mr-1 text-emerald-600" />
+                          Visualizar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleBaixar(nomeArq)}
+                          className="flex-1 h-7 text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
+                        >
+                          <Download className="h-3.5 w-3.5 mr-1 text-blue-600" />
+                          Baixar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setArquivoParaRemover(nomeArq)}
+                          disabled={salvando}
+                          className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          title="Excluir este anexo"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             ) : (
               <div className="p-6 border-2 border-dashed border-gray-200 rounded-xl text-center space-y-2 bg-gray-50/50">
                 <FileText className="h-8 w-8 text-gray-400 mx-auto" />
                 <div className="text-xs text-gray-600">Nenhum anexo vinculado a este registro.</div>
                 <div className="text-[11px] text-gray-400">
-                  Formatos aceitos: PDF, DOCX, XLSX, PNG, JPG (até 50MB)
+                  Formatos aceitos: PDF, DOCX, XLSX, PNG, JPG (você pode selecionar vários arquivos)
                 </div>
               </div>
             )}
 
-            {/* Input de arquivo */}
+            {/* Input de arquivo com suporte a múltiplos */}
             <div>
               <input
                 ref={fileInputRef}
                 type="file"
+                multiple
                 accept=".pdf,.docx,.doc,.xlsx,.xls,.png,.jpg,.jpeg"
-                onChange={handleUpload}
+                onChange={handleUploadMultiplo}
                 className="hidden"
                 id="doc-anexo-input"
               />
@@ -290,30 +382,36 @@ export function DocumentoAnexoModal({
                 ) : (
                   <Upload className="h-3.5 w-3.5 mr-2" />
                 )}
-                {temAnexo ? 'Substituir anexo (PDF / DOCX)' : 'Anexar novo arquivo (PDF / DOCX)'}
+                {listaArquivos.length > 0
+                  ? 'Adicionar mais anexo(s) (PDF / DOCX / XLSX)'
+                  : 'Anexar arquivo(s) (PDF / DOCX / XLSX)'}
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Confirmação amigável de remoção do anexo (sem window.confirm) */}
-      <Dialog open={confirmRemoverAnexo} onOpenChange={setConfirmRemoverAnexo}>
+      {/* Confirmação amigável de remoção de anexo individual */}
+      <Dialog
+        open={!!arquivoParaRemover}
+        onOpenChange={(open) => !open && setArquivoParaRemover(null)}
+      >
         <DialogContent className="bg-white max-w-sm p-5 rounded-2xl shadow-xl border border-gray-200">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold text-gray-900">
-              Remover anexo do documento?
+              Remover este anexo?
             </DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-gray-500 mt-2">
-            O arquivo vinculado será desvinculado deste registro. Esta ação não pode ser desfeita.
+          <p className="text-xs text-gray-500 mt-2 truncate">
+            O arquivo <strong className="text-gray-800">{arquivoParaRemover}</strong> será
+            desvinculado deste documento. Os demais anexos serão preservados.
           </p>
           <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setConfirmRemoverAnexo(false)}
+              onClick={() => setArquivoParaRemover(null)}
               className="text-xs h-8"
               disabled={salvando}
             >
@@ -322,12 +420,12 @@ export function DocumentoAnexoModal({
             <Button
               type="button"
               size="sm"
-              onClick={handleRemoverAnexo}
+              onClick={handleRemoverAnexoIndividual}
               disabled={salvando}
               className="text-xs h-8 bg-red-600 hover:bg-red-700 text-white font-medium"
             >
               {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-              Sim, remover anexo
+              Sim, remover
             </Button>
           </div>
         </DialogContent>
@@ -339,7 +437,7 @@ export function DocumentoAnexoModal({
           <DialogContent className="bg-white max-w-5xl w-[95vw] h-[90vh] p-4 flex flex-col rounded-2xl shadow-2xl border border-gray-200">
             <DialogHeader className="flex flex-row items-center justify-between pb-2 border-b border-gray-100 shrink-0">
               <DialogTitle className="text-sm font-bold text-gray-800 truncate max-w-xl">
-                Visualização: {anexoAtual}
+                Visualização: {arquivoEmVisualizacao}
               </DialogTitle>
               <div className="flex items-center gap-2">
                 <Button
@@ -348,15 +446,24 @@ export function DocumentoAnexoModal({
                   onClick={() => {
                     if (urlVisualizacao) {
                       window.open(urlVisualizacao, '_blank', 'noopener,noreferrer')
-                    } else if (urlArquivo) {
-                      window.open(urlArquivo, '_blank', 'noopener,noreferrer')
+                    } else if (arquivoEmVisualizacao) {
+                      window.open(
+                        obterUrlArquivo(arquivoEmVisualizacao),
+                        '_blank',
+                        'noopener,noreferrer',
+                      )
                     }
                   }}
                   className="h-7 text-xs"
                 >
                   <ExternalLink className="h-3 w-3 mr-1" /> Nova aba
                 </Button>
-                <Button size="sm" variant="outline" onClick={handleBaixar} className="h-7 text-xs">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => arquivoEmVisualizacao && handleBaixar(arquivoEmVisualizacao)}
+                  className="h-7 text-xs"
+                >
                   <Download className="h-3 w-3 mr-1" /> Baixar
                 </Button>
               </div>
@@ -379,12 +486,24 @@ export function DocumentoAnexoModal({
                   <div className="flex items-center gap-2">
                     <Button
                       size="sm"
-                      onClick={() => window.open(urlArquivo, '_blank', 'noopener,noreferrer')}
+                      onClick={() =>
+                        arquivoEmVisualizacao &&
+                        window.open(
+                          obterUrlArquivo(arquivoEmVisualizacao),
+                          '_blank',
+                          'noopener,noreferrer',
+                        )
+                      }
                       className="bg-[#1B5E20] hover:bg-[#0F3D13] text-white text-xs"
                     >
                       <ExternalLink className="h-3.5 w-3.5 mr-1.5" /> Abrir em nova aba
                     </Button>
-                    <Button size="sm" variant="outline" onClick={handleBaixar} className="text-xs">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => arquivoEmVisualizacao && handleBaixar(arquivoEmVisualizacao)}
+                      className="text-xs"
+                    >
                       <Download className="h-3.5 w-3.5 mr-1.5" /> Baixar arquivo
                     </Button>
                   </div>
@@ -392,7 +511,7 @@ export function DocumentoAnexoModal({
               ) : urlVisualizacao ? (
                 <PdfViewer
                   url={urlVisualizacao}
-                  fileName={anexoAtual || 'documento.pdf'}
+                  fileName={arquivoEmVisualizacao || 'documento.pdf'}
                   minHeight={580}
                   className="w-full h-full border-0 rounded-none"
                 />

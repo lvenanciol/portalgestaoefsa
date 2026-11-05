@@ -53,7 +53,12 @@ export function DocumentoDetalheModal({
 }: DocumentoDetalheModalProps) {
   const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
   const [blobUrlPdf, setBlobUrlPdf] = useState<string | null>(null)
+  const [arquivoPdfAtivo, setArquivoPdfAtivo] = useState<string | null>(null)
   const [carregandoPdf, setCarregandoPdf] = useState(false)
+  const [listaAnexosDetalhe, setListaAnexosDetalhe] = useState<string[]>([])
+  const [salvandoAnexoDetalhe, setSalvandoAnexoDetalhe] = useState(false)
+  const [anexoParaRemoverDetalhe, setAnexoParaRemoverDetalhe] = useState<string | null>(null)
+  const inputAnexoDetalheRef = useRef<HTMLInputElement>(null)
 
   // Estado dos campos editáveis do documento
   const [formData, setFormData] = useState<Record<string, any>>({})
@@ -92,6 +97,16 @@ export function DocumentoDetalheModal({
       setFormData(dados)
       setFeedbackSalvo(false)
       setErroSalvar(null)
+
+      // Extrai lista unificada de anexos (compatível com array de arquivos ou string antiga)
+      const valAnexo = dados.anexo
+      let lista: string[] = []
+      if (Array.isArray(valAnexo)) {
+        lista = valAnexo.map(String).filter(Boolean)
+      } else if (typeof valAnexo === 'string' && valAnexo.trim()) {
+        lista = [valAnexo.trim()]
+      }
+      setListaAnexosDetalhe(lista)
     }
   }, [documento, tipoAba])
 
@@ -108,18 +123,31 @@ export function DocumentoDetalheModal({
 
   if (!documento) return null
 
-  const nomeArquivoAnexo = documento.anexo || ''
-  const urlAnexo = nomeArquivoAnexo ? pb.files.getURL(documento, nomeArquivoAnexo) : ''
-  const isPdf = nomeArquivoAnexo.toLowerCase().endsWith('.pdf')
+  const colecaoPocketBase =
+    tipoAba === 'alvaras'
+      ? 'alvaras'
+      : tipoAba === 'contratos' || tipoAba === 'locacoes'
+        ? 'contratos'
+        : tipoAba === 'atas'
+          ? 'atas'
+          : tipoAba === 'juridicos'
+            ? 'processos_juridicos'
+            : 'documentos'
+
+  const obterUrlArquivoDetalhe = (nomeArquivo: string) => {
+    if (!nomeArquivo || !documento) return ''
+    return pb.files.getURL(documento, nomeArquivo)
+  }
 
   const setCampo = (campo: string, valor: any) => {
     setFormData((prev) => ({ ...prev, [campo]: valor }))
   }
 
   // Alterna visualização do PDF no detalhe com PdfViewer
-  const toggleVisualizarPdf = async () => {
-    if (visualizandoAnexo) {
+  const toggleVisualizarPdf = async (nomeArquivo: string) => {
+    if (visualizandoAnexo && arquivoPdfAtivo === nomeArquivo) {
       setVisualizandoAnexo(false)
+      setArquivoPdfAtivo(null)
       if (blobUrlPdf && blobUrlPdf.startsWith('blob:')) {
         URL.revokeObjectURL(blobUrlPdf)
         setBlobUrlPdf(null)
@@ -127,8 +155,10 @@ export function DocumentoDetalheModal({
       return
     }
 
-    if (!urlAnexo || !isPdf) return
+    const url = obterUrlArquivoDetalhe(nomeArquivo)
+    if (!url || !nomeArquivo.toLowerCase().endsWith('.pdf')) return
 
+    setArquivoPdfAtivo(nomeArquivo)
     setVisualizandoAnexo(true)
     setCarregandoPdf(true)
     try {
@@ -136,7 +166,7 @@ export function DocumentoDetalheModal({
       if (pb.authStore.token) {
         headers['Authorization'] = pb.authStore.token
       }
-      const resp = await fetch(urlAnexo, { headers })
+      const resp = await fetch(url, { headers })
       if (!resp.ok) throw new Error('HTTP ' + resp.status)
       const rawBlob = await resp.blob()
       const pdfBlob = new Blob([rawBlob], { type: 'application/pdf' })
@@ -144,9 +174,116 @@ export function DocumentoDetalheModal({
       setBlobUrlPdf(objectUrl)
     } catch (e) {
       console.warn('Erro ao carregar PDF como blob no detalhe, usando url direta:', e)
-      setBlobUrlPdf(urlAnexo)
+      setBlobUrlPdf(url)
     } finally {
       setCarregandoPdf(false)
+    }
+  }
+
+  // Download individual defensivo
+  const handleBaixarArquivoDetalhe = async (nomeArquivo: string) => {
+    const url = obterUrlArquivoDetalhe(nomeArquivo)
+    if (!url) return
+    try {
+      const headers: Record<string, string> = {}
+      if (pb.authStore.token) headers['Authorization'] = pb.authStore.token
+      const resp = await fetch(url, { headers })
+      if (resp.ok) {
+        const blob = await resp.blob()
+        const dUrl = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = dUrl
+        a.download = nomeArquivo
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        setTimeout(() => URL.revokeObjectURL(dUrl), 1000)
+        return
+      }
+    } catch {
+      /* fallback */
+    }
+    const a = document.createElement('a')
+    a.href = url
+    a.download = nomeArquivo
+    a.target = '_blank'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+
+  // Upload de novos anexos pelo próprio detalhe
+  const handleAnexarArquivosDetalhe = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0 || !documento?.id) return
+
+    setSalvandoAnexoDetalhe(true)
+    try {
+      const formDataUpload = new FormData()
+      for (const f of files) {
+        formDataUpload.append('anexo', f)
+      }
+      const rec = await pb.collection(colecaoPocketBase).update(documento.id, formDataUpload)
+      const valAnexo = rec.anexo
+      let lista: string[] = []
+      if (Array.isArray(valAnexo)) {
+        lista = valAnexo.map(String).filter(Boolean)
+      } else if (typeof valAnexo === 'string' && valAnexo.trim()) {
+        lista = [valAnexo.trim()]
+      }
+      setListaAnexosDetalhe(lista)
+      if (onAtualizado) onAtualizado()
+    } catch (err: any) {
+      console.error('Erro ao anexar arquivo no detalhe:', err)
+      alert(err?.message || 'Falha ao anexar arquivo.')
+    } finally {
+      setSalvandoAnexoDetalhe(false)
+      if (inputAnexoDetalheRef.current) inputAnexoDetalheRef.current.value = ''
+    }
+  }
+
+  // Remover anexo individual pelo próprio detalhe
+  const handleRemoverAnexoDetalhe = async (nomeArquivo: string) => {
+    if (!documento?.id || !nomeArquivo) return
+    setSalvandoAnexoDetalhe(true)
+    try {
+      const listaRestante = listaAnexosDetalhe.filter((n) => n !== nomeArquivo)
+      let rec: any
+      try {
+        rec = await pb.collection(colecaoPocketBase).update(documento.id, {
+          'anexo-': [nomeArquivo],
+        } as any)
+      } catch (errRemocao) {
+        console.warn('Modificador anexo- falhou, tentando salvar lista restante:', errRemocao)
+        rec = await pb.collection(colecaoPocketBase).update(documento.id, {
+          anexo: listaRestante.length > 0 ? listaRestante : null,
+        } as any)
+      }
+
+      const valAnexo = rec?.anexo
+      let novaLista: string[] = []
+      if (Array.isArray(valAnexo)) {
+        novaLista = valAnexo.map(String).filter(Boolean)
+      } else if (typeof valAnexo === 'string' && valAnexo.trim()) {
+        novaLista = [valAnexo.trim()]
+      } else if (valAnexo === null || valAnexo === undefined) {
+        novaLista = []
+      } else {
+        novaLista = listaRestante
+      }
+
+      setListaAnexosDetalhe(novaLista)
+      if (arquivoPdfAtivo === nomeArquivo) {
+        setVisualizandoAnexo(false)
+        setArquivoPdfAtivo(null)
+      }
+      setAnexoParaRemoverDetalhe(null)
+      if (onAtualizado) onAtualizado()
+    } catch (err: any) {
+      console.error('Erro ao remover anexo no detalhe:', err)
+      alert(err?.message || 'Falha ao remover arquivo.')
+    } finally {
+      setSalvandoAnexoDetalhe(false)
     }
   }
 
@@ -509,111 +646,189 @@ export function DocumentoDetalheModal({
             </div>
           </div>
 
-          {/* Seção de Arquivo Anexo */}
+          {/* Seção de Arquivo Anexo (suporte a múltiplos anexos) */}
           <div className="bg-white rounded-xl p-5 border border-gray-200/80 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div className="flex items-center gap-2">
                 <Paperclip className="h-4 w-4 text-emerald-700" />
                 <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700">
-                  Arquivo Anexo do Documento
+                  Arquivos Anexos do Documento ({listaAnexosDetalhe.length})
                 </h3>
               </div>
-              {onAbrirAnexos && (
+              <div className="flex items-center gap-2">
+                <input
+                  ref={inputAnexoDetalheRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.docx,.doc,.xlsx,.xls,.png,.jpg,.jpeg"
+                  className="hidden"
+                  onChange={handleAnexarArquivosDetalhe}
+                  disabled={salvandoAnexoDetalhe}
+                />
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => onAbrirAnexos(documento)}
+                  onClick={() => inputAnexoDetalheRef.current?.click()}
+                  disabled={salvandoAnexoDetalhe}
                   className="h-7 text-xs font-medium text-emerald-800 border-emerald-200 hover:bg-emerald-50"
                 >
-                  Gerenciar anexo
+                  {salvandoAnexoDetalhe ? (
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  ) : (
+                    <Upload className="h-3 w-3 mr-1" />
+                  )}
+                  Anexar mais arquivos
                 </Button>
-              )}
+                {onAbrirAnexos && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onAbrirAnexos(documento)}
+                    className="h-7 text-xs font-medium text-gray-700 border-gray-200 hover:bg-gray-50"
+                  >
+                    Gerenciador completo
+                  </Button>
+                )}
+              </div>
             </div>
 
-            {nomeArquivoAnexo ? (
-              <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="h-9 w-9 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs shrink-0">
-                    {isPdf ? 'PDF' : 'DOC'}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-xs font-semibold text-gray-900 truncate max-w-sm">
-                      {nomeArquivoAnexo}
-                    </div>
-                    <div className="text-[11px] text-gray-500">
-                      Disponível para visualização e download
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {isPdf && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={toggleVisualizarPdf}
-                      className="h-8 text-xs font-medium border-gray-200 text-gray-700 hover:bg-white"
+            {listaAnexosDetalhe.length > 0 ? (
+              <div className="space-y-2">
+                {listaAnexosDetalhe.map((nomeArq, idx) => {
+                  const arqPdf = nomeArq.toLowerCase().endsWith('.pdf')
+                  const arqAtivoVis = visualizandoAnexo && arquivoPdfAtivo === nomeArq
+                  return (
+                    <div
+                      key={nomeArq + '-' + idx}
+                      className="p-3 bg-gray-50 border border-gray-200 rounded-lg flex flex-wrap items-center justify-between gap-3 hover:bg-gray-100/60 transition-colors"
                     >
-                      <Eye className="h-3.5 w-3.5 mr-1 text-gray-600" />
-                      {visualizandoAnexo ? 'Ocultar' : 'Visualizar'}
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        const headers: Record<string, string> = {}
-                        if (pb.authStore.token) headers['Authorization'] = pb.authStore.token
-                        const resp = await fetch(urlAnexo, { headers })
-                        if (resp.ok) {
-                          const blob = await resp.blob()
-                          const dUrl = URL.createObjectURL(blob)
-                          const a = document.createElement('a')
-                          a.href = dUrl
-                          a.download = nomeArquivoAnexo || 'documento'
-                          document.body.appendChild(a)
-                          a.click()
-                          document.body.removeChild(a)
-                          setTimeout(() => URL.revokeObjectURL(dUrl), 1000)
-                          return
-                        }
-                      } catch {
-                        /* fallback */
-                      }
-                      const a = document.createElement('a')
-                      a.href = urlAnexo
-                      a.download = nomeArquivoAnexo || 'documento'
-                      a.target = '_blank'
-                      document.body.appendChild(a)
-                      a.click()
-                      document.body.removeChild(a)
-                    }}
-                    className="h-8 px-3 text-xs font-semibold text-white bg-[#1B5E20] hover:bg-[#1B5E20]/90 rounded-md shadow-sm"
-                  >
-                    <Download className="h-3.5 w-3.5 mr-1" />
-                    Baixar arquivo
-                  </Button>
-                </div>
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div
+                          className={cn(
+                            'h-8 w-8 rounded-lg flex items-center justify-center font-bold text-[10px] shrink-0',
+                            arqPdf
+                              ? 'bg-rose-100 text-rose-800'
+                              : nomeArq.toLowerCase().match(/\.(xlsx|xls)$/)
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-blue-100 text-blue-800',
+                          )}
+                        >
+                          {arqPdf
+                            ? 'PDF'
+                            : nomeArq.toLowerCase().match(/\.(xlsx|xls)$/)
+                              ? 'XLS'
+                              : 'DOC'}
+                        </div>
+                        <div className="min-w-0">
+                          <div
+                            className="text-xs font-semibold text-gray-900 truncate max-w-md"
+                            title={nomeArq}
+                          >
+                            {nomeArq}
+                          </div>
+                          <div className="text-[11px] text-gray-500">Anexo #{idx + 1}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {arqPdf && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => toggleVisualizarPdf(nomeArq)}
+                            className="h-7 px-2 text-xs font-medium border-gray-200 text-gray-700 hover:bg-white"
+                          >
+                            <Eye className="h-3 w-3 mr-1 text-gray-600" />
+                            {arqAtivoVis ? 'Ocultar' : 'Visualizar'}
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleBaixarArquivoDetalhe(nomeArq)}
+                          className="h-7 px-2.5 text-xs font-semibold text-emerald-800 border-emerald-200 hover:bg-emerald-50 rounded-md"
+                        >
+                          <Download className="h-3 w-3 mr-1" />
+                          Baixar
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setAnexoParaRemoverDetalhe(nomeArq)}
+                          disabled={salvandoAnexoDetalhe}
+                          className="h-7 px-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                          title="Remover anexo"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             ) : (
               <div className="p-4 text-center border border-dashed border-gray-200 rounded-lg text-xs text-gray-500 bg-gray-50/50">
                 Nenhum arquivo anexado a este documento ainda.
-                {onAbrirAnexos && (
-                  <Button
-                    variant="link"
-                    size="sm"
-                    onClick={() => onAbrirAnexos(documento)}
-                    className="h-auto p-0 text-xs text-emerald-700 font-semibold ml-1.5"
-                  >
-                    Anexar agora (PDF, DOCX, XLSX)
-                  </Button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => inputAnexoDetalheRef.current?.click()}
+                  className="text-xs text-emerald-700 font-semibold underline ml-1.5 hover:text-emerald-800 inline-block"
+                >
+                  Anexar agora (PDF, DOCX, XLSX)
+                </button>
               </div>
             )}
 
+            {/* Modal de confirmação de exclusão individual */}
+            <Dialog
+              open={Boolean(anexoParaRemoverDetalhe)}
+              onOpenChange={(aberto) => !aberto && setAnexoParaRemoverDetalhe(null)}
+            >
+              <DialogContent className="bg-white max-w-sm p-5 rounded-2xl shadow-xl border border-gray-200">
+                <DialogHeader>
+                  <DialogTitle className="text-sm font-bold text-gray-900">
+                    Remover anexo?
+                  </DialogTitle>
+                </DialogHeader>
+                <p className="text-xs text-gray-600 mt-2">
+                  Deseja remover{' '}
+                  <strong className="text-gray-900 break-all">{anexoParaRemoverDetalhe}</strong>? Os
+                  demais anexos permanecerão intactos.
+                </p>
+                <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAnexoParaRemoverDetalhe(null)}
+                    className="text-xs h-8"
+                    disabled={salvandoAnexoDetalhe}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() =>
+                      anexoParaRemoverDetalhe && handleRemoverAnexoDetalhe(anexoParaRemoverDetalhe)
+                    }
+                    disabled={salvandoAnexoDetalhe}
+                    className="text-xs h-8 bg-red-600 hover:bg-red-700 text-white font-medium"
+                  >
+                    {salvandoAnexoDetalhe ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                    ) : null}
+                    Sim, remover
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
             {/* Visualizador de PDF embutido seguro via PdfViewer */}
-            {visualizandoAnexo && isPdf && (
+            {visualizandoAnexo && (
               <div className="mt-4 border border-gray-200 rounded-xl overflow-hidden bg-gray-900 shadow-inner relative">
                 {carregandoPdf ? (
                   <div className="h-[480px] flex items-center justify-center bg-gray-900/90 text-xs text-gray-300">
@@ -622,7 +837,7 @@ export function DocumentoDetalheModal({
                 ) : blobUrlPdf ? (
                   <PdfViewer
                     url={blobUrlPdf}
-                    fileName={nomeArquivoAnexo || 'documento.pdf'}
+                    fileName={arquivoPdfAtivo || 'documento.pdf'}
                     minHeight={520}
                     className="w-full"
                   />
