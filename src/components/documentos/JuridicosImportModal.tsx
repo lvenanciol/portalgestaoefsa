@@ -257,7 +257,7 @@ export function extrairBlocoObservacoes(bloco: string): string {
       // Se logo após ou nas linhas seguintes após Órgão vier data de cronologia
       // antes de qualquer outro bloco estruturado de fechamento (Valores, Garantias, Providências...)
       const matchPrimeiraData = trechoAposOrgao.match(
-        /(?:^|\n)\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{4}(?:\s*[([]?[A-Za-z0-9_\- ]+[)\]]?)?\s*[:-]?)/,
+        /(?:^|\n)\s*(\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{4}(?:\s*[([]?[A-Za-z0-9_\- ]+[)\]]?)?\s*[:-]?)/,
       )
 
       if (matchPrimeiraData && matchPrimeiraData.index !== undefined) {

@@ -259,6 +259,9 @@ export function DocumentoDetalheModal({
         payload.advogado = formData.advogado || ''
         payload.status = formData.status || 'ativo'
         payload.risco = formData.risco || 'possivel'
+        if (formData.natureza) {
+          payload.natureza = canonizarNatureza(formData.natureza)
+        }
         payload.observacoes = formData.observacoes || ''
 
         const valCausa =

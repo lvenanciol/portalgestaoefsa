@@ -151,7 +151,7 @@ export function extrairEntradasDeObservacoes(
 
     const textoEntrada = trimmed.substring(startIndex, endIndex).trim()
 
-    // Ignora entradas que são rodapés de página colados ("00:44Pagina 50 de 71", etc.)
+    // Ignora entradas que contenham fragmento de rodapé em QUALQUER posição (não só no início)
     if (ehRodapePagina(textoEntrada)) {
       continue
     }

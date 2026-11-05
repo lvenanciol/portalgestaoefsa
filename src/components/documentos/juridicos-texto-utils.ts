@@ -24,25 +24,58 @@ export function removerRodapesDePagina(texto: string): string {
   t = t.replace(/\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\s*\d{1,2}:\d{2}\s*P[aá]gina/gi, '')
   // 3. Sobras de horário coladas a "Pagina": "00:44Pagina 50 de 71" ou "00:44Pagina"
   t = t.replace(/\d{1,2}:\d{2}\s*P[aá]gina\s*\d*(?:\s*de\s*\d*)?/gi, '')
-  // 4. Rodapé isolado: "Pagina 50 de 71", "Pagina 59 de", "Pagina 15"
+  // 4. Cabeçalhos repetidos de relatório em páginas seguintes: "Relatório de processos..."
+  t = t.replace(/(?:^|\n)\s*Relat[oó]rio\s+de\s+processos[^\n]*(?:\n|$)/gi, '\n')
+  // 5. Linhas de rodapé isoladas no padrão "Pagina N de M" em qualquer posição
   t = t.replace(/P[aá]gina\s*\d+(?:\s*de\s*\d*)?/gi, '')
   return t
 }
 
 /**
- * Detecta texto ou fragmento de entrada que é resíduo de rodapé de página
- * (ex.: "01/11/2026 00:44Pagina 50 de 71", "01/11/2026 00:44Pagina", "Pagina 59 de").
+ * Detecta texto ou fragmento de entrada que contenha resíduo de rodapé de página ou cabeçalho repetido
+ * em QUALQUER posição (ex.: "01/11/2026 00:44Pagina 50 de 71", "01/11/2026 00:44Pagina", "Pagina 59 de",
+ * ou quando "Pagina N de M" aparece em qualquer lugar do texto).
  * Usado pela timeline para ignorar entradas espúrias com 100% de precisão.
  */
 export function ehRodapePagina(texto: string): boolean {
   if (!texto) return false
-  const t = texto.trim().slice(0, 180)
+  const t = texto.trim()
   return (
     /\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\s*\d{1,2}:\d{2}\s*P[aá]gina/i.test(t) ||
     /\d{1,2}:\d{2}\s*P[aá]gina/i.test(t) ||
-    /P[aá]gina\s*\d+\s*de\s*\d*/i.test(t) ||
-    /^[\sR$0.,]*\d{0,2}\s*P[aá]gina\s*\d*(?:\s*de\s*\d*)?$/i.test(t)
+    /P[aá]gina\s*\d+(?:\s*de\s*\d*)?/i.test(t) ||
+    /Relat[oó]rio\s+de\s+processos/i.test(t)
   )
+}
+
+/**
+ * Normaliza o valor do campo anexo do PocketBase (seja string única, array de strings ou nulo)
+ * em uma lista de nomes de arquivos não vazia e sem duplicatas.
+ */
+export function extrairListaAnexos(anexo: any): string[] {
+  if (!anexo) return []
+  if (Array.isArray(anexo)) {
+    return anexo.map((item) => (item ? String(item).trim() : '')).filter((nome) => Boolean(nome))
+  }
+  if (typeof anexo === 'string') {
+    const trimmed = anexo.trim()
+    if (!trimmed) return []
+    // Se for string serializada em JSON ex: '["arq1.pdf","arq2.pdf"]'
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((item) => (item ? String(item).trim() : ''))
+            .filter((nome) => Boolean(nome))
+        }
+      } catch {
+        // não é json válido, trata como nome simples
+      }
+    }
+    return [trimmed]
+  }
+  return []
 }
 
 /**
