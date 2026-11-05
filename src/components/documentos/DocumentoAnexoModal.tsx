@@ -13,6 +13,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import pb from '@/lib/pocketbase/client'
+import { cn } from '@/lib/utils'
 import { PdfViewer } from './PdfViewer'
 
 interface DocumentoAnexoModalProps {
@@ -22,7 +23,7 @@ interface DocumentoAnexoModalProps {
   recordId: string
   tituloDocumento: string
   anexoAtual?: string | null
-  onAnexoAtualizado: (novoNomeAnexo: string | null) => void
+  onAnexoAtualizado: (listaAnexos: string[] | null) => void
 }
 
 export function DocumentoAnexoModal({
@@ -128,7 +129,7 @@ export function DocumentoAnexoModal({
         novaLista = [novoVal.trim()]
       }
       setListaArquivos(novaLista)
-      onAnexoAtualizado(novaLista[0] || null)
+      onAnexoAtualizado(novaLista)
     } catch (err: any) {
       setErro(err?.message || 'Falha ao anexar arquivo(s).')
     } finally {
@@ -178,7 +179,7 @@ export function DocumentoAnexoModal({
       }
 
       setListaArquivos(novaLista)
-      onAnexoAtualizado(novaLista[0] || null)
+      onAnexoAtualizado(novaLista)
       if (arquivoEmVisualizacao === arquivoParaRemover) {
         fecharVisualizador()
       }
@@ -296,8 +297,25 @@ export function DocumentoAnexoModal({
                       className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2.5"
                     >
                       <div className="flex items-center gap-2.5">
-                        <div className="h-9 w-9 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                          <FileText className="h-5 w-5" />
+                        <div
+                          className={cn(
+                            'h-9 w-9 rounded-lg flex items-center justify-center shrink-0 font-bold text-[10px]',
+                            ehPdf
+                              ? 'bg-rose-100 text-rose-800'
+                              : /\.(xlsx|xls)$/i.test(nomeArq)
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : /\.(png|jpe?g)$/i.test(nomeArq)
+                                  ? 'bg-violet-100 text-violet-800'
+                                  : 'bg-blue-100 text-blue-800',
+                          )}
+                        >
+                          {ehPdf
+                            ? 'PDF'
+                            : /\.(xlsx|xls)$/i.test(nomeArq)
+                              ? 'XLS'
+                              : /\.(png|jpe?g)$/i.test(nomeArq)
+                                ? 'IMG'
+                                : 'DOC'}
                         </div>
                         <div className="min-w-0 flex-1">
                           <div
@@ -307,7 +325,14 @@ export function DocumentoAnexoModal({
                             {nomeArq}
                           </div>
                           <div className="text-[11px] text-gray-400">
-                            {ehPdf ? 'Documento PDF' : 'Arquivo anexado'}
+                            {ehPdf
+                              ? 'Documento PDF'
+                              : /\.(xlsx|xls)$/i.test(nomeArq)
+                                ? 'Planilha'
+                                : /\.(png|jpe?g)$/i.test(nomeArq)
+                                  ? 'Imagem'
+                                  : 'Arquivo anexado'}{' '}
+                            • Anexo #{idx + 1}
                           </div>
                         </div>
                       </div>

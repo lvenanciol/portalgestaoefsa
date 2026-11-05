@@ -23,6 +23,7 @@ export interface ObservacaoItem {
   texto: string
   origem: 'processo' | 'historico' | 'manual'
   versao?: number
+  ehAbertura?: boolean // Entrada de abertura/relatório do processo
 }
 
 interface ProcessoObservacoesTimelineProps {
@@ -35,10 +36,30 @@ interface ProcessoObservacoesTimelineProps {
 }
 
 /**
- * Função utilitária para fazer o parser inteligente de texto de observações livres.
- * Detecta blocos com data (ex: "09/10/2026 (CJ): Trata-se de...", "03/06/2026: ...")
- * Se não houver datas embutidas, retorna uma única entrada com a data da última atualização.
+ * Separa o texto de um evento em RESUMO (primeira frase / título antes do separador)
+ * e CORPO (resto, com quebras de linha preservadas). Usado pelos cards da timeline.
  */
+export function separarResumoEvento(texto: string): { resumo: string; corpo: string } {
+  const t = (texto || '').trim()
+  if (!t) return { resumo: '', corpo: '' }
+
+  // Títulos padronizados do relatório: "Publicada intimação - ...", "Protocolada petição - ..."
+  const mTitulo = t.match(
+    /^((?:Publicad[oa]|Protocolad[oa]|Realizad[oa]|Designad[oa]|Juntad[oa]|Elaborad[oa])[^.!?\n]{0,90}?)\s*[-–—]\s+/i,
+  )
+  if (mTitulo) {
+    return { resumo: mTitulo[1].trim(), corpo: t.slice(mTitulo[0].length).trim() }
+  }
+
+  // Primeira frase (até o primeiro ponto final), quando razoavelmente curta
+  const fimFrase = t.search(/[.!?](\s|$)/)
+  if (fimFrase > 0 && fimFrase <= 400) {
+    return { resumo: t.slice(0, fimFrase + 1).trim(), corpo: t.slice(fimFrase + 1).trim() }
+  }
+
+  if (t.length <= 220) return { resumo: t, corpo: '' }
+  return { resumo: t.slice(0, 200).trim() + '…', corpo: t.slice(200).trim() }
+}
 export function extrairEntradasDeObservacoes(
   texto: string,
   dataFallback?: string,
@@ -57,9 +78,11 @@ export function extrairEntradasDeObservacoes(
   // - Anos de 2 ou 4 dígitos: "09/10/26" ou "09/10/2026"
   // - Espaços flexíveis entre barras: "09 / 10 / 2026"
   // - Delimitadores com hífen, ponto ou barra: "09-10-2026", "09.10.2026"
-  // - Tags com ou sem parênteses: "(CJ):", "- CJ -", "[CJ]:", "CJ:"
+  // - Tags com ou sem parênteses, inclusive coladas à data: "(CJ):", "10/05/2026(BM):"
+  // A data NÃO precisa estar no começo da linha — o corte acontece em qualquer posição
+  // do texto corrido, desde que venha seguida de ":" (com tag opcional entre parênteses).
   const dataRegex =
-    /(?:^|\n|\r\n)\s*(\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*(?:\d{4}|\d{2}))(?:\s+(?:[aàá]s\s+)?\d{1,2}:\d{2}(?::\d{2})?)?(?:\s*(?:[([]([A-Za-z0-9_\- ]+)[)\]]|-\s*([A-Za-z0-9_\- ]+)\s*-))?\s*[:\-—]?\s*/gi
+    /(\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*(?:\d{4}|\d{2}))(?:\s*,?\s*(?:[aàá]s\s+)?\d{1,2}:\d{2}(?::\d{2})?)?\s*(?:\(([^()]{1,15})\))?\s*:\s*/gi
 
   const matches = [...trimmed.matchAll(dataRegex)]
 
@@ -102,15 +125,27 @@ export function extrairEntradasDeObservacoes(
     if (textoPreliminar && !ehRodapePagina(textoPreliminar)) {
       itens.push({
         id: 'entrada-preliminar',
-        dataTexto: 'Nota inicial',
+        dataTexto: 'Abertura/Relatório',
         texto: textoPreliminar,
         origem: 'processo',
+        ehAbertura: true,
       })
     }
   }
 
   for (let i = 0; i < matches.length; i++) {
     const match = matches[i]
+
+    // Ignora match cujo próprio cabeçalho é rodapé de página
+    // (ex.: "01/11/2026 00:44Pagina 50 de 71") — nunca vira evento
+    const trechoCabecalho = trimmed.substring(
+      match.index!,
+      Math.min(trimmed.length, match.index! + 60),
+    )
+    if (ehRodapePagina(trechoCabecalho)) {
+      continue
+    }
+
     // Normaliza a data para formato DD/MM/AAAA limpo
     const dataCrua = match[1].replace(/\s+/g, '')
     const partesSeparadas = dataCrua.split(/[/.-]/)
@@ -136,29 +171,15 @@ export function extrairEntradasDeObservacoes(
       }
     }
 
-    // Ignora match se a própria linha de data foi seguida imediatamente de horário + "Pagina"
-    // (ex.: "01/11/2026 00:44Pagina 50 de 71")
-    const matchCompleto = match[0]
-    const trechoCabecalho = trimmed.substring(
-      match.index!,
-      Math.min(trimmed.length, match.index! + 60),
-    )
-    if (ehRodapePagina(trechoCabecalho)) {
-      continue
-    }
-
-    const autorRaw = match[2] || match[3]
-    const autorTag = autorRaw ? `(${autorRaw.trim()})` : undefined
-    const startIndex = match.index! + matchCompleto.length
+    const autorRaw = (match[2] || '').trim()
+    const autorTag = autorRaw ? `(${autorRaw.toUpperCase()})` : undefined
+    const startIndex = match.index! + match[0].length
     const nextMatch = matches[i + 1]
     const endIndex = nextMatch ? nextMatch.index! : trimmed.length
 
-    const textoEntrada = trimmed.substring(startIndex, endIndex).trim()
-
-    // Ignora entradas que contenham fragmento de rodapé em QUALQUER posição (não só no início)
-    if (ehRodapePagina(textoEntrada)) {
-      continue
-    }
+    // Rodapés remanescentes DENTRO do corpo são limpos — o evento nunca é descartado por isso
+    const textoEntrada = removerRodapesDePagina(trimmed.substring(startIndex, endIndex)).trim()
+    if (!textoEntrada) continue
 
     itens.push({
       id: `entrada-${i}-${dataFormatada}`,
@@ -167,13 +188,16 @@ export function extrairEntradasDeObservacoes(
       autorTag,
       texto: textoEntrada,
       origem: 'processo',
+      ehAbertura: /(^|\n)\s*(Trata-se\b|Relat[oó]rio\b)/i.test(textoEntrada),
     })
   }
 
-  // Ordena da mais recente para a mais antiga
+  // Ordena da mais recente para a mais antiga; entradas sem data (abertura) vão para o fim
   return itens.sort((a, b) => {
-    if (!a.dataObj || !b.dataObj) return 0
-    return b.dataObj.getTime() - a.dataObj.getTime()
+    if (a.dataObj && b.dataObj) return b.dataObj.getTime() - a.dataObj.getTime()
+    if (a.dataObj) return -1
+    if (b.dataObj) return 1
+    return 0
   })
 }
 
@@ -277,11 +301,13 @@ export function ProcessoObservacoesTimeline({
     }
   }
 
-  // Ordenação final
+  // Ordenação final: mais recente primeiro; abertura/relatório sem data vai para o fim
   todasEntradas.sort((a, b) => {
     if (a.dataObj && b.dataObj) {
       return b.dataObj.getTime() - a.dataObj.getTime()
     }
+    if (a.dataObj) return -1
+    if (b.dataObj) return 1
     return 0
   })
 
@@ -474,6 +500,11 @@ export function ProcessoObservacoesTimeline({
                               {item.autorTag}
                             </span>
                           )}
+                          {item.ehAbertura && (
+                            <span className="text-[11px] font-semibold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded">
+                              Abertura/Relatório
+                            </span>
+                          )}
                           {item.origem === 'historico' && (
                             <Badge
                               variant="outline"
@@ -484,17 +515,31 @@ export function ProcessoObservacoesTimeline({
                           )}
                         </div>
 
-                        {idx === 0 && (
+                        {idx === 0 && !item.ehAbertura && (
                           <Badge className="text-[9.5px] px-1.5 py-0 bg-emerald-100 text-emerald-800 border-0 font-medium">
                             Mais recente
                           </Badge>
                         )}
                       </div>
 
-                      {/* Conteúdo textual da observação com formatação e whitespace preservado */}
-                      <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap break-words font-sans">
-                        {item.texto}
-                      </div>
+                      {/* Resumo destacado + texto completo, quebras de linha preservadas */}
+                      {(() => {
+                        const { resumo, corpo } = separarResumoEvento(item.texto)
+                        return (
+                          <>
+                            {resumo && (
+                              <div className="text-xs font-semibold text-gray-900 leading-relaxed whitespace-pre-wrap break-words mb-1">
+                                {resumo}
+                              </div>
+                            )}
+                            {corpo && (
+                              <div className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap break-words font-sans">
+                                {corpo}
+                              </div>
+                            )}
+                          </>
+                        )
+                      })()}
                     </div>
                   </div>
                 )
