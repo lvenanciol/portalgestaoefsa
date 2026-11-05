@@ -18,7 +18,8 @@
 // v11 (04/11/2026): correção de importação em lote jurídica defensiva e módulo de audiências resiliente a células vazias.
 // v12 (04/11/2026): grade Jurídicos com 13 colunas exatas e Parecer/Excluir como ícones com tooltip nas 5 abas.
 // v14 (05/11/2026): bump de versão para forçar purga de caches antigos (grade 13 colunas, seletor de colunas visíveis, timeline de observações por data).
-const CACHE_NAME = 'pge-pwa-v14'
+// v15 (05/11/2026): rebuild com filtros Natureza e Probabilidade na aba Jurídicos, busca sem acentos/pontuação em todas as abas, coluna Natureza com categoria pura e parser de observações completo.
+const CACHE_NAME = 'pge-pwa-v15'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

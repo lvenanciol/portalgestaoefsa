@@ -38,6 +38,12 @@ import pb from '@/lib/pocketbase/client'
 import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import { DocumentosDataTable, ColunaConfig } from '@/components/documentos/DocumentosDataTable'
 import { DocumentosEmpresaPopover } from '@/components/documentos/DocumentosEmpresaPopover'
+import { DocumentosFiltroSelectPopover } from '@/components/documentos/DocumentosFiltroSelectPopover'
+import {
+  normalizarParaBusca,
+  extrairCategoriaNatureza,
+  normalizarProbabilidade,
+} from '@/components/documentos/documentos-filtros-utils'
 import { DocumentoParecerButton } from '@/components/documentos/DocumentoParecerButton'
 import { DocumentoAnexoModal } from '@/components/documentos/DocumentoAnexoModal'
 import { DocumentoDetalheModal } from '@/components/documentos/DocumentoDetalheModal'
@@ -53,6 +59,8 @@ export function DocumentosPage() {
   const [abaAtiva, setAbaAtiva] = useState<TipoAba>('alvaras')
   const [busca, setBusca] = useState('')
   const [empresaFiltro, setEmpresaFiltro] = useState<string | null>(null)
+  const [naturezaFiltro, setNaturezaFiltro] = useState<string>('')
+  const [probabilidadeFiltro, setProbabilidadeFiltro] = useState<string>('')
   const [carregando, setCarregando] = useState(false)
 
   // Dados carregados do PocketBase
@@ -627,8 +635,11 @@ export function DocumentosPage() {
         id: 'natureza',
         label: 'Natureza',
         sortable: true,
+        sortValue: (item) => extrairCategoriaNatureza(item.natureza),
         render: (item) => (
-          <span className="text-xs text-gray-700">{item.natureza || 'Trabalhista'}</span>
+          <span className="text-xs font-medium text-gray-700">
+            {extrairCategoriaNatureza(item.natureza)}
+          </span>
         ),
       },
       {
@@ -721,37 +732,95 @@ export function DocumentosPage() {
     [],
   )
 
-  // Filtragem unificada por busca de texto e empresa selecionada
+  // Opções dinâmicas para os filtros da aba Jurídicos
+  const opcoesNatureza = useMemo(() => {
+    const setNats = new Set<string>()
+    juridicos.forEach((j) => {
+      const cat = extrairCategoriaNatureza(j.natureza)
+      if (cat) setNats.add(cat)
+    })
+    const lista = Array.from(setNats).sort()
+    return lista.length > 0 ? lista : ['Administrativa', 'Cível', 'Trabalhista', 'Tributária']
+  }, [juridicos])
+
+  const opcoesProbabilidade = useMemo(() => {
+    const setProbs = new Set<string>()
+    juridicos.forEach((j) => {
+      const p = normalizarProbabilidade(j.probabilidade || j.risco)
+      if (p) setProbs.add(p)
+    })
+    const lista = Array.from(setProbs).sort()
+    return lista.length > 0
+      ? lista
+      : ['Perda Possível', 'Perda Provável', 'Perda Remota', 'Êxito Possível', 'Êxito Provável']
+  }, [juridicos])
+
+  // Filtragem unificada por busca de texto (normalizada dos dois lados), empresa, natureza e probabilidade
   const filtrarLista = (lista: any[]) => {
+    const buscaNorm = normalizarParaBusca(busca)
+    const empFiltroNorm = normalizarParaBusca(empresaFiltro)
+
     return lista.filter((item) => {
-      if (
-        empresaFiltro &&
-        item.empresa &&
-        !item.empresa.toLowerCase().includes(empresaFiltro.toLowerCase())
-      ) {
-        return false
+      // Filtro de empresa
+      if (empFiltroNorm) {
+        const empItem = normalizarParaBusca(item.empresa || item.cliente_principal || '')
+        if (!empItem.includes(empFiltroNorm)) {
+          return false
+        }
       }
-      if (!busca.trim()) return true
-      const b = busca.toLowerCase()
+
+      // Filtros específicos da aba Jurídicos
+      if (abaAtiva === 'juridicos') {
+        if (naturezaFiltro) {
+          const natItem = extrairCategoriaNatureza(item.natureza)
+          if (natItem.toLowerCase() !== naturezaFiltro.toLowerCase()) {
+            return false
+          }
+        }
+
+        if (probabilidadeFiltro) {
+          const probItem = normalizarProbabilidade(item.probabilidade || item.risco)
+          if (probItem.toLowerCase() !== probabilidadeFiltro.toLowerCase()) {
+            return false
+          }
+        }
+      }
+
+      if (!buscaNorm) return true
+
+      // Busca sem acentos e sem pontuação dos dois lados
       const camposConcat = [
         item.numero,
         item.numero_processo,
+        item.numero_cnj,
         item.titulo,
         item.parte,
         item.orgao_emissor,
+        item.orgao,
+        item.orgao_tribunal,
+        item.vara_comarca,
         item.municipio,
         item.objeto,
         item.empresa,
+        item.cliente_principal,
         item.pauta,
         item.deliberacoes,
+        item.mesa_diretora,
         item.autor,
         item.reu,
+        item.contrario_principal,
+        item.responsavel_principal,
+        item.advogado,
         item.assunto_tipo,
+        item.natureza ? extrairCategoriaNatureza(item.natureza) : '',
+        item.probabilidade,
+        item.status,
       ]
         .filter(Boolean)
+        .map((c) => normalizarParaBusca(c))
         .join(' ')
-        .toLowerCase()
-      return camposConcat.includes(b)
+
+      return camposConcat.includes(buscaNorm)
     })
   }
 
@@ -762,7 +831,18 @@ export function DocumentosPage() {
     if (abaAtiva === 'atas') return filtrarLista(atas)
     if (abaAtiva === 'juridicos') return filtrarLista(juridicos)
     return []
-  }, [abaAtiva, alvaras, contratos, locacoes, atas, juridicos, busca, empresaFiltro])
+  }, [
+    abaAtiva,
+    alvaras,
+    contratos,
+    locacoes,
+    atas,
+    juridicos,
+    busca,
+    empresaFiltro,
+    naturezaFiltro,
+    probabilidadeFiltro,
+  ])
 
   const colunasAtuais = useMemo(() => {
     if (abaAtiva === 'alvaras') return colunasAlvaras
@@ -825,16 +905,36 @@ export function DocumentosPage() {
           </Button>
 
           {abaAtiva === 'juridicos' && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setModalAudienciasAberto(true)}
-              className="h-8 text-xs font-semibold text-blue-800 border-blue-300 hover:bg-blue-50"
-            >
-              <CalendarDays className="h-3.5 w-3.5 mr-1.5 text-blue-700" />
-              Audiências
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setModalAudienciasAberto(true)}
+                className="h-8 text-xs font-semibold text-blue-800 border-blue-300 hover:bg-blue-50"
+              >
+                <CalendarDays className="h-3.5 w-3.5 mr-1.5 text-blue-700" />
+                Audiências
+              </Button>
+
+              {/* Filtro NATUREZA (item g) */}
+              <DocumentosFiltroSelectPopover
+                label="Natureza"
+                opcoes={opcoesNatureza}
+                valorSelecionado={naturezaFiltro}
+                onSelect={(val) => setNaturezaFiltro(val)}
+                icone="tag"
+              />
+
+              {/* Filtro PROBABILIDADE (item h) */}
+              <DocumentosFiltroSelectPopover
+                label="Probabilidade"
+                opcoes={opcoesProbabilidade}
+                valorSelecionado={probabilidadeFiltro}
+                onSelect={(val) => setProbabilidadeFiltro(val)}
+                icone="alerta"
+              />
+            </>
           )}
 
           <Button

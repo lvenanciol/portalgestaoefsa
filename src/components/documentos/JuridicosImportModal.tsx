@@ -91,7 +91,8 @@ export interface ProcessoExtraido {
   orgao?: string
   acao?: string
   tipo?: string // Judicial, Administrativo
-  natureza?: string // Trabalhista, Cível etc.
+  natureza?: string // Trabalhista, Cível etc. (somente a categoria)
+  polo?: string // ex: Polo passivo, Polo ativo
   cliente_principal?: string
   contrario_principal?: string
   responsavel_principal?: string
@@ -163,6 +164,105 @@ export function sanitizarProbabilidade(val: any): string {
   }
 
   return str.slice(0, 100).trim()
+}
+
+// Canoniza e limpa a categoria de natureza para que nunca grave o cliente concatenado
+// Exemplo: "Trabalhista Cliente principal: Extrafruti" -> "Trabalhista"
+// "Cível - Extrafruti" -> "Cível"
+export function canonizarNatureza(val: any): string {
+  if (!val) return 'Trabalhista'
+  let str = String(val).trim()
+  if (!str) return 'Trabalhista'
+
+  // Remove rótulos adicionais que possam ter vindo concatenados do PDF
+  str = str
+    .split(
+      /\s*(?:Cliente\s+Principal|Polo|Contr[aá]rio\s+Principal|Respons[aá]vel\s+Principal)\s*[:-]/i,
+    )[0]
+    .trim()
+  str = str.split(/\s+[-—]\s+/)[0].trim()
+
+  const lower = str.toLowerCase()
+  if (lower.includes('trabalh')) return 'Trabalhista'
+  if (lower.includes('cív') || lower.includes('civ')) return 'Cível'
+  if (lower.includes('admin')) return 'Administrativa'
+  if (lower.includes('trib') || lower.includes('fisc')) return 'Tributária'
+  if (lower.includes('crim') || lower.includes('penal')) return 'Criminal'
+  if (lower.includes('ambien')) return 'Ambiental'
+  if (lower.includes('societ')) return 'Societária'
+  if (lower.includes('comerc')) return 'Comercial'
+
+  return truncarTexto(str, 80) || 'Trabalhista'
+}
+
+// Extrai e limpa o cliente principal e o polo se presente
+export function extrairClienteEPolo(val: any): { cliente: string; polo?: string } {
+  if (!val) return { cliente: '' }
+  const str = String(val).trim()
+  if (!str) return { cliente: '' }
+
+  // Extrai polo se estiver em parênteses ou após hífen: "(Polo passivo)", "(Polo ativo)"
+  let polo: string | undefined = undefined
+  const poloMatch =
+    str.match(/\((Polo\s+(?:passivo|ativo|neutro))\)/i) ||
+    str.match(/\b(Polo\s+(?:passivo|ativo))\b/i)
+  if (poloMatch) {
+    polo = poloMatch[1].trim()
+  }
+
+  // Limpa ruídos de campos concatenados posteriores ("Contrário principal: ...", etc.)
+  let clienteLimpo = str
+    .split(/\s*(?:Contr[aá]rio\s+Principal|Respons[aá]vel\s+Principal)\s*[:-]/i)[0]
+    .replace(/\(Polo\s+(?:passivo|ativo|neutro)\)/gi, '')
+    .trim()
+
+  return {
+    cliente: truncarTexto(clienteLimpo, 190),
+    polo: polo ? truncarTexto(polo, 50) : undefined,
+  }
+}
+
+// Extrai o bloco completo de Observações e Andamento Processual preservando toda a cronologia
+export function extrairBlocoObservacoes(bloco: string): string {
+  if (!bloco) return ''
+
+  // 1. Tenta encontrar a seção iniciada por "Observações", "Observações e Andamento", "Andamento Processual", etc.
+  const regexSecao =
+    /(?:Observações\s+e\s+Andamento(?:\s+Processual)?|Observações|Observacoes|Andamento\s+Processual|Andamento)\s*[:-]?\s*([\s\S]*)/i
+  const matchSecao = bloco.match(regexSecao)
+
+  let textoCandidato = matchSecao ? matchSecao[1] : ''
+
+  // Se não achou pelo cabeçalho da seção, procura a primeira ocorrência de data dd/mm/aaaa
+  if (!textoCandidato) {
+    const idxData = bloco.search(/\b\d{2}\/\d{2}\/\d{4}\b/)
+    if (idxData !== -1) {
+      textoCandidato = bloco.slice(idxData)
+    }
+  }
+
+  if (!textoCandidato) return ''
+
+  // 2. Corta no início do próximo bloco estruturado (ex.: Valores, Risco, Histórico, Dados Financeiros, etc.)
+  const delimitadoresProximoBloco = [
+    /(?:^|\n)\s*(?:Valores|Dados\s+Financeiros|Valor\s+Base|Valor\s+Causa|Valor\s+Atualizado|Juros|Multa)\s*[:-]/i,
+    /(?:^|\n)\s*(?:Histórico\s+Financeiro|Garantias|Depósitos|Custas)\s*[:-]/i,
+    /(?:^|\n)\s*(?:Risco\s+Processual|Prognóstico|Fase\s+Atual)\s*[:-]/i,
+    /(?:^|\n)\s*---+\s*/,
+  ]
+
+  let fimIndex = textoCandidato.length
+  for (const delim of delimitadoresProximoBloco) {
+    const m = textoCandidato.match(delim)
+    if (m && m.index !== undefined && m.index < fimIndex) {
+      fimIndex = m.index
+    }
+  }
+
+  const blocoExtraido = textoCandidato.slice(0, fimIndex).trim()
+
+  // Se o bloco tiver entradas datadas, garante que não truncou na primeira linha
+  return blocoExtraido
 }
 
 // Canoniza o status para o enum do banco: ativo | suspenso | acordo | encerrado | em_recurso
@@ -313,14 +413,18 @@ function extrairDadosDeBlocoProcesso(
   const tipo =
     extrairCampoPorRotulos(bloco, ['Tipo']) ||
     (bloco.includes('Administrativo') ? 'Administrativo' : 'Judicial')
-  const natureza = extrairCampoPorRotulos(bloco, ['Natureza']) || 'Trabalhista'
-  const cliente = extrairCampoPorRotulos(bloco, [
+  const naturezaCrua = extrairCampoPorRotulos(bloco, ['Natureza']) || 'Trabalhista'
+  const natureza = canonizarNatureza(naturezaCrua)
+
+  const clienteCru = extrairCampoPorRotulos(bloco, [
     'Cliente Principal',
     'Cliente',
     'Autor',
     'Requerente',
   ])
-  const contrario = extrairCampoPorRotulos(bloco, [
+  const { cliente, polo: poloExtraido } = extrairClienteEPolo(clienteCru)
+
+  const contrarioCru = extrairCampoPorRotulos(bloco, [
     'Contrário Principal',
     'Contrario Principal',
     'Contrário',
@@ -330,12 +434,17 @@ function extrairDadosDeBlocoProcesso(
     'Reclamante',
     'Reclamado',
   ])
-  const responsavel = extrairCampoPorRotulos(bloco, [
+  const contrario = extrairClienteEPolo(contrarioCru).cliente
+
+  const responsavelCru = extrairCampoPorRotulos(bloco, [
     'Responsável Principal',
     'Responsavel Principal',
     'Responsável',
     'Advogado',
   ])
+  const responsavel = responsavelCru
+    .split(/\s*(?:Contr[aá]rio\s+Principal|Cliente\s+Principal)\s*[:-]/i)[0]
+    .trim()
 
   // Probabilidade com sanitização defensiva <= 100 caracteres
   const probCrua = extrairCampoPorRotulos(bloco, [
@@ -375,9 +484,9 @@ function extrairDadosDeBlocoProcesso(
   const altMatch = bloco.match(/(?:Antigo|MTE|NDFCL|Notificação|Documento Fiscal)[^\n\r]+/i)
   const numerosAlternativos = altMatch ? truncarTexto(altMatch[0], 280) : undefined
 
-  // Andamento / Observações mais recentes
-  const obsMatch = bloco.match(/\d{2}\/\d{2}\/\d{4}[^\n\r]+(?:\n[^\n\r]+)?/i)
-  const observacoes = obsMatch ? truncarTexto(obsMatch[0], 500) : undefined
+  // Andamento / Observações completas preservando cronologia inteira do bloco
+  const observacoesCruas = extrairBlocoObservacoes(bloco)
+  const observacoes = observacoesCruas ? truncarTexto(observacoesCruas, 10000) : undefined
 
   // Empresa: se identificada no bloco ou usa a padrão
   let empresa = empresaPadrao
@@ -401,6 +510,7 @@ function extrairDadosDeBlocoProcesso(
     acao,
     tipo: truncarTexto(tipo, 80),
     natureza: truncarTexto(natureza, 100),
+    polo: poloExtraido,
     cliente_principal: truncarTexto(cliente, 190),
     contrario_principal: truncarTexto(contrario, 190),
     responsavel_principal: truncarTexto(responsavel, 190),
@@ -708,10 +818,13 @@ export function JuridicosImportModal({
             vara_comarca: p.orgao || existente.vara_comarca,
             acao: acaoSegura || truncarTexto(existente.acao || '', 150),
             tipo: p.tipo || existente.tipo,
-            natureza: p.natureza || existente.natureza,
+            natureza: p.natureza
+              ? canonizarNatureza(p.natureza)
+              : canonizarNatureza(existente.natureza),
             cliente_principal: p.cliente_principal || existente.cliente_principal,
             contrario_principal: p.contrario_principal || existente.contrario_principal,
             responsavel_principal: p.responsavel_principal || existente.responsavel_principal,
+            polo: p.polo || existente.polo,
             probabilidade: probSegura,
             risco: riscoEnum,
             valor_base: p.valor_base ?? existente.valor_base ?? 0,
@@ -786,10 +899,11 @@ export function JuridicosImportModal({
             vara_comarca: p.orgao || '',
             acao: acaoSegura,
             tipo: p.tipo || 'Judicial',
-            natureza: p.natureza || 'Trabalhista',
+            natureza: canonizarNatureza(p.natureza || 'Trabalhista'),
             cliente_principal: p.cliente_principal || p.empresa || empresaSelecionada,
             contrario_principal: p.contrario_principal || '',
             responsavel_principal: p.responsavel_principal || '',
+            polo: p.polo || 'Polo passivo',
             autor: p.cliente_principal || p.empresa || empresaSelecionada,
             reu: p.contrario_principal || '',
             empresa: p.empresa || empresaSelecionada,
