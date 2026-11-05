@@ -1151,7 +1151,7 @@ export function DocumentoDetalheModal({
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase text-gray-500">Natureza</label>
                   <Input
-                    value={formData.natureza || 'Trabalhista'}
+                    value={canonizarNatureza(formData.natureza || 'Trabalhista')}
                     onChange={(e) => setCampo('natureza', e.target.value)}
                     className="h-9 text-xs"
                   />

@@ -245,25 +245,44 @@ export function extrairBlocoObservacoes(bloco: string): string {
 
   let textoCandidato = matchSecao ? matchSecao[1] : ''
 
-  // 1b. Sem rótulo: cronologia datada imediatamente após "Órgão:" (ex.: JOÃO PAULO).
-  // O PDF às vezes concatena a primeira entrada datada na mesma linha do "Órgão:"
-  // ("Órgão: 02/10/2026 (CJ): ..."), então a busca começa no próprio "Órgão:".
+  // 1b. Sem rótulo "Observações:": cronologia datada após a linha "Órgão:" (ex.: JOÃO PAULO).
+  // Em vários processos o texto datado ("dd/mm/aaaa (SIGLA): ...") vem logo após a linha
+  // do Órgão (ou linhas seguintes) sem rótulo de bloco conhecido entre eles.
   if (!textoCandidato) {
-    const idxOrgaoData = blocoLimpo.search(
-      /Órg[aã]o\s*[:-]\s*(?:R\$\s*)?\d{1,2}[/.-]\d{1,2}[/.-]\d{4}/i,
-    )
-    if (idxOrgaoData !== -1) {
-      const depoisDoRotulo = blocoLimpo.slice(idxOrgaoData)
-      const m = depoisDoRotulo.match(/Órg[aã]o\s*[:-]\s*/i)
-      textoCandidato = m ? depoisDoRotulo.slice(m.index! + m[0].length) : depoisDoRotulo
+    const matchOrgao = blocoLimpo.match(/(?:^|\n)\s*Órg[aã]o\s*[:-]/i)
+    if (matchOrgao && matchOrgao.index !== undefined) {
+      const inicioAposOrgao = matchOrgao.index + matchOrgao[0].length
+      const trechoAposOrgao = blocoLimpo.slice(inicioAposOrgao)
+
+      // Se logo após ou nas linhas seguintes após Órgão vier data de cronologia
+      // antes de qualquer outro bloco estruturado de fechamento (Valores, Garantias, Providências...)
+      const matchPrimeiraData = trechoAposOrgao.match(
+        /(?:^|\n)\s*(\d{1,2}[/.-]\d{1,2}[/.-]\d{4}(?:\s*[([]?[A-Za-z0-9_\- ]+[)\]]?)?\s*[:-]?)/,
+      )
+
+      if (matchPrimeiraData && matchPrimeiraData.index !== undefined) {
+        // Verifica se antes dessa data surgiu algum rótulo conhecido de outro bloco
+        const textoIntermediario = trechoAposOrgao.slice(0, matchPrimeiraData.index)
+        const temOutroBlocoAntes =
+          /(?:^|\n)\s*(?:Valores|Valor\s+Base|Garantias|Provid[eê]ncias|Data\s+da\s+[uú]ltima|Processo)\s*[:]/i.test(
+            textoIntermediario,
+          )
+
+        if (!temOutroBlocoAntes) {
+          // A cronologia começa na primeira data identificada após o Órgão
+          textoCandidato = trechoAposOrgao.slice(matchPrimeiraData.index).trim()
+        }
+      }
     }
   }
 
-  // 2. Ainda sem seção: procura a primeira ocorrência de data dd/mm/aaaa ou d/m/aaaa
+  // 2. Ainda sem seção: procura a primeira ocorrência de data dd/mm/aaaa ou d/m/aaaa no bloco
   if (!textoCandidato) {
-    const idxData = blocoLimpo.search(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/)
-    if (idxData !== -1) {
-      textoCandidato = blocoLimpo.slice(idxData)
+    const matchData = blocoLimpo.match(
+      /(?:^|\n|\b)(\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{4}\b(?:\s*[([]?[A-Za-z0-9_\- ]+[)\]]?)?\s*[:-]?)/,
+    )
+    if (matchData && matchData.index !== undefined) {
+      textoCandidato = blocoLimpo.slice(matchData.index).trim()
     }
   }
 
@@ -851,19 +870,35 @@ export function JuridicosImportModal({
           const novaVersao = versaoAnterior + 1
 
           const payloadUpdate: Record<string, any> = {
-            titulo: p.titulo || existente.titulo,
-            orgao: p.orgao || existente.orgao,
-            orgao_tribunal: p.orgao || existente.orgao_tribunal,
-            vara_comarca: p.orgao || existente.vara_comarca,
-            acao: acaoSegura || truncarTexto(existente.acao || '', 150),
-            tipo: p.tipo || existente.tipo,
-            natureza: p.natureza
-              ? canonizarNatureza(p.natureza)
-              : canonizarNatureza(existente.natureza),
-            cliente_principal: p.cliente_principal || existente.cliente_principal,
-            contrario_principal: p.contrario_principal || existente.contrario_principal,
-            responsavel_principal: p.responsavel_principal || existente.responsavel_principal,
-            polo: p.polo || existente.polo,
+            titulo: truncarTexto(
+              p.titulo || existente.titulo || `Processo ${numIdentificador}`,
+              400,
+            ),
+            orgao: truncarTexto(p.orgao || existente.orgao || '', 400),
+            orgao_tribunal: truncarTexto(p.orgao || existente.orgao_tribunal || '', 400),
+            vara_comarca: truncarTexto(p.orgao || existente.vara_comarca || '', 400),
+            acao: truncarTexto(acaoSegura || existente.acao || '', 150),
+            tipo: truncarTexto(p.tipo || existente.tipo || 'Judicial', 100),
+            natureza: canonizarNatureza(p.natureza || existente.natureza || 'Trabalhista'),
+            status: statusEnum,
+            cliente_principal: truncarTexto(
+              p.cliente_principal || existente.cliente_principal || p.empresa || empresaSelecionada,
+              400,
+            ),
+            contrario_principal: truncarTexto(
+              p.contrario_principal || existente.contrario_principal || '',
+              400,
+            ),
+            responsavel_principal: truncarTexto(
+              p.responsavel_principal || existente.responsavel_principal || '',
+              400,
+            ),
+            polo: truncarTexto(p.polo || existente.polo || 'Polo passivo', 100),
+            autor: truncarTexto(
+              p.cliente_principal || existente.autor || p.empresa || empresaSelecionada,
+              400,
+            ),
+            reu: truncarTexto(p.contrario_principal || existente.reu || '', 400),
             probabilidade: probSegura,
             risco: riscoEnum,
             valor_base: p.valor_base ?? existente.valor_base ?? 0,
@@ -878,14 +913,20 @@ export function JuridicosImportModal({
             versao_atual: novaVersao,
           }
 
-          if (p.processo_codigo && !existente.processo_codigo) {
-            payloadUpdate.processo_codigo = p.processo_codigo
+          if (p.processo_codigo || existente.processo_codigo) {
+            payloadUpdate.processo_codigo = truncarTexto(
+              p.processo_codigo || existente.processo_codigo || '',
+              100,
+            )
           }
-          if (p.numero_cnj && !existente.numero_cnj) {
-            payloadUpdate.numero_cnj = p.numero_cnj
+          if (p.numero_cnj || existente.numero_cnj) {
+            payloadUpdate.numero_cnj = truncarTexto(p.numero_cnj || existente.numero_cnj || '', 100)
           }
-          if (p.numeros_alternativos) {
-            payloadUpdate.numeros_alternativos = p.numeros_alternativos
+          if (p.numeros_alternativos || existente.numeros_alternativos) {
+            payloadUpdate.numeros_alternativos = truncarTexto(
+              p.numeros_alternativos || existente.numeros_alternativos || '',
+              300,
+            )
           }
           if (p.observacoes) {
             payloadUpdate.observacoes = p.observacoes
@@ -987,7 +1028,21 @@ export function JuridicosImportModal({
         }
       } catch (err: any) {
         erros++
-        const msg = err?.data?.message || err?.message || 'Erro desconhecido'
+        let msg = err?.data?.message || err?.message || 'Erro desconhecido'
+        // Se houver detalhes nos campos (erros de validação do PocketBase)
+        const fieldData = err?.response?.data || err?.data?.data
+        if (fieldData && typeof fieldData === 'object') {
+          const errosCampos = Object.entries(fieldData)
+            .map(([campo, detalhe]: [string, any]) => {
+              const detalheMsg =
+                typeof detalhe === 'object' && detalhe?.message ? detalhe.message : String(detalhe)
+              return `${campo}: ${detalheMsg}`
+            })
+            .join(', ')
+          if (errosCampos) {
+            msg = `${msg} (${errosCampos})`
+          }
+        }
         detalhesErros.push(`Processo ${processosExtraidos[i].numero_processo || i + 1}: ${msg}`)
       }
     }

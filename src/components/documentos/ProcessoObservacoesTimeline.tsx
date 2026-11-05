@@ -132,9 +132,20 @@ export function extrairEntradasDeObservacoes(
       }
     }
 
+    // Ignora match se a própria linha de data foi seguida imediatamente de horário + "Pagina"
+    // (ex.: "01/11/2026 00:44Pagina 50 de 71")
+    const matchCompleto = match[0]
+    const trechoCabecalho = trimmed.substring(
+      match.index!,
+      Math.min(trimmed.length, match.index! + 60),
+    )
+    if (ehRodapePagina(trechoCabecalho)) {
+      continue
+    }
+
     const autorRaw = match[2] || match[3]
     const autorTag = autorRaw ? `(${autorRaw.trim()})` : undefined
-    const startIndex = match.index! + match[0].length
+    const startIndex = match.index! + matchCompleto.length
     const nextMatch = matches[i + 1]
     const endIndex = nextMatch ? nextMatch.index! : trimmed.length
 

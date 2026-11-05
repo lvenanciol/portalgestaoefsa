@@ -13,30 +13,35 @@
 export function removerRodapesDePagina(texto: string): string {
   if (!texto) return ''
   let t = texto
-  // Rodapé completo: "01/11/2026 00:44Pagina 50 de 71" (com ou sem valor colado antes)
+  // 1. Rodapé completo colado ao texto ou a valores monetários:
+  // ex.: "R$ 0,0001/11/2026 00:44Pagina 50 de 71", "01/11/2026 00:44Pagina 15 de 71"
+  // inclusive variantes com "Pagina N de" truncadas no fim da página (sem o total)
   t = t.replace(
-    /(?:R\$\s*[\d.,]+)?\s*\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\s*\d{1,2}:\d{2}\s*P[aá]gina\s*\d+\s*de\s*\d+/gi,
+    /(?:R\$\s*[\d.,]+)?\s*\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\s*\d{1,2}:\d{2}\s*P[aá]gina\s*\d+(?:\s*de\s*\d*)?/gi,
     '',
   )
-  // Sobras de rodapé sem a data: "00:44Pagina 50 de 71"
-  t = t.replace(/\d{1,2}:\d{2}\s*P[aá]gina\s*\d+\s*de\s*\d+/gi, '')
-  // Rodapé isolado: "Pagina 50 de 71"
-  t = t.replace(/P[aá]gina\s*\d+\s*de\s*\d+/gi, '')
+  // 2. Fragmento de data/hora colado a "Pagina":
+  t = t.replace(/\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\s*\d{1,2}:\d{2}\s*P[aá]gina/gi, '')
+  // 3. Sobras de horário coladas a "Pagina": "00:44Pagina 50 de 71" ou "00:44Pagina"
+  t = t.replace(/\d{1,2}:\d{2}\s*P[aá]gina\s*\d*(?:\s*de\s*\d*)?/gi, '')
+  // 4. Rodapé isolado: "Pagina 50 de 71", "Pagina 59 de", "Pagina 15"
+  t = t.replace(/P[aá]gina\s*\d+(?:\s*de\s*\d*)?/gi, '')
   return t
 }
 
 /**
- * Detecta texto de entrada que na verdade é resíduo de rodapé de página
- * (ex.: "01/11/2026 00:44Pagina 50 de 71"). Usado pela timeline para ignorar
- * entradas espúrias mesmo que algum rodapé escape da limpeza prévia.
+ * Detecta texto ou fragmento de entrada que é resíduo de rodapé de página
+ * (ex.: "01/11/2026 00:44Pagina 50 de 71", "01/11/2026 00:44Pagina", "Pagina 59 de").
+ * Usado pela timeline para ignorar entradas espúrias com 100% de precisão.
  */
 export function ehRodapePagina(texto: string): boolean {
   if (!texto) return false
-  const t = texto.slice(0, 160)
+  const t = texto.trim().slice(0, 180)
   return (
-    /\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\s*\d{1,2}:\d{2}\s*P[aá]gina\s*\d+\s*de\s*\d+/i.test(t) ||
-    /\d{1,2}:\d{2}\s*P[aá]gina\s*\d+\s*de\s*\d+/i.test(t) ||
-    /^[\sR$0.,]*\d{0,2}P[aá]gina\s*\d+\s*de\s*\d+$/i.test(t)
+    /\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\s*\d{1,2}:\d{2}\s*P[aá]gina/i.test(t) ||
+    /\d{1,2}:\d{2}\s*P[aá]gina/i.test(t) ||
+    /P[aá]gina\s*\d+\s*de\s*\d*/i.test(t) ||
+    /^[\sR$0.,]*\d{0,2}\s*P[aá]gina\s*\d*(?:\s*de\s*\d*)?$/i.test(t)
   )
 }
 
