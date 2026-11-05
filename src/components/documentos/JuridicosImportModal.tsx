@@ -758,11 +758,13 @@ export function JuridicosImportModal({
                 valor_atualizado: existente.valor_atualizado,
                 probabilidade: existente.probabilidade,
                 acao: existente.acao,
+                observacoes: existente.observacoes,
               },
               alteracoes: {
                 valor_atualizado: payloadUpdate.valor_atualizado,
                 probabilidade: probSegura,
                 acao: acaoSegura,
+                observacoes: payloadUpdate.observacoes,
               },
               importado_por: pb.authStore.model?.email || 'sistema',
             })

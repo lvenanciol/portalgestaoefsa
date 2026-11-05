@@ -27,6 +27,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import { DocumentoParecerButton } from './DocumentoParecerButton'
 import { PdfViewer } from './PdfViewer'
+import { ProcessoObservacoesTimeline } from './ProcessoObservacoesTimeline'
 import pb from '@/lib/pocketbase/client'
 
 export interface DocumentoDetalheModalProps {
@@ -1242,15 +1243,14 @@ export function DocumentoDetalheModal({
                   />
                 </div>
 
-                <div className="col-span-full space-y-1">
-                  <label className="text-[10px] font-bold uppercase text-gray-500">
-                    Resumo dos Fatos / Andamento Processual
-                  </label>
-                  <Textarea
-                    rows={3}
-                    value={formData.observacoes || ''}
-                    onChange={(e) => setCampo('observacoes', e.target.value)}
-                    className="text-xs"
+                <div className="col-span-full space-y-2 pt-2">
+                  <ProcessoObservacoesTimeline
+                    processoId={documento?.id}
+                    numeroProcesso={formData.numero_processo || formData.numero_cnj}
+                    observacoesTexto={formData.observacoes || ''}
+                    dataUltimaAtualizacao={documento?.updated || documento?.data_importacao}
+                    versaoAtual={formData.versao_atual}
+                    onSalvarTexto={(novoTexto) => setCampo('observacoes', novoTexto)}
                   />
                 </div>
               </div>
