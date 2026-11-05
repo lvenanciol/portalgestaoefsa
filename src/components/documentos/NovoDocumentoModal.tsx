@@ -14,6 +14,8 @@ import {
   ChevronDown,
   Check,
   CheckCircle2,
+  Paperclip,
+  Trash2,
 } from 'lucide-react'
 import {
   Dialog,
