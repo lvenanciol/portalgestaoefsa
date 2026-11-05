@@ -46,10 +46,15 @@ export function extrairEntradasDeObservacoes(
 
   const trimmed = texto.trim()
 
-  // Regex para identificar inícios de entrada datada:
-  // Ex: "09/10/2026 (CJ):", "09/10/2026 -", "09/10/2026 às 14:00:", "09/10/2026:"
+  // Regex flexível para identificar inícios de entrada datada:
+  // Aceita:
+  // - "09/10/2026 (CJ):", "09/10/2026 -", "09/10/2026 às 14:00:", "09/10/2026:"
+  // - Dias e meses sem zero à esquerda: "9/10/2026", "03/6/2026", "3/6/2026"
+  // - Espaços flexíveis entre barras: "09 / 10 / 2026"
+  // - Delimitadores com hífen, ponto ou barra: "09-10-2026", "09.10.2026"
+  // - Tags com ou sem parênteses: "(CJ):", "- CJ -", "[CJ]:"
   const dataRegex =
-    /(?:^|\n|\r\n)(\d{2}\/\d{2}\/\d{4})(?:\s+(?:às\s+)?\d{2}:\d{2})?(?:\s*\(([A-Za-z0-9_\- ]+)\))?\s*[:\-—]?\s*/g
+    /(?:^|\n|\r\n)\s*(\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{4})(?:\s+(?:[aàá]s\s+)?\d{1,2}:\d{2}(?::\d{2})?)?(?:\s*(?:[([]([A-Za-z0-9_\- ]+)[)\]]|-\s*([A-Za-z0-9_\- ]+)\s*-))?\s*[:\-—]?\s*/gi
 
   const matches = [...trimmed.matchAll(dataRegex)]
 
@@ -85,30 +90,55 @@ export function extrairEntradasDeObservacoes(
 
   const itens: ObservacaoItem[] = []
 
+  // Se houver texto anterior ao primeiro match (ex: introdução ou observação preliminar sem data), não descarta
+  const primeiroMatch = matches[0]
+  if (primeiroMatch && primeiroMatch.index! > 0) {
+    const textoPreliminar = trimmed.substring(0, primeiroMatch.index!).trim()
+    if (textoPreliminar) {
+      itens.push({
+        id: 'entrada-preliminar',
+        dataTexto: 'Nota inicial',
+        texto: textoPreliminar,
+        origem: 'processo',
+      })
+    }
+  }
+
   for (let i = 0; i < matches.length; i++) {
     const match = matches[i]
-    const dataDetectada = match[1]
-    const autorTag = match[2] ? `(${match[2]})` : undefined
+    // Normaliza a data para formato DD/MM/AAAA limpo
+    const dataCrua = match[1].replace(/\s+/g, '')
+    const partesSeparadas = dataCrua.split(/[/.-]/)
+    let dataFormatada = dataCrua
+    let dataObj: Date | undefined
+
+    if (partesSeparadas.length === 3) {
+      const dia = partesSeparadas[0].padStart(2, '0')
+      const mes = partesSeparadas[1].padStart(2, '0')
+      const ano = partesSeparadas[2]
+      dataFormatada = `${dia}/${mes}/${ano}`
+
+      try {
+        const d = new Date(Number(ano), Number(mes) - 1, Number(dia))
+        if (!isNaN(d.getTime())) {
+          dataObj = d
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    const autorRaw = match[2] || match[3]
+    const autorTag = autorRaw ? `(${autorRaw.trim()})` : undefined
     const startIndex = match.index! + match[0].length
     const nextMatch = matches[i + 1]
     const endIndex = nextMatch ? nextMatch.index! : trimmed.length
 
     const textoEntrada = trimmed.substring(startIndex, endIndex).trim()
 
-    // Parse da data DD/MM/AAAA para ordenação
-    let dataObj: Date | undefined
-    try {
-      const partes = dataDetectada.split('/')
-      if (partes.length === 3) {
-        dataObj = new Date(Number(partes[2]), Number(partes[1]) - 1, Number(partes[0]))
-      }
-    } catch {
-      /* ignore */
-    }
-
     itens.push({
-      id: `entrada-${i}-${dataDetectada}`,
-      dataTexto: dataDetectada,
+      id: `entrada-${i}-${dataFormatada}`,
+      dataTexto: dataFormatada,
       dataObj,
       autorTag,
       texto: textoEntrada,

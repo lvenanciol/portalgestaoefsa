@@ -226,16 +226,17 @@ export function extrairClienteEPolo(val: any): { cliente: string; polo?: string 
 export function extrairBlocoObservacoes(bloco: string): string {
   if (!bloco) return ''
 
-  // 1. Tenta encontrar a seção iniciada por "Observações", "Observações e Andamento", "Andamento Processual", etc.
+  // 1. Tenta encontrar a seção iniciada por "Observações e Andamento Processual", "Observações", etc.
+  // Aceita variações de acento, pontuação e espaços
   const regexSecao =
-    /(?:Observações\s+e\s+Andamento(?:\s+Processual)?|Observações|Observacoes|Andamento\s+Processual|Andamento(?:\s+Geral)?)\s*[:-]?\s*([\s\S]*)/i
+    /(?:Observa[cç][oõ]es(?:\s+e\s+Andamento(?:\s+Processual)?)?|Andamento\s+Processual|Andamento(?:\s+Geral)?|Hist[oó]rico\s+Processual|Andamentos)\s*[:-]?\s*([\s\S]*)/i
   const matchSecao = bloco.match(regexSecao)
 
   let textoCandidato = matchSecao ? matchSecao[1] : ''
 
-  // Se não achou pelo cabeçalho da seção, procura a primeira ocorrência de data dd/mm/aaaa
+  // Se não achou pelo cabeçalho da seção, procura a primeira ocorrência de data dd/mm/aaaa ou d/m/aaaa
   if (!textoCandidato) {
-    const idxData = bloco.search(/\b\d{2}\/\d{2}\/\d{4}\b/)
+    const idxData = bloco.search(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/)
     if (idxData !== -1) {
       textoCandidato = bloco.slice(idxData)
     }
@@ -243,15 +244,26 @@ export function extrairBlocoObservacoes(bloco: string): string {
 
   if (!textoCandidato) return ''
 
-  // 2. Corta no início do próximo bloco estruturado apenas se for um cabeçalho real do relatório
-  // CUIDADO: frases dentro de observações podem conter "valores", "juros", "custas", etc.
-  // Portanto só delimitamos se o rótulo estiver em início de linha com dois pontos e seguido de campos do processo
+  // 2. Delimitadores de fim EXAUSTIVOS com cabeçalhos reais dos relatórios de processos jurídicos
+  // (Valores, Garantias, Providências, Andamento, Data da última atualização, Dados Financeiros, etc.)
+  // CUIDADO ABSOLUTO: NUNCA parar em palavras soltas no meio do texto da nota.
+  // Exigimos início de linha / quebra de linha + cabeçalho estruturado com dois pontos ou traço
   const delimitadoresProximoBloco = [
-    /(?:^|\n)\s*(?:Dados\s+Financeiros|Histórico\s+Financeiro|Garantias\s+e\s+Depósitos)\s*[:]/i,
-    /(?:^|\n)\s*(?:Valor\s+Base|Valor\s+da\s+Causa|Valor\s+Causa|Valor\s+Atualizado\s+Indexado)\s*[:]\s*R?\$/i,
-    /(?:^|\n)\s*(?:Risco\s+Processual|Prognóstico|Fase\s+Atual)\s*[:]\s*(?:Provável|Possível|Remoto|Execução|Conhecimento)/i,
-    /(?:^|\n)\s*(?:Processo|Proc\.)\s*[:]\s*[0-9A-Za-z.\-/]+/i,
-    /(?:^|\n)\s*---+\s*/,
+    // Início de outro processo no mesmo lote/relatório
+    /(?:^|\n)\s*(?:Processo|Proc\.?|N[uú]mero\s+do\s+Processo|CNJ)\s*[:]\s*[0-9A-Za-z.\-/]+/i,
+    // Cabeçalhos de valores e dados financeiros
+    /(?:^|\n)\s*(?:Valores|Dados\s+Financeiros|Hist[oó]rico\s+Financeiro|Resumo\s+Financeiro|Planilha\s+de\s+C[aá]lculos?)\s*[:]/i,
+    /(?:^|\n)\s*(?:Valor\s+Base|Valor\s+da\s+Causa|Valor\s+Causa|Valor\s+Inicial|Valor\s+Corrigido|Valor\s+Atualizado(?:\s+Indexado)?|Valor\s+Envolvido|Risco\s+Total)\s*[:]\s*(?:R\$\s*)?[0-9]/i,
+    // Garantias, depósitos, penhoras e cauções
+    /(?:^|\n)\s*(?:Garantias(?:\s+e\s+Dep[oó]sitos)?|Dep[oó]sitos(?:\s+Recursais)?|Penhoras?|Bens\s+Penhorados|Bloqueios?\s+Judiciais?)\s*[:]/i,
+    // Providências, tarefas, prazos e pendências
+    /(?:^|\n)\s*(?:Provid[eê]ncias|Pr[oó]ximas?\s+Provid[eê]ncias?|Pend[eê]ncias|Prazos?\s+Processuais?|Prazos?)\s*[:]/i,
+    // Metadados de fechamento do relatório / sistema jurídico
+    /(?:^|\n)\s*(?:Data\s+da\s+[uú]ltima\s+atualiza[cç][aã]o|Data\s+[uú]ltima\s+atualiza[cç][aã]o|[UuÚú]ltima\s+Atualiza[cç][aã]o)\s*[:]/i,
+    /(?:^|\n)\s*(?:Risco(?:\s+Processual)?|Progn[oó]stico|Probabilidade|Fase\s+Atual|Status\s+Processual)\s*[:]\s*(?:Prov[aá]vel|Poss[ií]vel|Remoto|Execu[cç][aã]o|Conhecimento|Recursal|Ativo|Encerrado|Suspenso)/i,
+    /(?:^|\n)\s*(?:Audi[eê]ncias?(?:\s+Designadas?|\s+Pautadas?)?)\s*[:]\s*\d{1,2}\/\d{1,2}\/\d{4}/i,
+    // Separador visual explícito entre processos
+    /(?:^|\n)\s*(?:===+|---+|\*\*\*+)\s*(?:\n|$)/,
   ]
 
   let fimIndex = textoCandidato.length
@@ -262,6 +274,7 @@ export function extrairBlocoObservacoes(bloco: string): string {
     }
   }
 
+  // Se for o último bloco do processo, captura até o fim sem truncar
   const blocoExtraido = textoCandidato.slice(0, fimIndex).trim()
 
   return blocoExtraido
@@ -486,9 +499,9 @@ function extrairDadosDeBlocoProcesso(
   const altMatch = bloco.match(/(?:Antigo|MTE|NDFCL|Notificação|Documento Fiscal)[^\n\r]+/i)
   const numerosAlternativos = altMatch ? truncarTexto(altMatch[0], 280) : undefined
 
-  // Andamento / Observações completas preservando cronologia inteira do bloco
+  // Andamento / Observações completas preservando cronologia inteira do bloco sem truncamento
   const observacoesCruas = extrairBlocoObservacoes(bloco)
-  const observacoes = observacoesCruas ? truncarTexto(observacoesCruas, 10000) : undefined
+  const observacoes = observacoesCruas ? observacoesCruas.trim() : undefined
 
   // Empresa: se identificada no bloco ou usa a padrão
   let empresa = empresaPadrao
@@ -654,10 +667,9 @@ export function extrairProcessosDePlanilha(rows: any[], empresaPadrao: string): 
         190,
       ),
       probabilidade,
-      observacoes: truncarTexto(
-        buscarColuna(row, ['observações', 'observacoes', 'andamento', 'resumo']),
-        500,
-      ),
+      observacoes: buscarColuna(row, ['observações', 'observacoes', 'andamento', 'resumo'])
+        ? String(buscarColuna(row, ['observações', 'observacoes', 'andamento', 'resumo'])).trim()
+        : undefined,
       valor_base: valorBase,
       valor_corrigido: valorCorrigido,
       juros,
