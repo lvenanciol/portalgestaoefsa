@@ -228,7 +228,7 @@ export function extrairBlocoObservacoes(bloco: string): string {
 
   // 1. Tenta encontrar a seção iniciada por "Observações", "Observações e Andamento", "Andamento Processual", etc.
   const regexSecao =
-    /(?:Observações\s+e\s+Andamento(?:\s+Processual)?|Observações|Observacoes|Andamento\s+Processual|Andamento)\s*[:-]?\s*([\s\S]*)/i
+    /(?:Observações\s+e\s+Andamento(?:\s+Processual)?|Observações|Observacoes|Andamento\s+Processual|Andamento(?:\s+Geral)?)\s*[:-]?\s*([\s\S]*)/i
   const matchSecao = bloco.match(regexSecao)
 
   let textoCandidato = matchSecao ? matchSecao[1] : ''
@@ -243,11 +243,14 @@ export function extrairBlocoObservacoes(bloco: string): string {
 
   if (!textoCandidato) return ''
 
-  // 2. Corta no início do próximo bloco estruturado (ex.: Valores, Risco, Histórico, Dados Financeiros, etc.)
+  // 2. Corta no início do próximo bloco estruturado apenas se for um cabeçalho real do relatório
+  // CUIDADO: frases dentro de observações podem conter "valores", "juros", "custas", etc.
+  // Portanto só delimitamos se o rótulo estiver em início de linha com dois pontos e seguido de campos do processo
   const delimitadoresProximoBloco = [
-    /(?:^|\n)\s*(?:Valores|Dados\s+Financeiros|Valor\s+Base|Valor\s+Causa|Valor\s+Atualizado|Juros|Multa)\s*[:-]/i,
-    /(?:^|\n)\s*(?:Histórico\s+Financeiro|Garantias|Depósitos|Custas)\s*[:-]/i,
-    /(?:^|\n)\s*(?:Risco\s+Processual|Prognóstico|Fase\s+Atual)\s*[:-]/i,
+    /(?:^|\n)\s*(?:Dados\s+Financeiros|Histórico\s+Financeiro|Garantias\s+e\s+Depósitos)\s*[:]/i,
+    /(?:^|\n)\s*(?:Valor\s+Base|Valor\s+da\s+Causa|Valor\s+Causa|Valor\s+Atualizado\s+Indexado)\s*[:]\s*R?\$/i,
+    /(?:^|\n)\s*(?:Risco\s+Processual|Prognóstico|Fase\s+Atual)\s*[:]\s*(?:Provável|Possível|Remoto|Execução|Conhecimento)/i,
+    /(?:^|\n)\s*(?:Processo|Proc\.)\s*[:]\s*[0-9A-Za-z.\-/]+/i,
     /(?:^|\n)\s*---+\s*/,
   ]
 
@@ -261,7 +264,6 @@ export function extrairBlocoObservacoes(bloco: string): string {
 
   const blocoExtraido = textoCandidato.slice(0, fimIndex).trim()
 
-  // Se o bloco tiver entradas datadas, garante que não truncou na primeira linha
   return blocoExtraido
 }
 

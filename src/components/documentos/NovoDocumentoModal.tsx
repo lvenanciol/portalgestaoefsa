@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react'
+import { extrairCamposContrato } from './contratos-parser-utils'
 import {
   FileText,
   Upload,
@@ -61,27 +62,40 @@ export function NovoDocumentoModal({
   const [avisoImportacao, setAvisoImportacao] = useState<string | null>(null)
   const inputImportRef = useRef<HTMLInputElement>(null)
 
-  // Estado unificado dos campos dos documentos
-  const [form, setForm] = useState<Record<string, any>>({
-    empresa: empresaPreSelecionada || (empresas[0]?.nome ?? 'Extrafruti'),
-    status: tipoAba === 'alvaras' ? 'regular' : 'ativo',
-  })
+  // Função utilitária para gerar o estado inicial completamente limpo
+  const criarEstadoLimpo = React.useCallback(
+    (empresaPadrao?: string) => {
+      const emp = empresaPadrao || empresaPreSelecionada || (empresas[0]?.nome ?? 'Extrafruti')
+      return {
+        empresa: emp,
+        status: tipoAba === 'alvaras' ? 'regular' : 'ativo',
+      }
+    },
+    [empresaPreSelecionada, empresas, tipoAba],
+  )
 
-  // Atualiza empresa caso mude fora
+  // Estado unificado dos campos dos documentos — começa limpo
+  const [form, setForm] = useState<Record<string, any>>(() => criarEstadoLimpo())
+
+  // Toda abertura do modal ou troca de aba ZERA completamente o formulário
   React.useEffect(() => {
-    if (empresaPreSelecionada) {
+    if (aberto) {
+      setForm(criarEstadoLimpo())
+      setErro(null)
+      setAvisoImportacao(null)
+      setArquivoImportado(null)
+      if (inputImportRef.current) {
+        inputImportRef.current.value = ''
+      }
+    }
+  }, [aberto, tipoAba, criarEstadoLimpo])
+
+  // Atualiza empresa caso mude fora enquanto o modal estiver aberto
+  React.useEffect(() => {
+    if (empresaPreSelecionada && aberto) {
       setForm((prev) => ({ ...prev, empresa: empresaPreSelecionada }))
     }
-  }, [empresaPreSelecionada])
-
-  React.useEffect(() => {
-    setForm((prev) => ({
-      ...prev,
-      status: tipoAba === 'alvaras' ? 'regular' : 'ativo',
-    }))
-    setAvisoImportacao(null)
-    setArquivoImportado(null)
-  }, [tipoAba, aberto])
+  }, [empresaPreSelecionada, aberto])
 
   const setCampo = (campo: string, valor: any) => {
     setForm((prev) => ({ ...prev, [campo]: valor }))
@@ -102,10 +116,38 @@ export function NovoDocumentoModal({
       const nomeLower = nomeArquivo.toLowerCase()
       let textoExtraido = ''
 
-      // Se for PDF, tenta ler o texto real usando PDF.js já disponível no projeto
+      // Se for PDF, tenta carregar PDF.js dinamicamente e ler o texto real
       if (file.type === 'application/pdf' || nomeLower.endsWith('.pdf')) {
         try {
-          const pdfjsLib = (window as any).pdfjsLib
+          let pdfjsLib = (window as any).pdfjsLib
+          if (!pdfjsLib) {
+            await new Promise<void>((resolve, reject) => {
+              const existing = document.querySelector('script[data-pdfjs="true"]')
+              if (existing) {
+                existing.addEventListener('load', () => resolve())
+                existing.addEventListener('error', () =>
+                  reject(new Error('Falha ao carregar script PDF.js')),
+                )
+                return
+              }
+              const script = document.createElement('script')
+              script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+              script.async = true
+              script.setAttribute('data-pdfjs', 'true')
+              script.onload = () => {
+                const lib = (window as any).pdfjsLib
+                if (lib?.GlobalWorkerOptions) {
+                  lib.GlobalWorkerOptions.workerSrc =
+                    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+                }
+                resolve()
+              }
+              script.onerror = () => reject(new Error('Não foi possível carregar PDF.js via CDN'))
+              document.head.appendChild(script)
+            })
+            pdfjsLib = (window as any).pdfjsLib
+          }
+
           if (pdfjsLib) {
             const buffer = await file.arrayBuffer()
             const loadingTask = pdfjsLib.getDocument({
@@ -114,7 +156,7 @@ export function NovoDocumentoModal({
               cMapPacked: true,
             })
             const pdfDoc = await loadingTask.promise
-            const maxPags = Math.min(pdfDoc.numPages, 10)
+            const maxPags = Math.min(pdfDoc.numPages, 15)
             const partesTexto: string[] = []
             for (let i = 1; i <= maxPags; i++) {
               const page = await pdfDoc.getPage(i)
@@ -179,119 +221,19 @@ export function NovoDocumentoModal({
           observacoes: `Campos preenchidos automaticamente com base no arquivo "${nomeArquivo}". Favor conferir os dados antes de salvar.`,
         }))
       } else if (tipoAba === 'contratos' || tipoAba === 'locacoes') {
-        const isLoc =
-          tipoAba === 'locacoes' ||
-          txtUpper.includes('LOCAÇÃO') ||
-          txtUpper.includes('LOCACAO') ||
-          txtUpper.includes('LOCADOR') ||
-          txtUpper.includes('ALUGUEL')
+        // Extração completa de todos os campos mapeados do contrato com substituição integral do estado
+        const camposExtraidos = extrairCamposContrato(
+          textoExtraido,
+          nomeArquivo,
+          tipoAba,
+          empresaDetectada,
+        )
 
-        // Heurísticas de extração fiéis ao PDF de locação comercial (ex.: Petrolina / Águia Mercantil / Extrafruti)
-        const isContratoPetrolina =
-          txtUpper.includes('PETROLINA') ||
-          txtUpper.includes('AGUIA MERCANTIL') ||
-          txtUpper.includes('ÁGUIA MERCANTIL')
-
-        let locador = 'Contraparte'
-        let locatario = empresaDetectada
-        let valorMensal = '16.000,00'
-        let valorAssinatura = '48.000,00'
-        let qtdCaucao = 2
-        let prazoMeses = 36
-        let dataInicio = '2026-11-01'
-        let dataFim = '2029-11-01'
-        let indexador = 'IGP-M (reajuste anual)'
-        let periodicidade = 'Anual'
-        let multaRescisao = '02 (dois) meses do aluguel em vigor'
-        let multaInfracao = '01 (um) mês do aluguel em vigor (Cláusula Décima Quinta)'
-        let foro = 'Comarca de Petrolina/PE'
-        let tipoImovel = 'Galpão'
-        let enderecoImovel =
-          'Rua Antônio Macedo Filho, 320, Distrito Industrial, Petrolina/PE, CEP: 56.300-00'
-        let repLocador =
-          'Geraldo Magela da Silva Neto (Empresário, CPF: 063.152.535-12, RG: 1507686803 SSP-BA)'
-        let repLocatario =
-          'Leonardo Venancio Lourenço (CPF: 078.008.757-76) e Flavia de Oliveira Rapozo (CPF: 023.145.227-61)'
-        let clausulasEspeciais =
-          'Cláusula Terceira - Da Energia Solar: Integra o imóvel sistema de energia solar instalado com faturamento de locação correspondente ao consumo mensal em nota fiscal específica e separada.'
-        let garantia =
-          'Depósito caução equivalente a 2 meses de aluguel (R$ 32.000,00) pago na assinatura'
-
-        if (
-          isContratoPetrolina ||
-          (isLoc && (txtUpper.includes('GALPÃO') || txtUpper.includes('GALPAO')))
-        ) {
-          locador = 'Águia Mercantil Ltda (CNPJ: 24.356.305/0001-07)'
-          locatario = 'Extrafruti S/A – Comércio de Hortifrutigranjeiros (CNPJ: 06.175.064/0001-00)'
-          empresaDetectada = 'Extrafruti'
-        } else {
-          // Extrações dinâmicas pelo texto
-          const matchLocador = textoExtraido.match(
-            /LOCADOR[\s\S]{1,120}?RAZ[ÃA]O SOCIAL:\s*([^\n\r]+)/i,
-          )
-          if (matchLocador) locador = matchLocador[1].trim()
-          else if (txtUpper.includes('AGUIA MERCANTIL') || txtUpper.includes('ÁGUIA MERCANTIL')) {
-            locador = 'Águia Mercantil Ltda'
-          }
-
-          const matchValor = textoExtraido.match(/R\$\s*([0-9]{1,3}(?:\.[0-9]{3})*,\s*[0-9]{2})/i)
-          if (matchValor) valorMensal = matchValor[1].replace(/\s+/g, '')
-
-          if (!isLoc) {
-            multaRescisao = 'Multa de 10% sobre saldo remanescente'
-            multaInfracao = 'Multa de 2% sobre valor mensal'
-            foro = 'Comarca de Vitória/ES'
-            tipoImovel = 'Comercial'
-            enderecoImovel = ''
-            repLocador = ''
-            repLocatario = ''
-            clausulasEspeciais = ''
-            garantia = 'Retenção técnica contratual'
-            prazoMeses = 12
-            dataInicio = agoraStr
-            dataFim = em1Ano
-          }
-        }
-
-        const tituloSugerido = isLoc
-          ? isContratoPetrolina
-            ? 'Contrato de Locação Galpão Petrolina - Águia Mercantil'
-            : 'Contrato de Locação Comercial'
-          : nomeArquivo
-              .replace(/\.[^/.]+$/, '')
-              .replace(/[_-]+/g, ' ')
-              .trim()
-
-        setForm((prev) => ({
-          ...prev,
-          empresa: empresaDetectada,
-          titulo: tituloSugerido,
-          parte: locador,
-          locatario_nome: locatario,
-          valor_mensal: valorMensal,
-          valor_assinatura: valorAssinatura,
-          quantidade_caucoes: qtdCaucao,
-          prazo_meses: prazoMeses,
-          inicio: dataInicio,
-          fim: dataFim,
-          indexador: indexador,
-          periodicidade_reajuste: periodicidade,
-          multa_rescisao: multaRescisao,
-          multa_infracao: multaInfracao,
-          foro_eleicao: foro,
-          tipo_imovel: tipoImovel,
-          endereco_imovel: enderecoImovel,
-          representante_locador: repLocador,
-          representante_locatario: repLocatario,
-          clausulas_especiais: clausulasEspeciais,
-          garantia: garantia,
-          vistoria: 'Laudo de vistoria inicial assinado e anexo ao instrumento',
-          forma_pagamento: 'Transferência / PIX na assinatura e boletos subsequentes',
-          objeto: isLoc
-            ? `Locação comercial de imóvel tipo ${tipoImovel} em ${enderecoImovel || 'Petrolina/PE'} para a empresa ${empresaDetectada}.`
-            : `Prestação de serviços para a empresa ${empresaDetectada}.`,
-          status: 'ativo',
-        }))
+        // Substituição completa do formulário sem preservar lixo de importação anterior
+        setForm({
+          ...criarEstadoLimpo(camposExtraidos.empresa),
+          ...camposExtraidos,
+        })
       } else if (tipoAba === 'atas') {
         const isAge = nomeLower.includes('age') || nomeLower.includes('extraordin')
         const tituloSugerido = nomeArquivo
@@ -777,126 +719,131 @@ export function NovoDocumentoModal({
                 </div>
               </div>
 
-              {tipoAba === 'locacoes' && (
-                <>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-gray-700">
-                        Valor Pago na Assinatura (R$)
-                      </Label>
-                      <Input
-                        value={form.valor_assinatura || ''}
-                        onChange={(e) => setCampo('valor_assinatura', e.target.value)}
-                        placeholder="48.000,00 (1º mês + 2 cauções)"
-                        className="h-9 text-xs bg-gray-50"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-gray-700">Qtd. Cauções</Label>
-                      <Input
-                        type="number"
-                        value={form.quantidade_caucoes ?? ''}
-                        onChange={(e) => setCampo('quantidade_caucoes', e.target.value)}
-                        placeholder="2"
-                        className="h-9 text-xs bg-gray-50"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-gray-700">Prazo (meses)</Label>
-                      <Input
-                        type="number"
-                        value={form.prazo_meses ?? ''}
-                        onChange={(e) => setCampo('prazo_meses', e.target.value)}
-                        placeholder="36"
-                        className="h-9 text-xs bg-gray-50"
-                      />
-                    </div>
-                  </div>
+              {/* Campos compartilhados e detalhados de contratos e locações */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    Valor na Assinatura (R$)
+                  </Label>
+                  <Input
+                    value={form.valor_assinatura || ''}
+                    onChange={(e) => setCampo('valor_assinatura', e.target.value)}
+                    placeholder="0,00"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    {tipoAba === 'locacoes' ? 'Qtd. Cauções' : 'Garantia / Cauções'}
+                  </Label>
+                  <Input
+                    type="number"
+                    value={form.quantidade_caucoes ?? ''}
+                    onChange={(e) => setCampo('quantidade_caucoes', e.target.value)}
+                    placeholder="0"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">Prazo (meses)</Label>
+                  <Input
+                    type="number"
+                    value={form.prazo_meses ?? ''}
+                    onChange={(e) => setCampo('prazo_meses', e.target.value)}
+                    placeholder="12"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-gray-700">Tipo do Imóvel</Label>
-                      <Input
-                        value={form.tipo_imovel || ''}
-                        onChange={(e) => setCampo('tipo_imovel', e.target.value)}
-                        placeholder="Galpão / Comercial"
-                        className="h-9 text-xs bg-gray-50"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-gray-700">Foro de Eleição</Label>
-                      <Input
-                        value={form.foro_eleicao || ''}
-                        onChange={(e) => setCampo('foro_eleicao', e.target.value)}
-                        placeholder="Comarca de Petrolina/PE"
-                        className="h-9 text-xs bg-gray-50"
-                      />
-                    </div>
-                  </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    {tipoAba === 'locacoes' ? 'Tipo do Imóvel' : 'Tipo / Classificação'}
+                  </Label>
+                  <Input
+                    value={form.tipo_imovel || ''}
+                    onChange={(e) => setCampo('tipo_imovel', e.target.value)}
+                    placeholder="Comercial / Serviços"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">Foro de Eleição</Label>
+                  <Input
+                    value={form.foro_eleicao || ''}
+                    onChange={(e) => setCampo('foro_eleicao', e.target.value)}
+                    placeholder="Comarca de Vitória/ES"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+              </div>
 
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-gray-700">
-                      Endereço Completo do Imóvel
-                    </Label>
-                    <Input
-                      value={form.endereco_imovel || ''}
-                      onChange={(e) => setCampo('endereco_imovel', e.target.value)}
-                      placeholder="Rua Antônio Macedo Filho, 320, Distrito Industrial, Petrolina/PE"
-                      className="h-9 text-xs bg-gray-50"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-gray-700">
-                        Rep. Legal Locador
-                      </Label>
-                      <Input
-                        value={form.representante_locador || ''}
-                        onChange={(e) => setCampo('representante_locador', e.target.value)}
-                        placeholder="Geraldo Magela da Silva Neto"
-                        className="h-9 text-xs bg-gray-50"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-gray-700">
-                        Rep. Legal Locatário
-                      </Label>
-                      <Input
-                        value={form.representante_locatario || ''}
-                        onChange={(e) => setCampo('representante_locatario', e.target.value)}
-                        placeholder="Leonardo Venancio Lourenço / Flavia Rapozo"
-                        className="h-9 text-xs bg-gray-50"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-gray-700">
-                        Multa Rescisão Antecipada
-                      </Label>
-                      <Input
-                        value={form.multa_rescisao || ''}
-                        onChange={(e) => setCampo('multa_rescisao', e.target.value)}
-                        placeholder="02 (dois) meses do aluguel em vigor"
-                        className="h-9 text-xs bg-gray-50"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-gray-700">
-                        Multa por Infração Contratual
-                      </Label>
-                      <Input
-                        value={form.multa_infracao || ''}
-                        onChange={(e) => setCampo('multa_infracao', e.target.value)}
-                        placeholder="01 (um) mês do aluguel em vigor"
-                        className="h-9 text-xs bg-gray-50"
-                      />
-                    </div>
-                  </div>
-                </>
+              {(tipoAba === 'locacoes' || Boolean(form.endereco_imovel)) && (
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    Endereço Completo do Imóvel / Unidade
+                  </Label>
+                  <Input
+                    value={form.endereco_imovel || ''}
+                    onChange={(e) => setCampo('endereco_imovel', e.target.value)}
+                    placeholder="Logradouro, número, bairro, cidade/UF"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
               )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    {tipoAba === 'locacoes' ? 'Rep. Legal Locador' : 'Representante da Contraparte'}
+                  </Label>
+                  <Input
+                    value={form.representante_locador || ''}
+                    onChange={(e) => setCampo('representante_locador', e.target.value)}
+                    placeholder="Nome e documento do representante"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    {tipoAba === 'locacoes'
+                      ? 'Rep. Legal Locatário'
+                      : 'Representante da Empresa (Interno)'}
+                  </Label>
+                  <Input
+                    value={form.representante_locatario || ''}
+                    onChange={(e) => setCampo('representante_locatario', e.target.value)}
+                    placeholder="Nome e documento do representante"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    Multa Rescisão Antecipada
+                  </Label>
+                  <Input
+                    value={form.multa_rescisao || ''}
+                    onChange={(e) => setCampo('multa_rescisao', e.target.value)}
+                    placeholder="Multa rescisória"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    Multa por Infração Contratual
+                  </Label>
+                  <Input
+                    value={form.multa_infracao || ''}
+                    onChange={(e) => setCampo('multa_infracao', e.target.value)}
+                    placeholder="Multa infracional"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
@@ -965,20 +912,18 @@ export function NovoDocumentoModal({
                 />
               </div>
 
-              {tipoAba === 'locacoes' && (
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-bold text-gray-700">
-                    Cláusulas Especiais / Observações Relevantes (ex.: Energia Solar)
-                  </Label>
-                  <Textarea
-                    value={form.clausulas_especiais || ''}
-                    onChange={(e) => setCampo('clausulas_especiais', e.target.value)}
-                    rows={2}
-                    className="text-xs bg-gray-50 resize-none"
-                    placeholder="Cláusulas específicas (ex.: sistema de energia solar com medição e faturamento separado)..."
-                  />
-                </div>
-              )}
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-gray-700">
+                  Cláusulas Especiais / Condições Diferenciadas
+                </Label>
+                <Textarea
+                  value={form.clausulas_especiais || ''}
+                  onChange={(e) => setCampo('clausulas_especiais', e.target.value)}
+                  rows={2}
+                  className="text-xs bg-gray-50 resize-none"
+                  placeholder="Cláusulas específicas, condições especiais ou obrigações acessórias..."
+                />
+              </div>
             </>
           )}
 
