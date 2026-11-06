@@ -28,7 +28,8 @@
 // v23 (06/11/2026): timeline jurídica sem eventos fantasma de importação — histórico com data de importação não vira andamento; Visualizar habilitado em todo anexo exibível (PDF e imagens) no detalhe.
 // v24 (06/11/2026): ampliação da largura do modal de detalhe de processo jurídico para max-w-7xl sem rolagem lateral.
 // v25 (06/11/2026): suporte completo a múltiplos anexos no detalhe do documento (todas as abas), input múltiplo e união defensiva anti-sobrescrita.
-const CACHE_NAME = 'pge-pwa-v25'
+// v26 (06/11/2026): recriação do campo anexo com maxSelect 10 nas 5 coleções e purga de cache para atualização instantânea do preview.
+const CACHE_NAME = 'pge-pwa-v26'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
