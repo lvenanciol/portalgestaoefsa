@@ -40,6 +40,10 @@ import pb from '@/lib/pocketbase/client'
 const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
 const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
 
+}
+
+export function DocumentoDetalheModal({=======
+=======
 export interface DocumentoDetalheModalProps {
   aberto: boolean
   onOpenChange: (aberto: boolean) => void
@@ -2795,11 +2799,21 @@ export function DocumentoDetalheModal({=======
 const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
 const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
 
+
 export interface DocumentoDetalheModalProps {
   aberto: boolean
   onOpenChange: (aberto: boolean) => void
   tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
   documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+=======
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
   tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
   documento: any | null
   empresas?: { id: string; nome: string }[]
@@ -2816,6 +2830,158 @@ export function DocumentoDetalheModal({
   onAtualizado,
   onAbrirAnexos,
 }: DocumentoDetalheModalProps) {
+=======
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+
+  // Limpa Blob URL ao fechar modal
+  useEffect(() => {
+=======
+
+  // Limpa Blob URL ao fechar modal
+  useEffect(() => {
+=======
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+
+  // Limpa Blob URL ao fechar modal
+  useEffect(() => {
+    if (!aberto) {
+=======
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  // Limpa Blob URL ao fechar modal
+  useEffect(() => {
+    if (!aberto) {
+  useEffect(() => {
+=======
+=======
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+=======
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  // Limpa Blob URL ao fechar modal
+=======
+
+  // Limpa Blob URL ao fechar modal
+  useEffect(() => {
+=======
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  // Limpa Blob URL ao fechar modal
+=======
+
+  // Limpa Blob URL ao fechar modal
+  useEffect(() => {
+=======
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  // Limpa Blob URL ao fechar modal
+  useEffect(() => {
+=======
+=======
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+=======
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  // Limpa Blob URL ao fechar modal
 =======
 
   // Limpa Blob URL ao fechar modal
