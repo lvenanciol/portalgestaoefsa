@@ -1,0 +1,824 @@
+import React, { useState, useEffect } from 'react'
+import {
+  FileText,
+  Calendar,
+  Building2,
+  DollarSign,
+  ShieldCheck,
+  AlertCircle,
+  FileEdit,
+  Save,
+  Loader2,
+  User,
+  Scale,
+  Briefcase,
+  Layers,
+  ChevronDown,
+  Check,
+} from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { EmpresaIcon } from '@/components/common/EmpresaIcon'
+import pb from '@/lib/pocketbase/client'
+
+interface DocumentoDetalheCamposProps {
+  documento: any
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  colecaoNome: string
+  empresas: { id: string; nome: string }[]
+  onAtualizado?: () => void
+}
+
+export function DocumentoDetalheCampos({
+  documento,
+  tipoAba,
+  colecaoNome,
+  empresas,
+  onAtualizado,
+}: DocumentoDetalheCamposProps) {
+  const [editando, setEditando] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [empresaPopoverAberto, setEmpresaPopoverAberto] = useState(false)
+  const [form, setForm] = useState<Record<string, any>>({})
+
+  useEffect(() => {
+    setForm({ ...(documento || {}) })
+    setEditando(false)
+  }, [documento])
+
+  const setCampo = (campo: string, valor: any) => {
+    setForm((prev) => ({ ...prev, [campo]: valor }))
+  }
+
+  const handleSalvar = async () => {
+    if (!documento?.id) return
+    setSalvando(true)
+    try {
+      // Prepara payload de atualização com apenas campos editáveis da respectiva aba
+      const payload: Record<string, any> = {}
+      if (tipoAba === 'alvaras') {
+        payload.numero = form.numero || ''
+        payload.tipo = form.tipo || ''
+        payload.orgao_emissor = form.orgao_emissor || ''
+        payload.municipio = form.municipio || ''
+        payload.empresa = form.empresa || ''
+        payload.validade = form.validade || null
+        payload.status = form.status || 'regular'
+        payload.observacoes = form.observacoes || ''
+      } else if (tipoAba === 'atas') {
+        payload.titulo = form.titulo || ''
+        payload.tipo_ata = form.tipo_ata || 'AGE'
+        payload.empresa = form.empresa || ''
+        payload.data = form.data || null
+        payload.pauta = form.pauta || ''
+        payload.deliberacoes = form.deliberacoes || ''
+        payload.mesa_diretora = form.mesa_diretora || ''
+        payload.participantes = form.participantes || ''
+        payload.resumo = form.resumo || ''
+        payload.decisoes = form.decisoes || ''
+      } else if (tipoAba === 'juridicos') {
+        payload.titulo = form.titulo || ''
+        payload.numero_processo = form.numero_processo || ''
+        payload.numero_cnj = form.numero_cnj || ''
+        payload.empresa = form.empresa || form.cliente_principal || ''
+        payload.cliente_principal = form.cliente_principal || form.empresa || ''
+        payload.vara_comarca = form.vara_comarca || ''
+        payload.orgao = form.orgao || form.orgao_tribunal || ''
+        payload.orgao_tribunal = form.orgao_tribunal || form.orgao || ''
+        payload.natureza = form.natureza || ''
+        payload.assunto_tipo = form.assunto_tipo || ''
+        payload.autor = form.autor || ''
+        payload.reu = form.reu || ''
+        payload.contrario_principal = form.contrario_principal || ''
+        payload.advogado = form.advogado || form.responsavel_principal || ''
+        payload.responsavel_principal = form.responsavel_principal || form.advogado || ''
+        payload.status = form.status || 'ativo'
+        payload.probabilidade = form.probabilidade || form.risco || ''
+        payload.risco = form.risco || ''
+        payload.valor_base = form.valor_base !== undefined ? Number(form.valor_base) : null
+        payload.valor_corrigido =
+          form.valor_corrigido !== undefined ? Number(form.valor_corrigido) : null
+        payload.juros = form.juros !== undefined ? Number(form.juros) : null
+        payload.multa = form.multa !== undefined ? Number(form.multa) : null
+        payload.valor_atualizado =
+          form.valor_atualizado !== undefined ? Number(form.valor_atualizado) : null
+        payload.valor_causa = form.valor_causa !== undefined ? Number(form.valor_causa) : null
+      } else {
+        // contratos / locacoes
+        payload.titulo = form.titulo || ''
+        payload.parte = form.parte || ''
+        payload.tipo = form.tipo || (tipoAba === 'locacoes' ? 'locacao' : 'servico')
+        payload.empresa = form.empresa || ''
+        payload.valor_mensal = form.valor_mensal !== undefined ? Number(form.valor_mensal) : null
+        payload.inicio = form.inicio || null
+        payload.fim = form.fim || null
+        payload.status = form.status || 'ativo'
+        payload.objeto = form.objeto || ''
+        payload.indexador = form.indexador || ''
+        payload.garantia = form.garantia || ''
+        payload.unidade = form.unidade || ''
+        payload.forma_pagamento = form.forma_pagamento || ''
+        payload.observacao = form.observacao || ''
+      }
+
+      await pb.collection(colecaoNome).update(documento.id, payload)
+      setEditando(false)
+      onAtualizado?.()
+    } catch (err: any) {
+      console.error('Erro ao salvar documento:', err)
+      alert('Não foi possível salvar as alterações: ' + (err?.message || ''))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  const renderEmpresaSeletor = () => {
+    const nomeAtual = form.empresa || form.cliente_principal || ''
+    if (!editando) {
+      return (
+        <div className="flex items-center gap-2 mt-1">
+          <EmpresaIcon nome={nomeAtual} mostrarNome className="h-4 w-4 shrink-0 rounded-xs" />
+        </div>
+      )
+    }
+    return (
+      <Popover open={empresaPopoverAberto} onOpenChange={setEmpresaPopoverAberto}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full justify-between h-8 mt-1 text-xs font-normal"
+          >
+            <div className="flex items-center gap-1.5 truncate">
+              <EmpresaIcon nome={nomeAtual} mostrarNome className="h-3.5 w-3.5 shrink-0" />
+            </div>
+            <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-56 p-1 max-h-60 overflow-y-auto" align="start">
+          <div className="space-y-0.5">
+            {empresas.map((e) => (
+              <button
+                key={e.id}
+                type="button"
+                onClick={() => {
+                  setCampo('empresa', e.nome)
+                  setCampo('cliente_principal', e.nome)
+                  setEmpresaPopoverAberto(false)
+                }}
+                className="w-full flex items-center justify-between px-2 py-1.5 text-xs rounded-md hover:bg-gray-100 text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <EmpresaIcon nome={e.nome} className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{e.nome}</span>
+                </div>
+                {nomeAtual === e.nome && <Check className="h-3 w-3 text-blue-600 shrink-0" />}
+              </button>
+            ))}
+          </div>
+        </PopoverContent>
+      </Popover>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Barra de Ação Edição / Salvar */}
+      <div className="flex items-center justify-between gap-2 border-b border-gray-100 pb-2">
+        <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
+          Metadados do Documento
+        </span>
+        <div className="flex items-center gap-2">
+          {editando ? (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setForm({ ...(documento || {}) })
+                  setEditando(false)
+                }}
+                disabled={salvando}
+                className="h-7 text-xs text-gray-600"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                onClick={handleSalvar}
+                disabled={salvando}
+                className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1"
+              >
+                {salvando ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Save className="h-3 w-3" />
+                )}
+                <span>Salvar</span>
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEditando(true)}
+              className="h-7 text-xs text-gray-700 border-gray-300 hover:bg-gray-50 gap-1"
+            >
+              <FileEdit className="h-3 w-3" />
+              <span>Editar Dados</span>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Grid de Campos Específicos por Tipo */}
+      {tipoAba === 'alvaras' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+          <div>
+            <label className="text-gray-500 font-medium">Nº Alvará</label>
+            {editando ? (
+              <Input
+                value={form.numero || ''}
+                onChange={(e) => setCampo('numero', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="font-semibold text-gray-900 mt-1">{form.numero || '—'}</p>
+            )}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Tipo</label>
+            {editando ? (
+              <Input
+                value={form.tipo || ''}
+                onChange={(e) => setCampo('tipo', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="font-medium text-gray-800 mt-1">{form.tipo || '—'}</p>
+            )}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Empresa</label>
+            {renderEmpresaSeletor()}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Órgão Emissor</label>
+            {editando ? (
+              <Input
+                value={form.orgao_emissor || ''}
+                onChange={(e) => setCampo('orgao_emissor', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="text-gray-800 mt-1">{form.orgao_emissor || '—'}</p>
+            )}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Município</label>
+            {editando ? (
+              <Input
+                value={form.municipio || ''}
+                onChange={(e) => setCampo('municipio', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="text-gray-800 mt-1">{form.municipio || '—'}</p>
+            )}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Validade</label>
+            {editando ? (
+              <Input
+                type="date"
+                value={form.validade ? String(form.validade).substring(0, 10) : ''}
+                onChange={(e) => setCampo('validade', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="font-medium text-gray-800 mt-1">
+                {form.validade ? new Date(form.validade).toLocaleDateString('pt-BR') : '—'}
+              </p>
+            )}
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label className="text-gray-500 font-medium">Observações</label>
+            {editando ? (
+              <Textarea
+                rows={2}
+                value={form.observacoes || ''}
+                onChange={(e) => setCampo('observacoes', e.target.value)}
+                className="text-xs mt-1"
+              />
+            ) : (
+              <p className="text-gray-700 mt-1 whitespace-pre-wrap">{form.observacoes || '—'}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tipoAba === 'atas' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+          <div className="sm:col-span-2">
+            <label className="text-gray-500 font-medium">Título da Ata</label>
+            {editando ? (
+              <Input
+                value={form.titulo || ''}
+                onChange={(e) => setCampo('titulo', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="font-semibold text-gray-900 mt-1">{form.titulo || '—'}</p>
+            )}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Tipo</label>
+            {editando ? (
+              <Input
+                value={form.tipo_ata || 'AGE'}
+                onChange={(e) => setCampo('tipo_ata', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="font-medium text-gray-800 mt-1">{form.tipo_ata || 'AGE'}</p>
+            )}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Empresa</label>
+            {renderEmpresaSeletor()}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Data</label>
+            {editando ? (
+              <Input
+                type="date"
+                value={form.data ? String(form.data).substring(0, 10) : ''}
+                onChange={(e) => setCampo('data', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="font-medium text-gray-800 mt-1">
+                {form.data ? new Date(form.data).toLocaleDateString('pt-BR') : '—'}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Mesa Diretora</label>
+            {editando ? (
+              <Input
+                value={form.mesa_diretora || ''}
+                onChange={(e) => setCampo('mesa_diretora', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="text-gray-800 mt-1">{form.mesa_diretora || '—'}</p>
+            )}
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label className="text-gray-500 font-medium">Pauta</label>
+            {editando ? (
+              <Textarea
+                rows={2}
+                value={form.pauta || ''}
+                onChange={(e) => setCampo('pauta', e.target.value)}
+                className="text-xs mt-1"
+              />
+            ) : (
+              <p className="text-gray-700 mt-1 whitespace-pre-wrap">{form.pauta || '—'}</p>
+            )}
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label className="text-gray-500 font-medium">Deliberações</label>
+            {editando ? (
+              <Textarea
+                rows={2}
+                value={form.deliberacoes || ''}
+                onChange={(e) => setCampo('deliberacoes', e.target.value)}
+                className="text-xs mt-1"
+              />
+            ) : (
+              <p className="text-gray-700 mt-1 whitespace-pre-wrap">{form.deliberacoes || '—'}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(tipoAba === 'contratos' || tipoAba === 'locacoes') && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+          <div className="sm:col-span-2">
+            <label className="text-gray-500 font-medium">Título do Contrato</label>
+            {editando ? (
+              <Input
+                value={form.titulo || ''}
+                onChange={(e) => setCampo('titulo', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="font-semibold text-gray-900 mt-1">{form.titulo || '—'}</p>
+            )}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Contraparte / Locador</label>
+            {editando ? (
+              <Input
+                value={form.parte || ''}
+                onChange={(e) => setCampo('parte', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="font-semibold text-gray-800 mt-1">{form.parte || '—'}</p>
+            )}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Empresa</label>
+            {renderEmpresaSeletor()}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Valor Mensal</label>
+            {editando ? (
+              <Input
+                type="number"
+                step="0.01"
+                value={form.valor_mensal ?? ''}
+                onChange={(e) => setCampo('valor_mensal', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="font-semibold text-emerald-800 mt-1">
+                {form.valor_mensal !== undefined && form.valor_mensal !== null
+                  ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                      form.valor_mensal,
+                    )
+                  : '—'}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Vigência (Início - Fim)</label>
+            {editando ? (
+              <div className="flex items-center gap-1.5 mt-1">
+                <Input
+                  type="date"
+                  value={form.inicio ? String(form.inicio).substring(0, 10) : ''}
+                  onChange={(e) => setCampo('inicio', e.target.value)}
+                  className="h-8 text-xs"
+                />
+                <span>-</span>
+                <Input
+                  type="date"
+                  value={form.fim ? String(form.fim).substring(0, 10) : ''}
+                  onChange={(e) => setCampo('fim', e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+            ) : (
+              <p className="text-gray-800 mt-1">
+                {form.inicio ? new Date(form.inicio).toLocaleDateString('pt-BR') : '—'} →{' '}
+                {form.fim ? new Date(form.fim).toLocaleDateString('pt-BR') : '—'}
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Índice Reajuste</label>
+            {editando ? (
+              <Input
+                value={form.indexador || ''}
+                onChange={(e) => setCampo('indexador', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="text-gray-800 mt-1">{form.indexador || 'IGP-M'}</p>
+            )}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Garantia</label>
+            {editando ? (
+              <Input
+                value={form.garantia || ''}
+                onChange={(e) => setCampo('garantia', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <p className="text-gray-800 mt-1">{form.garantia || '—'}</p>
+            )}
+          </div>
+          <div>
+            <label className="text-gray-500 font-medium">Status</label>
+            {editando ? (
+              <Input
+                value={form.status || 'ativo'}
+                onChange={(e) => setCampo('status', e.target.value)}
+                className="h-8 text-xs mt-1"
+              />
+            ) : (
+              <div className="mt-1">
+                <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700">
+                  {form.status || 'ativo'}
+                </Badge>
+              </div>
+            )}
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label className="text-gray-500 font-medium">Objeto</label>
+            {editando ? (
+              <Textarea
+                rows={2}
+                value={form.objeto || ''}
+                onChange={(e) => setCampo('objeto', e.target.value)}
+                className="text-xs mt-1"
+              />
+            ) : (
+              <p className="text-gray-700 mt-1 whitespace-pre-wrap">{form.objeto || '—'}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {tipoAba === 'juridicos' && (
+        <div className="space-y-3 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="sm:col-span-2">
+              <label className="text-gray-500 font-medium">Título do Processo</label>
+              {editando ? (
+                <Input
+                  value={form.titulo || ''}
+                  onChange={(e) => setCampo('titulo', e.target.value)}
+                  className="h-8 text-xs mt-1"
+                />
+              ) : (
+                <p className="font-semibold text-gray-900 mt-1">{form.titulo || '—'}</p>
+              )}
+            </div>
+            <div>
+              <label className="text-gray-500 font-medium">Nº Processo</label>
+              {editando ? (
+                <Input
+                  value={form.numero_processo || ''}
+                  onChange={(e) => setCampo('numero_processo', e.target.value)}
+                  className="h-8 text-xs mt-1 font-mono"
+                />
+              ) : (
+                <p className="font-mono text-gray-800 mt-1">{form.numero_processo || '—'}</p>
+              )}
+            </div>
+            <div>
+              <label className="text-gray-500 font-medium">Nº CNJ</label>
+              {editando ? (
+                <Input
+                  value={form.numero_cnj || ''}
+                  onChange={(e) => setCampo('numero_cnj', e.target.value)}
+                  className="h-8 text-xs mt-1 font-mono"
+                />
+              ) : (
+                <p className="font-mono text-gray-800 mt-1">{form.numero_cnj || '—'}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label className="text-gray-500 font-medium">Empresa (Cliente)</label>
+              {renderEmpresaSeletor()}
+            </div>
+            <div>
+              <label className="text-gray-500 font-medium">Polo Contrário</label>
+              {editando ? (
+                <Input
+                  value={form.contrario_principal || form.reu || form.autor || ''}
+                  onChange={(e) => {
+                    setCampo('contrario_principal', e.target.value)
+                  }}
+                  className="h-8 text-xs mt-1"
+                />
+              ) : (
+                <p className="font-medium text-gray-800 mt-1">
+                  {form.contrario_principal || form.reu || form.autor || '—'}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-gray-500 font-medium">Órgão / Tribunal</label>
+              {editando ? (
+                <Input
+                  value={form.orgao || form.orgao_tribunal || form.vara_comarca || ''}
+                  onChange={(e) => {
+                    setCampo('orgao', e.target.value)
+                    setCampo('orgao_tribunal', e.target.value)
+                  }}
+                  className="h-8 text-xs mt-1"
+                />
+              ) : (
+                <p className="text-gray-800 mt-1">
+                  {form.orgao || form.orgao_tribunal || form.vara_comarca || '—'}
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="text-gray-500 font-medium">Responsável / Advogado</label>
+              {editando ? (
+                <Input
+                  value={form.responsavel_principal || form.advogado || ''}
+                  onChange={(e) => {
+                    setCampo('responsavel_principal', e.target.value)
+                    setCampo('advogado', e.target.value)
+                  }}
+                  className="h-8 text-xs mt-1"
+                />
+              ) : (
+                <p className="text-gray-800 mt-1">
+                  {form.responsavel_principal || form.advogado || '—'}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div>
+              <label className="text-gray-500 font-medium">Natureza</label>
+              {editando ? (
+                <Input
+                  value={form.natureza || ''}
+                  onChange={(e) => setCampo('natureza', e.target.value)}
+                  className="h-8 text-xs mt-1"
+                />
+              ) : (
+                <p className="text-gray-800 mt-1">{form.natureza || '—'}</p>
+              )}
+            </div>
+            <div>
+              <label className="text-gray-500 font-medium">Status</label>
+              {editando ? (
+                <Input
+                  value={form.status || 'Ativo'}
+                  onChange={(e) => setCampo('status', e.target.value)}
+                  className="h-8 text-xs mt-1"
+                />
+              ) : (
+                <div className="mt-1">
+                  <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700">
+                    {form.status || 'Ativo'}
+                  </Badge>
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="text-gray-500 font-medium">Probabilidade / Risco</label>
+              {editando ? (
+                <Input
+                  value={form.probabilidade || form.risco || ''}
+                  onChange={(e) => {
+                    setCampo('probabilidade', e.target.value)
+                    setCampo('risco', e.target.value)
+                  }}
+                  className="h-8 text-xs mt-1"
+                />
+              ) : (
+                <div className="mt-1">
+                  <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700">
+                    {form.probabilidade || form.risco || 'Perda Possível'}
+                  </Badge>
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="text-gray-500 font-medium">Fase / Instância</label>
+              {editando ? (
+                <Input
+                  value={form.fase_instancia || ''}
+                  onChange={(e) => setCampo('fase_instancia', e.target.value)}
+                  className="h-8 text-xs mt-1"
+                />
+              ) : (
+                <p className="text-gray-800 mt-1">{form.fase_instancia || '—'}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Bloco de Valores */}
+          <div className="rounded-lg bg-gray-50 border border-gray-200 p-3 space-y-2 mt-2">
+            <span className="text-[11px] font-bold text-gray-700 uppercase tracking-wider block">
+              Composição de Valores (R$)
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+              <div>
+                <label className="text-gray-500 text-[11px]">Valor Base</label>
+                {editando ? (
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.valor_base ?? form.valor_causa ?? ''}
+                    onChange={(e) => setCampo('valor_base', e.target.value)}
+                    className="h-7 text-xs mt-0.5"
+                  />
+                ) : (
+                  <p className="font-semibold text-gray-800 mt-0.5">
+                    {(form.valor_base ?? form.valor_causa)
+                      ? new Intl.NumberFormat('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        }).format(form.valor_base ?? form.valor_causa)
+                      : '—'}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="text-gray-500 text-[11px]">Valor Corrigido</label>
+                {editando ? (
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.valor_corrigido ?? ''}
+                    onChange={(e) => setCampo('valor_corrigido', e.target.value)}
+                    className="h-7 text-xs mt-0.5"
+                  />
+                ) : (
+                  <p className="font-semibold text-gray-800 mt-0.5">
+                    {form.valor_corrigido
+                      ? new Intl.NumberFormat('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        }).format(form.valor_corrigido)
+                      : '—'}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="text-gray-500 text-[11px]">Juros</label>
+                {editando ? (
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.juros ?? ''}
+                    onChange={(e) => setCampo('juros', e.target.value)}
+                    className="h-7 text-xs mt-0.5"
+                  />
+                ) : (
+                  <p className="text-gray-800 mt-0.5">
+                    {form.juros
+                      ? new Intl.NumberFormat('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        }).format(form.juros)
+                      : '—'}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="text-gray-500 text-[11px]">Multa</label>
+                {editando ? (
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.multa ?? ''}
+                    onChange={(e) => setCampo('multa', e.target.value)}
+                    className="h-7 text-xs mt-0.5"
+                  />
+                ) : (
+                  <p className="text-gray-800 mt-0.5">
+                    {form.multa
+                      ? new Intl.NumberFormat('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        }).format(form.multa)
+                      : '—'}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="text-gray-500 text-[11px] font-bold text-emerald-800">
+                  Valor Atualizado
+                </label>
+                {editando ? (
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.valor_atualizado ?? form.valor_causa ?? ''}
+                    onChange={(e) => setCampo('valor_atualizado', e.target.value)}
+                    className="h-7 text-xs mt-0.5 font-bold"
+                  />
+                ) : (
+                  <p className="font-bold text-emerald-900 mt-0.5">
+                    {(form.valor_atualizado ?? form.valor_causa)
+                      ? new Intl.NumberFormat('pt-BR', {
+                          style: 'currency',
+                          currency: 'BRL',
+                        }).format(form.valor_atualizado ?? form.valor_causa)
+                      : '—'}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
