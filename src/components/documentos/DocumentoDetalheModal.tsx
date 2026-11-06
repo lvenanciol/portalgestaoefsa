@@ -31,9 +31,930 @@ import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import { DocumentoParecerButton } from './DocumentoParecerButton'
 import { PdfViewer } from './PdfViewer'
 import { ProcessoObservacoesTimeline } from './ProcessoObservacoesTimeline'
+import { useSanitizarObservacoesImportacao } from './useSanitizarObservacoesImportacao'
 import { canonizarNatureza } from './JuridicosImportModal'
 import { limparPartes } from './juridicos-texto-utils'
 import pb from '@/lib/pocketbase/client'
+
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
 
 export interface DocumentoDetalheModalProps {
   aberto: boolean
@@ -69,6 +990,1327 @@ export function DocumentoDetalheModal({
   const [salvando, setSalvando] = useState(false)
   const [feedbackSalvo, setFeedbackSalvo] = useState(false)
   const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
+  const [blobUrlPdf, setBlobUrlPdf] = useState<string | null>(null)
+  const [arquivoPdfAtivo, setArquivoPdfAtivo] = useState<string | null>(null)
+  const [carregandoPdf, setCarregandoPdf] = useState(false)
+  const [listaAnexosDetalhe, setListaAnexosDetalhe] = useState<string[]>([])
+  const [salvandoAnexoDetalhe, setSalvandoAnexoDetalhe] = useState(false)
+  const [anexoParaRemoverDetalhe, setAnexoParaRemoverDetalhe] = useState<string | null>(null)
+  const inputAnexoDetalheRef = useRef<HTMLInputElement>(null)
+
+  // Estado dos campos editáveis do documento
+  const [formData, setFormData] = useState<Record<string, any>>({})
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [feedbackSalvo, setFeedbackSalvo] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
+  const [blobUrlPdf, setBlobUrlPdf] = useState<string | null>(null)
+  const [arquivoPdfAtivo, setArquivoPdfAtivo] = useState<string | null>(null)
+  const [carregandoPdf, setCarregandoPdf] = useState(false)
+  const [listaAnexosDetalhe, setListaAnexosDetalhe] = useState<string[]>([])
+  const [salvandoAnexoDetalhe, setSalvandoAnexoDetalhe] = useState(false)
+  const [anexoParaRemoverDetalhe, setAnexoParaRemoverDetalhe] = useState<string | null>(null)
+  const inputAnexoDetalheRef = useRef<HTMLInputElement>(null)
+
+  // Estado dos campos editáveis do documento
+  const [formData, setFormData] = useState<Record<string, any>>({})
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [feedbackSalvo, setFeedbackSalvo] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
+  const [blobUrlPdf, setBlobUrlPdf] = useState<string | null>(null)
+  const [arquivoPdfAtivo, setArquivoPdfAtivo] = useState<string | null>(null)
+  const [carregandoPdf, setCarregandoPdf] = useState(false)
+  const [listaAnexosDetalhe, setListaAnexosDetalhe] = useState<string[]>([])
+  const [salvandoAnexoDetalhe, setSalvandoAnexoDetalhe] = useState(false)
+  const [anexoParaRemoverDetalhe, setAnexoParaRemoverDetalhe] = useState<string | null>(null)
+  const inputAnexoDetalheRef = useRef<HTMLInputElement>(null)
+
+  // Estado dos campos editáveis do documento
+  const [formData, setFormData] = useState<Record<string, any>>({})
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [feedbackSalvo, setFeedbackSalvo] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
+  const [blobUrlPdf, setBlobUrlPdf] = useState<string | null>(null)
+  const [arquivoPdfAtivo, setArquivoPdfAtivo] = useState<string | null>(null)
+  const [carregandoPdf, setCarregandoPdf] = useState(false)
+  const [listaAnexosDetalhe, setListaAnexosDetalhe] = useState<string[]>([])
+  const [salvandoAnexoDetalhe, setSalvandoAnexoDetalhe] = useState(false)
+  const [anexoParaRemoverDetalhe, setAnexoParaRemoverDetalhe] = useState<string | null>(null)
+  const inputAnexoDetalheRef = useRef<HTMLInputElement>(null)
+
+  // Estado dos campos editáveis do documento
+  const [formData, setFormData] = useState<Record<string, any>>({})
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [feedbackSalvo, setFeedbackSalvo] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+  const destinoSanitizacao =
+    tipoAba === 'juridicos' && documento
+      ? { colecao: 'processos_juridicos', id: documento.id, campo: 'observacoes' }
+      : undefined
+  // Sanitização one-shot: remove anotações de importação ("[Importado em ... por ...]")
+  // gravadas dentro do texto de observações por importações anteriores, para que
+  // a cronologia não exiba evento fantasma (data/hora da importação como andamento)
+  const observacoesSanitizadas = useSanitizarObservacoesImportacao(
+    tipoAba === 'juridicos' ? documento?.id : undefined,
+    tipoAba === 'juridicos' ? documento?.observacoes : undefined,
+    destinoSanitizacao,
+  )
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
+  const [blobUrlPdf, setBlobUrlPdf] = useState<string | null>(null)
+  const [arquivoPdfAtivo, setArquivoPdfAtivo] = useState<string | null>(null)
+  const [carregandoPdf, setCarregandoPdf] = useState(false)
+  const [listaAnexosDetalhe, setListaAnexosDetalhe] = useState<string[]>([])
+  const [salvandoAnexoDetalhe, setSalvandoAnexoDetalhe] = useState(false)
+  const [anexoParaRemoverDetalhe, setAnexoParaRemoverDetalhe] = useState<string | null>(null)
+  const inputAnexoDetalheRef = useRef<HTMLInputElement>(null)
+
+  // Estado dos campos editáveis do documento
+  const [formData, setFormData] = useState<Record<string, any>>({})
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [feedbackSalvo, setFeedbackSalvo] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+  const destinoSanitizacao =
+    tipoAba === 'juridicos' && documento
+      ? { colecao: 'processos_juridicos', id: documento.id, campo: 'observacoes' }
+      : undefined
+  // Sanitização one-shot: remove anotações de importação ("[Importado em ... por ...]")
+  // gravadas dentro do texto de observações por importações anteriores, para que
+  // a cronologia não exiba evento fantasma (data/hora da importação como andamento)
+  const observacoesSanitizadas = useSanitizarObservacoesImportacao(
+    tipoAba === 'juridicos' ? documento?.id : undefined,
+    tipoAba === 'juridicos' ? documento?.observacoes : undefined,
+    destinoSanitizacao,
+  )
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
+  const [blobUrlPdf, setBlobUrlPdf] = useState<string | null>(null)
+  const [arquivoPdfAtivo, setArquivoPdfAtivo] = useState<string | null>(null)
+  const [carregandoPdf, setCarregandoPdf] = useState(false)
+  const [listaAnexosDetalhe, setListaAnexosDetalhe] = useState<string[]>([])
+  const [salvandoAnexoDetalhe, setSalvandoAnexoDetalhe] = useState(false)
+  const [anexoParaRemoverDetalhe, setAnexoParaRemoverDetalhe] = useState<string | null>(null)
+  const inputAnexoDetalheRef = useRef<HTMLInputElement>(null)
+
+  // Estado dos campos editáveis do documento
+  const [formData, setFormData] = useState<Record<string, any>>({})
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [feedbackSalvo, setFeedbackSalvo] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+  const destinoSanitizacao =
+    tipoAba === 'juridicos' && documento
+      ? { colecao: 'processos_juridicos', id: documento.id, campo: 'observacoes' }
+      : undefined
+  // Sanitização one-shot: remove anotações de importação ("[Importado em ... por ...]")
+  // gravadas dentro do texto de observações por importações anteriores, para que
+  // a cronologia não exiba evento fantasma (data/hora da importação como andamento)
+  const observacoesSanitizadas = useSanitizarObservacoesImportacao(
+    tipoAba === 'juridicos' ? documento?.id : undefined,
+    tipoAba === 'juridicos' ? documento?.observacoes : undefined,
+    destinoSanitizacao,
+  )
+
+  // Ao receber/mudar documento, inicializa o formulário
+  useEffect(() => {
+    if (documento) {
+      const dados = { ...documento }
+      // Em processos jurídicos, canoniza natureza e limpa partes antigas poluídas
+      // (ex.: "Trabalhista Cliente principal: EXTRAFRUTI" -> "Trabalhista" e
+      // "JOSE CARLOS SILVA... Responsável principal: NEIMAR ZAVARIZE" -> "JOSE CARLOS SILVA")
+      if (tipoAba === 'juridicos') {
+        if (dados.natureza) {
+          dados.natureza = canonizarNatureza(dados.natureza)
+        }
+        if (dados.contrario_principal) {
+          dados.contrario_principal = limparPartes(dados.contrario_principal)
+        }
+        if (dados.autor) {
+          dados.autor = limparPartes(dados.autor)
+        }
+        if (dados.responsavel_principal) {
+          dados.responsavel_principal = limparPartes(dados.responsavel_principal)
+        }
+        if (dados.advogado) {
+          dados.advogado = limparPartes(dados.advogado)
+        }
+        if (dados.cliente_principal) {
+          dados.cliente_principal = limparPartes(dados.cliente_principal)
+        }
+      }
+      setFormData(dados)
+      setFeedbackSalvo(false)
+      setErroSalvar(null)
+
+      // Extrai lista unificada de anexos (compatível com array de arquivos ou string antiga)
+      const valAnexo = dados.anexo
+      let lista: string[] = []
+      if (Array.isArray(valAnexo)) {
+        lista = valAnexo.map(String).filter(Boolean)
+      } else if (typeof valAnexo === 'string' && valAnexo.trim()) {
+        lista = [valAnexo.trim()]
+      }
+      setListaAnexosDetalhe(lista)
+    }
+  }, [documento, tipoAba])
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
+  const [blobUrlPdf, setBlobUrlPdf] = useState<string | null>(null)
+  const [arquivoPdfAtivo, setArquivoPdfAtivo] = useState<string | null>(null)
+  const [carregandoPdf, setCarregandoPdf] = useState(false)
+  const [listaAnexosDetalhe, setListaAnexosDetalhe] = useState<string[]>([])
+  const [salvandoAnexoDetalhe, setSalvandoAnexoDetalhe] = useState(false)
+  const [anexoParaRemoverDetalhe, setAnexoParaRemoverDetalhe] = useState<string | null>(null)
+  const inputAnexoDetalheRef = useRef<HTMLInputElement>(null)
+
+  // Estado dos campos editáveis do documento
+  const [formData, setFormData] = useState<Record<string, any>>({})
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [feedbackSalvo, setFeedbackSalvo] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+  const destinoSanitizacao =
+    tipoAba === 'juridicos' && documento
+      ? { colecao: 'processos_juridicos', id: documento.id, campo: 'observacoes' }
+      : undefined
+  // Sanitização one-shot: remove anotações de importação ("[Importado em ... por ...]")
+  // gravadas dentro do texto de observações por importações anteriores, para que
+  // a cronologia não exiba evento fantasma (data/hora da importação como andamento)
+  const observacoesSanitizadas = useSanitizarObservacoesImportacao(
+    tipoAba === 'juridicos' ? documento?.id : undefined,
+    tipoAba === 'juridicos' ? documento?.observacoes : undefined,
+    destinoSanitizacao,
+  )
+
+  // Ao receber/mudar documento, inicializa o formulário
+  useEffect(() => {
+    if (documento) {
+      const dados = { ...documento }
+      // Em processos jurídicos, canoniza natureza e limpa partes antigas poluídas
+      // (ex.: "Trabalhista Cliente principal: EXTRAFRUTI" -> "Trabalhista" e
+      // "JOSE CARLOS SILVA... Responsável principal: NEIMAR ZAVARIZE" -> "JOSE CARLOS SILVA")
+      if (tipoAba === 'juridicos') {
+        if (dados.natureza) {
+          dados.natureza = canonizarNatureza(dados.natureza)
+        }
+        if (dados.contrario_principal) {
+          dados.contrario_principal = limparPartes(dados.contrario_principal)
+        }
+        if (dados.autor) {
+          dados.autor = limparPartes(dados.autor)
+        }
+        if (dados.responsavel_principal) {
+          dados.responsavel_principal = limparPartes(dados.responsavel_principal)
+        }
+        if (dados.advogado) {
+          dados.advogado = limparPartes(dados.advogado)
+        }
+        if (dados.cliente_principal) {
+          dados.cliente_principal = limparPartes(dados.cliente_principal)
+        }
+      }
+      setFormData(dados)
+      setFeedbackSalvo(false)
+      setErroSalvar(null)
+
+      // Extrai lista unificada de anexos (compatível com array de arquivos ou string antiga)
+      const valAnexo = dados.anexo
+      let lista: string[] = []
+      if (Array.isArray(valAnexo)) {
+        lista = valAnexo.map(String).filter(Boolean)
+      } else if (typeof valAnexo === 'string' && valAnexo.trim()) {
+        lista = [valAnexo.trim()]
+      }
+      setListaAnexosDetalhe(lista)
+    }
+  }, [documento, tipoAba])
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
+  const [blobUrlPdf, setBlobUrlPdf] = useState<string | null>(null)
+  const [arquivoPdfAtivo, setArquivoPdfAtivo] = useState<string | null>(null)
+  const [carregandoPdf, setCarregandoPdf] = useState(false)
+  const [listaAnexosDetalhe, setListaAnexosDetalhe] = useState<string[]>([])
+  const [salvandoAnexoDetalhe, setSalvandoAnexoDetalhe] = useState(false)
+  const [anexoParaRemoverDetalhe, setAnexoParaRemoverDetalhe] = useState<string | null>(null)
+  const inputAnexoDetalheRef = useRef<HTMLInputElement>(null)
+
+  // Estado dos campos editáveis do documento
+  const [formData, setFormData] = useState<Record<string, any>>({})
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [feedbackSalvo, setFeedbackSalvo] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+  const destinoSanitizacao =
+    tipoAba === 'juridicos' && documento
+      ? { colecao: 'processos_juridicos', id: documento.id, campo: 'observacoes' }
+      : undefined
+  // Sanitização one-shot: remove anotações de importação ("[Importado em ... por ...]")
+  // gravadas dentro do texto de observações por importações anteriores, para que
+  // a cronologia não exiba evento fantasma (data/hora da importação como andamento)
+  const observacoesSanitizadas = useSanitizarObservacoesImportacao(
+    tipoAba === 'juridicos' ? documento?.id : undefined,
+    tipoAba === 'juridicos' ? documento?.observacoes : undefined,
+    destinoSanitizacao,
+  )
+
+  // Ao receber/mudar documento, inicializa o formulário
+  useEffect(() => {
+    if (documento) {
+      const dados = { ...documento }
+      // Em processos jurídicos, canoniza natureza e limpa partes antigas poluídas
+      // (ex.: "Trabalhista Cliente principal: EXTRAFRUTI" -> "Trabalhista" e
+      // "JOSE CARLOS SILVA... Responsável principal: NEIMAR ZAVARIZE" -> "JOSE CARLOS SILVA")
+      if (tipoAba === 'juridicos') {
+        if (dados.natureza) {
+          dados.natureza = canonizarNatureza(dados.natureza)
+        }
+        if (dados.contrario_principal) {
+          dados.contrario_principal = limparPartes(dados.contrario_principal)
+        }
+        if (dados.autor) {
+          dados.autor = limparPartes(dados.autor)
+        }
+        if (dados.responsavel_principal) {
+          dados.responsavel_principal = limparPartes(dados.responsavel_principal)
+        }
+        if (dados.advogado) {
+          dados.advogado = limparPartes(dados.advogado)
+        }
+        if (dados.cliente_principal) {
+          dados.cliente_principal = limparPartes(dados.cliente_principal)
+        }
+      }
+      setFormData(dados)
+      setFeedbackSalvo(false)
+      setErroSalvar(null)
+
+      // Extrai lista unificada de anexos (compatível com array de arquivos ou string antiga)
+      const valAnexo = dados.anexo
+      let lista: string[] = []
+      if (Array.isArray(valAnexo)) {
+        lista = valAnexo.map(String).filter(Boolean)
+      } else if (typeof valAnexo === 'string' && valAnexo.trim()) {
+        lista = [valAnexo.trim()]
+      }
+      setListaAnexosDetalhe(lista)
+    }
+  }, [documento, tipoAba])
+=======
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+=======
+export function DocumentoDetalheModal({
+  aberto,
+=======
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
+  const [blobUrlPdf, setBlobUrlPdf] = useState<string | null>(null)
+  const [arquivoPdfAtivo, setArquivoPdfAtivo] = useState<string | null>(null)
+  const [carregandoPdf, setCarregandoPdf] = useState(false)
+  const [listaAnexosDetalhe, setListaAnexosDetalhe] = useState<string[]>([])
+  const [salvandoAnexoDetalhe, setSalvandoAnexoDetalhe] = useState(false)
+  const [anexoParaRemoverDetalhe, setAnexoParaRemoverDetalhe] = useState<string | null>(null)
+  const inputAnexoDetalheRef = useRef<HTMLInputElement>(null)
+
+  // Estado dos campos editáveis do documento
+  const [formData, setFormData] = useState<Record<string, any>>({})
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [feedbackSalvo, setFeedbackSalvo] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+  const destinoSanitizacao =
+    tipoAba === 'juridicos' && documento
+      ? { colecao: 'processos_juridicos', id: documento.id, campo: 'observacoes' }
+      : undefined
+  // Sanitização one-shot: remove anotações de importação ("[Importado em ... por ...]")
+  // gravadas dentro do texto de observações por importações anteriores, para que
+  // a cronologia não exiba evento fantasma (data/hora da importação como andamento)
+  const observacoesSanitizadas = useSanitizarObservacoesImportacao(
+    tipoAba === 'juridicos' ? documento?.id : undefined,
+    tipoAba === 'juridicos' ? documento?.observacoes : undefined,
+    destinoSanitizacao,
+  )
+
+  // Ao receber/mudar documento, inicializa o formulário
+  useEffect(() => {
+    if (documento) {
+      const dados = { ...documento }
+      // Em processos jurídicos, canoniza natureza e limpa partes antigas poluídas
+      // (ex.: "Trabalhista Cliente principal: EXTRAFRUTI" -> "Trabalhista" e
+      // "JOSE CARLOS SILVA... Responsável principal: NEIMAR ZAVARIZE" -> "JOSE CARLOS SILVA")
+      if (tipoAba === 'juridicos') {
+        if (dados.natureza) {
+          dados.natureza = canonizarNatureza(dados.natureza)
+        }
+        if (dados.contrario_principal) {
+          dados.contrario_principal = limparPartes(dados.contrario_principal)
+        }
+        if (dados.autor) {
+          dados.autor = limparPartes(dados.autor)
+        }
+        if (dados.responsavel_principal) {
+          dados.responsavel_principal = limparPartes(dados.responsavel_principal)
+        }
+        if (dados.advogado) {
+          dados.advogado = limparPartes(dados.advogado)
+        }
+        if (dados.cliente_principal) {
+          dados.cliente_principal = limparPartes(dados.cliente_principal)
+        }
+      }
+      setFormData(dados)
+      setFeedbackSalvo(false)
+      setErroSalvar(null)
+
+      // Extrai lista unificada de anexos (compatível com array de arquivos ou string antiga)
+      const valAnexo = dados.anexo
+      let lista: string[] = []
+      if (Array.isArray(valAnexo)) {
+        lista = valAnexo.map(String).filter(Boolean)
+      } else if (typeof valAnexo === 'string' && valAnexo.trim()) {
+        lista = [valAnexo.trim()]
+      }
+      setListaAnexosDetalhe(lista)
+    }
+  }, [documento, tipoAba])
+=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+=======
+}
+
+export function DocumentoDetalheModal({=======
+// Anexos exibíveis no visualizador embutido do detalhe: PDF (via PdfViewer)
+// e imagens (abertas em nova aba). Qualquer extensão válida de arquivo exibido
+// na caixa ARQUIVOS ANEXOS DO DOCUMENTO recebe o botão Visualizar.
+const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
+const podeVisualizarAnexo = (nome: string): boolean => /\.(pdf|png|jpe?g|webp|gif|bmp)$/i.test(nome || '')
+
+export interface DocumentoDetalheModalProps {
+  aberto: boolean
+  onOpenChange: (aberto: boolean) => void
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  documento: any | null
+  empresas?: { id: string; nome: string }[]
+  onAtualizado?: () => void
+  onAbrirAnexos?: (doc: any) => void
+}
+
+export function DocumentoDetalheModal({
+  aberto,
+  onOpenChange,
+  tipoAba,
+  documento,
+  empresas = [],
+  onAtualizado,
+  onAbrirAnexos,
+}: DocumentoDetalheModalProps) {
+  const [visualizandoAnexo, setVisualizandoAnexo] = useState(false)
+  const [blobUrlPdf, setBlobUrlPdf] = useState<string | null>(null)
+  const [arquivoPdfAtivo, setArquivoPdfAtivo] = useState<string | null>(null)
+  const [carregandoPdf, setCarregandoPdf] = useState(false)
+  const [listaAnexosDetalhe, setListaAnexosDetalhe] = useState<string[]>([])
+  const [salvandoAnexoDetalhe, setSalvandoAnexoDetalhe] = useState(false)
+  const [anexoParaRemoverDetalhe, setAnexoParaRemoverDetalhe] = useState<string | null>(null)
+  const inputAnexoDetalheRef = useRef<HTMLInputElement>(null)
+
+  // Estado dos campos editáveis do documento
+  const [formData, setFormData] = useState<Record<string, any>>({})
+  const [popoverEmpresaAberto, setPopoverEmpresaAberto] = useState(false)
+  const [salvando, setSalvando] = useState(false)
+  const [feedbackSalvo, setFeedbackSalvo] = useState(false)
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null)
+
+  const destinoSanitizacao =
+    tipoAba === 'juridicos' && documento
+      ? { colecao: 'processos_juridicos', id: documento.id, campo: 'observacoes' }
+      : undefined
+  // Sanitização one-shot: remove anotações de importação ("[Importado em ... por ...]")
+  // gravadas dentro do texto de observações por importações anteriores, para que
+  // a cronologia não exiba evento fantasma (data/hora da importação como andamento)
+  const observacoesSanitizadas = useSanitizarObservacoesImportacao(
+    tipoAba === 'juridicos' ? documento?.id : undefined,
+    tipoAba === 'juridicos' ? documento?.observacoes : undefined,
+    destinoSanitizacao,
+  )
 
   // Ao receber/mudar documento, inicializa o formulário
   useEffect(() => {
@@ -146,8 +2388,8 @@ export function DocumentoDetalheModal({
     setFormData((prev) => ({ ...prev, [campo]: valor }))
   }
 
-  // Alterna visualização do PDF no detalhe com PdfViewer
-  const toggleVisualizarPdf = async (nomeArquivo: string) => {
+  // Alterna visualização do anexo no detalhe com PdfViewer (PDF) ou nova aba (imagem)
+  const toggleVisualizarAnexo = async (nomeArquivo: string) => {
     if (visualizandoAnexo && arquivoPdfAtivo === nomeArquivo) {
       setVisualizandoAnexo(false)
       setArquivoPdfAtivo(null)
@@ -159,7 +2401,13 @@ export function DocumentoDetalheModal({
     }
 
     const url = obterUrlArquivoDetalhe(nomeArquivo)
-    if (!url || !nomeArquivo.toLowerCase().endsWith('.pdf')) return
+    if (!url || !podeVisualizarAnexo(nomeArquivo)) return
+
+    // Imagem (PNG/JPG/JPEG/WEBP/GIF): abre em nova aba — não usa o PdfViewer
+    if (E_ANEXO_IMAGEM.test(nomeArquivo.toLowerCase())) {
+      window.open(url, '_blank', 'noopener,noreferrer')
+      return
+    }
 
     setArquivoPdfAtivo(nomeArquivo)
     setVisualizandoAnexo(true)
@@ -768,11 +3016,11 @@ export function DocumentoDetalheModal({
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                        {arqPdf && (
+                        {podeVisualizarAnexo(nomeArq) && (
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => toggleVisualizarPdf(nomeArq)}
+                            onClick={() => toggleVisualizarAnexo(nomeArq)}
                             className="h-7 px-2 text-xs font-medium border-gray-200 text-gray-700 hover:bg-white"
                           >
                             <Eye className="h-3 w-3 mr-1 text-gray-600" />
@@ -1527,7 +3775,7 @@ export function DocumentoDetalheModal({
                   <ProcessoObservacoesTimeline
                     processoId={documento?.id}
                     numeroProcesso={formData.numero_processo || formData.numero_cnj}
-                    observacoesTexto={formData.observacoes || ''}
+                    observacoesTexto={observacoesSanitizadas || formData.observacoes || ''}
                     dataUltimaAtualizacao={documento?.updated || documento?.data_importacao}
                     versaoAtual={formData.versao_atual}
                     onSalvarTexto={(novoTexto) => setCampo('observacoes', novoTexto)}

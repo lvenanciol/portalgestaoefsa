@@ -170,3 +170,37 @@ export function limparPartes(val: any): string {
   // Remove vírgulas/pontuação sobrando no fim
   return str.replace(/[\s,;–-]+$/g, '').trim()
 }
+
+/**
+ * Detecta e extrai uma anotação de importação gravada no texto de observações
+ * de um processo jurídico (legado de importações anteriores). Formas aceitas:
+ *   "[Importado em 05/11/2026 às 19:45 por lvenanciol@gmail.com (Importação v4)]"
+ *   "[Importado em 05/11/2026 às 19:45 por lvenanciol@gmail.com]"
+ *   "[Importado em 05/11/2026 19:45 — Importação v4]"
+ * A anotação pode abrir ou fechar o texto e pode aparecer mais de uma vez
+ * (uma por importação). O conteúdo real do processo é preservado intacto.
+ */
+export function extrairAnotacaoImportacao(texto: string): {
+  limpo: string
+  anotacao: string | null
+} {
+  if (!texto) return { limpo: '', anotacao: null }
+  const re = /\s*\[\s*Importad[oa]\s+em\s+[^\]]*?\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}[^\]]*?\]\s*/gi
+  const matches = [...texto.matchAll(re)]
+  if (matches.length === 0) return { limpo: texto, anotacao: null }
+  // A anotação reportada é a última (a importação mais recente)
+  const anotacao = matches[matches.length - 1][0].trim()
+  const limpo = texto
+    .replace(re, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  return { limpo, anotacao }
+}
+
+/**
+ * Remove anotações de importação do texto de observações, deixando somente
+ * o conteúdo real do processo. Usado antes de gravar e antes de exibir.
+ */
+export function removerAnotacoesImportacao(texto: string): string {
+  return extrairAnotacaoImportacao(texto).limpo
+}

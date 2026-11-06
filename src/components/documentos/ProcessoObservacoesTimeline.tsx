@@ -539,7 +539,7 @@ export function ProcessoObservacoesTimeline({
                           )}
                         </div>
 
-                        {idx === 0 && !item.ehAbertura && (
+                        {idx === 0 && !item.ehAbertura && item.origem !== 'historico' && (
                           <Badge className="text-[9.5px] px-1.5 py-0 bg-emerald-100 text-emerald-800 border-0 font-medium">
                             Mais recente
                           </Badge>
