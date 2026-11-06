@@ -26,7 +26,8 @@
 // v19 (05/11/2026): suporte a múltiplos anexos em todas as abas de Documentos (criação, detalhe, gerenciador).
 // v20 (05/11/2026): parser de observações sem descarte de cronologia contígua, isolamento try/catch por registro no lote e caixa ARQUIVOS ANEXOS DO DOCUMENTO padronizada.
 // v23 (06/11/2026): timeline jurídica sem eventos fantasma de importação — histórico com data de importação não vira andamento; Visualizar habilitado em todo anexo exibível (PDF e imagens) no detalhe.
-const CACHE_NAME = 'pge-pwa-v23'
+// v24 (06/11/2026): ampliação da largura do modal de detalhe de processo jurídico para max-w-7xl sem rolagem lateral.
+const CACHE_NAME = 'pge-pwa-v24'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

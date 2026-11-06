@@ -174,7 +174,7 @@ export function DocumentoDetalheModal({
   return (
     <>
       <Dialog open={aberto} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl p-6 border border-gray-200">
+        <DialogContent className="max-w-7xl w-[96vw] max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl p-6 border border-gray-200">
           <DialogHeader className="border-b border-gray-100 pb-4">
             <div className="flex items-start justify-between gap-3">
               <div className="space-y-1 min-w-0">
