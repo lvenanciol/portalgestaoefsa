@@ -25,11 +25,10 @@ routerAdd('GET', '/backend/v1/ping', (e) => {
         return { ok: false, motivo: 'Muito curto (' + (raw ? raw.length : 0) + ')' }
       function readU32(p) {
         return (
-          (((raw.charCodeAt(p) & 0xff) << 24) |
-            ((raw.charCodeAt(p + 1) & 0xff) << 16) |
-            ((raw.charCodeAt(p + 2) & 0xff) << 8) |
-            (raw.charCodeAt(p + 3) & 0xff)) >>>
-          0
+          ((raw.charCodeAt(p) & 0xff) << 24) |
+          ((raw.charCodeAt(p + 1) & 0xff) << 16) |
+          ((raw.charCodeAt(p + 2) & 0xff) << 8) |
+          ((raw.charCodeAt(p + 3) & 0xff) >>> 0)
         )
       }
       let pos = 8,
@@ -85,6 +84,18 @@ routerAdd('GET', '/backend/v1/ping', (e) => {
   } catch (err) {
     diag.erro = String(err)
   }
-  console.log('[DIAG_LOGOS]', JSON.stringify(diag))
-  return e.json(200, { ok: true, diag: diag })
+
+  // Debug campo anexo
+  const anexoInfo = {}
+  for (const n of ['alvaras', 'contratos', 'atas', 'processos_juridicos', 'documentos']) {
+    try {
+      const c = $app.findCollectionByNameOrId(n)
+      const f = c.fields.getByName('anexo')
+      anexoInfo[n] = f ? { type: f.type, maxSelect: f.maxSelect, maxSize: f.maxSize } : null
+    } catch (e) {
+      anexoInfo[n] = String(e)
+    }
+  }
+
+  return e.json(200, { ok: true, diag: diag, anexoInfo: anexoInfo })
 })
