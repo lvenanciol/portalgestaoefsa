@@ -1131,14 +1131,20 @@ export function DocumentosPage() {
           recordId={docAnexoSelecionado.id}
           tituloDocumento={docAnexoSelecionado.titulo}
           anexoAtual={docAnexoSelecionado.anexoNome}
-          onAnexoAtualizado={() => {
+          onAnexoAtualizado={(novaLista) => {
             carregarDados()
-            // Se o documento aberto no modal de detalhe for o mesmo, atualiza-o
+            // Se o documento aberto no modal de detalhe for o mesmo, atualiza-o imediatamente
             if (docDetalheSelecionado && docDetalheSelecionado.id === docAnexoSelecionado.id) {
               pb.collection(docAnexoSelecionado.colecao)
                 .getOne(docAnexoSelecionado.id)
                 .then((atualizado) => setDocDetalheSelecionado(atualizado))
-                .catch(() => {})
+                .catch(() => {
+                  if (Array.isArray(novaLista)) {
+                    setDocDetalheSelecionado((prev: any) =>
+                      prev ? { ...prev, anexo: novaLista } : prev,
+                    )
+                  }
+                })
             }
           }}
         />

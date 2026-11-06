@@ -11,6 +11,16 @@ import {
   Upload,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import pb from '@/lib/pocketbase/client'
 
 export const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp)$/i
@@ -35,8 +45,21 @@ export function DocumentoDetalheAnexos({
   onAnexosAlterados,
 }: DocumentoDetalheAnexosProps) {
   const [removendo, setRemovendo] = React.useState<string | null>(null)
+  const [arquivoParaRemover, setArquivoParaRemover] = React.useState<string | null>(null)
   const [fazendoUpload, setFazendoUpload] = React.useState(false)
+  const [listaLocal, setListaLocal] = React.useState<string[]>(anexos)
   const inputUploadRef = React.useRef<HTMLInputElement>(null)
+
+  // Mantém sincronizada com a prop externa quando esta mudar
+  React.useEffect(() => {
+    setListaLocal(anexos)
+  }, [anexos])
+
+  const extrairNomes = (val: any): string[] => {
+    if (Array.isArray(val)) return val.map(String).filter(Boolean)
+    if (typeof val === 'string' && val.trim()) return [val.trim()]
+    return []
+  }
 
   const handleDownload = (nome: string) => {
     try {
@@ -49,52 +72,113 @@ export function DocumentoDetalheAnexos({
     }
   }
 
-  const handleRemoverAnexo = async (nome: string) => {
-    if (!window.confirm(`Deseja remover o arquivo "${nome}" deste documento?`)) return
+  const confirmarRemocao = async () => {
+    if (!arquivoParaRemover) return
+    const nome = arquivoParaRemover
     setRemovendo(nome)
     try {
+      // 1. Obtém lista atualizada direto do banco
       const rec = await pb.collection(colecaoNome).getOne(recordId)
-      const listaAtual: string[] = Array.isArray(rec.anexo)
-        ? rec.anexo.map(String)
-        : rec.anexo
-          ? [String(rec.anexo)]
-          : []
-      const novaLista = listaAtual.filter((f) => f !== nome)
+      const listaAtual = extrairNomes(rec.anexo)
+      const base = listaAtual.length > 0 ? listaAtual : listaLocal
+      const listaRestante = base.filter((f) => f !== nome)
 
-      await pb.collection(colecaoNome).update(recordId, {
-        anexo: novaLista.length === 0 ? null : novaLista.length === 1 ? novaLista[0] : novaLista,
-      })
+      let recAtualizado: any
+      try {
+        // Tenta sintaxe nativa PocketBase para remover anexo específico
+        recAtualizado = await pb.collection(colecaoNome).update(recordId, {
+          'anexo-': [nome],
+        } as any)
+      } catch (errMod) {
+        console.warn('Tentativa com modificador anexo- falhou, tentando lista direta:', errMod)
+        recAtualizado = await pb.collection(colecaoNome).update(recordId, {
+          anexo: listaRestante.length === 0 ? null : listaRestante,
+        } as any)
+      }
+
+      let novaLista = extrairNomes(recAtualizado?.anexo)
+      // Se ainda contiver o arquivo removido por limitação do schema, força lista restante
+      if (novaLista.includes(nome)) {
+        try {
+          const recForcado = await pb.collection(colecaoNome).update(recordId, {
+            anexo: listaRestante.length === 0 ? null : listaRestante,
+          } as any)
+          novaLista = extrairNomes(recForcado?.anexo)
+        } catch (_) {
+          novaLista = listaRestante
+        }
+      }
+
+      setListaLocal(novaLista)
       onAnexosAlterados?.(novaLista)
-    } catch (e) {
+      setArquivoParaRemover(null)
+    } catch (e: any) {
       console.error('Erro ao remover anexo:', e)
-      alert('Não foi possível remover o anexo. Tente novamente.')
+      alert('Não foi possível remover o anexo. ' + (e?.message || ''))
     } finally {
       setRemovendo(null)
     }
   }
 
-  const handleUploadArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const handleUploadMultiplo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
     setFazendoUpload(true)
+
     try {
+      // 1. Lê a lista mais recente do registro no PocketBase para união segura
+      let listaExistente: string[] = []
+      try {
+        const recAtual = await pb.collection(colecaoNome).getOne(recordId)
+        listaExistente = extrairNomes(recAtual.anexo)
+      } catch (errGet) {
+        console.warn('Não foi possível reler anexos prévios, usando estado local:', errGet)
+        listaExistente = [...listaLocal]
+      }
+
+      // 2. Constrói FormData com todos os novos arquivos
       const formData = new FormData()
-      formData.append('anexo', file)
+      for (const f of files) {
+        formData.append('anexo', f)
+      }
+
       const recAtualizado = await pb.collection(colecaoNome).update(recordId, formData)
-      const novaLista: string[] = Array.isArray(recAtualizado.anexo)
-        ? recAtualizado.anexo.map(String)
-        : recAtualizado.anexo
-          ? [String(recAtualizado.anexo)]
-          : []
+      let novaLista = extrairNomes(recAtualizado.anexo)
+
+      // 3. DEFESA CONTRA SOBRESCRITA:
+      // Se o backend tiver retornado apenas os novos e descartado os anteriores,
+      // monta união dos arquivos prévios + novos e persiste
+      const anterioresFaltando = listaExistente.filter((nome) => !novaLista.includes(nome))
+      if (anterioresFaltando.length > 0) {
+        const uniao = [...anterioresFaltando, ...novaLista]
+        try {
+          const recUniao = await pb.collection(colecaoNome).update(recordId, {
+            anexo: uniao,
+          } as any)
+          const valUniao = extrairNomes(recUniao?.anexo)
+          if (valUniao.length >= uniao.length) {
+            novaLista = valUniao
+          } else {
+            novaLista = uniao
+          }
+        } catch (errUniao) {
+          console.warn('Falha na persistência da união de anexos:', errUniao)
+          novaLista = uniao
+        }
+      }
+
+      setListaLocal(novaLista)
       onAnexosAlterados?.(novaLista)
     } catch (err: any) {
-      console.error('Erro ao anexar arquivo:', err)
-      alert('Falha ao anexar o arquivo. ' + (err?.message || ''))
+      console.error('Erro ao anexar arquivo(s):', err)
+      alert('Falha ao anexar arquivo(s). ' + (err?.message || ''))
     } finally {
       setFazendoUpload(false)
       if (inputUploadRef.current) inputUploadRef.current.value = ''
     }
   }
+
+  const arquivosExibicao = listaLocal
 
   return (
     <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-3">
@@ -105,15 +189,17 @@ export function DocumentoDetalheAnexos({
             Arquivos Anexos do Documento
           </h4>
           <span className="text-[11px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
-            {anexos.length} {anexos.length === 1 ? 'arquivo' : 'arquivos'}
+            {arquivosExibicao.length} {arquivosExibicao.length === 1 ? 'arquivo' : 'arquivos'}
           </span>
         </div>
         <div className="flex items-center gap-2">
           <input
             ref={inputUploadRef}
             type="file"
+            multiple
+            accept=".pdf,.docx,.doc,.xlsx,.xls,.png,.jpg,.jpeg,.txt"
             className="hidden"
-            onChange={handleUploadArquivo}
+            onChange={handleUploadMultiplo}
             disabled={fazendoUpload}
           />
           <Button
@@ -146,14 +232,14 @@ export function DocumentoDetalheAnexos({
         </div>
       </div>
 
-      {anexos.length === 0 ? (
+      {arquivosExibicao.length === 0 ? (
         <div className="text-xs text-gray-500 bg-white/80 rounded-lg p-3 border border-dashed border-gray-200 text-center flex flex-col items-center gap-1.5">
           <AlertTriangle className="h-4 w-4 text-amber-500" />
           <span>Nenhum anexo cadastrado para este documento.</span>
         </div>
       ) : (
         <div className="space-y-1.5">
-          {anexos.map((nome, idx) => {
+          {arquivosExibicao.map((nome, idx) => {
             const visualizavel = podeVisualizarAnexo(nome)
             return (
               <div
@@ -193,7 +279,7 @@ export function DocumentoDetalheAnexos({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleRemoverAnexo(nome)}
+                    onClick={() => setArquivoParaRemover(nome)}
                     disabled={removendo === nome}
                     className="h-7 px-2 text-xs text-rose-600 hover:bg-rose-50 gap-1"
                     title="Remover anexo"
@@ -210,6 +296,44 @@ export function DocumentoDetalheAnexos({
           })}
         </div>
       )}
+
+      {/* Confirmação amigável de remoção de anexo individual */}
+      <AlertDialog
+        open={Boolean(arquivoParaRemover)}
+        onOpenChange={(aberto) => !aberto && setArquivoParaRemover(null)}
+      >
+        <AlertDialogContent className="bg-white max-w-sm rounded-xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-sm font-bold text-gray-900">
+              Remover este anexo?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-gray-600">
+              O arquivo <strong className="text-gray-900">{arquivoParaRemover}</strong> será
+              desvinculado deste documento. Os demais anexos serão preservados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-3 gap-2">
+            <AlertDialogCancel
+              disabled={Boolean(removendo)}
+              className="text-xs h-8"
+              onClick={() => setArquivoParaRemover(null)}
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={Boolean(removendo)}
+              onClick={(e) => {
+                e.preventDefault()
+                confirmarRemocao()
+              }}
+              className="text-xs h-8 bg-red-600 hover:bg-red-700 text-white"
+            >
+              {removendo ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+              Sim, remover
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
