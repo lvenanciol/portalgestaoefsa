@@ -15,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   ehRodapePagina,
   removerRodapesDePagina,
+  removerAnotacoesImportacao,
   truncarCorpoEmBlocoEstruturado,
 } from './juridicos-texto-utils'
 import pb from '@/lib/pocketbase/client'
@@ -226,15 +227,13 @@ export function extrairEntradasDeObservacoes(
 }
 
 export function ProcessoObservacoesTimeline({
-  processoId,
-  numeroProcesso,
+  processoId: _processoId,
+  numeroProcesso: _numeroProcesso,
   observacoesTexto,
   dataUltimaAtualizacao,
   versaoAtual,
   onSalvarTexto,
 }: ProcessoObservacoesTimelineProps) {
-  const [itensHistorico, setItensHistorico] = useState<ObservacaoItem[]>([])
-  const [carregandoHistorico, setCarregandoHistorico] = useState(false)
   const [modoEdicao, setModoEdicao] = useState(false)
   const [textoRascunho, setTextoRascunho] = useState(observacoesTexto)
   const [novaNota, setNovaNota] = useState('')
@@ -244,88 +243,18 @@ export function ProcessoObservacoesTimeline({
     setTextoRascunho(observacoesTexto)
   }, [observacoesTexto])
 
-  // Busca observações arquivadas em juridicos_historico se houver
-  useEffect(() => {
-    if (!processoId && !numeroProcesso) return
+  // CRONOLOGIA PURA DO PDF:
+  // A timeline deste modal exibe EXCLUSIVAMENTE os eventos reais do processo extraídos
+  // do texto/PDF, ordenados cronologicamente do mais recente para o mais antigo.
+  // Nenhum evento sintético de importação (com autor = e-mail e badge "Importação vN")
+  // deve poluir a cronologia. O histórico de versões/auditoria de importação possui
+  // seu próprio modal dedicado (ProcessoHistoricoModal).
+  //
+  // Aplica também a remoção de anotações legadas de importação do texto antes de segmentar.
+  const textoLimpo = removerAnotacoesImportacao(observacoesTexto || '')
+  const todasEntradas = extrairEntradasDeObservacoes(textoLimpo, dataUltimaAtualizacao)
 
-    let ativo = true
-    const buscarHistorico = async () => {
-      try {
-        setCarregandoHistorico(true)
-        let filtro = ''
-        if (processoId) filtro = `processo_id = "${processoId}"`
-        if (numeroProcesso) {
-          filtro = filtro
-            ? `(${filtro} || numero_processo = "${numeroProcesso}")`
-            : `numero_processo = "${numeroProcesso}"`
-        }
-
-        const res = await pb.collection('juridicos_historico').getList(1, 30, {
-          filter: filtro,
-          sort: '-versao',
-        })
-
-        if (!ativo) return
-
-        const itensHist: ObservacaoItem[] = []
-        for (const item of res.items || []) {
-          const obs = item.valores_anteriores?.observacoes || item.alteracoes?.observacoes
-          if (obs && String(obs).trim()) {
-            const dataIso = item.data_importacao || item.created
-            let dTexto = 'Histórico'
-            let dObj: Date | undefined
-            try {
-              const d = new Date(dataIso)
-              dTexto =
-                d.toLocaleDateString('pt-BR') +
-                ' às ' +
-                d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-              dObj = d
-            } catch {
-              /* ignore */
-            }
-
-            itensHist.push({
-              id: `hist-${item.id}`,
-              dataTexto: dTexto,
-              dataObj: dObj,
-              texto: String(obs).trim(),
-              origem: 'historico',
-              versao: item.versao,
-              autorTag: item.importado_por ? `(${item.importado_por})` : undefined,
-            })
-          }
-        }
-
-        setItensHistorico(itensHist)
-      } catch {
-        /* silencia falha de histórico secundário */
-      } finally {
-        if (ativo) setCarregandoHistorico(false)
-      }
-    }
-
-    buscarHistorico()
-    return () => {
-      ativo = false
-    }
-  }, [processoId, numeroProcesso])
-
-  // Entradas extraídas do texto atual do processo
-  const entradasDoTexto = extrairEntradasDeObservacoes(observacoesTexto, dataUltimaAtualizacao)
-
-  // Junta todas as observações, evitando duplicatas com texto idêntico
-  const todasEntradas: ObservacaoItem[] = [...entradasDoTexto]
-  for (const hist of itensHistorico) {
-    const jaExiste = todasEntradas.some(
-      (e) => e.texto.trim() === hist.texto.trim() || hist.texto.includes(e.texto),
-    )
-    if (!jaExiste) {
-      todasEntradas.push(hist)
-    }
-  }
-
-  // Ordenação final: mais recente primeiro; abertura/relatório sem data vai para o fim
+  // Ordenação: mais recente primeiro; eventos sem data vão para o fim
   todasEntradas.sort((a, b) => {
     if (a.dataObj && b.dataObj) {
       return b.dataObj.getTime() - a.dataObj.getTime()
