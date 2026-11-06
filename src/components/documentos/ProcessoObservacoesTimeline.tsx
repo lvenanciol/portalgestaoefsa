@@ -12,7 +12,11 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { ehRodapePagina, removerRodapesDePagina } from './juridicos-texto-utils'
+import {
+  ehRodapePagina,
+  removerRodapesDePagina,
+  truncarCorpoEmBlocoEstruturado,
+} from './juridicos-texto-utils'
 import pb from '@/lib/pocketbase/client'
 
 export interface ObservacaoItem {
@@ -66,9 +70,13 @@ export function extrairEntradasDeObservacoes(
 ): ObservacaoItem[] {
   if (!texto || !texto.trim()) return []
 
-  // Remove qualquer rodapé de página remanescente antes de segmentar as entradas
+  // Remove qualquer rodapé/marcador de página remanescente antes de segmentar
   const textoSemRodapes = removerRodapesDePagina(texto)
-  const trimmed = textoSemRodapes.trim()
+  // A cronologia exibida contém SOMENTE os eventos datados do PDF:
+  // todo texto após o último evento (blocos estruturados "Valores / Valor base /
+  // Garantias / Providências / Data da última atualização", ficha do processo)
+  // é descartado aqui, junto com marcadores "--- PAGINA_N ---".
+  let trimmed = textoSemRodapes.trim()
   if (!trimmed) return []
 
   // Regex flexível para identificar inícios de entrada datada:
@@ -84,6 +92,18 @@ export function extrairEntradasDeObservacoes(
   const dataRegex =
     /(\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*(?:\d{4}|\d{2}))(?:\s*,?\s*(?:[aàá]s\s+)?\d{1,2}:\d{2}(?::\d{2})?)?\s*(?:\(([^()]{1,15})\))?\s*:\s*/gi
 
+  const ultimosMatches = [...trimmed.matchAll(dataRegex)]
+  if (ultimosMatches.length > 0) {
+    const ultimo = ultimosMatches[ultimosMatches.length - 1]
+    const corpoUltimo = trimmed.substring(ultimo.index! + ultimo[0].length)
+    const corpoLimpo = truncarCorpoEmBlocoEstruturado(corpoUltimo)
+    if (corpoLimpo !== corpoUltimo.trim()) {
+      // Houve conteúdo estruturado/ruído após o último evento: corta o texto
+      // no fim do último andamento preservado.
+      const fimPreservado = ultimo.index! + ultimo[0].length + corpoLimpo.length
+      trimmed = trimmed.substring(0, fimPreservado)
+    }
+  }
   const matches = [...trimmed.matchAll(dataRegex)]
 
   if (matches.length === 0) {
@@ -178,7 +198,11 @@ export function extrairEntradasDeObservacoes(
     const endIndex = nextMatch ? nextMatch.index! : trimmed.length
 
     // Rodapés remanescentes DENTRO do corpo são limpos — o evento nunca é descartado por isso
-    const textoEntrada = removerRodapesDePagina(trimmed.substring(startIndex, endIndex)).trim()
+    // Blocos estruturados do PDF (Valores / Valor base / Garantias / Providências /
+    // Data da última atualização) NÃO pertencem ao andamento: o corpo termina neles.
+    const textoEntrada = truncarCorpoEmBlocoEstruturado(
+      removerRodapesDePagina(trimmed.substring(startIndex, endIndex)),
+    )
     if (!textoEntrada) continue
 
     itens.push({

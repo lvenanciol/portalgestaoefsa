@@ -25,7 +25,8 @@
 // detecção flexível de datas na timeline sem descartar entradas e persistência íntegra sem truncamento.
 // v19 (05/11/2026): suporte a múltiplos anexos em todas as abas de Documentos (criação, detalhe, gerenciador).
 // v20 (05/11/2026): parser de observações sem descarte de cronologia contígua, isolamento try/catch por registro no lote e caixa ARQUIVOS ANEXOS DO DOCUMENTO padronizada.
-const CACHE_NAME = 'pge-pwa-v20'
+// v22 (05/11/2026): preservação da lista completa de anexos em todos os caminhos de gravação (detalhe, gerenciador, novo documento) e cronologia processual exibindo somente eventos datados, sem blocos estruturados nem marcadores de página.
+const CACHE_NAME = 'pge-pwa-v22'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

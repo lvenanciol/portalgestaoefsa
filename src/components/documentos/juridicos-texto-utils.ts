@@ -13,6 +13,11 @@
 export function removerRodapesDePagina(texto: string): string {
   if (!texto) return ''
   let t = texto
+  // 0. Marcadores de página do extrator: "--- PAGINA_51 ---", "--- PAGINA_5 ---"
+  // (com ou sem espaços/hífens em volta). Nunca devem aparecer no texto exibido.
+  t = t.replace(/-{2,}\s*P\s*A\s*G\s*I\s*N\s*A\s*_?\s*\d+\s*-{2,}/gi, '')
+  // Variante sem travessões: "PAGINA_51" isolada
+  t = t.replace(/\bP\s*A\s*G\s*I\s*N\s*A\s*_\s*\d+\b/gi, '')
   // 1. Rodapé completo colado ao texto ou a valores monetários:
   // ex.: "R$ 0,0001/11/2026 00:44Pagina 50 de 71", "01/11/2026 00:44Pagina 15 de 71"
   // inclusive variantes com "Pagina N de" truncadas no fim da página (sem o total)
@@ -46,6 +51,8 @@ export function ehRodapePagina(texto: string): boolean {
   if (!texto) return false
   const t = texto.trim()
   return (
+    /-{2,}\s*P\s*A\s*G\s*I\s*N\s*A\s*_?\s*\d+\s*-{2,}/i.test(t) ||
+    /\bP\s*A\s*G\s*I\s*N\s*A\s*_\s*\d+\b/i.test(t) ||
     /\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\s*\d{1,2}:\d{2}\s*P[aá]gina/i.test(t) ||
     /\d{1,2}:\d{2}\s*P[aá]gina/i.test(t) ||
     /P[aá]gina\s*\d+(?:\s*de\s*\d*)?/i.test(t) ||
@@ -54,6 +61,59 @@ export function ehRodapePagina(texto: string): boolean {
       t,
     )
   )
+}
+
+/**
+ * Detecta o início de um bloco estruturado do PDF (Valores, Garantias,
+ * Providências, Data da última atualização, ...). A cronologia de um evento
+ * datado TERMINA quando um desses cabeçalhos começa — esse conteúdo pertence
+ * à ficha do processo, não ao andamento.
+ */
+export function ehCabecalhoEstruturado(texto: string): boolean {
+  if (!texto) return false
+  const t = texto.trim()
+  return (
+    /^Valores\b/i.test(t) ||
+    /^Valor\s+base\b/i.test(t) ||
+    /^Valor\s+corrigido\b/i.test(t) ||
+    /^Juros\b/i.test(t) ||
+    /^Multa\b/i.test(t) ||
+    /^Valor\s+atualizado\b/i.test(t) ||
+    /^Valor\s+da\s+causa\b/i.test(t) ||
+    /^Garantias\b/i.test(t) ||
+    /^Provid[eê]ncias\b/i.test(t) ||
+    /^Data\s+da\s+[uú]ltima\s+atualiza[cç][aã]o/i.test(t)
+  )
+}
+
+/**
+ * Trunca o corpo de uma entrada da cronologia no primeiro cabeçalho estruturado
+ * do PDF (linha iniciada por "Valores", "Valor base", "Garantias", "Providências",
+ * "Data da última atualização", etc.) e remove marcadores de página restantes
+ * ("--- PAGINA_N ---"). O evento fica somente com o texto do andamento.
+ */
+export function truncarCorpoEmBlocoEstruturado(texto: string): string {
+  if (!texto) return ''
+  // Remove marcadores de página do extrator
+  let t = texto.replace(/-{2,}\s*P\s*A\s*G\s*I\s*N\s*A\s*_?\s*\d+\s*-{2,}/gi, '')
+  t = t.replace(/\bP\s*A\s*G\s*I\s*N\s*A\s*_\s*\d+\b/gi, '')
+
+  // Procura a primeira linha que começa um bloco estruturado
+  const linhas = t.split('\n')
+  const idxCorte = linhas.findIndex((linha) => ehCabecalhoEstruturado(linha))
+  if (idxCorte >= 0) {
+    t = linhas.slice(0, idxCorte).join('\n')
+  } else {
+    // Bloco pode vir colado em texto corrido (sem quebra de linha): corta
+    // antes de "Valores Valor base ..." ou "Valor base Valor corrigido ..."
+    const m = t.match(
+      /\b(?:Valores|Valor\s+base|Valor\s+corrigido|Juros\s+Multa|Garantias|Provid[eê]ncias|Data\s+da\s+[uú]ltima\s+atualiza[cç][aã]o)\b/,
+    )
+    if (m && m.index !== undefined && m.index > 0) {
+      t = t.slice(0, m.index)
+    }
+  }
+  return t.replace(/[\s,;–-]+$/g, '').trim()
 }
 
 /**

@@ -234,6 +234,39 @@ export function DocumentoDetalheModal({
       } else if (typeof valAnexo === 'string' && valAnexo.trim()) {
         lista = [valAnexo.trim()]
       }
+      // PRESERVAÇÃO DA LISTA COMPLETA: união do retorno do backend com a lista
+      // já exibida. Se o backend tratar o campo como arquivo único (maxSelect 1)
+      // e devolver só o último arquivo, os anexos anteriores NÃO são perdidos —
+      // o novo é acrescentado à lista existente, nunca substituindo. O retry
+      // percorre a lista montada até o backend aceitar tudo (frente única).
+      const listaAnterior = listaAnexosDetalhe.filter((n) => n && !lista.includes(n))
+      if (listaAnterior.length > 0 && !listaAnterior.every((n) => lista.includes(n))) {
+        let uniao = [...listaAnterior, ...lista.filter((n) => !listaAnterior.includes(n))]
+        for (let tentativa = 0; tentativa < 3; tentativa++) {
+          try {
+            const recUniao = await pb
+              .collection(colecaoPocketBase)
+              .update(documento.id, { anexo: uniao } as any)
+            const valUniao = recUniao?.anexo
+            const listaRetorno: string[] = Array.isArray(valUniao)
+              ? valUniao.map(String).filter(Boolean)
+              : typeof valUniao === 'string' && valUniao.trim()
+                ? [valUniao.trim()]
+                : []
+            const faltando = uniao.filter((n) => !listaRetorno.includes(n))
+            if (faltando.length === 0) {
+              lista = listaRetorno
+              break
+            }
+            // Backend descartou arquivos: repõe os faltantes e tenta de novo
+            uniao = [...listaRetorno, ...faltando.filter((n) => !listaRetorno.includes(n))]
+          } catch (errUniao) {
+            console.warn('Falha ao persistir união de anexos:', errUniao)
+            break
+          }
+        }
+        if (uniao.length > lista.length) lista = uniao
+      }
       setListaAnexosDetalhe(lista)
       if (onAtualizado) onAtualizado()
     } catch (err: any) {

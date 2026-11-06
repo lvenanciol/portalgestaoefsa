@@ -128,6 +128,39 @@ export function DocumentoAnexoModal({
       } else if (typeof novoVal === 'string' && novoVal.trim()) {
         novaLista = [novoVal.trim()]
       }
+      // PRESERVAÇÃO DA LISTA COMPLETA: união do retorno do backend com a lista
+      // já carregada. Se o backend tratar o campo como arquivo único (maxSelect 1)
+      // e devolver apenas o último arquivo, os anexos anteriores NÃO são perdidos —
+      // o novo é acrescentado à lista existente, nunca substituindo. O retry
+      // percorre a lista montada até o backend aceitar tudo (frente única).
+      const listaAnterior = listaArquivos.filter((n) => n && !novaLista.includes(n))
+      if (listaAnterior.length > 0 && !listaAnterior.every((n) => novaLista.includes(n))) {
+        let uniao = [...listaAnterior, ...novaLista.filter((n) => !listaAnterior.includes(n))]
+        for (let tentativa = 0; tentativa < 3; tentativa++) {
+          try {
+            const recUniao = await pb
+              .collection(collectionName)
+              .update(recordId, { anexo: uniao } as any)
+            const valUniao = recUniao?.anexo
+            const listaRetorno: string[] = Array.isArray(valUniao)
+              ? valUniao.map(String).filter(Boolean)
+              : typeof valUniao === 'string' && valUniao.trim()
+                ? [valUniao.trim()]
+                : []
+            const faltando = uniao.filter((n) => !listaRetorno.includes(n))
+            if (faltando.length === 0) {
+              novaLista = listaRetorno
+              break
+            }
+            // Backend descartou arquivos: repõe os faltantes e tenta de novo
+            uniao = [...listaRetorno, ...faltando.filter((n) => !listaRetorno.includes(n))]
+          } catch (errUniao) {
+            console.warn('Falha ao persistir união de anexos:', errUniao)
+            break
+          }
+        }
+        if (uniao.length > novaLista.length) novaLista = uniao
+      }
       setListaArquivos(novaLista)
       onAnexoAtualizado(novaLista)
     } catch (err: any) {
@@ -176,6 +209,27 @@ export function DocumentoAnexoModal({
         novaLista = []
       } else {
         novaLista = listaRestante
+      }
+
+      // Segurança de remoção: se o backend não removeu o arquivo do campo
+      // (campo ainda single no backend), força a persistência da lista restante.
+      if (novaLista.includes(arquivoParaRemover) && listaRestante.length >= 0) {
+        try {
+          rec = await pb.collection(collectionName).update(recordId, {
+            anexo: listaRestante.length > 0 ? listaRestante : null,
+          } as any)
+          const reVal = rec?.anexo
+          if (Array.isArray(reVal)) {
+            novaLista = reVal.map(String).filter(Boolean)
+          } else if (typeof reVal === 'string' && reVal.trim()) {
+            novaLista = [reVal.trim()]
+          } else {
+            novaLista = listaRestante
+          }
+        } catch (errForcar) {
+          console.warn('Falha ao forçar lista restante após remoção:', errForcar)
+          novaLista = listaRestante
+        }
       }
 
       setListaArquivos(novaLista)
