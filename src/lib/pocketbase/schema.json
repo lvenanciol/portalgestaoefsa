@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T13:02:29.216Z",
+  "generatedAt": "2026-11-07T13:17:39.885Z",
   "collections": [
     {
       "name": "users",
@@ -3417,6 +3417,119 @@
         "CREATE INDEX idx_aud_pasta ON audiencias (pasta)",
         "CREATE INDEX idx_aud_proc ON audiencias (processo_id)"
       ]
+    },
+    {
+      "name": "atas_reunioes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "titulo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "participantes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "resumo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "decisoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "modalidade",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["Presencial", "Microsoft Teams", "Google Meet", "Zoom"]
+        },
+        {
+          "name": "link_reuniao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pauta",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pauta_itens",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "empresa",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "action_items",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "audio",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "anexo",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "criado_por",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_atas_reunioes_data ON atas_reunioes (data)"]
     }
   ]
 }

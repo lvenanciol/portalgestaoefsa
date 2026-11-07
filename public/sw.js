@@ -35,7 +35,8 @@
 // v30 (07/11/2026): telas de detalhe dedicadas para Atas (compliance, pauta estruturada, assinaturas, completude) e Jurídicos (hero com 3 KPIs, faixa de audiência, timeline vertical autêntica).
 // v31 (07/11/2026): extração universal de anexos (extrairAnexos/contarAnexos) aplicada em todas as 5 views dedicadas e remoção de DocumentoAnexoModal legado.
 // v33 (07/11/2026): filtro clicável nos indicadores de Documentos e empresa LL5 no filtro Empresa
-const CACHE_NAME = 'pge-pwa-v33'
+// v34 (07/11/2026): desacoplamento Atas (contábeis em 'atas', /documentos) × reuniões (nova coleção 'atas_reunioes', Operação)
+const CACHE_NAME = 'pge-pwa-v34'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

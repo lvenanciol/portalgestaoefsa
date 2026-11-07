@@ -94,7 +94,7 @@ export default function AtasReunioesPage() {
   const carregar = async () => {
     setLoading(true)
     try {
-      const r = await pb.collection('atas').getFullList({ sort: '-data' })
+      const r = await pb.collection('atas_reunioes').getFullList({ sort: '-data' })
       setItens(r as any[])
       setErro('')
     } catch (e) {
@@ -227,7 +227,7 @@ export default function AtasReunioesPage() {
         fd.append('resumo', form.resumo || '')
         fd.append('decisoes', form.decisoes || '')
         for (const a of audios) fd.append('audio', a)
-        await pb.collection('atas').update(editandoAta.id, fd)
+        await pb.collection('atas_reunioes').update(editandoAta.id, fd)
         setEditandoAta(null)
       } else if (audios.length > 0) {
         const fd = new FormData()
@@ -243,9 +243,9 @@ export default function AtasReunioesPage() {
         fd.append('action_items', JSON.stringify([]))
         fd.append('criado_por', user?.email || '')
         for (const a of audios) fd.append('audio', a)
-        await pb.collection('atas').create(fd)
+        await pb.collection('atas_reunioes').create(fd)
       } else {
-        await pb.collection('atas').create({
+        await pb.collection('atas_reunioes').create({
           empresa: form.empresa || 'Extrafruti',
           titulo: form.titulo,
           data: form.data ? form.data + ' 00:00:00.000Z' : '',
@@ -272,7 +272,7 @@ export default function AtasReunioesPage() {
   const confirmarExcluir = async () => {
     if (!excluindoAta) return
     try {
-      await pb.collection('atas').delete(excluindoAta.id)
+      await pb.collection('atas_reunioes').delete(excluindoAta.id)
       setExcluindoAta(null)
       await carregar()
     } catch (e) {
