@@ -30,7 +30,8 @@
 // v25 (06/11/2026): suporte completo a múltiplos anexos no detalhe do documento (todas as abas), input múltiplo e união defensiva anti-sobrescrita.
 // v26 (06/11/2026): recriação do campo anexo com maxSelect 10 nas 5 coleções e purga de cache para atualização instantânea do preview.
 // v27 (06/11/2026): persistência cumulativa de múltiplos anexos (anexo+), remoção seletiva (anexo-), suporte a imagens e PDFs em tela de Documentos.
-const CACHE_NAME = 'pge-pwa-v27'
+// v28 (07/11/2026): redesenho da listagem Documentos (colunas dinâmicas, resumo lateral, filtros 1 linha) e padrão de referência de detalhe de Alvarás.
+const CACHE_NAME = 'pge-pwa-v28'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

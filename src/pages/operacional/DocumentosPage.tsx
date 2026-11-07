@@ -1,67 +1,150 @@
-import React, { useState, useEffect, useMemo } from 'react'
+/**
+ * DocumentosPage — Tela de Listagem e Gestão de Documentos
+ * Redesenhada conforme Imagem 1 -> Imagem 2 e Blocos 1 e 2 da especificação:
+ * - Colunas dinâmicas por tipo (Alvarás, Contratos, Locações, Atas, Jurídicos)
+ * - 5 colunas fixas nas mesmas posições: Documento, Empresa, Status, Anexos, Ações
+ * - Colunas específicas entram entre "Documento" e "Empresa"
+ * - Faixa contextual sob as abas ("Colunas adaptadas ao tipo...")
+ * - Barra de filtros em 1 linha com busca, segmented de status, dropdown Empresa, dropdown Validade e Limpar
+ * - Persistência de filtros e aba ativa em Query Params da URL
+ * - Painel lateral "Resumo da aba" com contadores por status, próximos vencimentos e exportar
+ * - Ações hierarquizadas: botão "Abrir" primário + menu "…" (Editar, Anexar, Histórico, Ver no chat, Excluir com digitação de confirmação)
+ * - Navegação transparente para a visão de detalhe dedicada (ex: DetalheAlvaraView para alvarás)
+ */
+
+import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import {
-  FileText,
-  Search,
-  Plus,
-  RefreshCw,
-  Paperclip,
-  Download,
-  Eye,
-  FileSpreadsheet,
-  Building2,
-  Calendar,
-  AlertCircle,
-  FileCheck,
   Shield,
   Briefcase,
-  Layers,
+  Building2,
+  FileCheck,
+  FileSpreadsheet,
+  Plus,
+  RefreshCw,
+  Upload,
+  CalendarDays,
+  FileText,
   Trash2,
   Loader2,
+  AlertTriangle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { toast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
-import { EmpresaIcon } from '@/components/common/EmpresaIcon'
-import { DocumentosDataTable, ColunaConfig } from '@/components/documentos/DocumentosDataTable'
-import { DocumentosEmpresaPopover } from '@/components/documentos/DocumentosEmpresaPopover'
-import { DocumentosFiltroSelectPopover } from '@/components/documentos/DocumentosFiltroSelectPopover'
+
 import {
-  normalizarParaBusca,
-  extrairCategoriaNatureza,
-  normalizarProbabilidade,
-} from '@/components/documentos/documentos-filtros-utils'
-import { DocumentoParecerButton } from '@/components/documentos/DocumentoParecerButton'
+  CONFIG_COLUNAS_POR_TIPO,
+  TipoAbaDocumento,
+  DocumentoGenericoItem,
+} from '@/components/documentos/documentos-colunas-config'
+import { DocumentosTabelaGenerica } from '@/components/documentos/DocumentosTabelaGenerica'
+import { DocumentosFaixaContextual } from '@/components/documentos/DocumentosFaixaContextual'
+import {
+  DocumentosFiltrosBar,
+  FiltrosDocumentosState,
+} from '@/components/documentos/DocumentosFiltrosBar'
+import { DocumentosResumoLateral } from '@/components/documentos/DocumentosResumoLateral'
+import { DetalheAlvaraView } from '@/components/documentos/DetalheAlvaraView'
+
 import { DocumentoAnexoModal } from '@/components/documentos/DocumentoAnexoModal'
 import { DocumentoDetalheModal } from '@/components/documentos/DocumentoDetalheModal'
 import { JuridicosImportModal } from '@/components/documentos/JuridicosImportModal'
 import { ProcessoHistoricoModal } from '@/components/documentos/ProcessoHistoricoModal'
 import { AudienciasModal } from '@/components/documentos/AudienciasModal'
 import { NovoDocumentoModal } from '@/components/documentos/NovoDocumentoModal'
-import { CalendarDays, Upload } from 'lucide-react'
+import { normalizarParaBusca } from '@/components/documentos/documentos-filtros-utils'
 
-type TipoAba = 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+const ROTULOS_ABAS: Record<TipoAbaDocumento, string> = {
+  alvaras: 'Alvarás',
+  contratos: 'Contratos',
+  locacoes: 'Locações',
+  atas: 'Atas',
+  juridicos: 'Jurídicos',
+}
 
 export function DocumentosPage() {
-  const [abaAtiva, setAbaAtiva] = useState<TipoAba>('alvaras')
-  const [busca, setBusca] = useState('')
-  const [empresaFiltro, setEmpresaFiltro] = useState<string | null>(null)
-  const [naturezaFiltro, setNaturezaFiltro] = useState<string>('')
-  const [probabilidadeFiltro, setProbabilidadeFiltro] = useState<string>('')
-  const [carregando, setCarregando] = useState(false)
+  // Leitura inicial de Query Params
+  const getParam = (key: string) => {
+    if (typeof window === 'undefined') return null
+    const url = new URL(window.location.href)
+    return url.searchParams.get(key)
+  }
+
+  const abaInicial = (getParam('aba') as TipoAbaDocumento) || 'alvaras'
+  const buscaInicial = getParam('q') || ''
+  const statusInicial = (getParam('status') as FiltrosDocumentosState['statusFiltro']) || 'todos'
+  const empresaInicial = getParam('empresa') || ''
+  const validadeInicial = (getParam('validade') as FiltrosDocumentosState['validade']) || 'qualquer'
+
+  // Estados principais
+  const [abaAtiva, setAbaAtiva] = useState<TipoAbaDocumento>(abaInicial)
+  const [filtros, setFiltros] = useState<FiltrosDocumentosState>({
+    busca: buscaInicial,
+    statusFiltro: statusInicial,
+    empresa: empresaInicial,
+    validade: validadeInicial,
+  })
+
+  // Sincronizar estados com Query Params na URL
+  const atualizarUrl = useCallback(
+    (novaAba: TipoAbaDocumento, novosFiltros: FiltrosDocumentosState) => {
+      if (typeof window === 'undefined') return
+      const url = new URL(window.location.href)
+      if (novaAba !== 'alvaras') url.searchParams.set('aba', novaAba)
+      else url.searchParams.delete('aba')
+
+      if (novosFiltros.busca.trim()) url.searchParams.set('q', novosFiltros.busca.trim())
+      else url.searchParams.delete('q')
+
+      if (novosFiltros.statusFiltro !== 'todos')
+        url.searchParams.set('status', novosFiltros.statusFiltro)
+      else url.searchParams.delete('status')
+
+      if (novosFiltros.empresa) url.searchParams.set('empresa', novosFiltros.empresa)
+      else url.searchParams.delete('empresa')
+
+      if (novosFiltros.validade !== 'qualquer')
+        url.searchParams.set('validade', novosFiltros.validade)
+      else url.searchParams.delete('validade')
+
+      window.history.replaceState({}, '', url.toString())
+    },
+    [],
+  )
+
+  const handleMudarAba = (nova: TipoAbaDocumento) => {
+    setAbaAtiva(nova)
+    atualizarUrl(nova, filtros)
+  }
+
+  const handleFiltrosChange = (novos: Partial<FiltrosDocumentosState>) => {
+    setFiltros((prev) => {
+      const atualizados = { ...prev, ...novos }
+      atualizarUrl(abaAtiva, atualizados)
+      return atualizados
+    })
+  }
+
+  const handleLimparFiltros = () => {
+    const limpos: FiltrosDocumentosState = {
+      busca: '',
+      statusFiltro: 'todos',
+      empresa: '',
+      validade: 'qualquer',
+    }
+    setFiltros(limpos)
+    atualizarUrl(abaAtiva, limpos)
+  }
 
   // Dados carregados do PocketBase
   const [alvaras, setAlvaras] = useState<any[]>([])
@@ -70,11 +153,13 @@ export function DocumentosPage() {
   const [atas, setAtas] = useState<any[]>([])
   const [juridicos, setJuridicos] = useState<any[]>([])
   const [empresas, setEmpresas] = useState<Array<{ id: string; nome: string }>>([])
+  const [carregando, setCarregando] = useState(false)
 
-  // Modais
+  // Documento selecionado para tela inteira dedicada de detalhe (especialmente Alvará padrão de referência)
+  const [docDetalheDedicado, setDocDetalheDedicado] = useState<any | null>(null)
+
+  // Modais auxiliares
   const [modalAnexoAberto, setModalAnexoAberto] = useState(false)
-  const [modalDetalheAberto, setModalDetalheAberto] = useState(false)
-  const [docDetalheSelecionado, setDocDetalheSelecionado] = useState<any | null>(null)
   const [docAnexoSelecionado, setDocAnexoSelecionado] = useState<{
     id: string
     colecao: string
@@ -82,20 +167,81 @@ export function DocumentosPage() {
     anexoNome?: string
   } | null>(null)
 
-  // Diálogo de confirmação de exclusão
-  const [docParaExcluir, setDocParaExcluir] = useState<{
-    id: string
-    titulo: string
-    colecao: string
-  } | null>(null)
-  const [excluindoDoc, setExcluindoDoc] = useState(false)
+  const [modalDetalheModalAberto, setModalDetalheModalAberto] = useState(false)
+  const [docDetalheModal, setDocDetalheModal] = useState<any | null>(null)
+
   const [modalNovoAberto, setModalNovoAberto] = useState(false)
   const [modalImportJuridicosAberto, setModalImportJuridicosAberto] = useState(false)
   const [modalAudienciasAberto, setModalAudienciasAberto] = useState(false)
   const [modalHistoricoAberto, setModalHistoricoAberto] = useState(false)
   const [processoHistoricoSelecionado, setProcessoHistoricoSelecionado] = useState<any>(null)
 
-  // Carrega empresas cadastradas
+  // Paginação e Seleção em Lote
+  const [paginaAtual, setPaginaAtual] = useState(1)
+  const [itensPorPagina] = useState(10)
+  const [idsSelecionados, setIdsSelecionados] = useState<string[]>([])
+
+  // Modal seguro de exclusão (exige digitação do número/título)
+  const [docParaExcluir, setDocParaExcluir] = useState<{
+    item: any
+    colecao: string
+    numeroEsperado: string
+  } | null>(null)
+  const [textoConfirmacaoExclusao, setTextoConfirmacaoExclusao] = useState('')
+  const [excluindoDoc, setExcluindoDoc] = useState(false)
+
+  // Ações de seleção em lote e exportação da aba
+  const handleToggleSelecionarId = (id: string) => {
+    setIdsSelecionados((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    )
+  }
+
+  const handleToggleSelecionarTodos = () => {
+    if (idsSelecionados.length === dadosFiltrados.length) {
+      setIdsSelecionados([])
+    } else {
+      setIdsSelecionados(dadosFiltrados.map((d) => d.id))
+    }
+  }
+
+  const handleExportarAba = () => {
+    try {
+      const colunasConfig = CONFIG_COLUNAS_POR_TIPO[abaAtiva] || []
+      const titulos = colunasConfig.map((c) => c.label).join(';')
+      const linhas = dadosFiltrados.map((item) =>
+        colunasConfig
+          .map((c) => {
+            const val = (item as any)[c.id] ?? (item as any)[c.id.replace('coluna_', '')] ?? ''
+            return `"${String(val).replace(/"/g, '""')}"`
+          })
+          .join(';'),
+      )
+      const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [titulos, ...linhas].join('\n')
+      const encodedUri = encodeURI(csvContent)
+      const link = document.createElement('a')
+      link.setAttribute('href', encodedUri)
+      link.setAttribute(
+        'download',
+        `documentos_${abaAtiva}_${new Date().toISOString().slice(0, 10)}.csv`,
+      )
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      toast({
+        title: 'Exportação concluída',
+        description: `Arquivo CSV da aba ${ROTULOS_ABAS[abaAtiva]} baixado com sucesso.`,
+      })
+    } catch {
+      toast({
+        title: 'Erro na exportação',
+        description: 'Não foi possível gerar a planilha no momento.',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  // Carrega lista de empresas
   useEffect(() => {
     async function carregarEmpresas() {
       try {
@@ -104,120 +250,243 @@ export function DocumentosPage() {
           setEmpresas(res.map((r: any) => ({ id: r.id, nome: r.nome })))
         } else {
           setEmpresas([
-            { id: '1', nome: 'Extrafruti' },
-            { id: '2', nome: 'Casafruti' },
-            { id: '3', nome: 'Agrofruti' },
+            { id: '1', nome: 'FoldBox' },
+            { id: '2', nome: 'Extrafruti' },
+            { id: '3', nome: 'Casafruti' },
           ])
         }
       } catch (_) {
         setEmpresas([
-          { id: '1', nome: 'Extrafruti' },
-          { id: '2', nome: 'Casafruti' },
-          { id: '3', nome: 'Agrofruti' },
+          { id: '1', nome: 'FoldBox' },
+          { id: '2', nome: 'Extrafruti' },
+          { id: '3', nome: 'Casafruti' },
         ])
       }
     }
     carregarEmpresas()
   }, [])
 
-  // Carrega dados da aba ativa
-  const carregarDados = async () => {
+  // Carrega dados de todas as coleções ou da aba ativa
+  const carregarDados = useCallback(async () => {
     setCarregando(true)
     try {
-      if (abaAtiva === 'alvaras') {
-        const res = await pb.collection('alvaras').getFullList({ sort: '-created' })
-        setAlvaras(res)
-      } else if (abaAtiva === 'contratos') {
-        const res = await pb.collection('contratos').getFullList({
+      const [resAlv, resCont, resLoc, resAtas, resJur] = await Promise.all([
+        pb.collection('alvaras').getFullList({ sort: '-created' }),
+        pb.collection('contratos').getFullList({
           filter: "tipo != 'locacao'",
           sort: '-created',
-        })
-        setContratos(res)
-      } else if (abaAtiva === 'locacoes') {
-        const res = await pb.collection('contratos').getFullList({
+        }),
+        pb.collection('contratos').getFullList({
           filter: "tipo = 'locacao'",
           sort: '-created',
-        })
-        setLocacoes(res)
-      } else if (abaAtiva === 'atas') {
-        const res = await pb.collection('atas').getFullList({ sort: '-data' })
-        setAtas(res)
-      } else if (abaAtiva === 'juridicos') {
-        const res = await pb.collection('processos_juridicos').getFullList({ sort: '-created' })
-        setJuridicos(res)
+        }),
+        pb.collection('atas').getFullList({ sort: '-data' }),
+        pb.collection('processos_juridicos').getFullList({ sort: '-created' }),
+      ])
+
+      setAlvaras(resAlv || [])
+      setContratos(resCont || [])
+      setLocacoes(resLoc || [])
+      setAtas(resAtas || [])
+      setJuridicos(resJur || [])
+
+      // Atualiza o documento aberto no detalhe caso esteja visualizando
+      if (docDetalheDedicado) {
+        const achado = (resAlv || []).find((d) => d.id === docDetalheDedicado.id)
+        if (achado) setDocDetalheDedicado(achado)
       }
     } catch (err) {
       console.error('Erro ao carregar documentos:', err)
     } finally {
       setCarregando(false)
     }
-  }
+  }, [docDetalheDedicado])
 
   useEffect(() => {
     carregarDados()
-  }, [abaAtiva])
+  }, [])
 
-  const abrirModalAnexo = (doc: any, colecao: string, titulo: string) => {
+  // Coleção PocketBase da aba
+  const obterColecaoPorAba = (aba: TipoAbaDocumento): string => {
+    switch (aba) {
+      case 'alvaras':
+        return 'alvaras'
+      case 'atas':
+        return 'atas'
+      case 'juridicos':
+        return 'processos_juridicos'
+      default:
+        return 'contratos'
+    }
+  }
+
+  // Lista pura da aba ativa
+  const dadosAbaPura = useMemo(() => {
+    switch (abaAtiva) {
+      case 'alvaras':
+        return alvaras
+      case 'contratos':
+        return contratos
+      case 'locacoes':
+        return locacoes
+      case 'atas':
+        return atas
+      case 'juridicos':
+        return juridicos
+      default:
+        return []
+    }
+  }, [abaAtiva, alvaras, contratos, locacoes, atas, juridicos])
+
+  // Filtragem dos dados da aba ativa
+  const dadosFiltrados = useMemo(() => {
+    const qNorm = normalizarParaBusca(filtros.busca)
+    const empNorm = normalizarParaBusca(filtros.empresa)
+
+    return dadosAbaPura.filter((item) => {
+      // 1. Filtro de Empresa
+      if (empNorm) {
+        const itemEmp = normalizarParaBusca(item.empresa || item.cliente_principal || '')
+        if (!itemEmp.includes(empNorm)) return false
+      }
+
+      // 2. Filtro de Busca de texto ampla
+      if (qNorm) {
+        const camposTexto = [
+          item.numero,
+          item.numero_processo,
+          item.titulo,
+          item.tipo,
+          item.orgao_emissor,
+          item.municipio,
+          item.contraparte,
+          item.locador,
+          item.imovel,
+          item.empresa,
+          item.cliente_principal,
+        ]
+          .filter(Boolean)
+          .join(' ')
+        const textoNorm = normalizarParaBusca(camposTexto)
+        if (!textoNorm.includes(qNorm)) return false
+      }
+
+      // 3. Filtro por status
+      if (filtros.statusFiltro !== 'todos') {
+        const st = String(item.status || '').toLowerCase()
+        if (filtros.statusFiltro === 'regulares') {
+          if (st.includes('venc') || st.includes('susp') || st.includes('encerr')) return false
+        } else if (filtros.statusFiltro === 'vencendo') {
+          if (!st.includes('vencendo')) {
+            // checar data de validade se houver
+            if (item.validade) {
+              const diffDias = Math.ceil(
+                (new Date(item.validade).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+              )
+              if (diffDias < 0 || diffDias > 90) return false
+            } else {
+              return false
+            }
+          }
+        } else if (filtros.statusFiltro === 'vencidos') {
+          if (!st.includes('vencid')) {
+            if (item.validade) {
+              const diffDias = Math.ceil(
+                (new Date(item.validade).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+              )
+              if (diffDias >= 0) return false
+            } else {
+              return false
+            }
+          }
+        }
+      }
+
+      // 4. Filtro por Validade
+      if (filtros.validade !== 'qualquer' && item.validade) {
+        const diffDias = Math.ceil(
+          (new Date(item.validade).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
+        )
+        if (filtros.validade === '30' && (diffDias < 0 || diffDias > 30)) return false
+        if (filtros.validade === '90' && (diffDias < 0 || diffDias > 90)) return false
+        if (filtros.validade === 'vencidos' && diffDias >= 0) return false
+      }
+
+      return true
+    })
+  }, [dadosAbaPura, filtros])
+
+  // Abertura do Detalhe (Primária: Botão "Abrir")
+  const handleAbrirDetalhe = (item: any) => {
+    if (abaAtiva === 'alvaras') {
+      setDocDetalheDedicado(item)
+    } else {
+      setDocDetalheModal(item)
+      setModalDetalheModalAberto(true)
+    }
+  }
+
+  // Abertura de Anexos
+  const handleAbrirAnexos = (item: any) => {
+    const colecao = obterColecaoPorAba(abaAtiva)
+    const tit = item.titulo || item.tipo || item.numero || 'Documento'
     setDocAnexoSelecionado({
-      id: doc.id,
-      titulo,
+      id: item.id,
       colecao,
-      anexoNome: doc.anexo || doc.arquivo,
+      titulo: tit,
+      anexoNome: item.anexo || item.arquivo,
     })
     setModalAnexoAberto(true)
   }
 
-  // Helper para rótulo e contagem de anexos na tabela
-  const renderBotaoAnexoTabela = (item: any, colecao: string, tituloFallback: string) => {
-    const rawAnexo = item.anexo || item.arquivo
-    let qtd = 0
-    if (Array.isArray(rawAnexo)) {
-      qtd = rawAnexo.filter(Boolean).length
-    } else if (typeof rawAnexo === 'string' && rawAnexo.trim()) {
-      qtd = 1
-    }
-    const temAnexo = qtd > 0
-
-    return (
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => abrirModalAnexo(item, colecao, item.titulo || tituloFallback)}
-        className="h-7 px-2 text-xs text-gray-600 hover:text-emerald-700 font-medium"
-      >
-        <Paperclip
-          className={`h-3.5 w-3.5 mr-1 ${temAnexo ? 'text-emerald-600' : 'text-gray-400'}`}
-        />
-        {temAnexo ? (qtd > 1 ? `${qtd} anexos` : '1 anexo') : 'Anexar'}
-      </Button>
-    )
+  // Abertura de Edição
+  const handleEditar = (item: any) => {
+    setDocDetalheModal(item)
+    setModalDetalheModalAberto(true)
   }
 
-  // Executa a exclusão de um documento com confirmação amigável
+  // Abertura do Histórico
+  const handleVerHistorico = (item: any) => {
+    setProcessoHistoricoSelecionado(item)
+    setModalHistoricoAberto(true)
+  }
+
+  // Iniciar Exclusão Segura
+  const handleSolicitarExclusao = (item: any) => {
+    const num = item.numero || item.numero_processo || item.titulo || item.id
+    setDocParaExcluir({
+      item,
+      colecao: obterColecaoPorAba(abaAtiva),
+      numeroEsperado: String(num).trim(),
+    })
+    setTextoConfirmacaoExclusao('')
+  }
+
+  // Confirmar Exclusão com Digitação Obrigatória
   const handleConfirmarExclusao = async () => {
     if (!docParaExcluir) return
+    if (textoConfirmacaoExclusao.trim() !== docParaExcluir.numeroEsperado) {
+      toast({
+        title: 'Número incorreto',
+        description: 'Digite exatamente o número do documento para confirmar a exclusão.',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setExcluindoDoc(true)
     try {
-      await pb.collection(docParaExcluir.colecao).delete(docParaExcluir.id)
+      await pb.collection(docParaExcluir.colecao).delete(docParaExcluir.item.id)
       toast({
         title: 'Documento excluído',
-        description: `"${docParaExcluir.titulo}" foi removido com sucesso.`,
+        description: 'O documento foi removido do sistema.',
       })
-      // Remove localmente do estado da aba
-      if (docParaExcluir.colecao === 'alvaras') {
-        setAlvaras((prev) => prev.filter((d) => d.id !== docParaExcluir.id))
-      } else if (docParaExcluir.colecao === 'atas') {
-        setAtas((prev) => prev.filter((d) => d.id !== docParaExcluir.id))
-      } else if (docParaExcluir.colecao === 'processos_juridicos') {
-        setJuridicos((prev) => prev.filter((d) => d.id !== docParaExcluir.id))
-      } else if (docParaExcluir.colecao === 'contratos') {
-        setContratos((prev) => prev.filter((d) => d.id !== docParaExcluir.id))
-        setLocacoes((prev) => prev.filter((d) => d.id !== docParaExcluir.id))
+      if (docDetalheDedicado && docDetalheDedicado.id === docParaExcluir.item.id) {
+        setDocDetalheDedicado(null)
       }
       setDocParaExcluir(null)
+      carregarDados()
     } catch (err: any) {
-      console.error('Erro ao excluir documento:', err)
       toast({
         title: 'Erro ao excluir',
         description: err?.message || 'Não foi possível excluir o documento.',
@@ -228,633 +497,66 @@ export function DocumentosPage() {
     }
   }
 
-  // Obter o nome da coleção PocketBase com base na aba atual
-  const obterColecaoPorAba = (aba: string) => {
-    switch (aba) {
-      case 'alvaras':
-        return 'alvaras'
-      case 'atas':
-        return 'atas'
-      case 'juridicos':
-        return 'processos_juridicos'
-      case 'contratos':
-      case 'locacoes':
-      default:
-        return 'contratos'
-    }
-  }
-
-  // Título amigável de exibição do documento para exclusão
-  const obterTituloExibicao = (item: any) => {
+  // Se o usuário estiver na tela de Detalhe de Alvarás (Bloco 3)
+  if (docDetalheDedicado && abaAtiva === 'alvaras') {
     return (
-      item.titulo ||
-      item.tipo ||
-      item.numero ||
-      item.numero_processo ||
-      item.assunto_tipo ||
-      'Documento'
+      <div className="p-6 max-w-7xl mx-auto">
+        <DetalheAlvaraView
+          documento={docDetalheDedicado}
+          onVoltar={() => setDocDetalheDedicado(null)}
+          onEditar={() => {
+            setDocDetalheModal(docDetalheDedicado)
+            setModalDetalheModalAberto(true)
+          }}
+          onAtualizar={carregarDados}
+          onVisualizarAnexo={(nomeArquivo) => {
+            handleAbrirAnexos(docDetalheDedicado)
+          }}
+        />
+
+        {/* Modal de Detalhe Edição */}
+        {modalDetalheModalAberto && docDetalheModal && (
+          <DocumentoDetalheModal
+            aberto={modalDetalheModalAberto}
+            onOpenChange={setModalDetalheModalAberto}
+            tipoAba="alvaras"
+            documento={docDetalheModal}
+            empresas={empresas}
+            onAtualizado={() => {
+              carregarDados()
+            }}
+            onAbrirAnexos={(doc) => handleAbrirAnexos(doc)}
+          />
+        )}
+
+        {/* Modal de Anexos */}
+        {modalAnexoAberto && docAnexoSelecionado && (
+          <DocumentoAnexoModal
+            aberto={modalAnexoAberto}
+            onOpenChange={setModalAnexoAberto}
+            collectionName={docAnexoSelecionado.colecao as any}
+            recordId={docAnexoSelecionado.id}
+            tituloDocumento={docAnexoSelecionado.titulo}
+            anexoAtual={docAnexoSelecionado.anexoNome}
+            onAnexoAtualizado={() => {
+              carregarDados()
+            }}
+          />
+        )}
+      </div>
     )
   }
 
-  const formatarMoeda = (val: number) => {
-    if (!val && val !== 0) return '—'
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
-  }
-
-  const formatarData = (dt: string) => {
-    if (!dt) return '—'
-    try {
-      const d = new Date(dt)
-      return d.toLocaleDateString('pt-BR', { timeZone: 'UTC' })
-    } catch (_) {
-      return dt
-    }
-  }
-
-  // Helper para renderizar célula de Empresa com ícone nativo
-  const renderCelulaEmpresa = (nomeEmpresa?: string) => {
-    if (!nomeEmpresa) return <span className="text-gray-400">—</span>
-    return (
-      <EmpresaIcon
-        nome={nomeEmpresa}
-        mostrarNome
-        className="h-4 w-4 shrink-0 rounded-xs"
-        nomeClassName="font-medium text-gray-800"
-      />
-    )
-  }
-
-  // --- COLUNAS: ALVARÁS ---
-  const colunasAlvaras: ColunaConfig<any>[] = useMemo(
-    () => [
-      {
-        id: 'numero',
-        label: 'Nº Alvará',
-        sortable: true,
-        render: (item) => <span className="font-semibold text-gray-900">{item.numero}</span>,
-      },
-      { id: 'tipo', label: 'Tipo', sortable: true },
-      {
-        id: 'empresa',
-        label: 'Empresa',
-        sortable: true,
-        render: (item) => renderCelulaEmpresa(item.empresa),
-      },
-      {
-        id: 'titulo_documento',
-        label: 'Título do documento',
-        sortable: true,
-        sortValue: (i) => i.titulo || i.tipo || i.numero || '',
-        render: (item) => {
-          const tit =
-            item.titulo ||
-            (item.tipo ? `${item.tipo} - ${item.empresa || ''}` : `Alvará ${item.numero}`)
-          return <span className="font-medium text-gray-900">{tit}</span>
-        },
-      },
-      { id: 'orgao_emissor', label: 'Órgão Emissor', sortable: true },
-      { id: 'municipio', label: 'Município', sortable: true },
-      {
-        id: 'validade',
-        label: 'Validade',
-        sortable: true,
-        render: (item) => {
-          const dt = formatarData(item.validade)
-          const isVencido = item.validade && new Date(item.validade) < new Date()
-          return (
-            <span className={isVencido ? 'text-rose-600 font-semibold' : 'text-gray-700'}>
-              {dt}
-            </span>
-          )
-        },
-      },
-      {
-        id: 'status',
-        label: 'Status',
-        sortable: true,
-        render: (item) => {
-          const st = item.status || 'regular'
-          const mapa: Record<string, { label: string; classe: string }> = {
-            regular: {
-              label: 'Regular',
-              classe: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-            },
-            vencendo: { label: 'Vencendo', classe: 'bg-amber-50 text-amber-700 border-amber-200' },
-            vencido: { label: 'Vencido', classe: 'bg-rose-50 text-rose-700 border-rose-200' },
-            em_renovacao: {
-              label: 'Em Renovação',
-              classe: 'bg-blue-50 text-blue-700 border-blue-200',
-            },
-          }
-          const info = mapa[st] || { label: st, classe: 'bg-gray-100 text-gray-600' }
-          return (
-            <Badge variant="outline" className={`text-[10px] px-2 py-0.5 ${info.classe}`}>
-              {info.label}
-            </Badge>
-          )
-        },
-      },
-      {
-        id: 'anexo',
-        label: 'Anexo',
-        sortable: false,
-        render: (item) => renderBotaoAnexoTabela(item, 'alvaras', `Alvará ${item.numero || ''}`),
-      },
-    ],
-    [],
-  )
-
-  // --- COLUNAS: CONTRATOS & LOCAÇÕES ---
-  const colunasContratosLocacoes: ColunaConfig<any>[] = useMemo(
-    () => [
-      { id: 'parte', label: 'Contraparte / Locador', sortable: true },
-      {
-        id: 'empresa',
-        label: 'Empresa',
-        sortable: true,
-        render: (item) => renderCelulaEmpresa(item.empresa),
-      },
-      {
-        id: 'titulo_documento',
-        label: 'Título do documento',
-        sortable: true,
-        sortValue: (i) => i.titulo || '',
-        render: (item) => (
-          <div>
-            <div className="font-semibold text-gray-900">{item.titulo}</div>
-            {item.objeto && (
-              <div className="text-[11px] text-gray-500 truncate max-w-xs">{item.objeto}</div>
-            )}
-          </div>
-        ),
-      },
-      {
-        id: 'valor_mensal',
-        label: 'Valor Mensal',
-        sortable: true,
-        sortValue: (i) => i.valor_mensal || 0,
-        render: (item) => <span className="font-medium">{formatarMoeda(item.valor_mensal)}</span>,
-      },
-      {
-        id: 'vigencia',
-        label: 'Vigência',
-        sortable: true,
-        render: (item) => (
-          <div className="text-[11px] text-gray-600">
-            {formatarData(item.inicio)} → {formatarData(item.fim)}
-          </div>
-        ),
-      },
-      {
-        id: 'indexador',
-        label: 'Reajuste',
-        sortable: true,
-        render: (item) => (
-          <span className="text-[11px] text-gray-600">{item.indexador || 'IGP-M'}</span>
-        ),
-      },
-      {
-        id: 'garantia',
-        label: 'Garantia',
-        sortable: true,
-        render: (item) => (
-          <span className="text-[11px] text-gray-600 truncate max-w-[120px] inline-block">
-            {item.garantia || '—'}
-          </span>
-        ),
-      },
-      {
-        id: 'status',
-        label: 'Status',
-        sortable: true,
-        render: (item) => (
-          <Badge
-            variant="outline"
-            className={`text-[10px] px-2 py-0.5 ${
-              item.status === 'ativo'
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                : 'bg-gray-100 text-gray-600'
-            }`}
-          >
-            {item.status || 'ativo'}
-          </Badge>
-        ),
-      },
-      {
-        id: 'anexo',
-        label: 'Anexo',
-        sortable: false,
-        render: (item) => renderBotaoAnexoTabela(item, 'contratos', item.titulo || 'Contrato'),
-      },
-    ],
-    [],
-  )
-
-  // --- COLUNAS: ATAS ---
-  const colunasAtas: ColunaConfig<any>[] = useMemo(
-    () => [
-      {
-        id: 'tipo_ata',
-        label: 'Tipo',
-        sortable: true,
-        render: (item) => (
-          <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">
-            {item.tipo_ata || 'AGE'}
-          </Badge>
-        ),
-      },
-      {
-        id: 'empresa',
-        label: 'Empresa',
-        sortable: true,
-        render: (item) => renderCelulaEmpresa(item.empresa),
-      },
-      {
-        id: 'titulo_documento',
-        label: 'Título do documento',
-        sortable: true,
-        sortValue: (i) => i.titulo || '',
-        render: (item) => (
-          <div>
-            <div className="font-semibold text-gray-900">{item.titulo}</div>
-            {item.pauta && (
-              <div className="text-[11px] text-gray-500 truncate max-w-sm">{item.pauta}</div>
-            )}
-          </div>
-        ),
-      },
-      {
-        id: 'data',
-        label: 'Data',
-        sortable: true,
-        render: (item) => formatarData(item.data),
-      },
-      {
-        id: 'mesa_diretora',
-        label: 'Mesa Diretora',
-        sortable: true,
-        render: (item) => (
-          <span className="text-[11px] text-gray-600">{item.mesa_diretora || '—'}</span>
-        ),
-      },
-      {
-        id: 'deliberacoes',
-        label: 'Deliberações',
-        sortable: true,
-        render: (item) => (
-          <span className="text-[11px] text-gray-600 truncate max-w-xs inline-block">
-            {item.deliberacoes || '—'}
-          </span>
-        ),
-      },
-      {
-        id: 'assinatura_eletronica',
-        label: 'Assinatura',
-        sortable: true,
-        render: (item) => (
-          <Badge
-            variant="outline"
-            className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200"
-          >
-            {item.assinatura_eletronica || 'Assinado'}
-          </Badge>
-        ),
-      },
-      {
-        id: 'anexo',
-        label: 'Anexo',
-        sortable: false,
-        render: (item) => renderBotaoAnexoTabela(item, 'atas', item.titulo || 'Ata'),
-      },
-    ],
-    [],
-  )
-
-  // --- COLUNAS: JURÍDICOS ---
-  // Requisito b3: Empresa (ícone à esquerda do nome), Título, Órgão, Status, Natureza, Contrário, Responsável, Probabilidade, Valor base, Valor corrigido, Juros, Multa e Valor atualizado.
-  const colunasJuridicos: ColunaConfig<any>[] = useMemo(
-    () => [
-      {
-        id: 'empresa',
-        label: 'Empresa',
-        sortable: true,
-        render: (item) => renderCelulaEmpresa(item.empresa || item.cliente_principal),
-      },
-      {
-        id: 'titulo',
-        label: 'Título',
-        sortable: true,
-        sortValue: (i) => i.titulo || i.assunto_tipo || i.numero_processo || '',
-        render: (item) => {
-          const tit =
-            item.titulo ||
-            (item.assunto_tipo
-              ? `${item.assunto_tipo} (${item.numero_processo || 'Proc.'})`
-              : `Processo ${item.numero_processo || ''}`)
-          return (
-            <div className="space-y-0.5">
-              <span className="font-medium text-gray-900 line-clamp-1" title={tit}>
-                {tit}
-              </span>
-              <div className="flex items-center gap-1.5 text-[11px] text-gray-500 font-mono">
-                <span>{item.numero_cnj || item.numero_processo}</span>
-                {item.versao_atual && item.versao_atual > 1 && (
-                  <TooltipProvider delayDuration={200}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Badge
-                          variant="outline"
-                          className="text-[9px] px-1 py-0 bg-blue-50 text-blue-700 border-blue-200 cursor-pointer hover:bg-blue-100"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setProcessoHistoricoSelecionado(item)
-                            setModalHistoricoAberto(true)
-                          }}
-                        >
-                          v{item.versao_atual}
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="text-[11px]">
-                        Ver histórico de alterações (v{item.versao_atual})
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-              </div>
-            </div>
-          )
-        },
-      },
-      {
-        id: 'orgao',
-        label: 'Órgão',
-        sortable: true,
-        render: (item) => {
-          const org = item.orgao || item.orgao_tribunal || item.vara_comarca || '—'
-          return (
-            <span className="text-xs text-gray-700 line-clamp-1 max-w-[180px]" title={org}>
-              {org}
-            </span>
-          )
-        },
-      },
-      {
-        id: 'status',
-        label: 'Status',
-        sortable: true,
-        render: (item) => {
-          const st = String(item.status || 'Ativo')
-          const isAtivo = st.toLowerCase().includes('ativo')
-          return (
-            <Badge
-              variant="outline"
-              className={`text-[10px] px-2 py-0.5 ${
-                isAtivo
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  : 'bg-gray-100 text-gray-700 border-gray-200'
-              }`}
-            >
-              {st}
-            </Badge>
-          )
-        },
-      },
-      {
-        id: 'natureza',
-        label: 'Natureza',
-        sortable: true,
-        sortValue: (item) => extrairCategoriaNatureza(item.natureza),
-        render: (item) => (
-          <span className="text-xs font-medium text-gray-700">
-            {extrairCategoriaNatureza(item.natureza)}
-          </span>
-        ),
-      },
-      {
-        id: 'contrario',
-        label: 'Contrário',
-        sortable: true,
-        render: (item) => {
-          const cont =
-            item.contrario_principal || (item.autor === item.empresa ? item.reu : item.autor) || '—'
-          return (
-            <span className="text-xs text-gray-800 line-clamp-1 max-w-[180px]" title={cont}>
-              {cont}
-            </span>
-          )
-        },
-      },
-      {
-        id: 'responsavel',
-        label: 'Responsável',
-        sortable: true,
-        render: (item) => {
-          const resp = item.responsavel_principal || item.advogado || '—'
-          return (
-            <span className="text-xs text-gray-700 line-clamp-1 max-w-[160px]" title={resp}>
-              {resp}
-            </span>
-          )
-        },
-      },
-      {
-        id: 'probabilidade',
-        label: 'Probabilidade',
-        sortable: true,
-        render: (item) => {
-          const texto = item.probabilidade || item.risco || 'Perda Possível'
-          const l = String(texto).toLowerCase()
-          let classe = 'bg-gray-100 text-gray-600'
-          if (l.includes('prov')) classe = 'bg-rose-50 text-rose-700 border-rose-200'
-          else if (l.includes('poss')) classe = 'bg-amber-50 text-amber-700 border-amber-200'
-          else if (l.includes('remot') || l.includes('êxito') || l.includes('exito'))
-            classe = 'bg-emerald-50 text-emerald-700 border-emerald-200'
-
-          return (
-            <Badge variant="outline" className={`text-[10px] px-2 py-0.5 ${classe}`}>
-              {texto}
-            </Badge>
-          )
-        },
-      },
-      {
-        id: 'valor_base',
-        label: 'Valor base',
-        sortable: true,
-        sortValue: (i) => i.valor_base ?? i.valor_causa ?? 0,
-        render: (item) => formatarMoeda(item.valor_base ?? item.valor_causa),
-      },
-      {
-        id: 'valor_corrigido',
-        label: 'Valor corrigido',
-        sortable: true,
-        sortValue: (i) => i.valor_corrigido ?? 0,
-        render: (item) => formatarMoeda(item.valor_corrigido),
-      },
-      {
-        id: 'juros',
-        label: 'Juros',
-        sortable: true,
-        sortValue: (i) => i.juros ?? 0,
-        render: (item) => formatarMoeda(item.juros),
-      },
-      {
-        id: 'multa',
-        label: 'Multa',
-        sortable: true,
-        sortValue: (i) => i.multa ?? 0,
-        render: (item) => formatarMoeda(item.multa),
-      },
-      {
-        id: 'valor_atualizado',
-        label: 'Valor atualizado',
-        sortable: true,
-        sortValue: (i) => i.valor_atualizado ?? i.valor_causa ?? 0,
-        render: (item) => (
-          <span className="font-semibold text-emerald-900">
-            {formatarMoeda(item.valor_atualizado ?? item.valor_causa)}
-          </span>
-        ),
-      },
-    ],
-    [],
-  )
-
-  // Opções dinâmicas para os filtros da aba Jurídicos
-  const opcoesNatureza = useMemo(() => {
-    const setNats = new Set<string>()
-    juridicos.forEach((j) => {
-      const cat = extrairCategoriaNatureza(j.natureza)
-      if (cat) setNats.add(cat)
-    })
-    const lista = Array.from(setNats).sort()
-    return lista.length > 0 ? lista : ['Administrativa', 'Cível', 'Trabalhista', 'Tributária']
-  }, [juridicos])
-
-  const opcoesProbabilidade = useMemo(() => {
-    const setProbs = new Set<string>()
-    juridicos.forEach((j) => {
-      const p = normalizarProbabilidade(j.probabilidade || j.risco)
-      if (p) setProbs.add(p)
-    })
-    const lista = Array.from(setProbs).sort()
-    return lista.length > 0
-      ? lista
-      : ['Perda Possível', 'Perda Provável', 'Perda Remota', 'Êxito Possível', 'Êxito Provável']
-  }, [juridicos])
-
-  // Filtragem unificada por busca de texto (normalizada dos dois lados), empresa, natureza e probabilidade
-  const filtrarLista = (lista: any[]) => {
-    const buscaNorm = normalizarParaBusca(busca)
-    const empFiltroNorm = normalizarParaBusca(empresaFiltro)
-
-    return lista.filter((item) => {
-      // Filtro de empresa
-      if (empFiltroNorm) {
-        const empItem = normalizarParaBusca(item.empresa || item.cliente_principal || '')
-        if (!empItem.includes(empFiltroNorm)) {
-          return false
-        }
-      }
-
-      // Filtros específicos da aba Jurídicos
-      if (abaAtiva === 'juridicos') {
-        if (naturezaFiltro) {
-          const natItem = extrairCategoriaNatureza(item.natureza)
-          if (natItem.toLowerCase() !== naturezaFiltro.toLowerCase()) {
-            return false
-          }
-        }
-
-        if (probabilidadeFiltro) {
-          const probItem = normalizarProbabilidade(item.probabilidade || item.risco)
-          if (probItem.toLowerCase() !== probabilidadeFiltro.toLowerCase()) {
-            return false
-          }
-        }
-      }
-
-      if (!buscaNorm) return true
-
-      // Busca sem acentos e sem pontuação dos dois lados
-      const camposConcat = [
-        item.numero,
-        item.numero_processo,
-        item.numero_cnj,
-        item.titulo,
-        item.parte,
-        item.orgao_emissor,
-        item.orgao,
-        item.orgao_tribunal,
-        item.vara_comarca,
-        item.municipio,
-        item.objeto,
-        item.empresa,
-        item.cliente_principal,
-        item.pauta,
-        item.deliberacoes,
-        item.mesa_diretora,
-        item.autor,
-        item.reu,
-        item.contrario_principal,
-        item.responsavel_principal,
-        item.advogado,
-        item.assunto_tipo,
-        item.natureza ? extrairCategoriaNatureza(item.natureza) : '',
-        item.probabilidade,
-        item.status,
-      ]
-        .filter(Boolean)
-        .map((c) => normalizarParaBusca(c))
-        .join(' ')
-
-      return camposConcat.includes(buscaNorm)
-    })
-  }
-
-  const dadosAtuais = useMemo(() => {
-    if (abaAtiva === 'alvaras') return filtrarLista(alvaras)
-    if (abaAtiva === 'contratos') return filtrarLista(contratos)
-    if (abaAtiva === 'locacoes') return filtrarLista(locacoes)
-    if (abaAtiva === 'atas') return filtrarLista(atas)
-    if (abaAtiva === 'juridicos') return filtrarLista(juridicos)
-    return []
-  }, [
-    abaAtiva,
-    alvaras,
-    contratos,
-    locacoes,
-    atas,
-    juridicos,
-    busca,
-    empresaFiltro,
-    naturezaFiltro,
-    probabilidadeFiltro,
-  ])
-
-  const colunasAtuais = useMemo(() => {
-    if (abaAtiva === 'alvaras') return colunasAlvaras
-    if (abaAtiva === 'contratos' || abaAtiva === 'locacoes') return colunasContratosLocacoes
-    if (abaAtiva === 'atas') return colunasAtas
-    if (abaAtiva === 'juridicos') return colunasJuridicos
-    return []
-  }, [abaAtiva, colunasAlvaras, colunasContratosLocacoes, colunasAtas, colunasJuridicos])
-
-  const getNomeDocumento = (item: any) => {
-    return (
-      item.titulo ||
-      (item.numero ? `Alvará ${item.numero}` : '') ||
-      (item.numero_processo ? `Processo ${item.numero_processo}` : 'Documento')
-    )
-  }
+  // Lista de empresas cadastradas para o dropdown de filtros
+  const empresasListaNomes = ['FoldBox', 'Extrafruti', 'Casafruti']
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto space-y-5">
-      {/* Cabeçalho da Tela */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-1 border-b border-gray-100">
+    <div className="p-6 max-w-[1700px] mx-auto space-y-6">
+      {/* 1. CABEÇALHO DA TELA */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-gray-100">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight text-gray-900">Documentos</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900">Documentos</h1>
             <Badge
               variant="outline"
               className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border-emerald-200"
@@ -863,67 +565,44 @@ export function DocumentosPage() {
             </Badge>
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            Gestão organizada de alvarás, contratos, locações, atas societárias e relatórios
-            jurídicos com análise inteligente.
+            Governança documental com análise inteligente e rastreabilidade completa.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {abaAtiva === 'juridicos' && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setModalImportJuridicosAberto(true)}
-              className="h-8 text-xs font-semibold text-emerald-800 border-emerald-300 hover:bg-emerald-50"
-            >
-              <Upload className="h-3.5 w-3.5 mr-1.5 text-emerald-700" />
-              Importar
-            </Button>
-          )}
-
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => setModalNovoAberto(true)}
-            className="h-8 text-xs font-semibold bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-2xs"
-          >
-            <Plus className="h-3.5 w-3.5 mr-1" />
-            Novo Documento
-          </Button>
-
+        <div className="flex items-center gap-2.5">
           {abaAtiva === 'juridicos' && (
             <>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
+                onClick={() => setModalImportJuridicosAberto(true)}
+                className="h-9 px-3.5 text-xs font-semibold text-emerald-800 border-emerald-300 hover:bg-emerald-50 rounded-full"
+              >
+                <Upload className="h-3.5 w-3.5 mr-1.5 text-emerald-700" />
+                Importar
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setModalAudienciasAberto(true)}
-                className="h-8 text-xs font-semibold text-blue-800 border-blue-300 hover:bg-blue-50"
+                className="h-9 px-3.5 text-xs font-semibold text-blue-800 border-blue-300 hover:bg-blue-50 rounded-full"
               >
                 <CalendarDays className="h-3.5 w-3.5 mr-1.5 text-blue-700" />
                 Audiências
               </Button>
-
-              {/* Filtro NATUREZA (item g) */}
-              <DocumentosFiltroSelectPopover
-                label="Natureza"
-                opcoes={opcoesNatureza}
-                valorSelecionado={naturezaFiltro}
-                onSelect={(val) => setNaturezaFiltro(val)}
-                icone="tag"
-              />
-
-              {/* Filtro PROBABILIDADE (item h) */}
-              <DocumentosFiltroSelectPopover
-                label="Probabilidade"
-                opcoes={opcoesProbabilidade}
-                valorSelecionado={probabilidadeFiltro}
-                onSelect={(val) => setProbabilidadeFiltro(val)}
-                icone="alerta"
-              />
             </>
           )}
+
+          <Button
+            type="button"
+            onClick={() => setModalNovoAberto(true)}
+            className="h-9 px-4 text-xs font-semibold bg-emerald-800 hover:bg-emerald-900 text-white rounded-full shadow-xs gap-1.5"
+          >
+            <Plus className="h-4 w-4" />
+            Novo Documento
+          </Button>
 
           <Button
             type="button"
@@ -931,198 +610,237 @@ export function DocumentosPage() {
             size="icon"
             onClick={carregarDados}
             title="Atualizar dados"
-            className="h-8 w-8 text-gray-500 hover:text-gray-800"
+            className="h-9 w-9 rounded-full text-gray-500 hover:text-gray-800"
+            aria-label="Atualizar dados"
           >
             <RefreshCw className={`h-4 w-4 ${carregando ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </div>
 
-      {/* Abas Superiores Requisitadas */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <Tabs
-          value={abaAtiva}
-          onValueChange={(v) => setAbaAtiva(v as TipoAba)}
-          className="w-full lg:w-auto"
-        >
-          <TabsList className="bg-gray-100/90 p-1 rounded-xl h-10 border border-gray-200/80">
-            <TabsTrigger
-              value="alvaras"
-              className="text-xs font-semibold rounded-lg px-4 data-[state=active]:bg-white data-[state=active]:text-emerald-800 data-[state=active]:shadow-xs"
-            >
-              <Shield className="h-3.5 w-3.5 mr-1.5 text-emerald-700" />
-              Alvarás ({alvaras.length})
-            </TabsTrigger>
-            <TabsTrigger
-              value="contratos"
-              className="text-xs font-semibold rounded-lg px-4 data-[state=active]:bg-white data-[state=active]:text-emerald-800 data-[state=active]:shadow-xs"
-            >
-              <Briefcase className="h-3.5 w-3.5 mr-1.5 text-blue-700" />
-              Contratos ({contratos.length})
-            </TabsTrigger>
-            <TabsTrigger
-              value="locacoes"
-              className="text-xs font-semibold rounded-lg px-4 data-[state=active]:bg-white data-[state=active]:text-emerald-800 data-[state=active]:shadow-xs"
-            >
-              <Building2 className="h-3.5 w-3.5 mr-1.5 text-amber-700" />
-              Locações ({locacoes.length})
-            </TabsTrigger>
-            <TabsTrigger
-              value="atas"
-              className="text-xs font-semibold rounded-lg px-4 data-[state=active]:bg-white data-[state=active]:text-emerald-800 data-[state=active]:shadow-xs"
-            >
-              <FileCheck className="h-3.5 w-3.5 mr-1.5 text-purple-700" />
-              Atas ({atas.length})
-            </TabsTrigger>
-            <TabsTrigger
-              value="juridicos"
-              className="text-xs font-semibold rounded-lg px-4 data-[state=active]:bg-white data-[state=active]:text-emerald-800 data-[state=active]:shadow-xs"
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5 text-rose-700" />
-              Jurídicos ({juridicos.length})
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+      {/* 2. ABAS COM RÓTULO EM NEGRITO, UNDERLINE 3PX E BADGE CIRCULAR */}
+      <div className="border-b border-gray-200/90 flex items-center gap-6 overflow-x-auto no-scrollbar pt-1">
+        {(['alvaras', 'contratos', 'locacoes', 'atas', 'juridicos'] as TipoAbaDocumento[]).map(
+          (chave) => {
+            const ativa = abaAtiva === chave
+            const icone =
+              chave === 'alvaras' ? (
+                <Shield className="h-4 w-4" />
+              ) : chave === 'contratos' ? (
+                <Briefcase className="h-4 w-4" />
+              ) : chave === 'locacoes' ? (
+                <Building2 className="h-4 w-4" />
+              ) : chave === 'atas' ? (
+                <FileCheck className="h-4 w-4" />
+              ) : (
+                <FileSpreadsheet className="h-4 w-4" />
+              )
 
-        {/* Linha de Filtros: Busca + Filtro de Empresa com Popover & Ícone */}
-        <div className="flex items-center gap-2.5">
-          <div className="relative w-64">
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-gray-400" />
-            <Input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar em todos os campos..."
-              className="pl-8 h-8 text-xs bg-white border-gray-200 shadow-2xs rounded-lg"
+            const total =
+              chave === 'alvaras'
+                ? alvaras.length
+                : chave === 'contratos'
+                  ? contratos.length
+                  : chave === 'locacoes'
+                    ? locacoes.length
+                    : chave === 'atas'
+                      ? atas.length
+                      : juridicos.length
+
+            return (
+              <button
+                key={chave}
+                type="button"
+                onClick={() => handleMudarAba(chave)}
+                className={`pb-3 inline-flex items-center gap-2 text-sm transition-all relative shrink-0 ${
+                  ativa
+                    ? 'font-bold text-gray-900 border-b-3 border-emerald-800 -mb-[1px]'
+                    : 'font-medium text-gray-600 hover:text-gray-900 border-b-3 border-transparent'
+                }`}
+              >
+                <span className={ativa ? 'text-emerald-800' : 'text-gray-400'}>{icone}</span>
+                <span>{ROTULOS_ABAS[chave]}</span>
+
+                {/* Badge Circular com contagem real */}
+                <span
+                  className={`inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full text-[11px] font-bold ${
+                    ativa ? 'bg-emerald-800 text-white' : 'bg-gray-100 text-gray-700'
+                  }`}
+                >
+                  {total}
+                </span>
+              </button>
+            )
+          },
+        )}
+      </div>
+
+      {/* 3. FAIXA CONTEXTUAL SOB AS ABAS */}
+      <DocumentosFaixaContextual
+        labelTipo={ROTULOS_ABAS[abaAtiva]}
+        onPersonalizarColunas={() => {
+          toast({
+            title: 'Personalização de colunas',
+            description: `Você pode arrastar e reordenar as colunas da aba ${ROTULOS_ABAS[abaAtiva]} pelo cabeçalho.`,
+          })
+        }}
+      />
+
+      {/* 4. FILTROS EM UMA LINHA */}
+      <DocumentosFiltrosBar
+        filtros={filtros}
+        onFiltrosChange={handleFiltrosChange}
+        onLimparFiltros={handleLimparFiltros}
+        empresasDisponiveis={empresasListaNomes}
+      />
+
+      {/* 5. ÁREA PRINCIPAL: TABELA COM COLUNAS DINÂMICAS + RESUMO LATERAL DA ABA */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+        {/* TABELA PRINCIPAL (9 ou 12 colunas) */}
+        <div className="xl:col-span-9 space-y-4">
+          {dadosFiltrados.length === 0 && !carregando ? (
+            <div className="p-12 text-center bg-white rounded-2xl border border-gray-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+              <div className="h-14 w-14 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center mx-auto mb-3">
+                <FileText className="h-7 w-7" />
+              </div>
+              <h3 className="text-base font-bold text-gray-900">
+                Nenhum documento encontrado em {ROTULOS_ABAS[abaAtiva]}
+              </h3>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto mt-1 mb-5">
+                Não foram encontrados registros para os filtros selecionados ou a aba ainda não
+                possui cadastros.
+              </p>
+              <Button
+                type="button"
+                onClick={() => setModalNovoAberto(true)}
+                className="bg-emerald-700 hover:bg-emerald-800 text-white rounded-full text-xs font-semibold px-5 h-9"
+              >
+                Criar primeiro {ROTULOS_ABAS[abaAtiva].toLowerCase().replace(/s$/, '')}
+              </Button>
+            </div>
+          ) : (
+            <DocumentosTabelaGenerica
+              dados={dadosFiltrados}
+              colunas={CONFIG_COLUNAS_POR_TIPO[abaAtiva]}
+              totalRegistros={dadosFiltrados.length}
+              loading={carregando}
+              paginaAtual={paginaAtual}
+              porPagina={itensPorPagina}
+              onPaginaChange={(p) => setPaginaAtual(p)}
+              onAbrirDetalhe={handleAbrirDetalhe}
+              onEditar={handleEditar}
+              onAnexar={handleAbrirAnexos}
+              onVerHistorico={handleVerHistorico}
+              onVerNoChat={(item) =>
+                toast({
+                  title: 'Chat',
+                  description: `Chat para o documento ${item.numero || item.titulo}`,
+                })
+              }
+              onExcluirSeguro={handleSolicitarExclusao}
+              selectedIds={idsSelecionados}
+              onToggleSelect={handleToggleSelecionarId}
+              onSelectAll={handleToggleSelecionarTodos}
             />
-          </div>
+          )}
+        </div>
 
-          <DocumentosEmpresaPopover
-            empresas={empresas}
-            valorSelecionado={empresaFiltro || ''}
-            onSelect={(emp) => setEmpresaFiltro(emp || null)}
+        {/* PAINEL LATERAL "RESUMO DA ABA" */}
+        <div className="xl:col-span-3">
+          <DocumentosResumoLateral
+            tipoAba={abaAtiva}
+            dados={dadosAbaPura}
+            totalGeral={dadosAbaPura.length}
+            onAbrirDocumento={handleAbrirDetalhe}
+            onExportar={handleExportarAba}
           />
         </div>
       </div>
 
-      {/* Tabela de Dados com DnD de Colunas, Ordenação por Clique, Botão Parecer e Clique na Linha */}
-      <DocumentosDataTable
-        tabelaId={`docs_${abaAtiva}`}
-        colunasPadrao={colunasAtuais}
-        dados={dadosAtuais}
-        keyExtractor={(item) => item.id}
-        emptyMessage={`Nenhum registro encontrado para a aba ${abaAtiva}.`}
-        onLinhaClick={(item) => {
-          setDocDetalheSelecionado(item)
-          setModalDetalheAberto(true)
-        }}
-        acoes={(item) => (
-          <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-            <DocumentoParecerButton documento={item} tipoAba={abaAtiva} promptPadrao="" />
-            <TooltipProvider delayDuration={300}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Excluir documento"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setDocParaExcluir({
-                        id: item.id,
-                        titulo: String(obterTituloExibicao(item)),
-                        colecao: obterColecaoPorAba(abaAtiva),
-                      })
-                    }}
-                    className="h-7 w-7 text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-colors"
-                  >
-                    <Trash2 className="h-4 w-4 shrink-0" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="text-[11px]">
-                  Excluir documento
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        )}
-      />
-
-      {/* Diálogo Amigável de Confirmação de Exclusão */}
-      <AlertDialog
+      {/* 6. MODAL SEGURO DE EXCLUSÃO (Exige digitação do número do documento) */}
+      <Dialog
         open={!!docParaExcluir}
         onOpenChange={(aberto) => {
-          if (!aberto && !excluindoDoc) setDocParaExcluir(null)
+          if (!aberto && !excluindoDoc) {
+            setDocParaExcluir(null)
+            setTextoConfirmacaoExclusao('')
+          }
         }}
       >
-        <AlertDialogContent className="bg-white max-w-md rounded-2xl shadow-xl border border-gray-200">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-base font-bold text-gray-900">
-              Excluir este documento?
-            </AlertDialogTitle>
-            <AlertDialogDescription className="text-xs text-gray-600 pt-1">
-              Você está prestes a excluir o documento{' '}
-              <span className="font-semibold text-gray-900">"{docParaExcluir?.titulo}"</span>. Esta
-              ação não pode ser desfeita e removerá os dados e arquivos anexos vinculados a ele.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel disabled={excluindoDoc} className="text-xs h-8">
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault()
-                handleConfirmarExclusao()
-              }}
+        <DialogContent className="bg-white max-w-md rounded-2xl shadow-xl border border-gray-200">
+          <DialogHeader>
+            <div className="h-10 w-10 rounded-full bg-rose-100 flex items-center justify-center text-rose-700 mb-2">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <DialogTitle className="text-base font-bold text-gray-900">
+              Confirmar exclusão de documento
+            </DialogTitle>
+            <DialogDescription className="text-xs text-gray-600 pt-1 space-y-2">
+              <p>
+                Esta ação é irreversível. Para confirmar que deseja remover permanentemente este
+                documento e seus anexos, digite o número{' '}
+                <strong className="font-mono text-gray-900 bg-gray-100 px-1.5 py-0.5 rounded">
+                  {docParaExcluir?.numeroEsperado}
+                </strong>{' '}
+                abaixo:
+              </p>
+              <Input
+                value={textoConfirmacaoExclusao}
+                onChange={(e) => setTextoConfirmacaoExclusao(e.target.value)}
+                placeholder={`Digite ${docParaExcluir?.numeroEsperado || ''}`}
+                className="mt-3 text-xs h-9 rounded-lg"
+                autoFocus
+              />
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 gap-2">
+            <Button
+              type="button"
+              variant="outline"
               disabled={excluindoDoc}
-              className="text-xs h-8 bg-rose-600 hover:bg-rose-700 text-white font-medium"
+              onClick={() => {
+                setDocParaExcluir(null)
+                setTextoConfirmacaoExclusao('')
+              }}
+              className="text-xs h-9 rounded-full"
             >
-              {excluindoDoc ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-              Sim, excluir documento
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                excluindoDoc || textoConfirmacaoExclusao.trim() !== docParaExcluir?.numeroEsperado
+              }
+              onClick={handleConfirmarExclusao}
+              className="text-xs h-9 bg-rose-600 hover:bg-rose-700 text-white rounded-full font-semibold gap-1.5"
+            >
+              {excluindoDoc ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              Excluir definitivamente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Rodapé Informativo */}
-      <div className="text-[11px] text-gray-400 flex items-center justify-between pt-1">
-        <span>
-          Exibindo {dadosAtuais.length} registro(s){' '}
-          {empresaFiltro ? `• Filtrado por "${empresaFiltro}"` : ''}
-        </span>
-        <span className="hidden sm:inline">
-          Dica: Arraste o cabeçalho das colunas para reorganizar a ordem de exibição.
-        </span>
-      </div>
-
-      {/* Modal de Detalhe Completo do Documento (d1) */}
-      {modalDetalheAberto && docDetalheSelecionado && (
+      {/* 7. MODAL DE DETALHE COMPLETO / EDIÇÃO */}
+      {modalDetalheModalAberto && docDetalheModal && (
         <DocumentoDetalheModal
-          aberto={modalDetalheAberto}
-          onOpenChange={setModalDetalheAberto}
+          aberto={modalDetalheModalAberto}
+          onOpenChange={setModalDetalheModalAberto}
           tipoAba={abaAtiva}
-          documento={docDetalheSelecionado}
+          documento={docDetalheModal}
           empresas={empresas}
           onAtualizado={() => {
             carregarDados()
           }}
-          onAbrirAnexos={(doc) => {
-            const colecaoNome =
-              abaAtiva === 'alvaras'
-                ? 'alvaras'
-                : abaAtiva === 'atas'
-                  ? 'atas'
-                  : abaAtiva === 'juridicos'
-                    ? 'processos_juridicos'
-                    : 'contratos'
-            const tit = doc.titulo || doc.numero || doc.numero_processo || 'Documento'
-            abrirModalAnexo(doc, colecaoNome, tit)
-          }}
+          onAbrirAnexos={(doc) => handleAbrirAnexos(doc)}
         />
       )}
 
-      {/* Modal de Anexo: Upload de PDF / DOCX / XLSX, Visualizar e Baixar para todas as abas */}
+      {/* 8. MODAL DE GESTÃO DE ANEXOS */}
       {modalAnexoAberto && docAnexoSelecionado && (
         <DocumentoAnexoModal
           aberto={modalAnexoAberto}
@@ -1131,36 +849,23 @@ export function DocumentosPage() {
           recordId={docAnexoSelecionado.id}
           tituloDocumento={docAnexoSelecionado.titulo}
           anexoAtual={docAnexoSelecionado.anexoNome}
-          onAnexoAtualizado={(novaLista) => {
+          onAnexoAtualizado={() => {
             carregarDados()
-            // Se o documento aberto no modal de detalhe for o mesmo, atualiza-o imediatamente
-            if (docDetalheSelecionado && docDetalheSelecionado.id === docAnexoSelecionado.id) {
-              pb.collection(docAnexoSelecionado.colecao)
-                .getOne(docAnexoSelecionado.id)
-                .then((atualizado) => setDocDetalheSelecionado(atualizado))
-                .catch(() => {
-                  if (Array.isArray(novaLista)) {
-                    setDocDetalheSelecionado((prev: any) =>
-                      prev ? { ...prev, anexo: novaLista } : prev,
-                    )
-                  }
-                })
-            }
           }}
         />
       )}
 
-      {/* Modal Novo Documento */}
+      {/* 9. MODAL NOVO DOCUMENTO */}
       <NovoDocumentoModal
         aberto={modalNovoAberto}
         onOpenChange={setModalNovoAberto}
         tipoAba={abaAtiva}
         empresas={empresas}
-        empresaPreSelecionada={empresaFiltro || undefined}
+        empresaPreSelecionada={filtros.empresa || undefined}
         onCriadoSucesso={carregarDados}
       />
 
-      {/* Modal Importação de Jurídicos XLSX */}
+      {/* 10. MODAIS JURÍDICOS (IMPORTAÇÃO, AUDIÊNCIAS E HISTÓRICO) */}
       <JuridicosImportModal
         aberto={modalImportJuridicosAberto}
         onOpenChange={setModalImportJuridicosAberto}
@@ -1180,6 +885,7 @@ export function DocumentosPage() {
         numeroProcesso={
           processoHistoricoSelecionado?.numero_cnj ||
           processoHistoricoSelecionado?.numero_processo ||
+          processoHistoricoSelecionado?.numero ||
           ''
         }
         tituloProcesso={processoHistoricoSelecionado?.titulo}

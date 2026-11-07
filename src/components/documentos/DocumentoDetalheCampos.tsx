@@ -251,7 +251,13 @@ export function DocumentoDetalheCampos({
                 className="h-8 text-xs mt-1"
               />
             ) : (
-              <p className="font-semibold text-gray-900 mt-1">{form.numero || '—'}</p>
+              <p className="font-semibold text-gray-900 mt-1">
+                {form.numero || (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
+              </p>
             )}
           </div>
           <div>
@@ -263,7 +269,13 @@ export function DocumentoDetalheCampos({
                 className="h-8 text-xs mt-1"
               />
             ) : (
-              <p className="font-medium text-gray-800 mt-1">{form.tipo || '—'}</p>
+              <p className="font-medium text-gray-800 mt-1">
+                {form.tipo || (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
+              </p>
             )}
           </div>
           <div>
@@ -279,7 +291,13 @@ export function DocumentoDetalheCampos({
                 className="h-8 text-xs mt-1"
               />
             ) : (
-              <p className="text-gray-800 mt-1">{form.orgao_emissor || '—'}</p>
+              <p className="text-gray-800 mt-1">
+                {form.orgao_emissor || (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
+              </p>
             )}
           </div>
           <div>
@@ -291,7 +309,13 @@ export function DocumentoDetalheCampos({
                 className="h-8 text-xs mt-1"
               />
             ) : (
-              <p className="text-gray-800 mt-1">{form.municipio || '—'}</p>
+              <p className="text-gray-800 mt-1">
+                {form.municipio || (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
+              </p>
             )}
           </div>
           <div>
@@ -305,7 +329,13 @@ export function DocumentoDetalheCampos({
               />
             ) : (
               <p className="font-medium text-gray-800 mt-1">
-                {form.validade ? new Date(form.validade).toLocaleDateString('pt-BR') : '—'}
+                {form.validade ? (
+                  new Date(form.validade).toLocaleDateString('pt-BR')
+                ) : (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                    Pendente
+                  </span>
+                )}
               </p>
             )}
           </div>
@@ -319,7 +349,13 @@ export function DocumentoDetalheCampos({
                 className="text-xs mt-1"
               />
             ) : (
-              <p className="text-gray-700 mt-1 whitespace-pre-wrap">{form.observacoes || '—'}</p>
+              <p className="text-gray-700 mt-1 whitespace-pre-wrap">
+                {form.observacoes || (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
+              </p>
             )}
           </div>
         </div>
@@ -336,7 +372,13 @@ export function DocumentoDetalheCampos({
                 className="h-8 text-xs mt-1"
               />
             ) : (
-              <p className="font-semibold text-gray-900 mt-1">{form.titulo || '—'}</p>
+              <p className="font-semibold text-gray-900 mt-1">
+                {form.titulo || (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
+              </p>
             )}
           </div>
           <div>
@@ -366,7 +408,13 @@ export function DocumentoDetalheCampos({
               />
             ) : (
               <p className="font-medium text-gray-800 mt-1">
-                {form.data ? new Date(form.data).toLocaleDateString('pt-BR') : '—'}
+                {form.data ? (
+                  new Date(form.data).toLocaleDateString('pt-BR')
+                ) : (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
               </p>
             )}
           </div>
@@ -379,7 +427,13 @@ export function DocumentoDetalheCampos({
                 className="h-8 text-xs mt-1"
               />
             ) : (
-              <p className="text-gray-800 mt-1">{form.mesa_diretora || '—'}</p>
+              <p className="text-gray-800 mt-1">
+                {form.mesa_diretora || (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
+              </p>
             )}
           </div>
           <div className="sm:col-span-2 lg:col-span-3">
@@ -392,22 +446,34 @@ export function DocumentoDetalheCampos({
                 className="text-xs mt-1"
               />
             ) : (
-              <p className="text-gray-700 mt-1 whitespace-pre-wrap">{form.pauta || '—'}</p>
+              <p className="text-gray-700 mt-1 whitespace-pre-wrap">
+                {form.pauta || (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
+              </p>
             )}
           </div>
           <div className="sm:col-span-2 lg:col-span-3">
             <label className="text-gray-500 font-medium">Deliberações</label>
             {editando ? (
               <Textarea
-                rows={2}
+                rows={3}
                 value={form.deliberacoes || ''}
                 onChange={(e) => setCampo('deliberacoes', e.target.value)}
                 className="text-xs mt-1"
               />
             ) : (
-              <p className="text-gray-700 mt-1 whitespace-pre-wrap">{form.deliberacoes || '—'}</p>
+              <p className="text-gray-700 mt-1 whitespace-pre-wrap">
+                {form.deliberacoes || (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
+              </p>
             )}
-          </div>
+          </div>{' '}
         </div>
       )}
 
@@ -422,11 +488,17 @@ export function DocumentoDetalheCampos({
                 className="h-8 text-xs mt-1"
               />
             ) : (
-              <p className="font-semibold text-gray-900 mt-1">{form.titulo || '—'}</p>
+              <p className="font-semibold text-gray-900 mt-1">
+                {form.titulo || (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
+              </p>
             )}
           </div>
           <div>
-            <label className="text-gray-500 font-medium">Contraparte / Locador</label>
+            <label className="text-gray-500 font-medium">Contraparte</label>
             {editando ? (
               <Input
                 value={form.parte || ''}
@@ -434,9 +506,15 @@ export function DocumentoDetalheCampos({
                 className="h-8 text-xs mt-1"
               />
             ) : (
-              <p className="font-semibold text-gray-800 mt-1">{form.parte || '—'}</p>
+              <p className="font-semibold text-gray-800 mt-1">
+                {form.parte || (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
+              </p>
             )}
-          </div>
+          </div>{' '}
           <div>
             <label className="text-gray-500 font-medium">Empresa</label>
             {renderEmpresaSeletor()}
@@ -453,11 +531,15 @@ export function DocumentoDetalheCampos({
               />
             ) : (
               <p className="font-semibold text-emerald-800 mt-1">
-                {form.valor_mensal !== undefined && form.valor_mensal !== null
-                  ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
-                      form.valor_mensal,
-                    )
-                  : '—'}
+                {form.valor_mensal !== undefined && form.valor_mensal !== null ? (
+                  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                    form.valor_mensal,
+                  )
+                ) : (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
               </p>
             )}
           </div>
@@ -481,8 +563,17 @@ export function DocumentoDetalheCampos({
               </div>
             ) : (
               <p className="text-gray-800 mt-1">
-                {form.inicio ? new Date(form.inicio).toLocaleDateString('pt-BR') : '—'} →{' '}
-                {form.fim ? new Date(form.fim).toLocaleDateString('pt-BR') : '—'}
+                {form.inicio ? (
+                  new Date(form.inicio).toLocaleDateString('pt-BR')
+                ) : (
+                  <span className="text-gray-400">Não inf.</span>
+                )}{' '}
+                →{' '}
+                {form.fim ? (
+                  new Date(form.fim).toLocaleDateString('pt-BR')
+                ) : (
+                  <span className="text-gray-400">Indeterminado</span>
+                )}
               </p>
             )}
           </div>
@@ -507,7 +598,13 @@ export function DocumentoDetalheCampos({
                 className="h-8 text-xs mt-1"
               />
             ) : (
-              <p className="text-gray-800 mt-1">{form.garantia || '—'}</p>
+              <p className="text-gray-800 mt-1">
+                {form.garantia || (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
+              </p>
             )}
           </div>
           <div>
@@ -536,7 +633,13 @@ export function DocumentoDetalheCampos({
                 className="text-xs mt-1"
               />
             ) : (
-              <p className="text-gray-700 mt-1 whitespace-pre-wrap">{form.objeto || '—'}</p>
+              <p className="text-gray-700 mt-1 whitespace-pre-wrap">
+                {form.objeto || (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                    Não aplicável
+                  </span>
+                )}
+              </p>
             )}
           </div>
         </div>
@@ -554,7 +657,13 @@ export function DocumentoDetalheCampos({
                   className="h-8 text-xs mt-1"
                 />
               ) : (
-                <p className="font-semibold text-gray-900 mt-1">{form.titulo || '—'}</p>
+                <p className="font-semibold text-gray-900 mt-1">
+                  {form.titulo || (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                      Não aplicável
+                    </span>
+                  )}
+                </p>
               )}
             </div>
             <div>
@@ -566,7 +675,13 @@ export function DocumentoDetalheCampos({
                   className="h-8 text-xs mt-1 font-mono"
                 />
               ) : (
-                <p className="font-mono text-gray-800 mt-1">{form.numero_processo || '—'}</p>
+                <p className="font-mono text-gray-800 mt-1">
+                  {form.numero_processo || (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                      Não aplicável
+                    </span>
+                  )}
+                </p>
               )}
             </div>
             <div>
@@ -578,7 +693,13 @@ export function DocumentoDetalheCampos({
                   className="h-8 text-xs mt-1 font-mono"
                 />
               ) : (
-                <p className="font-mono text-gray-800 mt-1">{form.numero_cnj || '—'}</p>
+                <p className="font-mono text-gray-800 mt-1">
+                  {form.numero_cnj || (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                      Não aplicável
+                    </span>
+                  )}
+                </p>
               )}
             </div>
           </div>
@@ -600,7 +721,11 @@ export function DocumentoDetalheCampos({
                 />
               ) : (
                 <p className="font-medium text-gray-800 mt-1">
-                  {form.contrario_principal || form.reu || form.autor || '—'}
+                  {form.contrario_principal || form.reu || form.autor || (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                      Não aplicável
+                    </span>
+                  )}
                 </p>
               )}
             </div>
@@ -617,7 +742,11 @@ export function DocumentoDetalheCampos({
                 />
               ) : (
                 <p className="text-gray-800 mt-1">
-                  {form.orgao || form.orgao_tribunal || form.vara_comarca || '—'}
+                  {form.orgao || form.orgao_tribunal || form.vara_comarca || (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                      Não aplicável
+                    </span>
+                  )}
                 </p>
               )}
             </div>
@@ -634,7 +763,11 @@ export function DocumentoDetalheCampos({
                 />
               ) : (
                 <p className="text-gray-800 mt-1">
-                  {form.responsavel_principal || form.advogado || '—'}
+                  {form.responsavel_principal || form.advogado || (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                      Não aplicável
+                    </span>
+                  )}
                 </p>
               )}
             </div>
@@ -650,7 +783,13 @@ export function DocumentoDetalheCampos({
                   className="h-8 text-xs mt-1"
                 />
               ) : (
-                <p className="text-gray-800 mt-1">{form.natureza || '—'}</p>
+                <p className="text-gray-800 mt-1">
+                  {form.natureza || (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                      Não aplicável
+                    </span>
+                  )}
+                </p>
               )}
             </div>
             <div>
@@ -697,7 +836,13 @@ export function DocumentoDetalheCampos({
                   className="h-8 text-xs mt-1"
                 />
               ) : (
-                <p className="text-gray-800 mt-1">{form.fase_instancia || '—'}</p>
+                <p className="text-gray-800 mt-1">
+                  {form.fase_instancia || (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                      Não aplicável
+                    </span>
+                  )}
+                </p>
               )}
             </div>
           </div>
@@ -720,12 +865,14 @@ export function DocumentoDetalheCampos({
                   />
                 ) : (
                   <p className="font-semibold text-gray-800 mt-0.5">
-                    {(form.valor_base ?? form.valor_causa)
-                      ? new Intl.NumberFormat('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        }).format(form.valor_base ?? form.valor_causa)
-                      : '—'}
+                    {(form.valor_base ?? form.valor_causa) ? (
+                      new Intl.NumberFormat('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      }).format(form.valor_base ?? form.valor_causa)
+                    ) : (
+                      <span className="text-[11px] font-normal text-gray-400">R$ 0,00</span>
+                    )}
                   </p>
                 )}
               </div>
@@ -741,12 +888,14 @@ export function DocumentoDetalheCampos({
                   />
                 ) : (
                   <p className="font-semibold text-gray-800 mt-0.5">
-                    {form.valor_corrigido
-                      ? new Intl.NumberFormat('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        }).format(form.valor_corrigido)
-                      : '—'}
+                    {form.valor_corrigido ? (
+                      new Intl.NumberFormat('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      }).format(form.valor_corrigido)
+                    ) : (
+                      <span className="text-[11px] font-normal text-gray-400">R$ 0,00</span>
+                    )}
                   </p>
                 )}
               </div>
@@ -761,57 +910,61 @@ export function DocumentoDetalheCampos({
                     className="h-7 text-xs mt-0.5"
                   />
                 ) : (
-                  <p className="text-gray-800 mt-0.5">
-                    {form.juros
-                      ? new Intl.NumberFormat('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        }).format(form.juros)
-                      : '—'}
+                  <p className="font-semibold text-gray-800 mt-0.5">
+                    {form.juros ? (
+                      new Intl.NumberFormat('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      }).format(form.juros)
+                    ) : (
+                      <span className="text-[11px] font-normal text-gray-400">R$ 0,00</span>
+                    )}
                   </p>
                 )}
               </div>
               <div>
-                <label className="text-gray-500 text-[11px]">Multa</label>
+                <label className="text-gray-500 text-[11px]">Honorários</label>
                 {editando ? (
                   <Input
                     type="number"
                     step="0.01"
-                    value={form.multa ?? ''}
-                    onChange={(e) => setCampo('multa', e.target.value)}
+                    value={form.honorarios ?? ''}
+                    onChange={(e) => setCampo('honorarios', e.target.value)}
                     className="h-7 text-xs mt-0.5"
                   />
                 ) : (
-                  <p className="text-gray-800 mt-0.5">
-                    {form.multa
-                      ? new Intl.NumberFormat('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        }).format(form.multa)
-                      : '—'}
+                  <p className="font-semibold text-gray-800 mt-0.5">
+                    {form.honorarios ? (
+                      new Intl.NumberFormat('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      }).format(form.honorarios)
+                    ) : (
+                      <span className="text-[11px] font-normal text-gray-400">R$ 0,00</span>
+                    )}
                   </p>
                 )}
               </div>
               <div>
-                <label className="text-gray-500 text-[11px] font-bold text-emerald-800">
-                  Valor Atualizado
-                </label>
+                <label className="text-gray-500 text-[11px]">Depósito Recursal</label>
                 {editando ? (
                   <Input
                     type="number"
                     step="0.01"
-                    value={form.valor_atualizado ?? form.valor_causa ?? ''}
-                    onChange={(e) => setCampo('valor_atualizado', e.target.value)}
-                    className="h-7 text-xs mt-0.5 font-bold"
+                    value={form.deposito_recursal ?? ''}
+                    onChange={(e) => setCampo('deposito_recursal', e.target.value)}
+                    className="h-7 text-xs mt-0.5"
                   />
                 ) : (
-                  <p className="font-bold text-emerald-900 mt-0.5">
-                    {(form.valor_atualizado ?? form.valor_causa)
-                      ? new Intl.NumberFormat('pt-BR', {
-                          style: 'currency',
-                          currency: 'BRL',
-                        }).format(form.valor_atualizado ?? form.valor_causa)
-                      : '—'}
+                  <p className="font-semibold text-gray-800 mt-0.5">
+                    {form.deposito_recursal ? (
+                      new Intl.NumberFormat('pt-BR', {
+                        style: 'currency',
+                        currency: 'BRL',
+                      }).format(form.deposito_recursal)
+                    ) : (
+                      <span className="text-[11px] font-normal text-gray-400">R$ 0,00</span>
+                    )}
                   </p>
                 )}
               </div>
