@@ -67,7 +67,7 @@ export interface DetalheLocacaoProps {
 export function DetalheLocacaoView({
   documento,
   onVoltar,
-  onEditar: _onEditar,
+  onEditar,
   onAtualizar,
   onVisualizarAnexo: _onVisualizarAnexo,
   onAnexarArquivo,
@@ -105,9 +105,9 @@ export function DetalheLocacaoView({
         rotulo: 'Status',
         tipo: 'select',
         opcoes: [
-          { rotulo: 'Ativo', valor: 'ativo' },
-          { rotulo: 'Em renovação', valor: 'renovacao' },
-          { rotulo: 'Encerrado', valor: 'encerrado' },
+          { label: 'Ativo', value: 'ativo' },
+          { label: 'Em renovação', value: 'renovacao' },
+          { label: 'Encerrado', value: 'encerrado' },
         ],
       },
     ])
@@ -476,10 +476,9 @@ export function DetalheLocacaoView({
         </Button>
 
         <DocumentoParecerButton
-          colecao="locacoes"
-          documentoId={docAtual.id}
-          dadosDocumento={docAtual}
-          tituloDocumento={titulo}
+          tipoAba="locacoes"
+          documento={docAtual}
+          promptPadrao="Analise este contrato de locação considerando índices de reajuste (IGP-M/IPCA), valor de mercado por metro quadrado, garantias locatícias, direito de renovação e riscos de despejo ou rescisão antecipada."
         />
 
         <Button

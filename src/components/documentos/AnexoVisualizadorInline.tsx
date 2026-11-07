@@ -32,39 +32,79 @@ import { toast } from '@/hooks/use-toast'
 interface AnexoVisualizadorInlineProps {
   aberto: boolean
   onOpenChange: (aberto: boolean) => void
-  /** Registro do documento (com .id, .anexo, .collectionId ou .collectionName) */
-  documento: any
+  /** Registro do documento (com .id, .anexo, .collectionId ou .collectionName) — opcional se passado colecao/registroId */
+  documento?: any
+  /** Nome do arquivo específico para abrir/visualizar diretamente */
+  nomeArquivo?: string | null
+  /** Nome da coleção PocketBase (quando não passado pelo documento) */
+  colecao?: string
+  /** ID do registro (quando não passado pelo documento) */
+  registroId?: string
   /** Nome do campo de arquivo no PocketBase (default 'anexo') */
   campoAnexo?: string
   /** Chamado após novo upload bem-sucedido */
   onAtualizado?: (registro: any) => void
   /** Título do diálogo (nome do documento) */
   titulo?: string
+  /** Alias aceito para titulo */
+  tituloDoc?: string
 }
 
 export function AnexoVisualizadorInline({
   aberto,
   onOpenChange,
   documento,
+  nomeArquivo,
+  colecao,
+  registroId,
   campoAnexo = 'anexo',
   onAtualizado,
   titulo,
+  tituloDoc,
 }: AnexoVisualizadorInlineProps) {
+  const docEfetivo = useMemo(() => {
+    if (documento) return documento
+    if (registroId) {
+      return {
+        id: registroId,
+        collectionName: colecao,
+        collectionId: colecao,
+        anexo: nomeArquivo ? [nomeArquivo] : [],
+      }
+    }
+    return null
+  }, [documento, registroId, colecao, nomeArquivo])
+
   const [enviando, setEnviando] = useState(false)
   const [indiceAtivo, setIndiceAtivo] = useState(0)
   const [selecionando, setSelecionando] = useState(false)
 
   const anexos = useMemo(() => {
-    if (!documento) return []
-    return extrairAnexos(documento[campoAnexo])
-  }, [documento, campoAnexo])
+    if (nomeArquivo) {
+      const extraidos = docEfetivo ? extrairAnexos(docEfetivo[campoAnexo]) : []
+      if (!extraidos.includes(nomeArquivo)) {
+        return [nomeArquivo, ...extraidos]
+      }
+      return extraidos
+    }
+    if (!docEfetivo) return []
+    return extrairAnexos(docEfetivo[campoAnexo])
+  }, [docEfetivo, campoAnexo, nomeArquivo])
+
+  // Ajusta o índice ativo quando o nomeArquivo mudar
+  React.useEffect(() => {
+    if (nomeArquivo && anexos.length > 0) {
+      const idx = anexos.indexOf(nomeArquivo)
+      if (idx >= 0) setIndiceAtivo(idx)
+    }
+  }, [nomeArquivo, anexos])
 
   const baseFileUrl = useMemo(() => {
-    if (!documento) return ''
-    const collectionId = documento.collectionId || documento.collectionName || ''
-    if (!collectionId || !documento.id) return ''
-    return `${pb.baseUrl}/api/files/${collectionId}/${documento.id}`
-  }, [documento])
+    const col = colecao || docEfetivo?.collectionId || docEfetivo?.collectionName || ''
+    const rid = registroId || docEfetivo?.id || ''
+    if (!col || !rid) return ''
+    return `${pb.baseUrl}/api/files/${col}/${rid}`
+  }, [colecao, registroId, docEfetivo])
 
   const anexoAtivo = anexos[indiceAtivo] || null
   const urlAtiva = anexoAtivo ? `${baseFileUrl}/${anexoAtivo}` : ''
@@ -83,15 +123,15 @@ export function AnexoVisualizadorInline({
   }
 
   const anexarArquivos = async (arquivos: FileList | null) => {
-    if (!arquivos || arquivos.length === 0 || !documento?.id) return
+    const alvo = docEfetivo
+    if (!arquivos || arquivos.length === 0 || !alvo?.id) return
     setEnviando(true)
     try {
-      const atuais = extrairAnexos(documento[campoAnexo])
+      const col = colecao || alvo.collectionName || alvo.collectionId || 'documentos'
+      const atuais = extrairAnexos(alvo[campoAnexo])
       const form = new FormData()
       Array.from(arquivos).forEach((f) => form.append(campoAnexo, f, f.name))
-      const atualizado = await pb
-        .collection(documento.collectionName || 'documentos')
-        .update(documento.id, form)
+      const atualizado = await pb.collection(col).update(alvo.id, form)
       // PocketBase substitui o campo quando não reenviamos os antigos — garantimos
       // manter os existentes reenviando os nomes junto dos novos arquivos.
       if (atuais.length > 0) {
@@ -101,9 +141,7 @@ export function AnexoVisualizadorInline({
         })
         Array.from(arquivos).forEach((f) => formComplet.append(campoAnexo, f, f.name))
         try {
-          const final = await pb
-            .collection(documento.collectionName || 'documentos')
-            .update(documento.id, formComplet)
+          const final = await pb.collection(col).update(alvo.id, formComplet)
           onAtualizado?.(final)
         } catch {
           onAtualizado?.(atualizado)
@@ -124,7 +162,9 @@ export function AnexoVisualizadorInline({
     }
   }
 
-  if (!documento) return null
+  if (!docEfetivo) return null
+
+  const tituloExibido = titulo || tituloDoc || 'Anexos do documento'
 
   return (
     <Dialog open={aberto} onOpenChange={(v) => onOpenChange(v)}>
@@ -133,7 +173,7 @@ export function AnexoVisualizadorInline({
           <div className="flex items-center justify-between gap-3 pr-8">
             <div className="min-w-0">
               <DialogTitle className="text-sm font-bold text-gray-900 truncate">
-                {titulo || 'Anexos do documento'}
+                {tituloExibido}
               </DialogTitle>
               <DialogDescription className="text-[11px] text-gray-500">
                 {anexos.length > 0

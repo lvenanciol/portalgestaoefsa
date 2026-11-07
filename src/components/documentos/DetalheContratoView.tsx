@@ -62,7 +62,7 @@ export interface DetalheContratoProps {
 export function DetalheContratoView({
   documento,
   onVoltar,
-  onEditar: _onEditar,
+  onEditar,
   onAtualizar,
   onVisualizarAnexo: _onVisualizarAnexo,
   onAnexarArquivo,
@@ -94,8 +94,8 @@ export function DetalheContratoView({
         rotulo: 'Modelo de Contrato',
         tipo: 'select',
         opcoes: [
-          { rotulo: 'Reajuste periódico (mensal)', valor: 'reajuste_periodico' },
-          { rotulo: 'Aquisição única (pagamento único)', valor: 'unico_aquisicao' },
+          { label: 'Reajuste periódico (mensal)', value: 'reajuste_periodico' },
+          { label: 'Aquisição única (pagamento único)', value: 'unico_aquisicao' },
         ],
       },
       { campo: 'valor_mensal', rotulo: 'Valor Mensal (R$)', tipo: 'moeda' },
@@ -110,9 +110,9 @@ export function DetalheContratoView({
         rotulo: 'Status',
         tipo: 'select',
         opcoes: [
-          { rotulo: 'Ativo', valor: 'ativo' },
-          { rotulo: 'Rascunho', valor: 'rascunho' },
-          { rotulo: 'Encerrado', valor: 'encerrado' },
+          { label: 'Ativo', value: 'ativo' },
+          { label: 'Rascunho', value: 'rascunho' },
+          { label: 'Encerrado', value: 'encerrado' },
         ],
       },
     ])
@@ -553,7 +553,11 @@ export function DetalheContratoView({
 
       {/* 3. BARRA DE AÇÕES PRINCIPAIS */}
       <div className="flex items-center justify-end gap-3 flex-wrap">
-        <DocumentoParecerButton tipoAba="contratos" documento={docAtual} />
+        <DocumentoParecerButton
+          tipoAba="contratos"
+          documento={docAtual}
+          promptPadrao="Analise este contrato sob a ótica de equilíbrio econômico-financeiro, cláusulas de rescisão, penalidades, reajustes, vigência e conformidade com as diretrizes do comitê executivo."
+        />
 
         <Button
           type="button"

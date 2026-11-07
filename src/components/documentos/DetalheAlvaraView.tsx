@@ -356,7 +356,11 @@ export function DetalheAlvaraView({
 
       {/* 3. AÇÕES PRINCIPAIS CONTEXTUAIS */}
       <div className="flex items-center justify-end gap-3 flex-wrap">
-        <DocumentoParecerButton tipoAba="alvaras" documento={docAtual} />
+        <DocumentoParecerButton
+          tipoAba="alvaras"
+          documento={docAtual}
+          promptPadrao="Analise este alvará/licença sob a ótica de conformidade regulatória, condicionantes ambientais ou sanitárias, prazos de validade e riscos de interdição ou penalidades para a operação."
+        />
 
         <Button
           onClick={() => {

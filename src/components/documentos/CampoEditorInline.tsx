@@ -42,16 +42,20 @@ export type TipoCampoEditor =
 
 export interface DefinicaoCampo {
   /** Nome do campo no PocketBase */
-  campo: string
+  campo?: string
+  /** Alias para campo */
+  chave?: string
   /** Rótulo exibido no diálogo */
   rotulo: string
   tipo?: TipoCampoEditor
-  /** Opções para tipo select (value/label) */
-  opcoes?: Array<{ value: string; label: string }>
+  /** Opções para tipo select (value/label ou valor/rotulo) */
+  opcoes?: Array<{ value?: string; label?: string; valor?: string; rotulo?: string }>
   /** Placeholder/instrução curta */
   placeholder?: string
   /** Descrição de ajuda exibida sob o rótulo */
   descricao?: string
+  /** Campo obrigatório */
+  obrigatorio?: boolean
 }
 
 interface CampoEditorInlineProps {
@@ -83,10 +87,12 @@ export function CampoEditorInline({
     if (aberto && documento) {
       const iniciais: Record<string, any> = {}
       campos.forEach((c) => {
-        const bruto = documento[c.campo]
-        if (c.tipo === 'boolean') iniciais[c.campo] = Boolean(bruto)
-        else if (c.tipo === 'numero' || c.tipo === 'moeda') iniciais[c.campo] = bruto ?? ''
-        else iniciais[c.campo] = bruto ?? ''
+        const chave = c.campo || c.chave || ''
+        if (!chave) return
+        const bruto = documento[chave]
+        if (c.tipo === 'boolean') iniciais[chave] = Boolean(bruto)
+        else if (c.tipo === 'numero' || c.tipo === 'moeda') iniciais[chave] = bruto ?? ''
+        else iniciais[chave] = bruto ?? ''
       })
       setValores(iniciais)
     }
@@ -98,7 +104,9 @@ export function CampoEditorInline({
     try {
       const payload: Record<string, any> = {}
       campos.forEach((c) => {
-        let v = valores[c.campo]
+        const chave = c.campo || c.chave || ''
+        if (!chave) return
+        let v = valores[chave]
         if (c.tipo === 'numero' || c.tipo === 'moeda') {
           v = v === '' || v === null || v === undefined ? null : Number(v)
           if (Number.isNaN(v)) v = null
@@ -110,7 +118,7 @@ export function CampoEditorInline({
         } else if (c.tipo === 'boolean') {
           v = Boolean(v)
         }
-        payload[c.campo] = v
+        payload[chave] = v
       })
 
       const atualizado = await pb.collection(colecao).update(documento.id, payload)
@@ -146,95 +154,102 @@ export function CampoEditorInline({
         </DialogHeader>
 
         <div className="space-y-4 py-1">
-          {campos.map((c) => (
-            <div key={c.campo} className="space-y-1.5">
-              <Label className="text-[11px] font-bold uppercase tracking-[0.04em] text-gray-600">
-                {c.rotulo}
-              </Label>
-              {c.descricao && <p className="text-[11px] text-gray-500">{c.descricao}</p>}
+          {campos.map((c, idx) => {
+            const chave = c.campo || c.chave || `campo_${idx}`
+            return (
+              <div key={chave} className="space-y-1.5">
+                <Label className="text-[11px] font-bold uppercase tracking-[0.04em] text-gray-600">
+                  {c.rotulo}
+                </Label>
+                {c.descricao && <p className="text-[11px] text-gray-500">{c.descricao}</p>}
 
-              {(!c.tipo || c.tipo === 'texto') && (
-                <Input
-                  value={valores[c.campo] ?? ''}
-                  onChange={(e) => setValores((p) => ({ ...p, [c.campo]: e.target.value }))}
-                  placeholder={c.placeholder}
-                  className="rounded-[10px] h-9 text-xs"
-                />
-              )}
+                {(!c.tipo || c.tipo === 'texto') && (
+                  <Input
+                    value={valores[chave] ?? ''}
+                    onChange={(e) => setValores((p) => ({ ...p, [chave]: e.target.value }))}
+                    placeholder={c.placeholder}
+                    className="rounded-[10px] h-9 text-xs"
+                  />
+                )}
 
-              {c.tipo === 'textarea' && (
-                <Textarea
-                  value={valores[c.campo] ?? ''}
-                  onChange={(e) => setValores((p) => ({ ...p, [c.campo]: e.target.value }))}
-                  placeholder={c.placeholder}
-                  className="rounded-[10px] min-h-[90px] text-xs"
-                />
-              )}
+                {c.tipo === 'textarea' && (
+                  <Textarea
+                    value={valores[chave] ?? ''}
+                    onChange={(e) => setValores((p) => ({ ...p, [chave]: e.target.value }))}
+                    placeholder={c.placeholder}
+                    className="rounded-[10px] min-h-[90px] text-xs"
+                  />
+                )}
 
-              {c.tipo === 'numero' && (
-                <Input
-                  type="number"
-                  value={valores[c.campo] ?? ''}
-                  onChange={(e) => setValores((p) => ({ ...p, [c.campo]: e.target.value }))}
-                  placeholder={c.placeholder}
-                  className="rounded-[10px] h-9 text-xs"
-                />
-              )}
-
-              {c.tipo === 'moeda' && (
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-medium">
-                    R$
-                  </span>
+                {c.tipo === 'numero' && (
                   <Input
                     type="number"
-                    step="0.01"
-                    value={valores[c.campo] ?? ''}
-                    onChange={(e) => setValores((p) => ({ ...p, [c.campo]: e.target.value }))}
-                    placeholder={c.placeholder || '0,00'}
-                    className="rounded-[10px] h-9 text-xs pl-9"
+                    value={valores[chave] ?? ''}
+                    onChange={(e) => setValores((p) => ({ ...p, [chave]: e.target.value }))}
+                    placeholder={c.placeholder}
+                    className="rounded-[10px] h-9 text-xs"
                   />
-                </div>
-              )}
+                )}
 
-              {c.tipo === 'data' && (
-                <Input
-                  type="date"
-                  value={String(valores[c.campo] ?? '').slice(0, 10)}
-                  onChange={(e) => setValores((p) => ({ ...p, [c.campo]: e.target.value }))}
-                  className="rounded-[10px] h-9 text-xs"
-                />
-              )}
+                {c.tipo === 'moeda' && (
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-500 font-medium">
+                      R$
+                    </span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={valores[chave] ?? ''}
+                      onChange={(e) => setValores((p) => ({ ...p, [chave]: e.target.value }))}
+                      placeholder={c.placeholder || '0,00'}
+                      className="rounded-[10px] h-9 text-xs pl-9"
+                    />
+                  </div>
+                )}
 
-              {c.tipo === 'select' && (
-                <Select
-                  value={valores[c.campo] ?? undefined}
-                  onValueChange={(v) => setValores((p) => ({ ...p, [c.campo]: v }))}
-                >
-                  <SelectTrigger className="rounded-[10px] h-9 text-xs w-full">
-                    <SelectValue placeholder="Selecione…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(c.opcoes || []).map((op) => (
-                      <SelectItem key={op.value} value={op.value} className="text-xs">
-                        {op.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-
-              {c.tipo === 'boolean' && (
-                <div className="flex items-center gap-2 pt-1">
-                  <Switch
-                    checked={Boolean(valores[c.campo])}
-                    onCheckedChange={(v) => setValores((p) => ({ ...p, [c.campo]: v }))}
+                {c.tipo === 'data' && (
+                  <Input
+                    type="date"
+                    value={String(valores[chave] ?? '').slice(0, 10)}
+                    onChange={(e) => setValores((p) => ({ ...p, [chave]: e.target.value }))}
+                    className="rounded-[10px] h-9 text-xs"
                   />
-                  <span className="text-xs text-gray-700">{valores[c.campo] ? 'Sim' : 'Não'}</span>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+
+                {c.tipo === 'select' && (
+                  <Select
+                    value={valores[chave] ?? undefined}
+                    onValueChange={(v) => setValores((p) => ({ ...p, [chave]: v }))}
+                  >
+                    <SelectTrigger className="rounded-[10px] h-9 text-xs w-full">
+                      <SelectValue placeholder="Selecione…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(c.opcoes || []).map((op, oIdx) => {
+                        const val = op.value ?? op.valor ?? ''
+                        const lab = op.label ?? op.rotulo ?? val
+                        return (
+                          <SelectItem key={`${val}-${oIdx}`} value={val} className="text-xs">
+                            {lab}
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {c.tipo === 'boolean' && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Switch
+                      checked={Boolean(valores[chave])}
+                      onCheckedChange={(v) => setValores((p) => ({ ...p, [chave]: v }))}
+                    />
+                    <span className="text-xs text-gray-700">{valores[chave] ? 'Sim' : 'Não'}</span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
 
         <div className="flex items-center justify-end gap-2 pt-2">

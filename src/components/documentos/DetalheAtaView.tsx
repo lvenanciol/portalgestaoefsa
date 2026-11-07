@@ -1083,10 +1083,9 @@ export function DetalheAtaView({
 
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <DocumentoParecerButton
-              colecao="atas"
-              documentoId={documentoId}
-              dadosDocumento={doc}
-              tituloDocumento={doc.titulo || doc.resumo || 'Ata'}
+              tipoAba="atas"
+              documento={doc}
+              promptPadrao="Analise esta ata de reunião sob a perspectiva de governança corporativa, deliberações e pautas societárias, cumprimento de requisitos formais, assinaturas e riscos de nulidade ou descumprimento de prazos legais."
             />
 
             <Button

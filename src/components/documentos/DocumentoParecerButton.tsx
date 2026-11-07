@@ -39,7 +39,15 @@ export function DocumentoParecerButton({
   onSalvarPromptPadrao,
 }: DocumentoParecerButtonProps) {
   const [popoverAberto, setPopoverAberto] = useState(false)
-  const [promptTexto, setPromptTexto] = useState(promptPadrao)
+  const [promptTexto, setPromptTexto] = useState(() => {
+    try {
+      const salvo = localStorage.getItem(`pge_prompt_parecer_${tipoAba}`)
+      if (salvo && salvo.trim()) return salvo
+    } catch {
+      /* intentionally ignored */
+    }
+    return promptPadrao
+  })
   const [editandoPrompt, setEditandoPrompt] = useState(false)
   const [salvoFeedback, setSalvoFeedback] = useState(false)
   const [carregando, setCarregando] = useState(false)

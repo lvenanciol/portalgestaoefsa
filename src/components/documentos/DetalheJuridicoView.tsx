@@ -6,6 +6,7 @@ import {
   AlertCircle,
   Clock,
   Download,
+  Edit,
   Edit3,
   Plus,
   Paperclip,
@@ -1011,10 +1012,9 @@ export function DetalheJuridicoView({
 
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <DocumentoParecerButton
-              colecao="processos_juridicos"
-              documentoId={documentoId}
-              dadosDocumento={doc}
-              tituloDocumento={doc.numero_processo || doc.titulo || 'Processo Jurídico'}
+              tipoAba="juridicos"
+              documento={doc}
+              promptPadrao="Analise este processo jurídico avaliando o risco processual (provável, possível, remoto), valor da causa, pedidos formulados, fase atual, próximos prazos e estratégia de defesa ou celebração de acordo."
             />
 
             <Button
@@ -1079,39 +1079,39 @@ export function DetalheJuridicoView({
         documento={doc}
         campos={[
           {
-            chave: 'numero_processo',
+            campo: 'numero_processo',
             rotulo: 'Número do Processo',
             tipo: 'texto',
             obrigatorio: true,
           },
-          { chave: 'acao', rotulo: 'Ação / Natureza', tipo: 'texto' },
-          { chave: 'empresa', rotulo: 'Empresa', tipo: 'texto' },
-          { chave: 'comarca', rotulo: 'Comarca / Vara', tipo: 'texto' },
-          { chave: 'fase', rotulo: 'Fase Processual', tipo: 'texto' },
+          { campo: 'acao', rotulo: 'Ação / Natureza', tipo: 'texto' },
+          { campo: 'empresa', rotulo: 'Empresa', tipo: 'texto' },
+          { campo: 'comarca', rotulo: 'Comarca / Vara', tipo: 'texto' },
+          { campo: 'fase', rotulo: 'Fase Processual', tipo: 'texto' },
           {
-            chave: 'status',
+            campo: 'status',
             rotulo: 'Status',
             tipo: 'select',
             opcoes: [
-              { valor: 'Ativo', rotulo: 'Ativo' },
-              { valor: 'Encerrado', rotulo: 'Encerrado' },
-              { valor: 'Suspenso', rotulo: 'Suspenso' },
+              { value: 'Ativo', label: 'Ativo' },
+              { value: 'Encerrado', label: 'Encerrado' },
+              { value: 'Suspenso', label: 'Suspenso' },
             ],
           },
           {
-            chave: 'risco',
+            campo: 'risco',
             rotulo: 'Risco / Probabilidade',
             tipo: 'select',
             opcoes: [
-              { valor: 'Provável', rotulo: 'Provável' },
-              { valor: 'Possível', rotulo: 'Possível' },
-              { valor: 'Remoto', rotulo: 'Remoto' },
+              { value: 'Provável', label: 'Provável' },
+              { value: 'Possível', label: 'Possível' },
+              { value: 'Remoto', label: 'Remoto' },
             ],
           },
-          { chave: 'valor_causa', rotulo: 'Valor da Causa (R$)', tipo: 'numero' },
-          { chave: 'provisao', rotulo: 'Valor da Provisão (R$)', tipo: 'numero' },
-          { chave: 'valor_pago', rotulo: 'Valor Pago (R$)', tipo: 'numero' },
-          { chave: 'observacoes', rotulo: 'Observações / Andamentos', tipo: 'textarea' },
+          { campo: 'valor_causa', rotulo: 'Valor da Causa (R$)', tipo: 'numero' },
+          { campo: 'provisao', rotulo: 'Valor da Provisão (R$)', tipo: 'numero' },
+          { campo: 'valor_pago', rotulo: 'Valor Pago (R$)', tipo: 'numero' },
+          { campo: 'observacoes', rotulo: 'Observações / Andamentos', tipo: 'textarea' },
         ]}
         onSalvo={(atualizado) => {
           setDoc(atualizado)
