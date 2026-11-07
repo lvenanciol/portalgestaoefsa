@@ -412,12 +412,14 @@ export function DocumentosPage() {
   }, [dadosAbaPura, filtros])
 
   // Abertura do Detalhe (Primária: Botão "Abrir" / Clique na linha)
-  // Requisito: ao clicar na linha de qualquer registro das abas alvará, locações, contratos, atas e jurídicos a tela detalhe deve ser aberta em modo de edição
+  // Requisito: ao clicar na linha de qualquer registro das abas alvará, locações, contratos, atas e jurídicos
+  // abre a tela de detalhe DEDICADA do mockup (view especializada por tipo) — nunca o formulário cru.
   const handleAbrirDetalhe = (item: any) => {
-    handleEditar(item)
+    setDocDetalheDedicado(item)
   }
 
   // Abertura de Edição
+  // A edição acontece no modal genérico por cima da view dedicada (não troca a tela de fundo).
   const handleEditar = (item: any) => {
     setDocDetalheModal(item)
     setModalDetalheModalAberto(true)
@@ -425,7 +427,8 @@ export function DocumentosPage() {
 
   // Abertura de Anexos (redireciona para o modal de detalhe com a seção de anexos)
   const handleAbrirAnexos = (item: any) => {
-    handleEditar(item)
+    setDocDetalheModal(item)
+    setModalDetalheModalAberto(true)
   }
 
   // Abertura do Histórico
@@ -579,8 +582,8 @@ export function DocumentosPage() {
     )
   }
 
-  // Lista de empresas cadastradas para o dropdown de filtros
-  const empresasListaNomes = ['FoldBox', 'Extrafruti', 'Casafruti']
+  // Lista de empresas cadastradas para o dropdown de filtros (LL5 incluída conforme especificação)
+  const empresasListaNomes = ['FoldBox', 'Extrafruti', 'Casafruti', 'LL5']
 
   return (
     <div className="p-6 max-w-[1700px] mx-auto space-y-6">
@@ -712,6 +715,8 @@ export function DocumentosPage() {
         tipoAba={abaAtiva}
         dados={dadosAbaPura}
         totalGeral={dadosAbaPura.length}
+        filtroAtivo={filtros.statusFiltro}
+        onSelecionarFiltro={(alvo) => handleFiltrosChange({ statusFiltro: alvo })}
         onAbrirDocumento={handleAbrirDetalhe}
         onExportar={handleExportarAba}
       />
