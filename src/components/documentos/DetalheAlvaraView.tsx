@@ -50,6 +50,10 @@ import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
 import { calcularPrazoValidade, CampoFormatado, obterStatusInfo } from './documentos-design-tokens'
 import { extrairAnexos, contarAnexos } from './documentos-anexos-utils'
+import { CampoEditorInline, DefinicaoCampo } from './CampoEditorInline'
+import { AnexoVisualizadorInline } from './AnexoVisualizadorInline'
+import { ResponsaveisEditorDialog } from './ResponsaveisEditorDialog'
+import { DocumentoParecerButton } from './DocumentoParecerButton'
 
 export interface DetalheAlvaraProps {
   documento: any
@@ -68,6 +72,17 @@ export function DetalheAlvaraView({
 }: DetalheAlvaraProps) {
   const { toast } = useToast()
   const [salvando, setSalvando] = useState(false)
+  const [docAtual, setDocAtual] = useState(documento)
+
+  React.useEffect(() => {
+    setDocAtual(documento)
+  }, [documento])
+
+  // Estados inline: visualizador de anexo, editor de campo e editor de responsáveis
+  const [anexoVisualizando, setAnexoVisualizando] = useState<string | null>(null)
+  const [editorCamposAberto, setEditorCamposAberto] = useState(false)
+  const [camposParaEditar, setCamposParaEditar] = useState<DefinicaoCampo[]>([])
+  const [responsaveisAberto, setResponsaveisAberto] = useState(false)
 
   // Cálculo da validade e régua de vigência
   const prazo = calcularPrazoValidade(documento.validade)
@@ -91,18 +106,49 @@ export function DetalheAlvaraView({
     return p
   }, [prazo.diasRestantes])
 
-  // Identificação do alvará
-  const numero = documento.numero || '936124016'
-  const tipo = documento.tipo || 'Registro Marca no INPI'
-  const empresa = documento.empresa || 'FoldBox'
-  const orgaoEmissor = documento.orgao_emissor || 'INPI'
-  const municipio = documento.municipio || 'Cariacica / ES'
-  const observacoes = documento.observacoes || ''
+  // Identificação do alvará (usando docAtual reativo)
+  const numero = docAtual.numero || '936124016'
+  const tipo = docAtual.tipo || 'Registro Marca no INPI'
+  const empresa = docAtual.empresa || 'FoldBox'
+  const orgaoEmissor = docAtual.orgao_emissor || 'INPI'
+  const municipio = docAtual.municipio || 'Cariacica / ES'
+  const observacoes = docAtual.observacoes || ''
 
   // Formatação de data da validade
-  const dataValidadeBR = documento.validade
-    ? new Date(documento.validade).toLocaleDateString('pt-BR')
+  const dataValidadeBR = docAtual.validade
+    ? new Date(docAtual.validade).toLocaleDateString('pt-BR')
     : 'Pendente'
+
+  // Responsáveis extraídos
+  const responsaveisLista = React.useMemo(() => {
+    const raw = docAtual.responsaveis
+    if (Array.isArray(raw) && raw.length > 0) return raw
+    const lista = []
+    if (docAtual.responsavel_interno) {
+      lista.push({ nome: docAtual.responsavel_interno, tipo: 'interno', papel: 'Acompanhamento' })
+    }
+    if (docAtual.responsavel_externo) {
+      lista.push({ nome: docAtual.responsavel_externo, tipo: 'externo', papel: 'Órgão / Externo' })
+    }
+    if (lista.length === 0) {
+      lista.push({ nome: 'Ana Jurídico', tipo: 'interno', papel: 'Jurídico' })
+      lista.push({ nome: 'Bruno Compras', tipo: 'externo', papel: 'Suprimentos' })
+    }
+    return lista
+  }, [docAtual])
+
+  const abrirEdicaoCompleta = () => {
+    setCamposParaEditar([
+      { campo: 'numero', rotulo: 'Nº do Alvará', tipo: 'texto' },
+      { campo: 'tipo', rotulo: 'Tipo de Alvará / Licença', tipo: 'texto' },
+      { campo: 'empresa', rotulo: 'Empresa', tipo: 'texto' },
+      { campo: 'orgao_emissor', rotulo: 'Órgão Emissor', tipo: 'texto' },
+      { campo: 'municipio', rotulo: 'Município / UF', tipo: 'texto' },
+      { campo: 'validade', rotulo: 'Data de Validade', tipo: 'data' },
+      { campo: 'observacoes', rotulo: 'Observações', tipo: 'textarea' },
+    ])
+    setEditorCamposAberto(true)
+  }
 
   // Pendências calculadas
   const pendencias = React.useMemo(() => {
@@ -310,6 +356,8 @@ export function DetalheAlvaraView({
 
       {/* 3. AÇÕES PRINCIPAIS CONTEXTUAIS */}
       <div className="flex items-center justify-end gap-3 flex-wrap">
+        <DocumentoParecerButton tipoAba="alvaras" documento={docAtual} />
+
         <Button
           onClick={() => {
             toast({
@@ -336,16 +384,14 @@ export function DetalheAlvaraView({
           Solicitar renovação
         </Button>
 
-        {onEditar && (
-          <Button
-            variant="outline"
-            onClick={onEditar}
-            className="rounded-full text-xs font-semibold text-gray-700 hover:text-emerald-800 hover:border-emerald-300 h-9 px-4 border-gray-300 gap-1.5"
-          >
-            <Edit2 className="h-3.5 w-3.5" />
-            Editar dados
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          onClick={abrirEdicaoCompleta}
+          className="rounded-full text-xs font-semibold text-gray-700 hover:text-emerald-800 hover:border-emerald-300 h-9 px-4 border-gray-300 gap-1.5"
+        >
+          <Edit2 className="h-3.5 w-3.5" />
+          Editar dados
+        </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -393,19 +439,107 @@ export function DetalheAlvaraView({
         <div className="lg:col-span-7 space-y-6">
           {/* Card Identificação do Alvará */}
           <div className="bg-white rounded-2xl p-6 border border-gray-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.06)] space-y-5">
-            <h3 className="text-sm font-bold text-gray-900">Identificação do alvará</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-gray-900">Identificação do alvará</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={abrirEdicaoCompleta}
+                className="h-7 text-xs text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 rounded-full gap-1"
+              >
+                <Edit2 className="h-3 w-3" />
+                Editar campos
+              </Button>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-6">
-              <CampoFormatado
-                label="Nº DO ALVARÁ"
-                valor={<span className="font-mono font-semibold">{numero}</span>}
-              />
-              <CampoFormatado label="TIPO" valor={tipo} />
-              <CampoFormatado label="EMPRESA" valor={empresa} />
-              <CampoFormatado label="ÓRGÃO EMISSOR" valor={orgaoEmissor} />
-              <CampoFormatado label="MUNICÍPIO" valor={municipio} />
-              <CampoFormatado label="VALIDADE" valor={dataValidadeBR} />
-              <div className="sm:col-span-2">
+              <div
+                onClick={() => {
+                  setCamposParaEditar([{ campo: 'numero', rotulo: 'Nº do Alvará', tipo: 'texto' }])
+                  setEditorCamposAberto(true)
+                }}
+                className="cursor-pointer group hover:bg-emerald-50/40 p-1.5 -m-1.5 rounded-lg transition-colors"
+                title="Clique para editar"
+              >
+                <CampoFormatado
+                  label="Nº DO ALVARÁ"
+                  valor={
+                    <span className="font-mono font-semibold group-hover:text-emerald-800">
+                      {numero}
+                    </span>
+                  }
+                />
+              </div>
+
+              <div
+                onClick={() => {
+                  setCamposParaEditar([{ campo: 'tipo', rotulo: 'Tipo', tipo: 'texto' }])
+                  setEditorCamposAberto(true)
+                }}
+                className="cursor-pointer group hover:bg-emerald-50/40 p-1.5 -m-1.5 rounded-lg transition-colors"
+                title="Clique para editar"
+              >
+                <CampoFormatado label="TIPO" valor={tipo} />
+              </div>
+
+              <div
+                onClick={() => {
+                  setCamposParaEditar([{ campo: 'empresa', rotulo: 'Empresa', tipo: 'texto' }])
+                  setEditorCamposAberto(true)
+                }}
+                className="cursor-pointer group hover:bg-emerald-50/40 p-1.5 -m-1.5 rounded-lg transition-colors"
+                title="Clique para editar"
+              >
+                <CampoFormatado label="EMPRESA" valor={empresa} />
+              </div>
+
+              <div
+                onClick={() => {
+                  setCamposParaEditar([
+                    { campo: 'orgao_emissor', rotulo: 'Órgão Emissor', tipo: 'texto' },
+                  ])
+                  setEditorCamposAberto(true)
+                }}
+                className="cursor-pointer group hover:bg-emerald-50/40 p-1.5 -m-1.5 rounded-lg transition-colors"
+                title="Clique para editar"
+              >
+                <CampoFormatado label="ÓRGÃO EMISSOR" valor={orgaoEmissor} />
+              </div>
+
+              <div
+                onClick={() => {
+                  setCamposParaEditar([{ campo: 'municipio', rotulo: 'Município', tipo: 'texto' }])
+                  setEditorCamposAberto(true)
+                }}
+                className="cursor-pointer group hover:bg-emerald-50/40 p-1.5 -m-1.5 rounded-lg transition-colors"
+                title="Clique para editar"
+              >
+                <CampoFormatado label="MUNICÍPIO" valor={municipio} />
+              </div>
+
+              <div
+                onClick={() => {
+                  setCamposParaEditar([
+                    { campo: 'validade', rotulo: 'Data de Validade', tipo: 'data' },
+                  ])
+                  setEditorCamposAberto(true)
+                }}
+                className="cursor-pointer group hover:bg-emerald-50/40 p-1.5 -m-1.5 rounded-lg transition-colors"
+                title="Clique para editar"
+              >
+                <CampoFormatado label="VALIDADE" valor={dataValidadeBR} />
+              </div>
+
+              <div
+                onClick={() => {
+                  setCamposParaEditar([
+                    { campo: 'observacoes', rotulo: 'Observações', tipo: 'textarea' },
+                  ])
+                  setEditorCamposAberto(true)
+                }}
+                className="sm:col-span-2 cursor-pointer group hover:bg-emerald-50/40 p-1.5 -m-1.5 rounded-lg transition-colors"
+                title="Clique para editar"
+              >
                 <CampoFormatado
                   label="OBSERVAÇÕES"
                   valor={observacoes || undefined}
@@ -484,11 +618,11 @@ export function DetalheAlvaraView({
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
-                        {(ehPdf || ehImg) && onVisualizarAnexo && (
+                        {(ehPdf || ehImg) && (
                           <Button
                             variant="ghost"
                             size="icon"
-                            onClick={() => onVisualizarAnexo(nomeArq)}
+                            onClick={() => setAnexoVisualizando(nomeArq)}
                             className="h-8 w-8 rounded-full text-gray-500 hover:text-emerald-800 hover:bg-emerald-50"
                             aria-label={`Visualizar anexo ${nomeArq}`}
                           >
@@ -560,28 +694,42 @@ export function DetalheAlvaraView({
 
           {/* Card Responsáveis */}
           <div className="bg-white rounded-2xl p-6 border border-gray-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.06)] space-y-4">
-            <h3 className="text-sm font-bold text-gray-900">Responsáveis</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-gray-900">Responsáveis</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setResponsaveisAberto(true)}
+                className="h-7 text-xs text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 rounded-full gap-1"
+              >
+                <Edit2 className="h-3 w-3" />
+                Editar responsáveis
+              </Button>
+            </div>
 
             <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center shrink-0">
-                  AJ
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-900">Ana Jurídico</p>
-                  <p className="text-[11px] text-gray-500">Jurídico</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-full bg-blue-100 text-blue-800 font-bold text-xs flex items-center justify-center shrink-0">
-                  BC
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-900">Bruno Compras</p>
-                  <p className="text-[11px] text-gray-500">Suprimentos</p>
-                </div>
-              </div>
+              {responsaveisLista.map((resp: any, idx: number) => {
+                const nome = typeof resp === 'string' ? resp : resp.nome || 'Responsável'
+                const papel = resp.papel || (resp.tipo === 'interno' ? 'Interno' : 'Externo')
+                const inicial = nome.slice(0, 2).toUpperCase()
+                return (
+                  <div key={idx} className="flex items-center gap-3">
+                    <div
+                      className={`h-8 w-8 rounded-full font-bold text-xs flex items-center justify-center shrink-0 ${
+                        idx % 2 === 0
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-blue-100 text-blue-800'
+                      }`}
+                    >
+                      {inicial}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-900">{nome}</p>
+                      <p className="text-[11px] text-gray-500">{papel}</p>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
 
@@ -625,7 +773,7 @@ export function DetalheAlvaraView({
       </div>
 
       {/* 8. BARRA INFERIOR FIXA */}
-      <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-gray-200 px-6 py-3 flex items-center justify-between gap-4">
+      <div className="fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-gray-200 px-6 py-3 flex items-center justify-between gap-4 md:pl-72">
         <span className="text-xs text-gray-500">Última alteração em 02/11/2026</span>
 
         <Button
@@ -642,6 +790,44 @@ export function DetalheAlvaraView({
           Baixar dossiê completo
         </Button>
       </div>
+
+      {/* Visualizador Inline de Anexos */}
+      {anexoVisualizando && (
+        <AnexoVisualizadorInline
+          aberto={Boolean(anexoVisualizando)}
+          onOpenChange={(v) => !v && setAnexoVisualizando(null)}
+          nomeArquivo={anexoVisualizando}
+          colecao="alvaras"
+          registroId={docAtual.id}
+          tituloDoc={tipo}
+        />
+      )}
+
+      {/* Editor Inline de Campos */}
+      <CampoEditorInline
+        aberto={editorCamposAberto}
+        onOpenChange={setEditorCamposAberto}
+        colecao="alvaras"
+        documento={docAtual}
+        campos={camposParaEditar}
+        onSalvo={(atualizado) => {
+          setDocAtual(atualizado)
+          onAtualizar?.()
+        }}
+      />
+
+      {/* Editor Inline de Responsáveis */}
+      <ResponsaveisEditorDialog
+        aberto={responsaveisAberto}
+        onOpenChange={setResponsaveisAberto}
+        colecao="alvaras"
+        documento={docAtual}
+        contexto="do alvará"
+        onSalvo={(atualizado) => {
+          setDocAtual(atualizado)
+          onAtualizar?.()
+        }}
+      />
     </div>
   )
 }

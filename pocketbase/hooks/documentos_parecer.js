@@ -38,16 +38,64 @@ routerAdd(
       'Gere agora o parecer com o bloco inicial "resumo" (panorama geral) e os blocos "riscos", "oportunidades", "ameacas" e "sugestoes".'
 
     try {
-      const r = $ai.chat({
-        model: 'fast',
-        messages: [
-          { role: 'system', content: sys },
-          { role: 'user', content: userPrompt },
-        ],
-      })
+      // Prioridade: se houver GEMINI_API_KEY no ambiente, chamar a API do Google Gemini Flash
+      const geminiKey = $os.getenv('GEMINI_API_KEY')
+      let texto = ''
 
-      const texto =
-        r && r.choices && r.choices[0] && r.choices[0].message ? r.choices[0].message.content : ''
+      if (geminiKey) {
+        try {
+          const geminiResp = $http.send({
+            url:
+              'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' +
+              geminiKey,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [{ text: sys }],
+              },
+              contents: [
+                {
+                  parts: [{ text: userPrompt }],
+                },
+              ],
+              generationConfig: {
+                responseMimeType: 'application/json',
+                temperature: 0.2,
+              },
+            }),
+            timeout: 30,
+          })
+
+          if (geminiResp && geminiResp.statusCode === 200 && geminiResp.json) {
+            const data = geminiResp.json
+            if (
+              data.candidates &&
+              data.candidates[0] &&
+              data.candidates[0].content &&
+              data.candidates[0].content.parts &&
+              data.candidates[0].content.parts[0]
+            ) {
+              texto = data.candidates[0].content.parts[0].text || ''
+            }
+          }
+        } catch (geminiErr) {
+          // Fallback para $ai.chat se chamada direta ao Gemini falhar
+        }
+      }
+
+      if (!texto) {
+        const r = $ai.chat({
+          model: 'fast',
+          messages: [
+            { role: 'system', content: sys },
+            { role: 'user', content: userPrompt },
+          ],
+        })
+
+        texto =
+          r && r.choices && r.choices[0] && r.choices[0].message ? r.choices[0].message.content : ''
+      }
 
       if (!texto) {
         return e.json(502, { ok: false, erro: 'IA não retornou conteúdo.' })

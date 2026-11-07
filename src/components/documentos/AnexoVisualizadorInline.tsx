@@ -20,7 +20,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import PdfViewer from '@/components/documentos/PdfViewer'
+import { PdfViewer } from '@/components/documentos/PdfViewer'
 import {
   E_ANEXO_IMAGEM,
   ehImagemAnexo,
@@ -234,11 +234,11 @@ export function AnexoVisualizadorInline({
 }
 
 function toastOk(descricao: string) {
-  toast({ title: 'Sucesso', description })
+  toast({ title: 'Sucesso', description: descricao })
 }
 
 function toastErro(descricao: string) {
-  toast({ title: 'Erro', description, variant: 'destructive' })
+  toast({ title: 'Erro', description: descricao, variant: 'destructive' })
 }
 
 export { E_ANEXO_IMAGEM }

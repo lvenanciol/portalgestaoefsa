@@ -27,6 +27,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useToast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
 import { extrairAnexos, contarAnexos } from './documentos-anexos-utils'
+import { AnexoVisualizadorInline } from './AnexoVisualizadorInline'
+import { DocumentoParecerButton } from './DocumentoParecerButton'
 
 export interface DetalheAtaProps {
   documentoId: string
@@ -76,6 +78,7 @@ export function DetalheAtaView({
   const [modalDeliberacaoAberta, setModalDeliberacaoAberta] = useState(false)
   const [modalErrataAberta, setModalErrataAberta] = useState(false)
   const [salvando, setSalvando] = useState(false)
+  const [anexoVisualizando, setAnexoVisualizando] = useState<string | null>(null)
 
   // Formulário de edição dos dados da ata
   const [formEmpresa, setFormEmpresa] = useState('')
@@ -532,7 +535,16 @@ export function DetalheAtaView({
             <div className="flex items-center gap-6 self-start lg:self-center shrink-0 border-t lg:border-t-0 pt-2 lg:pt-0 border-slate-100">
               <button
                 type="button"
-                onClick={() => onAbrirAnexoModal?.(doc)}
+                onClick={() => {
+                  if (listaAnexos.length > 0) {
+                    setAnexoVisualizando(listaAnexos[0])
+                  } else {
+                    toast({
+                      title: 'Nenhum anexo',
+                      description: 'Esta ata não possui arquivos anexados.',
+                    })
+                  }
+                }}
                 className="text-right group hover:opacity-80 transition-opacity"
               >
                 <div className="text-2xl font-bold font-mono text-slate-900 leading-none">
@@ -1063,31 +1075,38 @@ export function DetalheAtaView({
       </div>
 
       {/* 5. BARRA INFERIOR FIXA (Fiel ao mockup Imagem 1) */}
-      <div className="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-xs border-t border-slate-200 py-3 shadow-md">
+      <div className="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-xs border-t border-slate-200 py-3 shadow-md md:pl-72">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="text-xs text-slate-500">
-            Última alteração há 3 dias · ID {documentoId.slice(0, 8)}
+            Última alteração · ID {documentoId.slice(0, 8)}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <DocumentoParecerButton
+              colecao="atas"
+              documentoId={documentoId}
+              dadosDocumento={doc}
+              tituloDocumento={doc.titulo || doc.resumo || 'Ata'}
+            />
+
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={() => {
-                if (qtdAnexos > 0) {
-                  onAbrirAnexoModal?.(doc)
+                if (listaAnexos.length > 0) {
+                  setAnexoVisualizando(listaAnexos[0])
                 } else {
                   toast({
                     title: 'Exportação documental',
-                    description: 'Gerando espelho em PDF da ata com as seções I, II e III...',
+                    description: 'Nenhum anexo em PDF disponível para esta ata.',
                   })
                 }
               }}
               className="rounded-xl text-xs font-semibold border-slate-300 text-slate-700 hover:bg-slate-50"
             >
               <Download className="h-3.5 w-3.5 mr-1.5" />
-              Baixar PDF
+              Visualizar/Baixar PDF
             </Button>
 
             <Button
@@ -1292,6 +1311,18 @@ export function DetalheAtaView({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Visualizador Inline de Anexos */}
+      {anexoVisualizando && (
+        <AnexoVisualizadorInline
+          aberto={Boolean(anexoVisualizando)}
+          onOpenChange={(v) => !v && setAnexoVisualizando(null)}
+          nomeArquivo={anexoVisualizando}
+          colecao="atas"
+          registroId={documentoId}
+          tituloDoc={doc.titulo || doc.resumo || 'Ata'}
+        />
+      )}
 
       {/* MODAL 3: REGISTRAR ERRATA (Compliance pós-publicação) */}
       <Dialog open={modalErrataAberta} onOpenChange={setModalErrataAberta}>

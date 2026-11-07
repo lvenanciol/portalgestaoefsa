@@ -46,46 +46,91 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { toast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
+import React from 'react'
 import { CampoFormatado, obterStatusInfo } from './documentos-design-tokens'
 import { SimularReajusteModal } from './SimularReajusteModal'
 import { extrairAnexos, contarAnexos } from './documentos-anexos-utils'
+import { CampoEditorInline, DefinicaoCampo } from './CampoEditorInline'
+import { AnexoVisualizadorInline } from './AnexoVisualizadorInline'
+import { ResponsaveisEditorDialog } from './ResponsaveisEditorDialog'
+import { DocumentoParecerButton } from './DocumentoParecerButton'
 
 export interface DetalheLocacaoProps {
   documento: any
   onVoltar: () => void
-  onEditar: () => void
-  onAtualizar: () => void
-  onVisualizarAnexo: (nomeArquivo: string) => void
+  onEditar?: () => void
+  onAtualizar?: () => void
+  onVisualizarAnexo?: (nomeArquivo: string) => void
   onAnexarArquivo?: () => void
 }
 
 export function DetalheLocacaoView({
   documento,
   onVoltar,
-  onEditar,
+  onEditar: _onEditar,
   onAtualizar,
-  onVisualizarAnexo,
+  onVisualizarAnexo: _onVisualizarAnexo,
   onAnexarArquivo,
 }: DetalheLocacaoProps) {
+  const [docAtual, setDocAtual] = useState(documento)
+
+  React.useEffect(() => {
+    setDocAtual(documento)
+  }, [documento])
+
   const [modalSimularAberto, setModalSimularAberto] = useState(false)
   const [removerAnexoConfirm, setRemoverAnexoConfirm] = useState<string | null>(null)
 
+  // Estados inline: anexo, campos e responsáveis
+  const [anexoVisualizando, setAnexoVisualizando] = useState<string | null>(null)
+  const [editorCamposAberto, setEditorCamposAberto] = useState(false)
+  const [camposParaEditar, setCamposParaEditar] = useState<DefinicaoCampo[]>([])
+  const [responsaveisAberto, setResponsaveisAberto] = useState(false)
+
+  const abrirEdicaoCompleta = () => {
+    setCamposParaEditar([
+      { campo: 'titulo', rotulo: 'Título da Locação', tipo: 'texto' },
+      { campo: 'empresa', rotulo: 'Empresa', tipo: 'texto' },
+      { campo: 'parte', rotulo: 'Locador / Proprietário', tipo: 'texto' },
+      { campo: 'objeto', rotulo: 'Objeto / Finalidade da Locação', tipo: 'textarea' },
+      { campo: 'endereco', rotulo: 'Endereço Completo do Imóvel', tipo: 'texto' },
+      { campo: 'valor_mensal', rotulo: 'Aluguel Mensal (R$)', tipo: 'moeda' },
+      { campo: 'valor_caucao', rotulo: 'Valor da Caução (R$)', tipo: 'moeda' },
+      { campo: 'qtd_caucoes', rotulo: 'Quantidade de Cauções', tipo: 'numero' },
+      { campo: 'indexador', rotulo: 'Índice de Reajuste', tipo: 'texto' },
+      { campo: 'inicio', rotulo: 'Data de Início', tipo: 'data' },
+      { campo: 'fim', rotulo: 'Data de Término / Validade', tipo: 'data' },
+      {
+        campo: 'status',
+        rotulo: 'Status',
+        tipo: 'select',
+        opcoes: [
+          { rotulo: 'Ativo', valor: 'ativo' },
+          { rotulo: 'Em renovação', valor: 'renovacao' },
+          { rotulo: 'Encerrado', valor: 'encerrado' },
+        ],
+      },
+    ])
+    setEditorCamposAberto(true)
+  }
+
   // Normalização de dados
-  const titulo = documento.titulo || 'Contrato de Locação Galpão Petrolina'
-  const parteTexto = documento.parte || 'Águia Mercantil Ltda · CNPJ 24.356.305/0001-07'
+  const titulo = docAtual.titulo || 'Contrato de Locação Galpão Petrolina'
+  const parteTexto = docAtual.parte || 'Águia Mercantil Ltda · CNPJ 24.356.305/0001-07'
   const objeto =
-    documento.objeto || 'Locação comercial de imóvel tipo galpão para a empresa Extrafruti.'
-  const empresa = documento.empresa || 'Extrafruti'
-  const finalidade = documento.finalidade_imovel || 'Armazenagem e distribuição'
-  const tipoImovel = documento.tipo_imovel || 'Galpão logístico'
-  const areaM2 = Number(documento.area_m2) || 1240
+    docAtual.objeto || 'Locação comercial de imóvel tipo galpão para a empresa Extrafruti.'
+  const empresa = docAtual.empresa || 'Extrafruti'
+  const finalidade = docAtual.finalidade_imovel || 'Armazenagem e distribuição'
+  const tipoImovel = docAtual.tipo_imovel || 'Galpão logístico'
+  const areaM2 = Number(docAtual.area_m2) || 1240
 
   // Endereço estruturado
   const enderecoTexto =
-    documento.endereco_imovel ||
-    `${documento.logradouro || 'Rua Antônio Macedo Filho'}, ${documento.numero_imovel || '320'} — ${documento.municipio_uf || 'Petrolina/PE'}`
+    docAtual.endereco_imovel ||
+    docAtual.endereco ||
+    `${docAtual.logradouro || 'Rua Antônio Macedo Filho'}, ${docAtual.numero_imovel || '320'} — ${docAtual.municipio_uf || 'Petrolina/PE'}`
   const linkMapa =
-    documento.link_mapa ||
+    docAtual.link_mapa ||
     `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(enderecoTexto)}`
 
   // CNPJ da contraparte
@@ -99,14 +144,14 @@ export function DetalheLocacaoView({
     : parteTexto
 
   // KPIs
-  const aluguelMensal = Number(documento.valor_mensal) || 16000
-  const valorCaucao = Number(documento.valor_caucao) || 32000
-  const qtdCaucoes = Number(documento.qtd_caucoes) || 2
-  const prazoMeses = Number(documento.prazo_meses) || 36
+  const aluguelMensal = Number(docAtual.valor_mensal) || 16000
+  const valorCaucao = Number(docAtual.valor_caucao) || 32000
+  const qtdCaucoes = Number(docAtual.qtd_caucoes) || 2
+  const prazoMeses = Number(docAtual.prazo_meses) || 36
 
   // Datas e Vigência
-  const inicioData = documento.inicio ? new Date(documento.inicio) : new Date('2026-10-31')
-  const fimData = documento.fim ? new Date(documento.fim) : new Date('2029-10-31')
+  const inicioData = docAtual.inicio ? new Date(docAtual.inicio) : new Date('2026-10-31')
+  const fimData = docAtual.fim ? new Date(docAtual.fim) : new Date('2029-10-31')
 
   const formatarData = (d: Date) => {
     if (isNaN(d.getTime())) return 'Não informada'
@@ -163,12 +208,12 @@ export function DetalheLocacaoView({
   }, [inicioData, prazoMeses])
 
   // Status
-  const statusInfo = obterStatusInfo(documento.status || 'ativo', 'locacoes')
+  const statusInfo = obterStatusInfo(docAtual.status || 'ativo', 'locacoes')
 
   // Anexos normalizados e contadores
   const listaAnexos: string[] = useMemo(() => {
-    return extrairAnexos(documento.anexo)
-  }, [documento.anexo])
+    return extrairAnexos(docAtual.anexo)
+  }, [docAtual.anexo])
 
   const contagemArquivos = useMemo(() => {
     return contarAnexos(documento.anexo)
@@ -222,19 +267,18 @@ export function DetalheLocacaoView({
     }
 
     return lista
-  }, [temAnexos, apoliceSeguroStatus, vistoriaStatus, onAnexarArquivo, onEditar])
+  }, [temAnexos, apoliceSeguroStatus, vistoriaStatus, onAnexarArquivo])
 
   // Responsáveis estruturados
   const responsaveis = useMemo(() => {
-    if (Array.isArray(documento.responsaveis) && documento.responsaveis.length > 0) {
-      return documento.responsaveis
+    if (Array.isArray(docAtual.responsaveis) && docAtual.responsaveis.length > 0) {
+      return docAtual.responsaveis
     }
     return [
-      { nome: 'Ana Jurídico', cargo: 'Jurídico', iniciais: 'AJ' },
-      { nome: 'Marcos Facilities', cargo: 'Facilities', iniciais: 'MF' },
+      { nome: 'Carlos Eduardo Mendes', cargo: 'Gestor Predial', iniciais: 'CM' },
+      { nome: 'Juliana Costa e Silva', cargo: 'Jurídico Imobiliário', iniciais: 'JC' },
     ]
-  }, [documento.responsaveis])
-
+  }, [docAtual.responsaveis])
   // Remoção de anexo individual
   const handleRemoverAnexo = async (arquivoNome: string) => {
     try {
@@ -298,25 +342,25 @@ export function DetalheLocacaoView({
             </div>
           </div>
 
-          {/* Lado Direito: 3 KPIS EM CARDS BRANCOS ELEVADOS */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 min-w-[320px] lg:min-w-[500px]">
+          {/* Lado Direito: 3 KPIS EM CARDS BRANCOS ELEVADOS — sem corte de valor */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:w-auto lg:min-w-[540px]">
             {/* KPI 1: Aluguel */}
-            <div className="bg-white text-gray-900 rounded-2xl p-4 shadow-md border border-white/20">
+            <div className="bg-white text-gray-900 rounded-2xl p-4 shadow-md border border-white/20 flex flex-col justify-between min-w-0">
               <div className="text-[10px] font-bold uppercase tracking-[0.04em] text-gray-500">
                 ALUGUEL
               </div>
-              <div className="text-xl sm:text-2xl font-extrabold font-mono tracking-tight text-gray-950 mt-1">
+              <div className="text-lg sm:text-xl xl:text-2xl font-extrabold font-mono tracking-tight text-gray-950 mt-1 break-words whitespace-normal leading-tight">
                 {formatarMoeda(aluguelMensal)}
               </div>
               <div className="text-[11px] text-gray-500 font-medium mt-1">por mês</div>
             </div>
 
             {/* KPI 2: Caução (Número estruturado e destacado) */}
-            <div className="bg-white text-gray-900 rounded-2xl p-4 shadow-md border border-white/20">
+            <div className="bg-white text-gray-900 rounded-2xl p-4 shadow-md border border-white/20 flex flex-col justify-between min-w-0">
               <div className="text-[10px] font-bold uppercase tracking-[0.04em] text-gray-500">
                 CAUÇÃO
               </div>
-              <div className="text-xl sm:text-2xl font-extrabold font-mono tracking-tight text-gray-950 mt-1">
+              <div className="text-lg sm:text-xl xl:text-2xl font-extrabold font-mono tracking-tight text-gray-950 mt-1 break-words whitespace-normal leading-tight">
                 {formatarMoeda(valorCaucao)}
               </div>
               <div className="text-[11px] text-gray-500 font-medium mt-1">
@@ -325,11 +369,11 @@ export function DetalheLocacaoView({
             </div>
 
             {/* KPI 3: Vigência */}
-            <div className="bg-white text-gray-900 rounded-2xl p-4 shadow-md border border-white/20">
+            <div className="bg-white text-gray-900 rounded-2xl p-4 shadow-md border border-white/20 flex flex-col justify-between min-w-0">
               <div className="text-[10px] font-bold uppercase tracking-[0.04em] text-gray-500">
                 VIGÊNCIA
               </div>
-              <div className="text-xs sm:text-sm font-bold font-mono tracking-tight text-gray-950 mt-1">
+              <div className="text-xs sm:text-sm font-bold font-mono tracking-tight text-gray-950 mt-1 break-words leading-tight">
                 {formatarData(inicioData)} → {formatarData(fimData)}
               </div>
               <div className="text-[11px] text-gray-500 font-medium mt-1 font-mono">
@@ -431,10 +475,17 @@ export function DetalheLocacaoView({
           Aplicar reajuste
         </Button>
 
+        <DocumentoParecerButton
+          colecao="locacoes"
+          documentoId={docAtual.id}
+          dadosDocumento={docAtual}
+          tituloDocumento={titulo}
+        />
+
         <Button
           type="button"
           variant="outline"
-          onClick={onEditar}
+          onClick={abrirEdicaoCompleta}
           className="h-9 px-4 text-xs font-semibold text-gray-700 border-gray-300 hover:bg-gray-50 rounded-full gap-1.5"
         >
           <Edit className="h-3.5 w-3.5" />
@@ -594,14 +645,13 @@ export function DetalheLocacaoView({
                         </div>
                       </div>
                     </div>
-
                     <div className="flex items-center gap-1.5">
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => onVisualizarAnexo(arq)}
-                        className="h-7 px-2.5 text-xs text-amber-800 hover:bg-amber-50 rounded-md gap-1"
+                        onClick={() => setAnexoVisualizando(arq)}
+                        className="h-7 px-2.5 text-xs text-amber-800 hover:bg-amber-100 rounded-md gap-1"
                       >
                         <Eye className="h-3.5 w-3.5" />
                         Visualizar
@@ -617,7 +667,7 @@ export function DetalheLocacaoView({
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
-                    </div>
+                    </div>{' '}
                   </div>
                 ))}
 
@@ -740,30 +790,47 @@ export function DetalheLocacaoView({
 
           {/* Card Responsáveis */}
           <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-[0_2px_8px_rgba(0,0,0,0.06)] space-y-4">
-            <h2 className="text-base font-bold text-gray-900 tracking-tight">Responsáveis</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-gray-900 tracking-tight">Responsáveis</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setResponsaveisAberto(true)}
+                className="h-7 text-xs text-amber-800 hover:text-amber-900 hover:bg-amber-50 rounded-full gap-1"
+              >
+                <Edit className="h-3 w-3" />
+                Editar responsáveis
+              </Button>
+            </div>
 
             <div className="space-y-3">
-              {responsaveis.map((resp: any, idx: number) => (
-                <div key={resp.nome || idx} className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-amber-100 text-amber-900 font-bold text-xs flex items-center justify-center shrink-0">
-                    {resp.iniciais || resp.nome.slice(0, 2).toUpperCase()}
+              {responsaveis.map((resp: any, idx: number) => {
+                const nome = typeof resp === 'string' ? resp : resp.nome || 'Responsável'
+                const cargo =
+                  resp.cargo || resp.papel || (resp.tipo === 'interno' ? 'Interno' : 'Externo')
+                const iniciais = resp.iniciais || nome.slice(0, 2).toUpperCase()
+                return (
+                  <div key={nome || idx} className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-full bg-amber-100 text-amber-900 font-bold text-xs flex items-center justify-center shrink-0">
+                      {iniciais}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-gray-900">{nome}</div>
+                      <div className="text-[11px] text-gray-500">{cargo}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-xs font-bold text-gray-900">{resp.nome}</div>
-                    <div className="text-[11px] text-gray-500">{resp.cargo}</div>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
       </div>
 
       {/* 5. BARRA INFERIOR FIXA COM TIMESTAMP E BOTÃO BAIXAR DOSSIÊ */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 px-6 py-3 shadow-lg z-30 flex items-center justify-between">
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 px-6 py-3 shadow-lg z-30 flex items-center justify-between md:pl-72">
         <div className="text-xs text-gray-500">
           Última alteração em{' '}
-          {formatarData(documento.updated ? new Date(documento.updated) : new Date())}
+          {formatarData(docAtual.updated ? new Date(docAtual.updated) : new Date())}
         </div>
 
         <Button
@@ -780,6 +847,44 @@ export function DetalheLocacaoView({
           Baixar dossiê completo
         </Button>
       </div>
+
+      {/* Visualizador Inline de Anexos */}
+      {anexoVisualizando && (
+        <AnexoVisualizadorInline
+          aberto={Boolean(anexoVisualizando)}
+          onOpenChange={(v) => !v && setAnexoVisualizando(null)}
+          nomeArquivo={anexoVisualizando}
+          colecao="locacoes"
+          registroId={docAtual.id}
+          tituloDoc={titulo}
+        />
+      )}
+
+      {/* Editor Inline de Campos */}
+      <CampoEditorInline
+        aberto={editorCamposAberto}
+        onOpenChange={setEditorCamposAberto}
+        colecao="locacoes"
+        documento={docAtual}
+        campos={camposParaEditar}
+        onSalvo={(atualizado) => {
+          setDocAtual(atualizado)
+          onAtualizar?.()
+        }}
+      />
+
+      {/* Editor Inline de Responsáveis */}
+      <ResponsaveisEditorDialog
+        aberto={responsaveisAberto}
+        onOpenChange={setResponsaveisAberto}
+        colecao="locacoes"
+        documento={docAtual}
+        contexto="da locação"
+        onSalvo={(atualizado) => {
+          setDocAtual(atualizado)
+          onAtualizar?.()
+        }}
+      />
 
       {/* MODAL DE SIMULAÇÃO DE REAJUSTE */}
       <SimularReajusteModal

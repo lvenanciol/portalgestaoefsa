@@ -49,8 +49,25 @@ export function ResponsaveisEditorDialog({
 
   useEffect(() => {
     if (aberto && documento) {
-      setInterno(String(documento[campoInterno] ?? '').trim())
-      setExterno(String(documento[campoExterno] ?? '').trim())
+      // Extrair de campos planos ou de campo json (responsaveis / responsaveis_lista)
+      let intVal = documento[campoInterno]
+      let extVal = documento[campoExterno]
+
+      if (!intVal && !extVal) {
+        const jsonResp = documento.responsaveis || documento.responsaveis_lista
+        if (Array.isArray(jsonResp) && jsonResp.length > 0) {
+          intVal = jsonResp[0]?.nome || jsonResp[0]
+          if (jsonResp.length > 1) {
+            extVal = jsonResp[1]?.nome || jsonResp[1]
+          }
+        } else if (typeof jsonResp === 'object' && jsonResp !== null) {
+          intVal = jsonResp.interno || jsonResp.responsavel_interno
+          extVal = jsonResp.externo || jsonResp.responsavel_externo
+        }
+      }
+
+      setInterno(String(intVal ?? '').trim())
+      setExterno(String(extVal ?? '').trim())
     }
   }, [aberto, documento, campoInterno, campoExterno])
 
@@ -58,10 +75,28 @@ export function ResponsaveisEditorDialog({
     if (!documento?.id) return
     setSalvando(true)
     try {
-      const atualizado = await pb.collection(colecao).update(documento.id, {
+      const payload: Record<string, any> = {
         [campoInterno]: interno.trim() || null,
         [campoExterno]: externo.trim() || null,
-      })
+      }
+
+      // Se a coleção tiver campo JSON 'responsaveis' ou 'responsaveis_lista', sincronizamos também
+      const listaArray = []
+      if (interno.trim()) {
+        listaArray.push({ nome: interno.trim(), tipo: 'interno', papel: 'Acompanhamento' })
+      }
+      if (externo.trim()) {
+        listaArray.push({ nome: externo.trim(), tipo: 'externo', papel: 'Externo' })
+      }
+
+      if (colecao === 'processos_juridicos') {
+        payload.responsaveis_lista = listaArray
+        payload.responsavel_principal = interno.trim() || externo.trim() || null
+      } else if (colecao === 'alvaras' || colecao === 'contratos') {
+        payload.responsaveis = listaArray
+      }
+
+      const atualizado = await pb.collection(colecao).update(documento.id, payload)
       toast({
         title: 'Responsáveis atualizados',
         description: 'Os responsáveis do documento foram salvos.',

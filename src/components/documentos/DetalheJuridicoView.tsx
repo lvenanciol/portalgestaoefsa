@@ -35,6 +35,10 @@ import { useToast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
 import { DocumentoDetalheAnexos } from '@/components/documentos/DocumentoDetalheAnexos'
 import { extrairAnexos, contarAnexos } from '@/components/documentos/documentos-anexos-utils'
+import { AnexoVisualizadorInline } from '@/components/documentos/AnexoVisualizadorInline'
+import { CampoEditorInline, DefinicaoCampo } from '@/components/documentos/CampoEditorInline'
+import { ResponsaveisEditorDialog } from '@/components/documentos/ResponsaveisEditorDialog'
+import { DocumentoParecerButton } from '@/components/documentos/DocumentoParecerButton'
 
 export interface DetalheJuridicoProps {
   documentoId: string
@@ -79,6 +83,9 @@ export function DetalheJuridicoView({
   const [modalEdicaoAberta, setModalEdicaoAberta] = useState(false)
   const [modalAudienciaAberta, setModalAudienciaAberta] = useState(false)
   const [salvando, setSalvando] = useState(false)
+  const [anexoVisualizando, setAnexoVisualizando] = useState<string | null>(null)
+  const [editorCamposAberto, setEditorCamposAberto] = useState(false)
+  const [responsaveisAberto, setResponsaveisAberto] = useState(false)
 
   // Formulário de novo andamento
   const [andamentoData, setAndamentoData] = useState(new Date().toISOString().slice(0, 10))
@@ -183,24 +190,38 @@ export function DetalheJuridicoView({
     }
 
     // Se encontrou dados autênticos nas observações, adiciona o nó futuro de sentença se não houver
+    // E ordena do MAIS RECENTE para o mais antigo (requisito explícito do usuário)
     if (itens.length > 0) {
       const jaTemSentenca = itens.some((i) => i.titulo.toLowerCase().includes('sentença'))
+      const futuros: ItemTimeline[] = []
       if (!jaTemSentenca) {
-        itens.push({
+        futuros.push({
           data_texto: 'A definir',
           titulo: 'Sentença',
           descricao: 'Prolação de sentença em audiência ou prazo pelo juízo',
           status_no: 'futuro',
         })
       }
-      return itens
+      // Inverte para exibir do evento mais recente para o mais antigo
+      const passadosERecentes = [...itens].reverse()
+      return [...futuros, ...passadosERecentes]
     }
 
-    // Caso padrão visual idêntico ao mockup da Imagem 2
+    // Caso padrão visual ordenado do MAIS RECENTE para o mais antigo
     return [
       {
-        data_texto: '12/03/2026',
-        titulo: 'Distribuição: reclamação ajuizada',
+        data_texto: 'A definir',
+        titulo: 'Sentença',
+        status_no: 'futuro',
+      },
+      {
+        data_texto: '18/11/2026',
+        titulo: 'Audiência de instrução',
+        status_no: 'atual',
+      },
+      {
+        data_texto: '10/09/2026',
+        titulo: 'Despacho: audiência designada',
         status_no: 'passado',
       },
       {
@@ -209,19 +230,9 @@ export function DetalheJuridicoView({
         status_no: 'passado',
       },
       {
-        data_texto: '10/09/2026',
-        titulo: 'Despacho: audiência designada',
+        data_texto: '12/03/2026',
+        titulo: 'Distribuição: reclamação ajuizada',
         status_no: 'passado',
-      },
-      {
-        data_texto: '18/11/2026',
-        titulo: 'Audiência de instrução',
-        status_no: 'atual',
-      },
-      {
-        data_texto: 'A definir',
-        titulo: 'Sentença',
-        status_no: 'futuro',
       },
     ]
   }, [doc.observacoes])
@@ -828,9 +839,9 @@ export function DetalheJuridicoView({
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="text-xs bg-white rounded-xl">
-                            <DropdownMenuItem onClick={() => onAbrirAnexoModal?.(doc)}>
+                            <DropdownMenuItem onClick={() => setAnexoVisualizando(anexoNome)}>
                               <Eye className="h-3.5 w-3.5 mr-2 text-slate-500" />
-                              Visualizar
+                              Visualizar anexo
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
@@ -919,6 +930,15 @@ export function DetalheJuridicoView({
                 <h3 className="text-xs font-bold uppercase tracking-[0.04em] text-slate-900">
                   Responsáveis
                 </h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setResponsaveisAberto(true)}
+                  className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded-full gap-1"
+                >
+                  <Edit className="h-3 w-3" />
+                  Editar responsáveis
+                </Button>
               </div>
 
               <div className="space-y-3.5">
@@ -983,22 +1003,44 @@ export function DetalheJuridicoView({
       </div>
 
       {/* 7. BARRA INFERIOR FIXA (Fiel ao mockup Imagem 2) */}
-      <div className="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-xs border-t border-slate-200 py-3 shadow-md">
+      <div className="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur-xs border-t border-slate-200 py-3 shadow-md md:pl-72">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="text-xs text-slate-500 font-mono">
-            Última alteração em 02/11/2026 · ID {documentoId.slice(0, 8)}
+            Última alteração · ID {documentoId.slice(0, 8)}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <DocumentoParecerButton
+              colecao="processos_juridicos"
+              documentoId={documentoId}
+              dadosDocumento={doc}
+              tituloDocumento={doc.numero_processo || doc.titulo || 'Processo Jurídico'}
+            />
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEditorCamposAberto(true)}
+              className="rounded-xl text-xs font-semibold border-slate-300 text-slate-700 hover:bg-slate-50"
+            >
+              <Edit className="h-3.5 w-3.5 mr-1.5" />
+              Editar dados
+            </Button>
+
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={() => {
-                toast({
-                  title: 'Baixar dossiê',
-                  description: 'Compilando dossiê processual e evidências para exportação...',
-                })
+                if (anexosLista.length > 0) {
+                  setAnexoVisualizando(anexosLista[0])
+                } else {
+                  toast({
+                    title: 'Baixar dossiê',
+                    description: 'Compilando dossiê processual e evidências para exportação...',
+                  })
+                }
               }}
               className="rounded-xl text-xs font-semibold border-slate-300 text-slate-700 hover:bg-slate-50"
             >
@@ -1016,6 +1058,79 @@ export function DetalheJuridicoView({
           </div>
         </div>
       </div>
+
+      {/* Visualizador Inline de Anexos */}
+      {anexoVisualizando && (
+        <AnexoVisualizadorInline
+          aberto={Boolean(anexoVisualizando)}
+          onOpenChange={(v) => !v && setAnexoVisualizando(null)}
+          nomeArquivo={anexoVisualizando}
+          colecao="processos_juridicos"
+          registroId={documentoId}
+          tituloDoc={doc.numero_processo || doc.titulo || 'Processo'}
+        />
+      )}
+
+      {/* Editor Inline de Campos */}
+      <CampoEditorInline
+        aberto={editorCamposAberto}
+        onOpenChange={setEditorCamposAberto}
+        colecao="processos_juridicos"
+        documento={doc}
+        campos={[
+          {
+            chave: 'numero_processo',
+            rotulo: 'Número do Processo',
+            tipo: 'texto',
+            obrigatorio: true,
+          },
+          { chave: 'acao', rotulo: 'Ação / Natureza', tipo: 'texto' },
+          { chave: 'empresa', rotulo: 'Empresa', tipo: 'texto' },
+          { chave: 'comarca', rotulo: 'Comarca / Vara', tipo: 'texto' },
+          { chave: 'fase', rotulo: 'Fase Processual', tipo: 'texto' },
+          {
+            chave: 'status',
+            rotulo: 'Status',
+            tipo: 'select',
+            opcoes: [
+              { valor: 'Ativo', rotulo: 'Ativo' },
+              { valor: 'Encerrado', rotulo: 'Encerrado' },
+              { valor: 'Suspenso', rotulo: 'Suspenso' },
+            ],
+          },
+          {
+            chave: 'risco',
+            rotulo: 'Risco / Probabilidade',
+            tipo: 'select',
+            opcoes: [
+              { valor: 'Provável', rotulo: 'Provável' },
+              { valor: 'Possível', rotulo: 'Possível' },
+              { valor: 'Remoto', rotulo: 'Remoto' },
+            ],
+          },
+          { chave: 'valor_causa', rotulo: 'Valor da Causa (R$)', tipo: 'numero' },
+          { chave: 'provisao', rotulo: 'Valor da Provisão (R$)', tipo: 'numero' },
+          { chave: 'valor_pago', rotulo: 'Valor Pago (R$)', tipo: 'numero' },
+          { chave: 'observacoes', rotulo: 'Observações / Andamentos', tipo: 'textarea' },
+        ]}
+        onSalvo={(atualizado) => {
+          setDoc(atualizado)
+          onSalvo?.()
+        }}
+      />
+
+      {/* Editor Inline de Responsáveis */}
+      <ResponsaveisEditorDialog
+        aberto={responsaveisAberto}
+        onOpenChange={setResponsaveisAberto}
+        colecao="processos_juridicos"
+        documento={doc}
+        contexto="do processo jurídico"
+        onSalvo={(atualizado) => {
+          setDoc(atualizado)
+          onSalvo?.()
+        }}
+      />
 
       {/* MODAL 1: REGISTRAR ANDAMENTO */}
       <Dialog open={modalAndamentoAberta} onOpenChange={setModalAndamentoAberta}>

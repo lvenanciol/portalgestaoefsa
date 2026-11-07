@@ -181,64 +181,48 @@ export function DocumentoParecerButton({
                 <div className="flex items-center gap-1.5">
                   <Sparkles className="h-4 w-4 text-[#1B5E20]" />
                   <span className="text-[13px] font-bold text-gray-900">
-                    Parecer Especialista ({tipoAba.toUpperCase()})
+                    Emitir Parecer (Gemini Flash)
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setEditandoPrompt((prev) => !prev)}
-                  className="flex items-center gap-1 text-[11px] font-medium text-emerald-700 hover:text-emerald-900 transition-colors"
-                >
-                  <Edit3 className="h-3 w-3" />
-                  {editandoPrompt ? 'Ver' : 'Editar prompt'}
-                </button>
+                <span className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                  {tipoAba}
+                </span>
               </div>
 
               <div className="text-[11px] text-gray-500">
-                O parecer emite um resumo com panorama geral seguido de Riscos, Oportunidades,
-                Ameaças e Sugestões do documento:{' '}
+                O parecer executivo analisa o documento{' '}
                 <strong className="text-gray-800">
                   {documento.titulo ||
                     documento.numero ||
                     documento.numero_processo ||
-                    'Documento selecionado'}
-                </strong>
+                    'selecionado'}
+                </strong>{' '}
+                com o modelo <strong>Gemini Flash</strong> e estrutura Resumo, Riscos,
+                Oportunidades, Ameaças e Sugestões.
               </div>
 
-              {editandoPrompt ? (
-                <div className="space-y-2">
-                  <label className="text-[11px] font-semibold text-gray-600 block">
-                    Prompt do Especialista:
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold text-gray-700 flex items-center gap-1">
+                    <Edit3 className="h-3 w-3 text-emerald-700" />
+                    Prompt da análise (editável):
                   </label>
-                  <Textarea
-                    value={promptTexto}
-                    onChange={(e) => setPromptTexto(e.target.value)}
-                    rows={5}
-                    className="text-xs text-gray-800 bg-gray-50 resize-y"
-                    placeholder="Defina o papel do especialista e foco da análise..."
-                  />
-                  <div className="flex items-center justify-between pt-1">
-                    <button
-                      type="button"
-                      onClick={handleRestaurarPadrao}
-                      className="text-[11px] text-gray-500 hover:text-gray-700 underline"
-                    >
-                      Restaurar padrão
-                    </button>
-                    <Button
-                      size="sm"
-                      onClick={handleSalvarPrompt}
-                      className="h-7 px-2.5 text-xs bg-emerald-700 hover:bg-emerald-800 text-white"
-                    >
-                      <Check className="h-3 w-3 mr-1" /> Salvar prompt
-                    </Button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRestaurarPadrao}
+                    className="text-[10.5px] text-gray-500 hover:text-emerald-800 underline"
+                  >
+                    Restaurar padrão
+                  </button>
                 </div>
-              ) : (
-                <div className="bg-gray-50 rounded-lg p-2.5 border border-gray-100 max-h-36 overflow-y-auto text-[11.5px] text-gray-600 italic leading-relaxed">
-                  "{promptTexto}"
-                </div>
-              )}
+                <Textarea
+                  value={promptTexto}
+                  onChange={(e) => setPromptTexto(e.target.value)}
+                  rows={5}
+                  className="text-xs text-gray-800 bg-gray-50 resize-y border-gray-200 focus:bg-white focus:border-emerald-600"
+                  placeholder="Edite as instruções e foco da análise do Gemini Flash..."
+                />
+              </div>
 
               {salvoFeedback && (
                 <div className="text-[11px] text-emerald-600 font-medium">

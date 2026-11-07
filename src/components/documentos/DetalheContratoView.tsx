@@ -41,38 +41,91 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { toast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
+import React from 'react'
 import { CampoFormatado, obterStatusInfo } from './documentos-design-tokens'
 import { SimularReajusteModal } from './SimularReajusteModal'
 import { extrairAnexos, contarAnexos } from './documentos-anexos-utils'
+import { CampoEditorInline, DefinicaoCampo } from './CampoEditorInline'
+import { AnexoVisualizadorInline } from './AnexoVisualizadorInline'
+import { ResponsaveisEditorDialog } from './ResponsaveisEditorDialog'
+import { DocumentoParecerButton } from './DocumentoParecerButton'
 
 export interface DetalheContratoProps {
   documento: any
   onVoltar: () => void
-  onEditar: () => void
-  onAtualizar: () => void
-  onVisualizarAnexo: (nomeArquivo: string) => void
+  onEditar?: () => void
+  onAtualizar?: () => void
+  onVisualizarAnexo?: (nomeArquivo: string) => void
   onAnexarArquivo?: () => void
 }
 
 export function DetalheContratoView({
   documento,
   onVoltar,
-  onEditar,
+  onEditar: _onEditar,
   onAtualizar,
-  onVisualizarAnexo,
+  onVisualizarAnexo: _onVisualizarAnexo,
   onAnexarArquivo,
 }: DetalheContratoProps) {
+  const [docAtual, setDocAtual] = useState(documento)
+
+  React.useEffect(() => {
+    setDocAtual(documento)
+  }, [documento])
+
   const [modalSimularAberto, setModalSimularAberto] = useState(false)
   const [valorMensalCustom, setValorMensalCustom] = useState<number | null>(null)
   const [removerAnexoConfirm, setRemoverAnexoConfirm] = useState<string | null>(null)
 
-  // Normalização de dados
-  const titulo = documento.titulo || 'Contrato de Prestação de Serviços'
-  const empresa = documento.empresa || 'Extrafruti'
-  const parteTexto = documento.parte || 'Videojet Brasil Ltda · CNPJ 24.356.305/0001-07'
-  const objeto = documento.objeto || 'Prestação de serviços para a empresa Extrafruti.'
-  const idDocumento = documento.id || '936124016'
-  const tipoContrato = documento.tipo || 'Prestação de serviços'
+  // Estados inline para visualizador de anexo, editor de campos e editor de responsáveis
+  const [anexoVisualizando, setAnexoVisualizando] = useState<string | null>(null)
+  const [editorCamposAberto, setEditorCamposAberto] = useState(false)
+  const [camposParaEditar, setCamposParaEditar] = useState<DefinicaoCampo[]>([])
+  const [responsaveisAberto, setResponsaveisAberto] = useState(false)
+
+  const abrirEdicaoCompleta = () => {
+    setCamposParaEditar([
+      { campo: 'titulo', rotulo: 'Título do Contrato', tipo: 'texto' },
+      { campo: 'empresa', rotulo: 'Empresa', tipo: 'texto' },
+      { campo: 'parte', rotulo: 'Contraparte / Fornecedor', tipo: 'texto' },
+      { campo: 'objeto', rotulo: 'Objeto do Contrato', tipo: 'textarea' },
+      {
+        campo: 'modelo_contrato',
+        rotulo: 'Modelo de Contrato',
+        tipo: 'select',
+        opcoes: [
+          { rotulo: 'Reajuste periódico (mensal)', valor: 'reajuste_periodico' },
+          { rotulo: 'Aquisição única (pagamento único)', valor: 'unico_aquisicao' },
+        ],
+      },
+      { campo: 'valor_mensal', rotulo: 'Valor Mensal (R$)', tipo: 'moeda' },
+      { campo: 'valor_total', rotulo: 'Valor Total (R$)', tipo: 'moeda' },
+      { campo: 'valor_assinatura', rotulo: 'Valor de Assinatura (R$)', tipo: 'moeda' },
+      { campo: 'indexador', rotulo: 'Índice de Reajuste', tipo: 'texto' },
+      { campo: 'periodicidade_reajuste', rotulo: 'Periodicidade do Reajuste', tipo: 'texto' },
+      { campo: 'inicio', rotulo: 'Data de Início', tipo: 'data' },
+      { campo: 'fim', rotulo: 'Data de Término / Validade', tipo: 'data' },
+      {
+        campo: 'status',
+        rotulo: 'Status',
+        tipo: 'select',
+        opcoes: [
+          { rotulo: 'Ativo', valor: 'ativo' },
+          { rotulo: 'Rascunho', valor: 'rascunho' },
+          { rotulo: 'Encerrado', valor: 'encerrado' },
+        ],
+      },
+    ])
+    setEditorCamposAberto(true)
+  }
+
+  // Normalização de dados (usando docAtual reativo)
+  const titulo = docAtual.titulo || 'Contrato de Prestação de Serviços'
+  const empresa = docAtual.empresa || 'Extrafruti'
+  const parteTexto = docAtual.parte || 'Videojet Brasil Ltda · CNPJ 24.356.305/0001-07'
+  const objeto = docAtual.objeto || 'Prestação de serviços para a empresa Extrafruti.'
+  const idDocumento = docAtual.id || '936124016'
+  const tipoContrato = docAtual.tipo || 'Prestação de serviços'
 
   // Parte e CNPJ extraídos se houver
   const cnpjMatch = parteTexto.match(/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/)
@@ -85,19 +138,19 @@ export function DetalheContratoView({
     : parteTexto
 
   // Modelo de contrato: 'reajuste_periodico' vs 'unico_aquisicao'
-  const ehContratoUnico = documento.modelo_contrato === 'unico_aquisicao'
-  const valorTotalUnico = Number(documento.valor_total ?? documento.valor_assinatura) || 0
+  const ehContratoUnico = docAtual.modelo_contrato === 'unico_aquisicao'
+  const valorTotalUnico = Number(docAtual.valor_total ?? docAtual.valor_assinatura) || 0
 
   // Valores financeiros
   const valorMensal =
-    valorMensalCustom ?? (Number(documento.valor_mensal) || (ehContratoUnico ? 0 : 16000))
-  const valorAnual = Number(documento.valor_assinatura) || valorMensal * 12
-  const indiceReajuste = documento.indexador || 'IGP-M'
-  const periodicidade = documento.periodicidade_reajuste || 'Anual'
+    valorMensalCustom ?? (Number(docAtual.valor_mensal) || (ehContratoUnico ? 0 : 16000))
+  const valorAnual = Number(docAtual.valor_assinatura) || valorMensal * 12
+  const indiceReajuste = docAtual.indexador || 'IGP-M'
+  const periodicidade = docAtual.periodicidade_reajuste || 'Anual'
 
   // Datas e Vigência
-  const inicioData = documento.inicio ? new Date(documento.inicio) : new Date('2026-11-03')
-  const fimData = documento.fim ? new Date(documento.fim) : new Date('2027-11-03')
+  const inicioData = docAtual.inicio ? new Date(docAtual.inicio) : new Date('2026-11-03')
+  const fimData = docAtual.fim ? new Date(docAtual.fim) : new Date('2027-11-03')
 
   const formatarData = (d: Date) => {
     if (isNaN(d.getTime())) return 'Não informada'
@@ -159,17 +212,26 @@ export function DetalheContratoView({
 
   const temAnexos = listaAnexos.length > 0
 
-  // Responsáveis estruturados
+  // Responsáveis estruturados (usando docAtual)
   const responsaveis = useMemo(() => {
-    if (Array.isArray(documento.responsaveis) && documento.responsaveis.length > 0) {
-      return documento.responsaveis
+    if (Array.isArray(docAtual.responsaveis) && docAtual.responsaveis.length > 0) {
+      return docAtual.responsaveis
     }
     return [
-      { nome: 'Ana Jurídico', cargo: 'Jurídico', iniciais: 'AJ' },
-      { nome: 'Bruno Compras', cargo: 'Suprimentos', iniciais: 'BC' },
+      {
+        nome: 'Ana Paula Requião',
+        cargo: 'Gestora do Contrato · Jurídico',
+        papel: 'Jurídico',
+        iniciais: 'AR',
+      },
+      {
+        nome: 'Carlos Eduardo Mendes',
+        cargo: 'Aprovador Financeiro · Controladoria',
+        papel: 'Controladoria',
+        iniciais: 'CM',
+      },
     ]
-  }, [documento.responsaveis])
-
+  }, [docAtual.responsaveis])
   // Pendências calculadas
   const pendencias = useMemo(() => {
     const lista = []
@@ -227,7 +289,6 @@ export function DetalheContratoView({
     diasAteReajuste,
     data1Reajuste,
     onAnexarArquivo,
-    onEditar,
   ])
 
   // Completude
@@ -491,15 +552,22 @@ export function DetalheContratoView({
       </div>
 
       {/* 3. BARRA DE AÇÕES PRINCIPAIS */}
-      <div className="flex flex-wrap items-center justify-end gap-2.5">
+      <div className="flex items-center justify-end gap-3 flex-wrap">
+        <DocumentoParecerButton tipoAba="contratos" documento={docAtual} />
+
         <Button
           type="button"
           onClick={() => {
             toast({
               title: 'Registrar aditivo',
-              description: 'Abrindo formulário de aditamento contratual.',
+              description: 'Iniciando aditamento contratual.',
             })
-            onEditar()
+            setCamposParaEditar([
+              { campo: 'valor_mensal', rotulo: 'Novo Valor Mensal (R$)', tipo: 'moeda' },
+              { campo: 'fim', rotulo: 'Nova Data de Término', tipo: 'data' },
+              { campo: 'objeto', rotulo: 'Justificativa do Aditivo', tipo: 'textarea' },
+            ])
+            setEditorCamposAberto(true)
           }}
           className="h-9 px-4 text-xs font-semibold bg-blue-700 hover:bg-blue-800 text-white rounded-full shadow-xs gap-1.5"
         >
@@ -524,7 +592,7 @@ export function DetalheContratoView({
         <Button
           type="button"
           variant="outline"
-          onClick={onEditar}
+          onClick={abrirEdicaoCompleta}
           className="h-9 px-4 text-xs font-semibold text-gray-700 border-gray-300 hover:bg-gray-50 rounded-full gap-1.5"
         >
           <Edit className="h-3.5 w-3.5" />
@@ -553,27 +621,58 @@ export function DetalheContratoView({
         <div className="lg:col-span-8 space-y-6">
           {/* Card Partes e objeto */}
           <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-[0_2px_8px_rgba(0,0,0,0.06)] space-y-4">
-            <h2 className="text-base font-bold text-gray-900 tracking-tight">Partes e objeto</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-gray-900 tracking-tight">Partes e objeto</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={abrirEdicaoCompleta}
+                className="h-7 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-50 rounded-full gap-1"
+              >
+                <Edit className="h-3 w-3" />
+                Editar campos
+              </Button>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <CampoFormatado
-                label="EMPRESA"
-                valor={empresa}
-                estado={empresa ? 'preenchido' : 'pendente'}
-                onPreencher={onEditar}
-              />
+              <div
+                onClick={() => {
+                  setCamposParaEditar([{ campo: 'empresa', rotulo: 'Empresa', tipo: 'texto' }])
+                  setEditorCamposAberto(true)
+                }}
+                className="cursor-pointer group hover:bg-blue-50/40 p-1.5 -m-1.5 rounded-lg transition-colors"
+                title="Clique para editar"
+              >
+                <CampoFormatado
+                  label="EMPRESA"
+                  valor={empresa}
+                  estado={empresa ? 'preenchido' : 'pendente'}
+                />
+              </div>
 
-              <div>
+              <div
+                onClick={() => {
+                  setCamposParaEditar([
+                    { campo: 'parte', rotulo: 'Contraparte / CNPJ', tipo: 'texto' },
+                  ])
+                  setEditorCamposAberto(true)
+                }}
+                className="cursor-pointer group hover:bg-blue-50/40 p-1.5 -m-1.5 rounded-lg transition-colors"
+                title="Clique para editar"
+              >
                 <span className="block text-[11px] font-bold uppercase tracking-[0.04em] text-gray-500 mb-1">
                   CONTRAPARTE
                 </span>
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-semibold text-gray-900">{contraparteNome}</span>
+                    <span className="text-sm font-semibold text-gray-900 group-hover:text-blue-700">
+                      {contraparteNome}
+                    </span>
                     <a
                       href="/parceiros"
                       title="Abrir cadastro no módulo Parceiros"
                       className="text-gray-400 hover:text-blue-600 transition-colors"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                     </a>
@@ -590,11 +689,25 @@ export function DetalheContratoView({
             </div>
 
             {/* Objeto em bloco de leitura com acento lateral */}
-            <div className="pt-2">
-              <span className="block text-[11px] font-bold uppercase tracking-[0.04em] text-gray-500 mb-2">
-                OBJETO
-              </span>
-              <div className="p-4 rounded-xl bg-blue-50/40 border-l-4 border-blue-600 text-sm text-gray-800 leading-relaxed">
+            <div
+              className="pt-2 cursor-pointer group"
+              onClick={() => {
+                setCamposParaEditar([
+                  { campo: 'objeto', rotulo: 'Objeto do Contrato', tipo: 'textarea' },
+                ])
+                setEditorCamposAberto(true)
+              }}
+              title="Clique para editar o objeto"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="block text-[11px] font-bold uppercase tracking-[0.04em] text-gray-500">
+                  OBJETO
+                </span>
+                <span className="text-[10px] text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                  Clique para editar
+                </span>
+              </div>
+              <div className="p-4 rounded-xl bg-blue-50/40 border-l-4 border-blue-600 text-sm text-gray-800 leading-relaxed group-hover:bg-blue-50/70 transition-colors">
                 {objeto}
               </div>
             </div>
@@ -768,7 +881,7 @@ export function DetalheContratoView({
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => onVisualizarAnexo(arq)}
+                        onClick={() => setAnexoVisualizando(arq)}
                         className="h-7 px-2.5 text-xs text-blue-700 hover:bg-blue-50 rounded-md gap-1"
                       >
                         <Eye className="h-3.5 w-3.5" />
@@ -887,30 +1000,47 @@ export function DetalheContratoView({
 
           {/* Card Responsáveis */}
           <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-[0_2px_8px_rgba(0,0,0,0.06)] space-y-4">
-            <h2 className="text-base font-bold text-gray-900 tracking-tight">Responsáveis</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-gray-900 tracking-tight">Responsáveis</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setResponsaveisAberto(true)}
+                className="h-7 text-xs text-blue-700 hover:text-blue-800 hover:bg-blue-50 rounded-full gap-1"
+              >
+                <Edit className="h-3 w-3" />
+                Editar responsáveis
+              </Button>
+            </div>
 
             <div className="space-y-3">
-              {responsaveis.map((resp: any, idx: number) => (
-                <div key={resp.nome || idx} className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">
-                    {resp.iniciais || resp.nome.slice(0, 2).toUpperCase()}
+              {responsaveis.map((resp: any, idx: number) => {
+                const nome = typeof resp === 'string' ? resp : resp.nome || 'Responsável'
+                const cargo =
+                  resp.cargo || resp.papel || (resp.tipo === 'interno' ? 'Interno' : 'Externo')
+                const iniciais = resp.iniciais || nome.slice(0, 2).toUpperCase()
+                return (
+                  <div key={nome || idx} className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center shrink-0">
+                      {iniciais}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-gray-900">{nome}</div>
+                      <div className="text-[11px] text-gray-500">{cargo}</div>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-xs font-bold text-gray-900">{resp.nome}</div>
-                    <div className="text-[11px] text-gray-500">{resp.cargo}</div>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
       </div>
 
       {/* 5. BARRA INFERIOR FIXA COM TIMESTAMP E BOTÃO BAIXAR DOSSIÊ */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 px-6 py-3 shadow-lg z-30 flex items-center justify-between">
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 px-6 py-3 shadow-lg z-30 flex items-center justify-between md:pl-72">
         <div className="text-xs text-gray-500">
           Última alteração em{' '}
-          {formatarData(documento.updated ? new Date(documento.updated) : new Date())}
+          {formatarData(docAtual.updated ? new Date(docAtual.updated) : new Date())}
         </div>
 
         <Button
@@ -927,6 +1057,44 @@ export function DetalheContratoView({
           Baixar dossiê completo
         </Button>
       </div>
+
+      {/* Visualizador Inline de Anexos */}
+      {anexoVisualizando && (
+        <AnexoVisualizadorInline
+          aberto={Boolean(anexoVisualizando)}
+          onOpenChange={(v) => !v && setAnexoVisualizando(null)}
+          nomeArquivo={anexoVisualizando}
+          colecao="contratos"
+          registroId={docAtual.id}
+          tituloDoc={titulo}
+        />
+      )}
+
+      {/* Editor Inline de Campos */}
+      <CampoEditorInline
+        aberto={editorCamposAberto}
+        onOpenChange={setEditorCamposAberto}
+        colecao="contratos"
+        documento={docAtual}
+        campos={camposParaEditar}
+        onSalvo={(atualizado) => {
+          setDocAtual(atualizado)
+          onAtualizar?.()
+        }}
+      />
+
+      {/* Editor Inline de Responsáveis */}
+      <ResponsaveisEditorDialog
+        aberto={responsaveisAberto}
+        onOpenChange={setResponsaveisAberto}
+        colecao="contratos"
+        documento={docAtual}
+        contexto="do contrato"
+        onSalvo={(atualizado) => {
+          setDocAtual(atualizado)
+          onAtualizar?.()
+        }}
+      />
 
       {/* MODAL DE SIMULAÇÃO DE REAJUSTE */}
       <SimularReajusteModal
