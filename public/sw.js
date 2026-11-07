@@ -36,7 +36,8 @@
 // v31 (07/11/2026): extração universal de anexos (extrairAnexos/contarAnexos) aplicada em todas as 5 views dedicadas e remoção de DocumentoAnexoModal legado.
 // v33 (07/11/2026): filtro clicável nos indicadores de Documentos e empresa LL5 no filtro Empresa
 // v34 (07/11/2026): desacoplamento Atas (contábeis em 'atas', /documentos) × reuniões (nova coleção 'atas_reunioes', Operação)
-const CACHE_NAME = 'pge-pwa-v34'
+// v35 (07/11/2026): detalhe dedicado em TODOS os caminhos das 5 abas de /documentos; botão "Parecer IA" alinhado ao header do modal (padrão Atas & Reuniões)
+const CACHE_NAME = 'pge-pwa-v35'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

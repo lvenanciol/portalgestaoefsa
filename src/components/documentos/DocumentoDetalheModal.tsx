@@ -152,8 +152,11 @@ export function DocumentoDetalheModal({
       <Dialog open={aberto} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-7xl w-[96vw] max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl p-6 border border-gray-200">
           <DialogHeader className="border-b border-gray-100 pb-4 pr-12">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-1 min-w-0 flex-1">
+            {/* Grid em 3 colunas: título/esquerda | botão de parecer centralizado na linha do título (à direita do conteúdo, à esquerda do X) | X à extrema direita.
+                O X do shadcn Dialog é absoluto no canto direito; reservar a coluna da direita para ele (pr-12) evita
+                qualquer sobreposição/colagem, espelhando o padrão do header da tela "Atas & Reuniões". */}
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 pr-10 sm:pr-12">
+              <div className="space-y-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge
                     variant="outline"
@@ -189,8 +192,9 @@ export function DocumentoDetalheModal({
                 )}
               </div>
 
-              {/* Botão de Parecer de IA do Documento: posicionado com margem e gap seguros do botão X (pr-12 no DialogHeader) */}
-              <div className="shrink-0 flex items-center gap-2">
+              {/* Botão de Parecer de IA do Documento: alinhado ao header, mesma linha do título,
+                  à direita e com espaçamento seguro do X (coluna própria no grid abaixo). */}
+              <div className="shrink-0 flex items-center gap-2 pt-0.5">
                 <DocumentoParecerButton
                   documento={docAtual}
                   tipoAba={tipoAba as any}
@@ -198,6 +202,8 @@ export function DocumentoDetalheModal({
                 />
               </div>
             </div>
+            {/* Coluna reservada ao X do Dialog (mantém o parecer longe do canto) */}
+            <div aria-hidden className="w-8" />
           </DialogHeader>
 
           <div className="space-y-6 pt-2">

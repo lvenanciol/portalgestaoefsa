@@ -9,7 +9,6 @@ import {
   ShieldAlert,
   Lightbulb,
   FileText,
-  MessageCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -151,14 +150,21 @@ export function DocumentoParecerButton({
           <Tooltip>
             <TooltipTrigger asChild>
               <PopoverTrigger asChild>
+                {/* Mesmo estilo/posição do botão de parecer da tela "Atas & Reuniões"
+                    (AtasReunioesPage): outline, h-9, rounded-[10px], rótulo visível —
+                    alinhado ao header do modal, longe do X de fechar. */}
                 <Button
                   type="button"
-                  size="icon"
-                  variant="ghost"
+                  variant="outline"
                   aria-label="Emitir parecer"
-                  className="h-7 w-7 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800 transition-colors"
+                  className="h-9 rounded-[10px] text-gray-800 hover:text-emerald-900 hover:bg-emerald-50 border-gray-200"
                 >
-                  <MessageCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+                  {carregando ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4 mr-1.5 text-emerald-700" />
+                  )}
+                  Parecer IA
                 </Button>
               </PopoverTrigger>
             </TooltipTrigger>

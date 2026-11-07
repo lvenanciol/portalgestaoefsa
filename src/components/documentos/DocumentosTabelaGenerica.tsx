@@ -269,12 +269,8 @@ export function DocumentosTabelaGenerica<T extends Record<string, any>>({
                   <tr
                     key={item.id}
                     onClick={() => {
-                      // Ao clicar na linha, abre o detalhe em modo de edição
-                      if (onEditar) {
-                        onEditar(item)
-                      } else {
-                        onAbrirDetalhe(item)
-                      }
+                      // Ao clicar na linha, abre SEMPRE a tela de detalhe dedicada (mockup)
+                      onAbrirDetalhe(item)
                     }}
                     className={`hover:bg-emerald-50/20 transition-colors group cursor-pointer ${
                       isSelected ? 'bg-emerald-50/40' : ''
@@ -314,13 +310,7 @@ export function DocumentosTabelaGenerica<T extends Record<string, any>>({
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => {
-                            if (onEditar) {
-                              onEditar(item)
-                            } else {
-                              onAbrirDetalhe(item)
-                            }
-                          }}
+                          onClick={() => onAbrirDetalhe(item)}
                           className="h-7 px-3 rounded-full text-xs font-semibold text-gray-700 hover:text-emerald-800 hover:border-emerald-300 hover:bg-emerald-50 shadow-none border-gray-200"
                         >
                           Abrir
@@ -350,7 +340,7 @@ export function DocumentosTabelaGenerica<T extends Record<string, any>>({
                             </DropdownMenuItem>
                             {onEditar && (
                               <DropdownMenuItem
-                                onClick={() => onEditar(item)}
+                                onClick={() => onAbrirDetalhe(item)}
                                 className="gap-2 cursor-pointer"
                               >
                                 <Edit2 className="h-3.5 w-3.5 text-gray-500" />
