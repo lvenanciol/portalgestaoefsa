@@ -1,38 +1,29 @@
-import React, { useState, useEffect } from 'react'
-import {
-  X,
-  FileText,
-  Calendar,
-  Building2,
-  Eye,
-  Download,
-  ExternalLink,
-  Loader2,
-} from 'lucide-react'
+import React, { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Loader2, ExternalLink } from 'lucide-react'
+import pb from '@/lib/pocketbase/client'
 import { EmpresaIcon } from '@/components/common/EmpresaIcon'
-import { DocumentoParecerButton } from './DocumentoParecerButton'
-import { PdfViewer } from './PdfViewer'
-import { ProcessoObservacoesTimeline } from './ProcessoObservacoesTimeline'
-import { useSanitizarObservacoesImportacao } from './useSanitizarObservacoesImportacao'
+import { DocumentoParecerButton } from '@/components/documentos/DocumentoParecerButton'
+import { ProcessoObservacoesTimeline } from '@/components/documentos/ProcessoObservacoesTimeline'
+import { useSanitizarObservacoesImportacao } from '@/components/documentos/useSanitizarObservacoesImportacao'
+import { PdfViewer } from '@/components/documentos/PdfViewer'
+import { DocumentoDetalheCampos } from '@/components/documentos/DocumentoDetalheCampos'
 import {
   DocumentoDetalheAnexos,
   E_ANEXO_IMAGEM,
   podeVisualizarAnexo,
-} from './DocumentoDetalheAnexos'
-import { DocumentoDetalheCampos } from './DocumentoDetalheCampos'
-import pb from '@/lib/pocketbase/client'
+} from '@/components/documentos/DocumentoDetalheAnexos'
 
 export { E_ANEXO_IMAGEM, podeVisualizarAnexo }
 
 export interface DocumentoDetalheModalProps {
   aberto: boolean
   onOpenChange: (aberto: boolean) => void
-  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
-  documento: any | null
-  empresas?: { id: string; nome: string }[]
+  tipoAba: string
+  documento: any
+  empresas?: Array<{ id: string; nome: string }>
   onAtualizado?: () => void
   onAbrirAnexos?: (doc: any) => void
 }
@@ -47,12 +38,12 @@ export function DocumentoDetalheModal({
   onAbrirAnexos,
 }: DocumentoDetalheModalProps) {
   const [docAtual, setDocAtual] = useState<any>(documento)
-  const [arquivoEmVisualizacao, setArquivoEmVisualizacao] = useState<string | null>(null)
   const [modalVisualizarAberto, setModalVisualizarAberto] = useState(false)
   const [urlVisualizacao, setUrlVisualizacao] = useState<string | null>(null)
+  const [arquivoEmVisualizacao, setArquivoEmVisualizacao] = useState<string | null>(null)
   const [carregandoVisualizacao, setCarregandoVisualizacao] = useState(false)
 
-  // Coleção PocketBase correspondente
+  // Mapeia aba ativa para a coleção correspondente no PocketBase
   const colecaoNome =
     tipoAba === 'alvaras'
       ? 'alvaras'
@@ -62,20 +53,23 @@ export function DocumentoDetalheModal({
           ? 'processos_juridicos'
           : 'contratos'
 
-  // Mantém documento atualizado com as props
+  // Mantém estado interno em sincronia quando o documento da prop mudar ou abrir
   useEffect(() => {
-    setDocAtual(documento)
-    setArquivoEmVisualizacao(null)
-    setModalVisualizarAberto(false)
-    setUrlVisualizacao(null)
+    if (documento) {
+      setDocAtual(documento)
+    }
   }, [documento, aberto])
 
-  // Sanitização one-shot da timeline para processos jurídicos
+  // Hook que sanitiza e despolui anotações de importação legado
   const observacoesSanitizadas = useSanitizarObservacoesImportacao(
-    tipoAba === 'juridicos' ? docAtual?.id : undefined,
-    tipoAba === 'juridicos' ? docAtual?.observacoes : undefined,
-    tipoAba === 'juridicos' && docAtual?.id
-      ? { colecao: 'processos_juridicos', id: docAtual.id, campo: 'observacoes' }
+    docAtual?.id,
+    docAtual?.observacoes,
+    docAtual?.id
+      ? {
+          colecao: colecaoNome,
+          id: docAtual.id,
+          campo: 'observacoes',
+        }
       : undefined,
   )
 
@@ -120,22 +114,6 @@ export function DocumentoDetalheModal({
 
   const abrirVisualizador = async (nomeArquivo: string) => {
     setArquivoEmVisualizacao(nomeArquivo)
-
-    // Imagens: se não for PDF, pode abrir em nova aba diretamente
-    if (E_ANEXO_IMAGEM.test(nomeArquivo)) {
-      try {
-        const urlArquivo = pb.files.getUrl(
-          { collectionName: colecaoNome, id: docAtual.id } as any,
-          nomeArquivo,
-        )
-        window.open(urlArquivo, '_blank')
-        return
-      } catch (e) {
-        console.error('Erro ao abrir imagem:', e)
-      }
-    }
-
-    // PDFs: abre no PdfViewer do modal interno
     setModalVisualizarAberto(true)
     setCarregandoVisualizacao(true)
     try {
@@ -170,6 +148,10 @@ export function DocumentoDetalheModal({
       alert('Não foi possível salvar as observações.')
     }
   }
+
+  const ehVisualizacaoImagem = arquivoEmVisualizacao
+    ? E_ANEXO_IMAGEM.test(arquivoEmVisualizacao)
+    : false
 
   return (
     <>
@@ -215,7 +197,11 @@ export function DocumentoDetalheModal({
 
               {/* Botão de Parecer de IA do Documento */}
               <div className="shrink-0 flex items-center gap-1.5">
-                <DocumentoParecerButton documento={docAtual} tipoAba={tipoAba} promptPadrao="" />
+                <DocumentoParecerButton
+                  documento={docAtual}
+                  tipoAba={tipoAba as any}
+                  promptPadrao=""
+                />
               </div>
             </div>
           </DialogHeader>
@@ -224,7 +210,7 @@ export function DocumentoDetalheModal({
             {/* Metadados e Campos Editáveis */}
             <DocumentoDetalheCampos
               documento={docAtual}
-              tipoAba={tipoAba}
+              tipoAba={tipoAba as any}
               colecaoNome={colecaoNome}
               empresas={empresas}
               onAtualizado={recarregarRegistro}
@@ -268,7 +254,7 @@ export function DocumentoDetalheModal({
         </DialogContent>
       </Dialog>
 
-      {/* Modal Embutido de Visualização de Anexo (PDF / Arquivo) */}
+      {/* Modal Embutido de Visualização de Anexo (PDF / Imagem / Arquivo) */}
       <Dialog open={modalVisualizarAberto} onOpenChange={setModalVisualizarAberto}>
         <DialogContent className="max-w-4xl max-h-[92vh] bg-white rounded-2xl shadow-2xl p-4 border border-gray-200 flex flex-col">
           <DialogHeader className="border-b border-gray-100 pb-2">
@@ -291,17 +277,27 @@ export function DocumentoDetalheModal({
             </div>
           </DialogHeader>
 
-          <div className="flex-1 min-h-[500px] overflow-hidden pt-2">
+          <div className="flex-1 min-h-[500px] overflow-hidden pt-2 flex flex-col">
             {carregandoVisualizacao ? (
               <div className="h-full flex items-center justify-center py-20 text-gray-500 gap-2">
                 <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
                 <span className="text-xs">Carregando visualizador de documento...</span>
               </div>
             ) : urlVisualizacao ? (
-              <PdfViewer
-                url={urlVisualizacao}
-                fileName={arquivoEmVisualizacao || 'documento.pdf'}
-              />
+              ehVisualizacaoImagem ? (
+                <div className="h-full min-h-[500px] flex items-center justify-center bg-gray-50 rounded-xl p-4 overflow-auto border border-gray-200">
+                  <img
+                    src={urlVisualizacao}
+                    alt={arquivoEmVisualizacao || 'Imagem anexa'}
+                    className="max-h-[75vh] max-w-full object-contain rounded-lg shadow-sm"
+                  />
+                </div>
+              ) : (
+                <PdfViewer
+                  url={urlVisualizacao}
+                  fileName={arquivoEmVisualizacao || 'documento.pdf'}
+                />
+              )
             ) : (
               <div className="text-center py-20 text-xs text-gray-500">
                 Não foi possível carregar a prévia deste arquivo.
