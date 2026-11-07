@@ -58,7 +58,13 @@ export function EmpresaLogosProvider({ children }: { children: React.ReactNode }
     const obterUrlImagem = (nomeEmpresa: string): string | null => {
       if (!nomeEmpresa) return null
       const n = norm(nomeEmpresa)
-      const logoRec = logos.find((l) => norm(l.empresa) === n)
+      let logoRec = logos.find((l) => norm(l.empresa) === n)
+      if (!logoRec) {
+        logoRec = logos.find((l) => {
+          const lNorm = norm(l.empresa)
+          return lNorm && (n.includes(lNorm) || lNorm.includes(n))
+        })
+      }
       if (!logoRec) return null
 
       const getUrl = (campo: 'emblema' | 'logo') => {
@@ -79,8 +85,21 @@ export function EmpresaLogosProvider({ children }: { children: React.ReactNode }
 
     const obterSiglaCor = (nomeEmpresa: string) => {
       const n = norm(nomeEmpresa)
-      const logoRec = logos.find((l) => norm(l.empresa) === n)
-      const empRec = empresas.find((e) => norm(e.nome) === n)
+      let logoRec = logos.find((l) => norm(l.empresa) === n)
+      if (!logoRec) {
+        logoRec = logos.find((l) => {
+          const lNorm = norm(l.empresa)
+          return lNorm && (n.includes(lNorm) || lNorm.includes(n))
+        })
+      }
+
+      let empRec = empresas.find((e) => norm(e.nome) === n)
+      if (!empRec) {
+        empRec = empresas.find((e) => {
+          const eNorm = norm(e.nome)
+          return eNorm && (n.includes(eNorm) || eNorm.includes(n))
+        })
+      }
 
       const cor = logoRec?.cor && logoRec.cor !== '#FFFFFF' ? logoRec.cor : empRec?.cor || '#1B5E20'
       const sigla =

@@ -65,7 +65,10 @@ import { JuridicosImportModal } from '@/components/documentos/JuridicosImportMod
 import { ProcessoHistoricoModal } from '@/components/documentos/ProcessoHistoricoModal'
 import { AudienciasModal } from '@/components/documentos/AudienciasModal'
 import { NovoDocumentoModal } from '@/components/documentos/NovoDocumentoModal'
-import { normalizarParaBusca } from '@/components/documentos/documentos-filtros-utils'
+import {
+  normalizarParaBusca,
+  normalizarDigitosParaBusca,
+} from '@/components/documentos/documentos-filtros-utils'
 
 const ROTULOS_ABAS: Record<TipoAbaDocumento, string> = {
   alvaras: 'Alvarás',
@@ -350,8 +353,17 @@ export function DocumentosPage() {
         const camposTexto = [
           item.numero,
           item.numero_processo,
+          item.numero_cnj,
+          item.processo_codigo,
+          item.numeros_alternativos,
           item.titulo,
           item.tipo,
+          item.acao,
+          item.natureza,
+          item.status,
+          item.orgao,
+          item.orgao_tribunal,
+          item.vara_comarca,
           item.orgao_emissor,
           item.municipio,
           item.contraparte,
@@ -359,11 +371,62 @@ export function DocumentosPage() {
           item.imovel,
           item.empresa,
           item.cliente_principal,
+          item.contrario_principal,
+          item.autor,
+          item.reu,
+          item.advogado,
+          item.responsavel_principal,
+          Array.isArray(item.responsaveis_lista)
+            ? item.responsaveis_lista.join(' ')
+            : item.responsaveis_lista,
+          item.polo,
+          item.risco,
+          item.probabilidade,
+          item.assunto_tipo,
+          item.fase_instancia,
+          item.proximo_prazo_descricao,
+          item.observacoes,
+          item.andamentos_futuros,
+          // Valores formatados e numéricos para busca por cifra
+          item.valor_causa !== undefined ? `R$ ${item.valor_causa} ${item.valor_causa}` : '',
+          item.valor_provisao !== undefined
+            ? `R$ ${item.valor_provisao} ${item.valor_provisao}`
+            : '',
+          item.valor_atualizado !== undefined
+            ? `R$ ${item.valor_atualizado} ${item.valor_atualizado}`
+            : '',
+          item.valor_base !== undefined ? `R$ ${item.valor_base} ${item.valor_base}` : '',
+          item.valor !== undefined ? `R$ ${item.valor} ${item.valor}` : '',
         ]
           .filter(Boolean)
           .join(' ')
         const textoNorm = normalizarParaBusca(camposTexto)
-        if (!textoNorm.includes(qNorm)) return false
+
+        // Verificação padrão de texto normalizado (case/acento-insensitive)
+        let encontrou = textoNorm.includes(qNorm)
+
+        // Se a busca contiver números (ex: "0000267"), checa também correspondência de dígitos contíguos
+        if (!encontrou) {
+          const qDigitos = normalizarDigitosParaBusca(filtros.busca)
+          if (qDigitos && qDigitos.length >= 3) {
+            const digitosAlvo = normalizarDigitosParaBusca(
+              [
+                item.numero_cnj,
+                item.numero_processo,
+                item.processo_codigo,
+                item.numero,
+                item.numeros_alternativos,
+              ]
+                .filter(Boolean)
+                .join(' '),
+            )
+            if (digitosAlvo.includes(qDigitos)) {
+              encontrou = true
+            }
+          }
+        }
+
+        if (!encontrou) return false
       }
 
       // 3. Filtro por status

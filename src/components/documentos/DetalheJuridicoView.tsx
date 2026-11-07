@@ -486,23 +486,27 @@ export function DetalheJuridicoView({
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white break-words max-w-4xl leading-tight">
                   {doc.titulo || 'Reclamação Trabalhista — Vara do Trabalho de Vitória'}
                 </h1>
-                <span className="inline-flex items-center px-3 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white tracking-wide shrink-0">
+                <span className="inline-flex items-center px-3 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white tracking-wide shrink-0 whitespace-nowrap">
                   EM ANDAMENTO
                 </span>
               </div>
 
               <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-400 font-mono flex-wrap">
-                <span className="font-sans text-slate-300 font-medium">{empresaProcessoNome}</span>
+                <span className="font-sans text-slate-300 font-medium flex items-center gap-1.5 shrink-0">
+                  <EmpresaIcon
+                    nome={empresaProcessoNome}
+                    className="h-3.5 w-3.5 rounded shrink-0"
+                  />
+                  <span>{empresaProcessoNome}</span>
+                </span>
                 <span>•</span>
                 <span>
                   Processo {doc.processo_codigo || doc.numero_cnj || doc.numero_processo || '-'}
                 </span>
-                {poloEfetivo && (
+                {doc.acao && (
                   <>
                     <span>•</span>
-                    <span className="font-sans px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-200 border border-slate-700">
-                      {poloEfetivo}
-                    </span>
+                    <span className="font-sans text-slate-300">{doc.acao}</span>
                   </>
                 )}
               </div>
@@ -690,16 +694,16 @@ export function DetalheJuridicoView({
                   <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
                     Processo:
                   </span>
-                  <div className="sm:col-span-9 flex flex-wrap items-center justify-between gap-2">
+                  <div className="sm:col-span-9 flex flex-wrap items-center justify-between gap-3">
                     <span className="font-mono font-semibold text-slate-900">
                       {doc.processo_codigo || doc.numero_processo || '-'}
                     </span>
-                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-slate-50 border border-slate-200/80 text-xs font-medium text-slate-800 shadow-2xs">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-slate-50 border border-slate-200/90 text-xs font-medium text-slate-800 shadow-2xs shrink-0 ml-auto">
                       <EmpresaIcon
                         nome={empresaProcessoNome}
                         className="h-4 w-4 shrink-0 rounded-xs"
                       />
-                      <span className="font-semibold text-slate-900 truncate max-w-[280px]">
+                      <span className="font-bold text-slate-900 whitespace-nowrap">
                         {empresaProcessoNome}
                       </span>
                     </div>

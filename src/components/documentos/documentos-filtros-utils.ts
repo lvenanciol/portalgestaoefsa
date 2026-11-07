@@ -11,6 +11,15 @@ export function normalizarParaBusca(texto: any): string {
     .trim()
 }
 
+/**
+ * Remove pontuação de processos/documentos (pontos, traços, barras) para
+ * permitir busca direta por dígitos contíguos (ex: "0000267" encontra "0000267-89.2023.5.17.0001")
+ */
+export function normalizarDigitosParaBusca(texto: any): string {
+  if (!texto) return ''
+  return String(texto).replace(/\D+/g, '')
+}
+
 // Extrai somente a categoria de natureza, limpando clientes ou rótulos concatenados
 export function extrairCategoriaNatureza(naturezaCrua: any): string {
   if (!naturezaCrua) return 'Trabalhista'
