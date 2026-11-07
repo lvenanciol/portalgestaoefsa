@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T10:00:54.682Z",
+  "generatedAt": "2026-11-07T10:15:45.518Z",
   "collections": [
     {
       "name": "users",
@@ -1102,6 +1102,54 @@
         {
           "name": "anexo",
           "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pauta_itens",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "deliberacoes_itens",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "assinaturas",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pendencias",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "erratas",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "publicada_em",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "publicada_por",
+          "type": "text",
           "required": false,
           "system": false
         }
@@ -3094,6 +3142,66 @@
         {
           "name": "anexo",
           "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_provisao",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "percentual_provisao",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_pago",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "proximo_prazo_data",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "proximo_prazo_descricao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "responsaveis_lista",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pendencias_alertas",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "andamentos_futuros",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "parecer_juridico_data",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "parecer_juridico_status",
+          "type": "text",
           "required": false,
           "system": false
         }

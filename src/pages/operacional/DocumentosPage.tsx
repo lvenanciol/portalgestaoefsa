@@ -57,6 +57,8 @@ import { DocumentosResumoLateral } from '@/components/documentos/DocumentosResum
 import { DetalheAlvaraView } from '@/components/documentos/DetalheAlvaraView'
 import { DetalheContratoView } from '@/components/documentos/DetalheContratoView'
 import { DetalheLocacaoView } from '@/components/documentos/DetalheLocacaoView'
+import { DetalheAtaView } from '@/components/documentos/DetalheAtaView'
+import { DetalheJuridicoView } from '@/components/documentos/DetalheJuridicoView'
 
 import { DocumentoAnexoModal } from '@/components/documentos/DocumentoAnexoModal'
 import { DocumentoDetalheModal } from '@/components/documentos/DocumentoDetalheModal'
@@ -420,7 +422,14 @@ export function DocumentosPage() {
 
   // Abertura do Detalhe (Primária: Botão "Abrir")
   const handleAbrirDetalhe = (item: any) => {
-    if (abaAtiva === 'alvaras' || abaAtiva === 'contratos' || abaAtiva === 'locacoes') {
+    // Todas as 5 abas agora têm telas de detalhe dedicadas profissionais
+    if (
+      abaAtiva === 'alvaras' ||
+      abaAtiva === 'contratos' ||
+      abaAtiva === 'locacoes' ||
+      abaAtiva === 'atas' ||
+      abaAtiva === 'juridicos'
+    ) {
       setDocDetalheDedicado(item)
     } else {
       setDocDetalheModal(item)
@@ -499,62 +508,85 @@ export function DocumentosPage() {
     }
   }
 
-  // Se o usuário estiver na tela de Detalhe Dedicada (Alvarás, Contratos ou Locações)
-  if (
-    docDetalheDedicado &&
-    (abaAtiva === 'alvaras' || abaAtiva === 'contratos' || abaAtiva === 'locacoes')
-  ) {
+  // Se o usuário estiver na tela de Detalhe Dedicada (Alvarás, Contratos, Locações, Atas ou Jurídicos)
+  if (docDetalheDedicado) {
     return (
-      <div className="p-6 max-w-7xl mx-auto">
-        {abaAtiva === 'alvaras' && (
-          <DetalheAlvaraView
-            documento={docDetalheDedicado}
+      <div className="w-full">
+        {abaAtiva === 'atas' && (
+          <DetalheAtaView
+            documentoId={docDetalheDedicado.id}
+            registroInicial={docDetalheDedicado}
             onVoltar={() => setDocDetalheDedicado(null)}
-            onEditar={() => {
-              setDocDetalheModal(docDetalheDedicado)
-              setModalDetalheModalAberto(true)
-            }}
-            onAtualizar={carregarDados}
-            onVisualizarAnexo={(_nomeArquivo) => {
-              handleAbrirAnexos(docDetalheDedicado)
-            }}
+            onSalvo={carregarDados}
+            onAbrirAnexoModal={(d) => handleAbrirAnexos(d)}
           />
+        )}
+
+        {abaAtiva === 'juridicos' && (
+          <DetalheJuridicoView
+            documentoId={docDetalheDedicado.id}
+            registroInicial={docDetalheDedicado}
+            onVoltar={() => setDocDetalheDedicado(null)}
+            onSalvo={carregarDados}
+            onAbrirAnexoModal={(d) => handleAbrirAnexos(d)}
+          />
+        )}
+
+        {abaAtiva === 'alvaras' && (
+          <div className="p-6 max-w-7xl mx-auto">
+            <DetalheAlvaraView
+              documento={docDetalheDedicado}
+              onVoltar={() => setDocDetalheDedicado(null)}
+              onEditar={() => {
+                setDocDetalheModal(docDetalheDedicado)
+                setModalDetalheModalAberto(true)
+              }}
+              onAtualizar={carregarDados}
+              onVisualizarAnexo={(_nomeArquivo) => {
+                handleAbrirAnexos(docDetalheDedicado)
+              }}
+            />
+          </div>
         )}
 
         {abaAtiva === 'contratos' && (
-          <DetalheContratoView
-            documento={docDetalheDedicado}
-            onVoltar={() => setDocDetalheDedicado(null)}
-            onEditar={() => {
-              setDocDetalheModal(docDetalheDedicado)
-              setModalDetalheModalAberto(true)
-            }}
-            onAtualizar={carregarDados}
-            onVisualizarAnexo={(_nomeArquivo) => {
-              handleAbrirAnexos(docDetalheDedicado)
-            }}
-            onAnexarArquivo={() => {
-              handleAbrirAnexos(docDetalheDedicado)
-            }}
-          />
+          <div className="p-6 max-w-7xl mx-auto">
+            <DetalheContratoView
+              documento={docDetalheDedicado}
+              onVoltar={() => setDocDetalheDedicado(null)}
+              onEditar={() => {
+                setDocDetalheModal(docDetalheDedicado)
+                setModalDetalheModalAberto(true)
+              }}
+              onAtualizar={carregarDados}
+              onVisualizarAnexo={(_nomeArquivo) => {
+                handleAbrirAnexos(docDetalheDedicado)
+              }}
+              onAnexarArquivo={() => {
+                handleAbrirAnexos(docDetalheDedicado)
+              }}
+            />
+          </div>
         )}
 
         {abaAtiva === 'locacoes' && (
-          <DetalheLocacaoView
-            documento={docDetalheDedicado}
-            onVoltar={() => setDocDetalheDedicado(null)}
-            onEditar={() => {
-              setDocDetalheModal(docDetalheDedicado)
-              setModalDetalheModalAberto(true)
-            }}
-            onAtualizar={carregarDados}
-            onVisualizarAnexo={(_nomeArquivo) => {
-              handleAbrirAnexos(docDetalheDedicado)
-            }}
-            onAnexarArquivo={() => {
-              handleAbrirAnexos(docDetalheDedicado)
-            }}
-          />
+          <div className="p-6 max-w-7xl mx-auto">
+            <DetalheLocacaoView
+              documento={docDetalheDedicado}
+              onVoltar={() => setDocDetalheDedicado(null)}
+              onEditar={() => {
+                setDocDetalheModal(docDetalheDedicado)
+                setModalDetalheModalAberto(true)
+              }}
+              onAtualizar={carregarDados}
+              onVisualizarAnexo={(_nomeArquivo) => {
+                handleAbrirAnexos(docDetalheDedicado)
+              }}
+              onAnexarArquivo={() => {
+                handleAbrirAnexos(docDetalheDedicado)
+              }}
+            />
+          </div>
         )}
 
         {/* Modal de Detalhe Edição */}
