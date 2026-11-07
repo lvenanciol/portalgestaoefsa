@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T13:31:29.291Z",
+  "generatedAt": "2026-11-07T14:28:50.860Z",
   "collections": [
     {
       "name": "users",
@@ -2903,6 +2903,12 @@
         {
           "name": "anexo",
           "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "responsaveis",
+          "type": "json",
           "required": false,
           "system": false
         }
