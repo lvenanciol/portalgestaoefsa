@@ -40,6 +40,10 @@ import { AnexoVisualizadorInline } from '@/components/documentos/AnexoVisualizad
 import { CampoEditorInline, DefinicaoCampo } from '@/components/documentos/CampoEditorInline'
 import { ResponsaveisEditorDialog } from '@/components/documentos/ResponsaveisEditorDialog'
 import { DocumentoParecerButton } from '@/components/documentos/DocumentoParecerButton'
+import {
+  extrairEntradasDeObservacoes,
+  separarResumoEvento,
+} from '@/components/documentos/ProcessoObservacoesTimeline'
 
 export interface DetalheJuridicoProps {
   documentoId: string
@@ -123,7 +127,7 @@ export function DetalheJuridicoView({
         ? Math.round((valorProvisaoNum / valorCausaNum) * 100)
         : 40
 
-  const valorPagoNum = Number(doc.valor_pago || 12400)
+  const valorPagoNum = Number(doc.valor_pago || 0)
   const totalCustoProvisao = valorPagoNum + valorProvisaoNum
   const pctPago =
     totalCustoProvisao > 0 ? Math.round((valorPagoNum / totalCustoProvisao) * 100) : 20
@@ -169,31 +173,27 @@ export function DetalheJuridicoView({
   // LINHA DO TEMPO PROCESSUAL — ESPINHA DA TELA
   // Mantém e integra com cronologia autêntica extraída do PDF em observações
   const timelineItens: ItemTimeline[] = React.useMemo(() => {
-    const itens: ItemTimeline[] = []
-
-    // 1. Extração da cronologia real de observações (se houver histórico extraído do PDF)
+    // 1. Extração robusta usando o parser oficial de observações
     const textoObs = String(doc.observacoes || '').trim()
-    if (textoObs) {
-      // Procura padrões de data como "DD/MM/AAAA:" ou "DD/MM/AAAA -"
-      const regexData = /(\d{2}\/\d{2}\/\d{4})(?::|-|\s)\s*([^0-9\n]+)/g
-      let match
-      while ((match = regexData.exec(textoObs)) !== null) {
-        const dStr = match[1]
-        const dDesc = match[2].trim()
-        const ehAudiencia = dDesc.toLowerCase().includes('audiência')
-        itens.push({
-          data_texto: dStr,
-          titulo: ehAudiencia ? 'Audiência de instrução' : dDesc.slice(0, 40),
-          descricao: dDesc.length > 40 ? dDesc : undefined,
-          status_no: ehAudiencia ? 'atual' : 'passado',
-        })
-      }
-    }
+    const entradasParsed = extrairEntradasDeObservacoes(textoObs)
 
-    // Se encontrou dados autênticos nas observações, adiciona o nó futuro de sentença se não houver
-    // E ordena do MAIS RECENTE para o mais antigo (requisito explícito do usuário)
-    if (itens.length > 0) {
-      const jaTemSentenca = itens.some((i) => i.titulo.toLowerCase().includes('sentença'))
+    if (entradasParsed.length > 0) {
+      const itensExtraidos: ItemTimeline[] = entradasParsed.map((ent) => {
+        const { resumo, corpo } = separarResumoEvento(ent.texto)
+        const ehAudiencia = ent.texto.toLowerCase().includes('audiência')
+        const tituloFinal = ent.autorTag
+          ? `${ent.autorTag} ${resumo || ent.texto.slice(0, 50)}`
+          : resumo || ent.texto.slice(0, 50)
+
+        return {
+          data_texto: ent.dataTexto,
+          titulo: tituloFinal,
+          descricao: corpo || (ent.texto.length > 60 ? ent.texto : undefined),
+          status_no: ehAudiencia ? 'atual' : 'passado',
+        }
+      })
+
+      const jaTemSentenca = itensExtraidos.some((i) => i.titulo.toLowerCase().includes('sentença'))
       const futuros: ItemTimeline[] = []
       if (!jaTemSentenca) {
         futuros.push({
@@ -203,9 +203,9 @@ export function DetalheJuridicoView({
           status_no: 'futuro',
         })
       }
-      // Inverte para exibir do evento mais recente para o mais antigo
-      const passadosERecentes = [...itens].reverse()
-      return [...futuros, ...passadosERecentes]
+
+      // extrairEntradasDeObservacoes já ordena do MAIS RECENTE para o mais antigo
+      return [...futuros, ...itensExtraidos]
     }
 
     // Caso padrão visual ordenado do MAIS RECENTE para o mais antigo
@@ -252,51 +252,72 @@ export function DetalheJuridicoView({
     if (Array.isArray(doc.responsaveis_lista) && doc.responsaveis_lista.length > 0) {
       return doc.responsaveis_lista
     }
+    const lista: ItemResponsavel[] = []
+    if (doc.advogado) {
+      const partes = String(doc.advogado).trim().split(/\s+/)
+      const inits =
+        partes.length >= 2
+          ? `${partes[0][0]}${partes[partes.length - 1][0]}`
+          : partes[0]?.slice(0, 2) || 'AD'
+      lista.push({
+        iniciais: inits.toUpperCase(),
+        nome: doc.advogado,
+        papel: 'Patrono / Advogado',
+        tipo: 'externo',
+      })
+    }
+    if (lista.length > 0) return lista
     return [
       {
-        iniciais: 'RL',
-        nome: 'Dra. Renata Lima',
-        papel: 'Ribeiro & Lima',
+        iniciais: 'AD',
+        nome: doc.advogado || 'Advogado do Caso',
+        papel: 'Patrono',
         tipo: 'externo',
       },
-      {
-        iniciais: 'AJ',
-        nome: 'Ana Jurídico',
-        papel: 'Jurídico',
-        tipo: 'interno',
-      },
     ]
-  }, [doc.responsaveis_lista])
+  }, [doc.responsaveis_lista, doc.advogado])
 
   // Pendências e alertas
   const pendenciasAlertas: ItemPendenciaAlerta[] = React.useMemo(() => {
     if (Array.isArray(doc.pendencias_alertas) && doc.pendencias_alertas.length > 0) {
       return doc.pendencias_alertas
     }
-    return [
-      {
-        id: 'pend-doc',
-        titulo: 'Documentos para audiência não anexados',
+    const lista: ItemPendenciaAlerta[] = []
+    if (anexosLista.length === 0) {
+      lista.push({
+        id: 'pend-anexo',
+        titulo: 'Documentos e peças iniciais pendentes de anexo',
         gravidade: 'perigo',
         texto_acao: 'Anexar',
         acao_tipo: 'anexo',
-      },
-      {
-        id: 'pend-testem',
-        titulo: 'Testemunha não confirmada',
-        gravidade: 'perigo',
-        texto_acao: 'Confirmar',
-        acao_tipo: 'testemunha',
-      },
-      {
-        id: 'pend-parecer',
-        titulo: 'Parecer jurídico vencido em 30/10/2026',
+      })
+    }
+    if (doc.proximo_prazo_data || doc.proxima_audiencia) {
+      lista.push({
+        id: 'pend-prazo',
+        titulo: `Acompanhamento de prazo processual (${proximoPrazoDataFormatada})`,
         gravidade: 'alerta',
-        texto_acao: 'Solicitar novo',
+        texto_acao: 'Acompanhar',
+        acao_tipo: 'prazo',
+      })
+    }
+    if (lista.length === 0) {
+      lista.push({
+        id: 'pend-parecer',
+        titulo: 'Análise de risco e emissão de parecer IA recomendada',
+        gravidade: 'alerta',
+        texto_acao: 'Solicitar',
         acao_tipo: 'parecer',
-      },
-    ]
-  }, [doc.pendencias_alertas])
+      })
+    }
+    return lista
+  }, [
+    doc.pendencias_alertas,
+    anexosLista.length,
+    doc.proximo_prazo_data,
+    doc.proxima_audiencia,
+    proximoPrazoDataFormatada,
+  ])
 
   const abrirEdicaoComDados = () => {
     setFormTipo(doc.tipo || doc.assunto_tipo || 'Reclamação trabalhista')
@@ -457,10 +478,7 @@ export function DetalheJuridicoView({
                   VALOR DA CAUSA
                 </div>
                 <div className="text-lg sm:text-xl font-bold font-mono text-slate-900 mt-1">
-                  R${' '}
-                  {valorCausaNum > 0
-                    ? valorCausaNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-                    : '128.000,00'}
+                  R$ {valorCausaNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </div>
                 <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
                   provisão {percentualProvisao}%
@@ -515,32 +533,35 @@ export function DetalheJuridicoView({
         </div>
       </div>
 
-      {/* 2. FAIXA VERMELHA DE ALERTA DE PRAZO (Fiel ao mockup Imagem 2) */}
-      <div className="bg-red-600 text-white shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-full bg-red-700/80 flex items-center justify-center shrink-0">
-              <AlertTriangle className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <div className="text-sm font-bold">
-                Audiência de instrução em {proximoPrazoDataFormatada}
+      {/* 2. FAIXA DE ALERTA DE PRAZO (Aparece se houver próximo prazo ou próxima audiência) */}
+      {(doc.proximo_prazo_data || doc.proxima_audiencia) && (
+        <div className="bg-red-600 text-white shadow-xs">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-full bg-red-700/80 flex items-center justify-center shrink-0">
+                <AlertTriangle className="h-5 w-5 text-white" />
               </div>
-              <div className="text-xs text-red-100">
-                Prazo para juntada de documentos encerra em {diasAtePrazo} dias.
+              <div>
+                <div className="text-sm font-bold">
+                  {doc.proxima_audiencia ? 'Audiência de instrução' : 'Prazo processual'} em{' '}
+                  {proximoPrazoDataFormatada}
+                </div>
+                <div className="text-xs text-red-100">
+                  Prazo para cumprimento encerra em {diasAtePrazo} dias.
+                </div>
               </div>
             </div>
-          </div>
 
-          <Button
-            type="button"
-            onClick={prepararAudiencia}
-            className="bg-white hover:bg-slate-100 text-slate-900 text-xs font-bold px-4 py-2 rounded-xl shrink-0 shadow-xs"
-          >
-            Preparar audiência
-          </Button>
+            <Button
+              type="button"
+              onClick={prepararAudiencia}
+              className="bg-white hover:bg-slate-100 text-slate-900 text-xs font-bold px-4 py-2 rounded-xl shrink-0 shadow-xs"
+            >
+              Preparar audiência
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* BARRA DE AÇÕES SUPERIOR */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
@@ -644,7 +665,7 @@ export function DetalheJuridicoView({
                     AUTOR
                   </span>
                   <div className="text-xs sm:text-sm font-medium text-slate-900">
-                    {doc.autor || 'J. da Silva'}
+                    {doc.autor || 'Não informado'}
                   </div>
                 </div>
 
@@ -654,7 +675,7 @@ export function DetalheJuridicoView({
                     ADVOGADO
                   </span>
                   <div className="text-xs sm:text-sm font-medium text-slate-900">
-                    {doc.advogado || 'Ribeiro & Lima Advogados'}
+                    {doc.advogado || 'Não informado'}
                   </div>
                 </div>
 
@@ -664,7 +685,7 @@ export function DetalheJuridicoView({
                     VARA
                   </span>
                   <div className="text-xs sm:text-sm font-medium text-slate-900">
-                    {doc.vara_comarca || doc.orgao || '1ª Vara do Trabalho de Vitória/ES'}
+                    {doc.vara_comarca || doc.orgao || doc.vara || 'Não informada'}
                   </div>
                 </div>
 
@@ -674,7 +695,7 @@ export function DetalheJuridicoView({
                     FASE
                   </span>
                   <div className="text-xs sm:text-sm font-medium text-slate-900">
-                    {doc.fase_instancia || 'Instrução'}
+                    {doc.fase_instancia || doc.fase || 'Não informada'}
                   </div>
                 </div>
 
@@ -684,10 +705,7 @@ export function DetalheJuridicoView({
                     PROVISIONAMENTO
                   </span>
                   <div className="text-xs sm:text-sm font-bold font-mono text-slate-900">
-                    R${' '}
-                    {valorProvisaoNum > 0
-                      ? valorProvisaoNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
-                      : '51.200,00'}
+                    R$ {valorProvisaoNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
 
