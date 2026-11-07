@@ -912,7 +912,7 @@ export function JuridicosImportModal({
             valor_atualizado_indexado:
               p.valor_atualizado_indexado ?? existente.valor_atualizado_indexado ?? 0,
             valor_envolvido: p.valor_envolvido ?? existente.valor_envolvido ?? 0,
-            empresa: p.empresa || existente.empresa || empresaSelecionada,
+            empresa: p.cliente_principal || p.empresa || existente.empresa || empresaSelecionada,
             versao_atual: novaVersao,
           }
 
@@ -1017,7 +1017,7 @@ export function JuridicosImportModal({
             polo: p.polo || 'Polo passivo',
             autor: p.cliente_principal || p.empresa || empresaSelecionada,
             reu: p.contrario_principal || '',
-            empresa: p.empresa || empresaSelecionada,
+            empresa: p.cliente_principal || p.empresa || empresaSelecionada,
             status: statusEnum,
             probabilidade: probSegura,
             risco: riscoEnum,

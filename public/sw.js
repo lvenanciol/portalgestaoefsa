@@ -40,7 +40,8 @@
 // v36 (07/11/2026): integração completa dos componentes inline (CampoEditorInline, AnexoVisualizadorInline, ResponsaveisEditorDialog) nas 5 views dedicadas e Parecer IA com Gemini Flash
 // v37 (07/11/2026): correção de layout e valores dos cards de KPI no topo da aba Locações (ALUGUEL, CAUÇÃO, VIGÊNCIA sem quebra mono tabular-nums)
 // v38 (07/11/2026): validação da importação dos relatórios jurídicos Extrafruti (trabalhista e cível) e timeline cronológica de observações
-const CACHE_NAME = 'pge-pwa-v38'
+// v39 (07/11/2026): cards KPI hero de Locações sem corte, tabela de valores e campos fiéis do PDF em Dados do Processo Jurídico
+const CACHE_NAME = 'pge-pwa-v39'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

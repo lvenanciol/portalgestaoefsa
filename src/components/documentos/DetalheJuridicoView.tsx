@@ -161,6 +161,11 @@ export function DetalheJuridicoView({
 
   const proximoPrazoDataFormatada = formatarDataBR(dataPrazoRaw)
 
+  const formatarMoedaTabela = (val: any) => {
+    const num = Number(val) || 0
+    return `R$ ${num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+
   // Risco em escala de 3 níveis
   const riscoCanonico = String(doc.risco || doc.probabilidade || 'Médio').toLowerCase()
   const nivelRisco: 'Baixo' | 'Médio' | 'Alto' =
@@ -248,34 +253,36 @@ export function DetalheJuridicoView({
   }, [doc.anexo])
 
   // Responsáveis (com marcação interno / externo)
+  // Regra h1: "Responsável principal" do PDF alimenta SOMENTE este card Responsáveis
   const responsaveis: ItemResponsavel[] = React.useMemo(() => {
     if (Array.isArray(doc.responsaveis_lista) && doc.responsaveis_lista.length > 0) {
       return doc.responsaveis_lista
     }
     const lista: ItemResponsavel[] = []
-    if (doc.advogado) {
-      const partes = String(doc.advogado).trim().split(/\s+/)
+    const nomeResponsavel = doc.responsavel_principal || doc.advogado
+    if (nomeResponsavel) {
+      const partes = String(nomeResponsavel).trim().split(/\s+/)
       const inits =
         partes.length >= 2
           ? `${partes[0][0]}${partes[partes.length - 1][0]}`
-          : partes[0]?.slice(0, 2) || 'AD'
+          : partes[0]?.slice(0, 2) || 'RP'
       lista.push({
         iniciais: inits.toUpperCase(),
-        nome: doc.advogado,
-        papel: 'Patrono / Advogado',
+        nome: nomeResponsavel,
+        papel: doc.responsavel_principal ? 'Responsável Principal' : 'Patrono / Advogado',
         tipo: 'externo',
       })
     }
     if (lista.length > 0) return lista
     return [
       {
-        iniciais: 'AD',
-        nome: doc.advogado || 'Advogado do Caso',
-        papel: 'Patrono',
-        tipo: 'externo',
+        iniciais: 'RP',
+        nome: 'Responsável não atribuído',
+        papel: 'Responsável',
+        tipo: 'interno',
       },
     ]
-  }, [doc.responsaveis_lista, doc.advogado])
+  }, [doc.responsaveis_lista, doc.responsavel_principal, doc.advogado])
 
   // Pendências e alertas
   const pendenciasAlertas: ItemPendenciaAlerta[] = React.useMemo(() => {
@@ -461,12 +468,22 @@ export function DetalheJuridicoView({
                 </span>
               </div>
 
-              <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-400 font-mono">
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-400 font-mono flex-wrap">
                 <span className="font-sans text-slate-300 font-medium">
-                  {doc.empresa || 'Extrafruti S/A'}
+                  {doc.cliente_principal || doc.empresa || 'Extrafruti S/A'}
                 </span>
                 <span>•</span>
-                <span>Processo {doc.numero_processo || '0001234-56.2026.5.17.0001'}</span>
+                <span>
+                  Processo {doc.processo_codigo || doc.numero_cnj || doc.numero_processo || '-'}
+                </span>
+                {doc.polo && (
+                  <>
+                    <span>•</span>
+                    <span className="font-sans px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-200 border border-slate-700">
+                      {doc.polo}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -624,10 +641,17 @@ export function DetalheJuridicoView({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* COLUNA ESQUERDA (8 COLUNAS) */}
           <div className="lg:col-span-8 space-y-6">
-            {/* CARD: DADOS DO PROCESSO (Fiel ao mockup Imagem 2) */}
+            {/* CARD: DADOS DO PROCESSO (Conforme especificação exata do PDF / Item 5H) */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-5">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h2 className="text-sm font-bold text-slate-900">Dados do processo</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-bold text-slate-900">Dados do processo</h2>
+                  {doc.processo_codigo && (
+                    <span className="text-xs font-mono font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                      #{doc.processo_codigo}
+                    </span>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={abrirEdicaoComDados}
@@ -638,87 +662,228 @@ export function DetalheJuridicoView({
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-5 gap-x-8">
-                {/* Tipo */}
-                <div className="space-y-1">
-                  <span className="block text-[10px] font-bold uppercase tracking-[0.04em] text-slate-400">
-                    TIPO
+              {/* Tabela de pares campo-valor alinhada com o layout do relatório jurídico */}
+              <div className="divide-y divide-slate-100 text-xs sm:text-sm">
+                {/* 1. Processo */}
+                <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline">
+                  <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
+                    Processo:
                   </span>
-                  <div className="text-xs sm:text-sm font-medium text-slate-900">
-                    {doc.tipo || doc.assunto_tipo || 'Reclamação trabalhista'}
+                  <span className="sm:col-span-9 font-mono font-semibold text-slate-900">
+                    {doc.processo_codigo || doc.numero_processo || '-'}
+                  </span>
+                </div>
+
+                {/* 2. Números: Número CNJ */}
+                <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline">
+                  <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
+                    Números:
+                  </span>
+                  <div className="sm:col-span-9 flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-slate-700">Número CNJ:</span>
+                    <span className="font-mono font-bold text-slate-950">
+                      {doc.numero_cnj || doc.numero_processo || '-'}
+                    </span>
+                    {doc.numeros_alternativos && (
+                      <span className="text-xs text-slate-500 font-mono">
+                        ({doc.numeros_alternativos})
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                {/* Empresa */}
-                <div className="space-y-1">
-                  <span className="block text-[10px] font-bold uppercase tracking-[0.04em] text-slate-400">
-                    EMPRESA
+                {/* 3. Título */}
+                <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline">
+                  <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
+                    Título:
                   </span>
-                  <div className="text-xs sm:text-sm font-medium text-slate-900">
-                    {doc.empresa || 'Extrafruti S/A'}
-                  </div>
+                  <span className="sm:col-span-9 font-medium text-slate-900 leading-relaxed uppercase">
+                    {doc.titulo || doc.assunto_tipo || 'Não informado'}
+                  </span>
                 </div>
 
-                {/* Autor */}
-                <div className="space-y-1">
-                  <span className="block text-[10px] font-bold uppercase tracking-[0.04em] text-slate-400">
-                    AUTOR
+                {/* 4. Órgão */}
+                <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline">
+                  <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
+                    Órgão:
                   </span>
-                  <div className="text-xs sm:text-sm font-medium text-slate-900">
-                    {doc.autor || 'Não informado'}
-                  </div>
+                  <span className="sm:col-span-9 font-medium text-slate-800 leading-relaxed">
+                    {doc.orgao || doc.orgao_tribunal || doc.vara_comarca || 'Não informado'}
+                  </span>
                 </div>
 
-                {/* Advogado */}
-                <div className="space-y-1">
-                  <span className="block text-[10px] font-bold uppercase tracking-[0.04em] text-slate-400">
-                    ADVOGADO
+                {/* 5. Ação */}
+                <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline">
+                  <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
+                    Ação:
                   </span>
-                  <div className="text-xs sm:text-sm font-medium text-slate-900">
-                    {doc.advogado || 'Não informado'}
-                  </div>
+                  <span className="sm:col-span-9 font-medium text-slate-900">
+                    {doc.acao || doc.assunto_tipo || 'Reclamação Trabalhista'}
+                  </span>
                 </div>
 
-                {/* Vara */}
-                <div className="space-y-1">
-                  <span className="block text-[10px] font-bold uppercase tracking-[0.04em] text-slate-400">
-                    VARA
+                {/* 6. Status */}
+                <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline">
+                  <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
+                    Status:
                   </span>
-                  <div className="text-xs sm:text-sm font-medium text-slate-900">
-                    {doc.vara_comarca || doc.orgao || doc.vara || 'Não informada'}
-                  </div>
-                </div>
-
-                {/* Fase */}
-                <div className="space-y-1">
-                  <span className="block text-[10px] font-bold uppercase tracking-[0.04em] text-slate-400">
-                    FASE
-                  </span>
-                  <div className="text-xs sm:text-sm font-medium text-slate-900">
-                    {doc.fase_instancia || doc.fase || 'Não informada'}
-                  </div>
-                </div>
-
-                {/* Provisionamento */}
-                <div className="space-y-1">
-                  <span className="block text-[10px] font-bold uppercase tracking-[0.04em] text-slate-400">
-                    PROVISIONAMENTO
-                  </span>
-                  <div className="text-xs sm:text-sm font-bold font-mono text-slate-900">
-                    R$ {valorProvisaoNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </div>
-                </div>
-
-                {/* Risco */}
-                <div className="space-y-1">
-                  <span className="block text-[10px] font-bold uppercase tracking-[0.04em] text-slate-400">
-                    RISCO
-                  </span>
-                  <div>
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white">
-                      {nivelRisco}
+                  <div className="sm:col-span-9 flex items-center gap-2">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {doc.status
+                        ? doc.status.charAt(0).toUpperCase() + doc.status.slice(1)
+                        : 'Ativo'}
                     </span>
                   </div>
+                </div>
+
+                {/* 7. Tipo */}
+                <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline">
+                  <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
+                    Tipo:
+                  </span>
+                  <span className="sm:col-span-9 font-medium text-slate-900">
+                    {doc.tipo || 'Judicial'}
+                  </span>
+                </div>
+
+                {/* 8. Natureza */}
+                <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline">
+                  <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
+                    Natureza:
+                  </span>
+                  <span className="sm:col-span-9 font-medium text-slate-900">
+                    {doc.natureza || 'Trabalhista'}
+                  </span>
+                </div>
+
+                {/* 9. Cliente principal (com polo) - Regras h2 e h3 */}
+                <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline">
+                  <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
+                    Cliente principal:
+                  </span>
+                  <div className="sm:col-span-9 flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-slate-900">
+                      {doc.cliente_principal || doc.empresa || 'Extrafruti S/A'}
+                    </span>
+                    {doc.polo && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                        {doc.polo.includes('(') ? doc.polo : `(${doc.polo})`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 10. Contrário principal */}
+                <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline">
+                  <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
+                    Contrário principal:
+                  </span>
+                  <span className="sm:col-span-9 font-medium text-slate-900">
+                    {doc.contrario_principal || doc.reu || doc.autor || 'Não informado'}
+                  </span>
+                </div>
+
+                {/* 11. Probabilidade - Regra h4 */}
+                <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline">
+                  <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
+                    Probabilidade:
+                  </span>
+                  <div className="sm:col-span-9 flex items-center gap-2">
+                    <span className="font-semibold text-slate-900">
+                      {doc.probabilidade || 'Perda Possível'}
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 uppercase">
+                      Risco {doc.risco || 'possivel'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* TABELA DE VALORES DO PROCESSO (Item 5H print 2 / Regra h4) */}
+              <div className="pt-4 border-t border-slate-200 space-y-3">
+                <div className="text-[11px] font-bold uppercase tracking-[0.04em] text-slate-700 flex items-center justify-between">
+                  <span>Demonstrativo Financeiro do Processo</span>
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    Valores em R$ (PT-BR)
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-[0.04em] text-slate-500">
+                        <th className="py-2.5 px-3">Rubrica</th>
+                        <th className="py-2.5 px-3 text-right">Valor base</th>
+                        <th className="py-2.5 px-3 text-right">Valor corrigido</th>
+                        <th className="py-2.5 px-3 text-right">Juros</th>
+                        <th className="py-2.5 px-3 text-right">Multa</th>
+                        <th className="py-2.5 px-3 text-right font-bold text-slate-900">
+                          Valor atualizado
+                        </th>
+                        <th className="py-2.5 px-3 text-right">Indexado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-mono text-slate-700">
+                      {/* Linha 1: Valor da causa */}
+                      <tr className="hover:bg-slate-50/60 transition-colors">
+                        <td className="py-2.5 px-3 font-sans font-bold text-slate-900">
+                          Valor da causa:
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          {formatarMoedaTabela(doc.valor_base || doc.valor_causa)}
+                          <span className="ml-1 text-[10px] font-sans text-slate-400 font-normal">
+                            (Determinada)
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          {formatarMoedaTabela(doc.valor_corrigido)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          {formatarMoedaTabela(doc.juros)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          {formatarMoedaTabela(doc.multa)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-slate-950 whitespace-nowrap">
+                          {formatarMoedaTabela(
+                            doc.valor_atualizado || doc.valor_base || doc.valor_causa,
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-500 whitespace-nowrap">
+                          {formatarMoedaTabela(doc.valor_atualizado_indexado)}
+                        </td>
+                      </tr>
+
+                      {/* Linha 2: Valor envolvido */}
+                      <tr className="hover:bg-slate-50/60 transition-colors bg-slate-50/30 font-semibold">
+                        <td className="py-2.5 px-3 font-sans font-bold text-slate-900">
+                          Valor envolvido:
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          {formatarMoedaTabela(
+                            doc.valor_envolvido || doc.valor_base || doc.valor_causa,
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          {formatarMoedaTabela(doc.valor_corrigido)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          {formatarMoedaTabela(doc.juros)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          {formatarMoedaTabela(doc.multa)}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-bold text-slate-950 whitespace-nowrap">
+                          {formatarMoedaTabela(
+                            doc.valor_atualizado || doc.valor_envolvido || doc.valor_base,
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-right text-slate-500 whitespace-nowrap">
+                          {formatarMoedaTabela(doc.valor_atualizado_indexado)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
