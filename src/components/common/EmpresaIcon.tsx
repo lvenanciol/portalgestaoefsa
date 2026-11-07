@@ -164,23 +164,40 @@ export function useEmpresaLogos() {
   return context
 }
 
+export type EmpresaIconSize = 'xs' | 'sm' | 'md' | 'lg' | string
+
 export interface EmpresaIconProps {
   nome?: string | null
+  empresa?: string | null
+  size?: EmpresaIconSize
   className?: string
   mostrarNome?: boolean
   nomeClassName?: string
 }
 
+const SIZE_MAP: Record<string, string> = {
+  xs: 'h-3.5 w-3.5',
+  sm: 'h-4 w-4',
+  md: 'h-5 w-5',
+  lg: 'h-6 w-6',
+}
+
 export function EmpresaIcon({
-  nome,
-  className = 'h-4 w-4',
+  nome: nomeProp,
+  empresa,
+  size,
+  className,
   mostrarNome = false,
   nomeClassName,
 }: EmpresaIconProps) {
   const { obterIconeEmpresa } = useEmpresaLogos()
-  if (!nome) return null
+  const nomeFinal = nomeProp || empresa || ''
+  if (!nomeFinal) return null
 
-  const icone = obterIconeEmpresa(nome, className)
+  const sizeClass = size && SIZE_MAP[size] ? SIZE_MAP[size] : size || ''
+  const finalClass = cn(sizeClass || 'h-4 w-4', className)
+
+  const icone = obterIconeEmpresa(nomeFinal, finalClass)
 
   if (!mostrarNome) {
     return <>{icone}</>
@@ -189,7 +206,7 @@ export function EmpresaIcon({
   return (
     <span className="inline-flex items-center gap-1.5 min-w-0">
       {icone}
-      <span className={cn('truncate', nomeClassName)}>{nome}</span>
+      <span className={cn('truncate', nomeClassName)}>{nomeFinal}</span>
     </span>
   )
 }

@@ -117,7 +117,12 @@ export function DocumentosFiltrosBar({
           <SelectTrigger className="h-10 text-xs bg-white rounded-[10px] border-gray-200">
             {filtros.empresa ? (
               <div className="flex items-center gap-1.5 truncate">
-                <EmpresaIcon empresa={filtros.empresa} size="xs" />
+                <EmpresaIcon
+                  nome={filtros.empresa}
+                  empresa={filtros.empresa}
+                  size="xs"
+                  className="h-3.5 w-3.5"
+                />
                 <span className="truncate">{filtros.empresa}</span>
               </div>
             ) : (
@@ -134,7 +139,7 @@ export function DocumentosFiltrosBar({
             {empresasDisponiveis.map((emp) => (
               <SelectItem key={emp} value={emp}>
                 <div className="flex items-center gap-2">
-                  <EmpresaIcon empresa={emp} size="xs" />
+                  <EmpresaIcon nome={emp} empresa={emp} size="xs" className="h-3.5 w-3.5" />
                   <span>{emp}</span>
                 </div>
               </SelectItem>

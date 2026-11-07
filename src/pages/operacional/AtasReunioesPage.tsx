@@ -481,7 +481,12 @@ export default function AtasReunioesPage() {
                   <div className="flex items-center gap-2 flex-wrap">
                     {a.empresa && (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[999px] text-[11px] font-semibold bg-gray-100 text-gray-700 border border-gray-200">
-                        <EmpresaIcon empresa={a.empresa} size="xs" />
+                        <EmpresaIcon
+                          nome={a.empresa}
+                          empresa={a.empresa}
+                          size="xs"
+                          className="h-3.5 w-3.5"
+                        />
                         {a.empresa}
                       </span>
                     )}
@@ -641,26 +646,46 @@ export default function AtasReunioesPage() {
                 >
                   <SelectTrigger className="h-10 bg-gray-50">
                     <div className="flex items-center gap-2">
-                      <EmpresaIcon empresa={form.empresa} size="xs" />
+                      <EmpresaIcon
+                        nome={form.empresa}
+                        empresa={form.empresa}
+                        size="xs"
+                        className="h-3.5 w-3.5"
+                      />
                       <span className="text-xs font-medium">{form.empresa}</span>
                     </div>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Extrafruti">
                       <div className="flex items-center gap-2">
-                        <EmpresaIcon empresa="Extrafruti" size="xs" />
+                        <EmpresaIcon
+                          nome="Extrafruti"
+                          empresa="Extrafruti"
+                          size="xs"
+                          className="h-3.5 w-3.5"
+                        />
                         <span>Extrafruti</span>
                       </div>
                     </SelectItem>
                     <SelectItem value="Casafruti">
                       <div className="flex items-center gap-2">
-                        <EmpresaIcon empresa="Casafruti" size="xs" />
+                        <EmpresaIcon
+                          nome="Casafruti"
+                          empresa="Casafruti"
+                          size="xs"
+                          className="h-3.5 w-3.5"
+                        />
                         <span>Casafruti</span>
                       </div>
                     </SelectItem>
                     <SelectItem value="FoldBox">
                       <div className="flex items-center gap-2">
-                        <EmpresaIcon empresa="FoldBox" size="xs" />
+                        <EmpresaIcon
+                          nome="FoldBox"
+                          empresa="FoldBox"
+                          size="xs"
+                          className="h-3.5 w-3.5"
+                        />
                         <span>FoldBox</span>
                       </div>
                     </SelectItem>

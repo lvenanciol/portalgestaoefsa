@@ -53,7 +53,7 @@ import {
   DocumentosFiltrosBar,
   FiltrosDocumentosState,
 } from '@/components/documentos/DocumentosFiltrosBar'
-import { DocumentosResumoLateral } from '@/components/documentos/DocumentosResumoLateral'
+import { DocumentosIndicadores } from '@/components/documentos/DocumentosIndicadores'
 import { DetalheAlvaraView } from '@/components/documentos/DetalheAlvaraView'
 import { DetalheContratoView } from '@/components/documentos/DetalheContratoView'
 import { DetalheLocacaoView } from '@/components/documentos/DetalheLocacaoView'
@@ -707,7 +707,16 @@ export function DocumentosPage() {
         )}
       </div>
 
-      {/* 3. FAIXA CONTEXTUAL SOB AS ABAS */}
+      {/* 3. LINHA HORIZONTAL DE INDICADORES (Cards sob as abas) */}
+      <DocumentosIndicadores
+        tipoAba={abaAtiva}
+        dados={dadosAbaPura}
+        totalGeral={dadosAbaPura.length}
+        onAbrirDocumento={handleAbrirDetalhe}
+        onExportar={handleExportarAba}
+      />
+
+      {/* 4. FAIXA CONTEXTUAL SOB AS ABAS */}
       <DocumentosFaixaContextual
         labelTipo={ROTULOS_ABAS[abaAtiva]}
         onPersonalizarColunas={() => {
@@ -718,7 +727,7 @@ export function DocumentosPage() {
         }}
       />
 
-      {/* 4. FILTROS EM UMA LINHA */}
+      {/* 5. FILTROS EM UMA LINHA */}
       <DocumentosFiltrosBar
         filtros={filtros}
         onFiltrosChange={handleFiltrosChange}
@@ -726,67 +735,53 @@ export function DocumentosPage() {
         empresasDisponiveis={empresasListaNomes}
       />
 
-      {/* 5. ÁREA PRINCIPAL: TABELA COM COLUNAS DINÂMICAS + RESUMO LATERAL DA ABA */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        {/* TABELA PRINCIPAL (9 ou 12 colunas) */}
-        <div className="xl:col-span-9 space-y-4">
-          {dadosFiltrados.length === 0 && !carregando ? (
-            <div className="p-12 text-center bg-white rounded-2xl border border-gray-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
-              <div className="h-14 w-14 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center mx-auto mb-3">
-                <FileText className="h-7 w-7" />
-              </div>
-              <h3 className="text-base font-bold text-gray-900">
-                Nenhum documento encontrado em {ROTULOS_ABAS[abaAtiva]}
-              </h3>
-              <p className="text-xs text-gray-500 max-w-sm mx-auto mt-1 mb-5">
-                Não foram encontrados registros para os filtros selecionados ou a aba ainda não
-                possui cadastros.
-              </p>
-              <Button
-                type="button"
-                onClick={() => setModalNovoAberto(true)}
-                className="bg-emerald-700 hover:bg-emerald-800 text-white rounded-full text-xs font-semibold px-5 h-9"
-              >
-                Criar primeiro {ROTULOS_ABAS[abaAtiva].toLowerCase().replace(/s$/, '')}
-              </Button>
+      {/* 6. TABELA PRINCIPAL COM LARGURA COMPLETA (SEM PAINEL LATERAL) */}
+      <div className="w-full space-y-4">
+        {dadosFiltrados.length === 0 && !carregando ? (
+          <div className="p-12 text-center bg-white rounded-2xl border border-gray-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+            <div className="h-14 w-14 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center mx-auto mb-3">
+              <FileText className="h-7 w-7" />
             </div>
-          ) : (
-            <DocumentosTabelaGenerica
-              dados={dadosFiltrados}
-              colunas={CONFIG_COLUNAS_POR_TIPO[abaAtiva]}
-              totalRegistros={dadosFiltrados.length}
-              loading={carregando}
-              paginaAtual={paginaAtual}
-              porPagina={itensPorPagina}
-              onPaginaChange={(p) => setPaginaAtual(p)}
-              onAbrirDetalhe={handleAbrirDetalhe}
-              onEditar={handleEditar}
-              onAnexar={handleAbrirAnexos}
-              onVerHistorico={handleVerHistorico}
-              onVerNoChat={(item) =>
-                toast({
-                  title: 'Chat',
-                  description: `Chat para o documento ${item.numero || item.titulo}`,
-                })
-              }
-              onExcluirSeguro={handleSolicitarExclusao}
-              selectedIds={idsSelecionados}
-              onToggleSelect={handleToggleSelecionarId}
-              onSelectAll={handleToggleSelecionarTodos}
-            />
-          )}
-        </div>
-
-        {/* PAINEL LATERAL "RESUMO DA ABA" */}
-        <div className="xl:col-span-3">
-          <DocumentosResumoLateral
-            tipoAba={abaAtiva}
-            dados={dadosAbaPura}
-            totalGeral={dadosAbaPura.length}
-            onAbrirDocumento={handleAbrirDetalhe}
-            onExportar={handleExportarAba}
+            <h3 className="text-base font-bold text-gray-900">
+              Nenhum documento encontrado em {ROTULOS_ABAS[abaAtiva]}
+            </h3>
+            <p className="text-xs text-gray-500 max-w-sm mx-auto mt-1 mb-5">
+              Não foram encontrados registros para os filtros selecionados ou a aba ainda não possui
+              cadastros.
+            </p>
+            <Button
+              type="button"
+              onClick={() => setModalNovoAberto(true)}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white rounded-full text-xs font-semibold px-5 h-9"
+            >
+              Criar primeiro {ROTULOS_ABAS[abaAtiva].toLowerCase().replace(/s$/, '')}
+            </Button>
+          </div>
+        ) : (
+          <DocumentosTabelaGenerica
+            dados={dadosFiltrados}
+            colunas={CONFIG_COLUNAS_POR_TIPO[abaAtiva]}
+            totalRegistros={dadosFiltrados.length}
+            loading={carregando}
+            paginaAtual={paginaAtual}
+            porPagina={itensPorPagina}
+            onPaginaChange={(p) => setPaginaAtual(p)}
+            onAbrirDetalhe={handleAbrirDetalhe}
+            onEditar={handleEditar}
+            onAnexar={handleAbrirAnexos}
+            onVerHistorico={handleVerHistorico}
+            onVerNoChat={(item) =>
+              toast({
+                title: 'Chat',
+                description: `Chat para o documento ${item.numero || item.titulo}`,
+              })
+            }
+            onExcluirSeguro={handleSolicitarExclusao}
+            selectedIds={idsSelecionados}
+            onToggleSelect={handleToggleSelecionarId}
+            onSelectAll={handleToggleSelecionarTodos}
           />
-        </div>
+        )}
       </div>
 
       {/* 6. MODAL SEGURO DE EXCLUSÃO (Exige digitação do número do documento) */}

@@ -1151,7 +1151,12 @@ export function JuridicosImportModal({
                 <SelectTrigger className="mt-1 bg-white h-9 text-xs">
                   {empresaSelecionada ? (
                     <div className="flex items-center gap-2 truncate">
-                      <EmpresaIcon empresa={empresaSelecionada} size="xs" />
+                      <EmpresaIcon
+                        nome={empresaSelecionada}
+                        empresa={empresaSelecionada}
+                        size="xs"
+                        className="h-3.5 w-3.5"
+                      />
                       <span className="truncate">{empresaSelecionada}</span>
                     </div>
                   ) : (
@@ -1162,7 +1167,7 @@ export function JuridicosImportModal({
                   {EMPRESAS_DISPONIVEIS.map((emp) => (
                     <SelectItem key={emp} value={emp} className="text-xs">
                       <div className="flex items-center gap-2">
-                        <EmpresaIcon empresa={emp} size="xs" />
+                        <EmpresaIcon nome={emp} empresa={emp} size="xs" className="h-3.5 w-3.5" />
                         <span>{emp}</span>
                       </div>
                     </SelectItem>
