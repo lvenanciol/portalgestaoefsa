@@ -40,6 +40,8 @@ import { AnexoVisualizadorInline } from '@/components/documentos/AnexoVisualizad
 import { CampoEditorInline, DefinicaoCampo } from '@/components/documentos/CampoEditorInline'
 import { ResponsaveisEditorDialog } from '@/components/documentos/ResponsaveisEditorDialog'
 import { DocumentoParecerButton } from '@/components/documentos/DocumentoParecerButton'
+import { EmpresaIcon } from '@/components/common/EmpresaIcon'
+import { extrairClienteEPolo } from '@/components/documentos/JuridicosImportModal'
 import {
   extrairEntradasDeObservacoes,
   separarResumoEvento,
@@ -116,6 +118,27 @@ export function DetalheJuridicoView({
       console.warn('Erro ao recarregar processo jurídico:', e)
     }
   }
+
+  // Extração defensiva e unificada de polo e empresa/cliente
+  const poloEfetivo = React.useMemo(() => {
+    if (doc.polo && String(doc.polo).trim()) {
+      return String(doc.polo).trim()
+    }
+    const extraidoCliente = extrairClienteEPolo(doc.cliente_principal).polo
+    if (extraidoCliente) return extraidoCliente
+    const extraidoEmpresa = extrairClienteEPolo(doc.empresa).polo
+    if (extraidoEmpresa) return extraidoEmpresa
+    const extraidoAutor = extrairClienteEPolo(doc.autor).polo
+    if (extraidoAutor) return extraidoAutor
+    return ''
+  }, [doc.polo, doc.cliente_principal, doc.empresa, doc.autor])
+
+  const empresaProcessoNome = React.useMemo(() => {
+    // Limpa eventuais sufixos de polo para exibição pura do nome da empresa
+    const raw = doc.empresa || doc.cliente_principal || 'Extrafruti S/A'
+    const limpo = extrairClienteEPolo(raw).cliente || raw
+    return limpo
+  }, [doc.empresa, doc.cliente_principal])
 
   // Cálculos financeiros (numéricos com moeda para P&L)
   const valorCausaNum = Number(doc.valor_causa || doc.valor_base || 0)
@@ -459,28 +482,26 @@ export function DetalheJuridicoView({
                 </span>
               </div>
 
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white truncate">
+              <div className="flex items-start sm:items-center gap-3 flex-wrap">
+                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white break-words max-w-4xl leading-tight">
                   {doc.titulo || 'Reclamação Trabalhista — Vara do Trabalho de Vitória'}
                 </h1>
-                <span className="inline-flex items-center px-3 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white tracking-wide">
+                <span className="inline-flex items-center px-3 py-0.5 rounded-full text-xs font-bold bg-red-600 text-white tracking-wide shrink-0">
                   EM ANDAMENTO
                 </span>
               </div>
 
               <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-400 font-mono flex-wrap">
-                <span className="font-sans text-slate-300 font-medium">
-                  {doc.cliente_principal || doc.empresa || 'Extrafruti S/A'}
-                </span>
+                <span className="font-sans text-slate-300 font-medium">{empresaProcessoNome}</span>
                 <span>•</span>
                 <span>
                   Processo {doc.processo_codigo || doc.numero_cnj || doc.numero_processo || '-'}
                 </span>
-                {doc.polo && (
+                {poloEfetivo && (
                   <>
                     <span>•</span>
-                    <span className="font-sans px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-200 border border-slate-700">
-                      {doc.polo}
+                    <span className="font-sans px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-800 text-slate-200 border border-slate-700">
+                      {poloEfetivo}
                     </span>
                   </>
                 )}
@@ -665,13 +686,24 @@ export function DetalheJuridicoView({
               {/* Tabela de pares campo-valor alinhada com o layout do relatório jurídico */}
               <div className="divide-y divide-slate-100 text-xs sm:text-sm">
                 {/* 1. Processo */}
-                <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline">
+                <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-center">
                   <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
                     Processo:
                   </span>
-                  <span className="sm:col-span-9 font-mono font-semibold text-slate-900">
-                    {doc.processo_codigo || doc.numero_processo || '-'}
-                  </span>
+                  <div className="sm:col-span-9 flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono font-semibold text-slate-900">
+                      {doc.processo_codigo || doc.numero_processo || '-'}
+                    </span>
+                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-md bg-slate-50 border border-slate-200/80 text-xs font-medium text-slate-800 shadow-2xs">
+                      <EmpresaIcon
+                        nome={empresaProcessoNome}
+                        className="h-4 w-4 shrink-0 rounded-xs"
+                      />
+                      <span className="font-semibold text-slate-900 truncate max-w-[280px]">
+                        {empresaProcessoNome}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* 2. Números: Número CNJ */}
@@ -756,19 +788,18 @@ export function DetalheJuridicoView({
                   </span>
                 </div>
 
-                {/* 9. Cliente principal (com polo) - Regras h2 e h3 */}
+                {/* 9. Polo processual estruturado (Regra h2: substitui linha Cliente principal) */}
                 <div className="py-2.5 grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-4 items-baseline">
                   <span className="sm:col-span-3 text-[11px] font-bold uppercase tracking-[0.04em] text-slate-500">
-                    Cliente principal:
+                    Polo:
                   </span>
-                  <div className="sm:col-span-9 flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-slate-900">
-                      {doc.cliente_principal || doc.empresa || 'Extrafruti S/A'}
-                    </span>
-                    {doc.polo && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                        {doc.polo.includes('(') ? doc.polo : `(${doc.polo})`}
+                  <div className="sm:col-span-9 flex items-center gap-2">
+                    {poloEfetivo ? (
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-100 text-slate-800 border border-slate-200">
+                        {poloEfetivo}
                       </span>
+                    ) : (
+                      <span className="text-slate-400 italic text-xs">Polo não informado</span>
                     )}
                   </div>
                 </div>
@@ -1269,6 +1300,16 @@ export function DetalheJuridicoView({
           },
           { campo: 'acao', rotulo: 'Ação / Natureza', tipo: 'texto' },
           { campo: 'empresa', rotulo: 'Empresa', tipo: 'texto' },
+          {
+            campo: 'polo',
+            rotulo: 'Polo Processual',
+            tipo: 'select',
+            opcoes: [
+              { value: 'Polo passivo', label: 'Polo passivo' },
+              { value: 'Polo ativo', label: 'Polo ativo' },
+              { value: 'Terceiro interessado', label: 'Terceiro interessado' },
+            ],
+          },
           { campo: 'comarca', rotulo: 'Comarca / Vara', tipo: 'texto' },
           { campo: 'fase', rotulo: 'Fase Processual', tipo: 'texto' },
           {
