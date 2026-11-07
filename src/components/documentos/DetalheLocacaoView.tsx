@@ -177,8 +177,14 @@ export function DetalheLocacaoView({
     return `${meses[d.getMonth()]}/${d.getFullYear()}`
   }
 
-  const formatarMoeda = (val: number) =>
-    val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const formatarMoeda = (val: number) => {
+    if (typeof val !== 'number' || isNaN(val)) return 'R$ 0,00'
+    const formatado = val.toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+    return `R$ ${formatado}`
+  }
 
   // Próximo reajuste
   const dataProximoReajuste = useMemo(() => {
@@ -342,41 +348,47 @@ export function DetalheLocacaoView({
             </div>
           </div>
 
-          {/* Lado Direito: 3 KPIS EM CARDS BRANCOS ELEVADOS — sem corte de valor */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:w-auto lg:min-w-[540px]">
+          {/* Lado Direito: 3 KPIS EM CARDS BRANCOS ELEVADOS — sem corte de valor e sem quebra interna */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:w-auto lg:shrink-0">
             {/* KPI 1: Aluguel */}
-            <div className="bg-white text-gray-900 rounded-2xl p-4 shadow-md border border-white/20 flex flex-col justify-between min-w-0">
-              <div className="text-[10px] font-bold uppercase tracking-[0.04em] text-gray-500">
+            <div className="bg-white text-gray-900 rounded-2xl p-4.5 shadow-md border border-white/20 flex flex-col justify-between min-w-0 sm:min-w-[190px] xl:min-w-[210px]">
+              <div className="text-[11px] font-bold uppercase tracking-[0.04em] text-gray-500">
                 ALUGUEL
               </div>
-              <div className="text-lg sm:text-xl xl:text-2xl font-extrabold font-mono tracking-tight text-gray-950 mt-1 break-words whitespace-normal leading-tight">
-                {formatarMoeda(aluguelMensal)}
+              <div className="mt-1.5 flex items-baseline">
+                <span className="text-base sm:text-lg xl:text-xl font-extrabold font-mono tabular-nums tracking-tight text-gray-950 whitespace-nowrap">
+                  {formatarMoeda(aluguelMensal)}
+                </span>
               </div>
-              <div className="text-[11px] text-gray-500 font-medium mt-1">por mês</div>
+              <div className="text-[11px] text-gray-500 font-medium mt-1.5">por mês</div>
             </div>
 
             {/* KPI 2: Caução (Número estruturado e destacado) */}
-            <div className="bg-white text-gray-900 rounded-2xl p-4 shadow-md border border-white/20 flex flex-col justify-between min-w-0">
-              <div className="text-[10px] font-bold uppercase tracking-[0.04em] text-gray-500">
+            <div className="bg-white text-gray-900 rounded-2xl p-4.5 shadow-md border border-white/20 flex flex-col justify-between min-w-0 sm:min-w-[190px] xl:min-w-[210px]">
+              <div className="text-[11px] font-bold uppercase tracking-[0.04em] text-gray-500">
                 CAUÇÃO
               </div>
-              <div className="text-lg sm:text-xl xl:text-2xl font-extrabold font-mono tracking-tight text-gray-950 mt-1 break-words whitespace-normal leading-tight">
-                {formatarMoeda(valorCaucao)}
+              <div className="mt-1.5 flex items-baseline">
+                <span className="text-base sm:text-lg xl:text-xl font-extrabold font-mono tabular-nums tracking-tight text-gray-950 whitespace-nowrap">
+                  {formatarMoeda(valorCaucao)}
+                </span>
               </div>
-              <div className="text-[11px] text-gray-500 font-medium mt-1">
+              <div className="text-[11px] text-gray-500 font-medium mt-1.5">
                 {qtdCaucoes} aluguéis
               </div>
             </div>
 
             {/* KPI 3: Vigência */}
-            <div className="bg-white text-gray-900 rounded-2xl p-4 shadow-md border border-white/20 flex flex-col justify-between min-w-0">
-              <div className="text-[10px] font-bold uppercase tracking-[0.04em] text-gray-500">
+            <div className="bg-white text-gray-900 rounded-2xl p-4.5 shadow-md border border-white/20 flex flex-col justify-between min-w-0 sm:min-w-[200px] xl:min-w-[220px]">
+              <div className="text-[11px] font-bold uppercase tracking-[0.04em] text-gray-500">
                 VIGÊNCIA
               </div>
-              <div className="text-xs sm:text-sm font-bold font-mono tracking-tight text-gray-950 mt-1 break-words leading-tight">
-                {formatarData(inicioData)} → {formatarData(fimData)}
+              <div className="mt-1.5 flex items-baseline">
+                <span className="text-[13px] sm:text-sm font-bold font-mono tabular-nums tracking-tight text-gray-950 whitespace-nowrap">
+                  {formatarData(inicioData)} → {formatarData(fimData)}
+                </span>
               </div>
-              <div className="text-[11px] text-gray-500 font-medium mt-1 font-mono">
+              <div className="text-[11px] text-gray-500 font-medium mt-1.5 font-mono">
                 {prazoMeses} meses
               </div>
             </div>
@@ -694,7 +706,7 @@ export function DetalheLocacaoView({
             <h2 className="text-base font-bold text-gray-900 tracking-tight">Garantia e caução</h2>
 
             <div>
-              <div className="text-2xl sm:text-3xl font-extrabold font-mono text-gray-950">
+              <div className="text-2xl sm:text-3xl font-extrabold font-mono tabular-nums text-gray-950 whitespace-nowrap">
                 {formatarMoeda(valorCaucao)}
               </div>
               <div className="text-xs text-gray-500 font-medium mt-0.5">depósito caução</div>

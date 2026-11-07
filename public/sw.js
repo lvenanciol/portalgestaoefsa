@@ -38,7 +38,8 @@
 // v34 (07/11/2026): desacoplamento Atas (contábeis em 'atas', /documentos) × reuniões (nova coleção 'atas_reunioes', Operação)
 // v35 (07/11/2026): detalhe dedicado em TODOS os caminhos das 5 abas de /documentos; botão "Parecer IA" alinhado ao header do modal (padrão Atas & Reuniões)
 // v36 (07/11/2026): integração completa dos componentes inline (CampoEditorInline, AnexoVisualizadorInline, ResponsaveisEditorDialog) nas 5 views dedicadas e Parecer IA com Gemini Flash
-const CACHE_NAME = 'pge-pwa-v36'
+// v37 (07/11/2026): correção de layout e valores dos cards de KPI no topo da aba Locações (ALUGUEL, CAUÇÃO, VIGÊNCIA sem quebra mono tabular-nums)
+const CACHE_NAME = 'pge-pwa-v37'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
