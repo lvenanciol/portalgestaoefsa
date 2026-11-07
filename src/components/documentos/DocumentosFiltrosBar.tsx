@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 
 export interface FiltrosDocumentosState {
   busca: string
@@ -108,19 +109,34 @@ export function DocumentosFiltrosBar({
       </div>
 
       {/* 3. Dropdown Empresa */}
-      <div className="w-[170px] shrink-0">
+      <div className="w-[190px] shrink-0">
         <Select
           value={filtros.empresa || 'todas'}
           onValueChange={(val) => onFiltrosChange({ empresa: val === 'todas' ? '' : val })}
         >
           <SelectTrigger className="h-10 text-xs bg-white rounded-[10px] border-gray-200">
-            <SelectValue placeholder="Empresa: Todas" />
+            {filtros.empresa ? (
+              <div className="flex items-center gap-1.5 truncate">
+                <EmpresaIcon empresa={filtros.empresa} size="xs" />
+                <span className="truncate">{filtros.empresa}</span>
+              </div>
+            ) : (
+              <SelectValue placeholder="Empresa: Todas" />
+            )}
           </SelectTrigger>
           <SelectContent className="text-xs rounded-xl">
-            <SelectItem value="todas">Empresa: Todas</SelectItem>
+            <SelectItem value="todas">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-gray-300 shrink-0" />
+                <span>Empresa: Todas</span>
+              </div>
+            </SelectItem>
             {empresasDisponiveis.map((emp) => (
               <SelectItem key={emp} value={emp}>
-                {emp}
+                <div className="flex items-center gap-2">
+                  <EmpresaIcon empresa={emp} size="xs" />
+                  <span>{emp}</span>
+                </div>
               </SelectItem>
             ))}
           </SelectContent>

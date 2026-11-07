@@ -479,6 +479,60 @@ export function DocumentoDetalheCampos({
 
       {(tipoAba === 'contratos' || tipoAba === 'locacoes') && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+          {tipoAba === 'contratos' && (
+            <div className="sm:col-span-2 lg:col-span-3 p-3 bg-blue-50/60 rounded-xl border border-blue-200">
+              <label className="text-blue-900 font-semibold text-xs block mb-1.5">
+                Modelo do Contrato
+              </label>
+              {editando ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-gray-800">
+                    <input
+                      type="radio"
+                      name="modelo_contrato"
+                      value="reajuste_periodico"
+                      checked={
+                        (form.modelo_contrato || 'reajuste_periodico') === 'reajuste_periodico'
+                      }
+                      onChange={() => setCampo('modelo_contrato', 'reajuste_periodico')}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>Reajuste periódico (mensalidade + índice)</span>
+                  </label>
+                  <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-gray-800">
+                    <input
+                      type="radio"
+                      name="modelo_contrato"
+                      value="unico_aquisicao"
+                      checked={form.modelo_contrato === 'unico_aquisicao'}
+                      onChange={() => setCampo('modelo_contrato', 'unico_aquisicao')}
+                      className="text-blue-600 focus:ring-blue-500"
+                    />
+                    <span>Contrato único / Aquisição (sem recorrência)</span>
+                  </label>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                      form.modelo_contrato === 'unico_aquisicao'
+                        ? 'bg-blue-100 text-blue-800'
+                        : 'bg-emerald-100 text-emerald-800'
+                    }`}
+                  >
+                    {form.modelo_contrato === 'unico_aquisicao'
+                      ? 'Contrato único / Aquisição'
+                      : 'Reajuste periódico'}
+                  </span>
+                  <span className="text-[11px] text-gray-500">
+                    {form.modelo_contrato === 'unico_aquisicao'
+                      ? 'Pagamento único/aquisição pontual, sem parcelas mensais ou índice de reajuste.'
+                      : 'Pagamento recorrente mensal com régua e índice de reajuste periódico.'}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
           <div className="sm:col-span-2">
             <label className="text-gray-500 font-medium">Título do Contrato</label>
             {editando ? (
@@ -519,30 +573,64 @@ export function DocumentoDetalheCampos({
             <label className="text-gray-500 font-medium">Empresa</label>
             {renderEmpresaSeletor()}
           </div>
-          <div>
-            <label className="text-gray-500 font-medium">Valor Mensal</label>
-            {editando ? (
-              <Input
-                type="number"
-                step="0.01"
-                value={form.valor_mensal ?? ''}
-                onChange={(e) => setCampo('valor_mensal', e.target.value)}
-                className="h-8 text-xs mt-1"
-              />
-            ) : (
-              <p className="font-semibold text-emerald-800 mt-1">
-                {form.valor_mensal !== undefined && form.valor_mensal !== null ? (
-                  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
-                    form.valor_mensal,
-                  )
-                ) : (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
-                    Não aplicável
-                  </span>
-                )}
-              </p>
-            )}
-          </div>
+          {tipoAba === 'contratos' && form.modelo_contrato === 'unico_aquisicao' ? (
+            <div>
+              <label className="text-gray-500 font-medium">Valor Total Único</label>
+              {editando ? (
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.valor_total ?? form.valor_assinatura ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setCampo('valor_total', v ? Number(v) : null)
+                    setCampo('valor_assinatura', v ? Number(v) : null)
+                  }}
+                  placeholder="0,00"
+                  className="h-8 text-xs mt-1"
+                />
+              ) : (
+                <p className="font-semibold text-blue-900 mt-1">
+                  {(form.valor_total ?? form.valor_assinatura) !== undefined &&
+                  (form.valor_total ?? form.valor_assinatura) !== null &&
+                  Number(form.valor_total ?? form.valor_assinatura) > 0 ? (
+                    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                      Number(form.valor_total ?? form.valor_assinatura),
+                    )
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                      Pendente de preenchimento
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div>
+              <label className="text-gray-500 font-medium">Valor Mensal</label>
+              {editando ? (
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.valor_mensal ?? ''}
+                  onChange={(e) => setCampo('valor_mensal', e.target.value)}
+                  className="h-8 text-xs mt-1"
+                />
+              ) : (
+                <p className="font-semibold text-emerald-800 mt-1">
+                  {form.valor_mensal !== undefined && form.valor_mensal !== null ? (
+                    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
+                      form.valor_mensal,
+                    )
+                  ) : (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                      Não aplicável
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
           <div>
             <label className="text-gray-500 font-medium">Vigência (Início - Fim)</label>
             {editando ? (
@@ -579,7 +667,13 @@ export function DocumentoDetalheCampos({
           </div>
           <div>
             <label className="text-gray-500 font-medium">Índice Reajuste</label>
-            {editando ? (
+            {tipoAba === 'contratos' && form.modelo_contrato === 'unico_aquisicao' ? (
+              <p className="mt-1">
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600">
+                  Não aplicável
+                </span>
+              </p>
+            ) : editando ? (
               <Input
                 value={form.indexador || ''}
                 onChange={(e) => setCampo('indexador', e.target.value)}

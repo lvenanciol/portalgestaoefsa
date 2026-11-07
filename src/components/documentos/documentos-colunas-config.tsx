@@ -323,18 +323,41 @@ export const COLUNAS_CONTRATOS: ColunaTipoConfig[] = [
   },
   // 2. Coluna Fixa: Empresa
   criarColunaEmpresa(),
-  // Específica: Valor Mensal
+  // Específica: Valor (Mensal ou Único/Aquisição conforme modelo_contrato)
   {
-    id: 'valor_mensal',
-    label: 'VALOR MENSAL',
-    width: '130px',
+    id: 'valor',
+    label: 'VALOR',
+    width: '145px',
     align: 'right',
     sortable: true,
-    sortValue: (item) => Number(item.valor_mensal || 0),
+    sortValue: (item) => {
+      const ehUnico = item.modelo_contrato === 'unico_aquisicao'
+      return Number(
+        ehUnico ? item.valor_total || item.valor_assinatura || 0 : item.valor_mensal || 0,
+      )
+    },
     render: (item) => {
+      const ehUnico = item.modelo_contrato === 'unico_aquisicao'
+      if (ehUnico) {
+        const val = item.valor_total ?? item.valor_assinatura
+        const v = fmtMoeda(val)
+        return v ? (
+          <div className="flex flex-col items-end leading-tight">
+            <span className="font-semibold text-xs text-gray-900">{v}</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-full mt-0.5">
+              Único / Aquisição
+            </span>
+          </div>
+        ) : (
+          <CampoFormatado estado="pendente" textoAcao="Informar valor" />
+        )
+      }
       const v = fmtMoeda(item.valor_mensal)
       return v ? (
-        <span className="font-semibold text-xs text-gray-900">{v}</span>
+        <div className="flex flex-col items-end leading-tight">
+          <span className="font-semibold text-xs text-gray-900">{v}</span>
+          <span className="text-[10px] text-gray-400">/ mês</span>
+        </div>
       ) : (
         <CampoFormatado estado="nao_aplicavel" />
       )
@@ -365,14 +388,19 @@ export const COLUNAS_CONTRATOS: ColunaTipoConfig[] = [
       )
     },
   },
-  // Específica: Índice de Reajuste
+  // Específica: Índice de Reajuste (Não aplicável para contrato único/aquisição)
   {
     id: 'indexador',
     label: 'ÍNDICE REAJUSTE',
     width: '130px',
     sortable: true,
-    sortValue: (item) => item.indexador || '',
-    render: (item) => <span className="text-xs text-gray-700">{item.indexador || 'IGP-M'}</span>,
+    sortValue: (item) => (item.modelo_contrato === 'unico_aquisicao' ? '' : item.indexador || ''),
+    render: (item) => {
+      if (item.modelo_contrato === 'unico_aquisicao') {
+        return <CampoFormatado estado="nao_aplicavel" />
+      }
+      return <span className="text-xs text-gray-700">{item.indexador || 'IGP-M'}</span>
+    },
   },
   // 3. Coluna Fixa: Status
   criarColunaStatus('contratos'),

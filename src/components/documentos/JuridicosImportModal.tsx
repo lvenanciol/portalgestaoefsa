@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import {
   Upload,
   FileSpreadsheet,
@@ -1148,12 +1149,22 @@ export function JuridicosImportModal({
                 disabled={gravandoLote || processandoLeitura}
               >
                 <SelectTrigger className="mt-1 bg-white h-9 text-xs">
-                  <SelectValue placeholder="Selecione a empresa" />
+                  {empresaSelecionada ? (
+                    <div className="flex items-center gap-2 truncate">
+                      <EmpresaIcon empresa={empresaSelecionada} size="xs" />
+                      <span className="truncate">{empresaSelecionada}</span>
+                    </div>
+                  ) : (
+                    <SelectValue placeholder="Selecione a empresa" />
+                  )}
                 </SelectTrigger>
                 <SelectContent>
                   {EMPRESAS_DISPONIVEIS.map((emp) => (
                     <SelectItem key={emp} value={emp} className="text-xs">
-                      {emp}
+                      <div className="flex items-center gap-2">
+                        <EmpresaIcon empresa={emp} size="xs" />
+                        <span>{emp}</span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>

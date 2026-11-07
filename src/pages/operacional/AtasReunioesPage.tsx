@@ -36,6 +36,8 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { fmtDataBRT } from '@/lib/brt'
+import { EmpresaIcon } from '@/components/common/EmpresaIcon'
+import { Briefcase, CheckCircle2 } from 'lucide-react'
 
 // Fase 7 (prompt-mestre) — Atas & Reuniões: data/hora, modalidade (Presencial,
 // Teams, Meet + link), participantes, pauta, discussões, decisões e action
@@ -67,6 +69,7 @@ export default function AtasReunioesPage() {
   const [excluindoAta, setExcluindoAta] = useState<any | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [form, setForm] = useState({
+    empresa: 'Extrafruti',
     titulo: '',
     data: '',
     modalidade: '',
@@ -105,15 +108,20 @@ export default function AtasReunioesPage() {
     carregar()
   }, [])
 
-  const abrirNova = () => {
+  const abrirNova = (sugestaoTitulo?: string) => {
     setEditandoAta(null)
     setForm({
-      titulo: '',
+      empresa: 'Extrafruti',
+      titulo: sugestaoTitulo || '',
       data: new Date().toISOString().slice(0, 10),
-      modalidade: '',
+      modalidade: 'Presencial',
       link_reuniao: '',
       participantes: '',
-      pauta: '',
+      pauta: sugestaoTitulo?.includes('ORÇAMENTO')
+        ? 'Definição das metas de faturamento, volume de vendas, margens operacionais e alinhamento com a diretoria do Extrabom para 2027.'
+        : sugestaoTitulo?.includes('RDE')
+          ? 'Reunião de Diretoria Executiva: acompanhamento dos KPIs semanais, projetos estratégicos, gargalos de suprimentos e deliberações prioritárias.'
+          : '',
       resumo: '',
       decisoes: '',
     })
@@ -127,9 +135,10 @@ export default function AtasReunioesPage() {
   const abrirEditarAta = (a: any) => {
     setEditandoAta(a)
     setForm({
+      empresa: a.empresa || 'Extrafruti',
       titulo: a.titulo || '',
       data: String(a.data || '').slice(0, 10),
-      modalidade: a.modalidade || '',
+      modalidade: a.modalidade || 'Presencial',
       link_reuniao: a.link_reuniao || '',
       participantes: a.participantes || '',
       pauta: a.pauta || '',
@@ -208,6 +217,7 @@ export default function AtasReunioesPage() {
       if (editandoAta) {
         // T-Xf: edição — campos + transcrição ACRESCENTADA + novos áudios
         const fd = new FormData()
+        fd.append('empresa', form.empresa || 'Extrafruti')
         fd.append('titulo', form.titulo || '')
         fd.append('data', form.data ? form.data + ' 00:00:00.000Z' : '')
         fd.append('modalidade', form.modalidade || '')
@@ -221,6 +231,7 @@ export default function AtasReunioesPage() {
         setEditandoAta(null)
       } else if (audios.length > 0) {
         const fd = new FormData()
+        fd.append('empresa', form.empresa || 'Extrafruti')
         fd.append('titulo', form.titulo || '')
         fd.append('data', form.data ? form.data + ' 00:00:00.000Z' : '')
         fd.append('modalidade', form.modalidade || '')
@@ -235,6 +246,7 @@ export default function AtasReunioesPage() {
         await pb.collection('atas').create(fd)
       } else {
         await pb.collection('atas').create({
+          empresa: form.empresa || 'Extrafruti',
           titulo: form.titulo,
           data: form.data ? form.data + ' 00:00:00.000Z' : '',
           modalidade: form.modalidade,
@@ -366,26 +378,71 @@ export default function AtasReunioesPage() {
     <div className="space-y-5 pb-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-gray-200/80">
         <div>
-          <h1 className="text-2xl lg:text-[26px] font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2.5 py-0.5 rounded-[999px]">
+              Operação Executiva
+            </span>
+          </div>
+          <h1 className="text-2xl lg:text-[26px] font-bold text-gray-900 tracking-tight flex items-center gap-2.5 mt-1">
             <Users className="h-6 w-6 text-[#1B5E20]" /> Atas & Reuniões
           </h1>
           <p className="text-xs sm:text-[13px] text-gray-500 mt-0.5">
-            Pauta, decisões e action items com dono e prazo
+            Registro exclusivo de reuniões operacionais, assuntos tratados, pautas e deliberações
+            com dono e prazo (ex.: Orçamento Vendas Extrabom, RDE). Atas contábeis/societárias ficam
+            em <strong>Documentos &gt; Atas</strong>.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* TX-a v2 (22/10): botões IA/áudio moraram p/ o TÍTULO do dialog —
-              header da tela fica só com Parecer + Nova ata */}
-          <Button variant="outline" className="h-9" onClick={() => gerarParecer()}>
+          <Button variant="outline" className="h-9 rounded-[10px]" onClick={() => gerarParecer()}>
             {iaCarregando === 'parecer' ? (
               <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
             ) : (
-              <Sparkles className="h-4 w-4 mr-1.5" />
+              <Sparkles className="h-4 w-4 mr-1.5 text-emerald-700" />
             )}
-            Parecer
+            Parecer IA
           </Button>
-          <Button onClick={abrirNova} className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white">
-            <Plus className="h-4 w-4 mr-1.5" /> + Nova ata
+          <Button
+            onClick={() => abrirNova()}
+            className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white rounded-[10px]"
+          >
+            <Plus className="h-4 w-4 mr-1.5" /> + Nova reunião
+          </Button>
+        </div>
+      </div>
+
+      {/* Modelos rápidos de reunião operacional */}
+      <div className="p-3.5 bg-gradient-to-r from-emerald-50/70 via-gray-50 to-white border border-emerald-200/70 rounded-[16px] shadow-[0_2px_8px_rgba(0,0,0,0.06)] flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-[#1B5E20]">
+            <Briefcase className="w-4 h-4" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-gray-900">
+              Modelos rápidos de reunião operacional
+            </p>
+            <p className="text-[11px] text-gray-500">
+              Inicie atas com assuntos frequentes do comitê executivo
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => abrirNova('ORÇAMENTO VENDAS EXTRABOM 2027')}
+            className="h-7 text-xs bg-white border-emerald-300 hover:bg-emerald-50 text-emerald-900 rounded-[999px] font-medium"
+          >
+            + Orçamento Vendas Extrabom 2027
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => abrirNova('RDE - Reunião de Diretoria Executiva')}
+            className="h-7 text-xs bg-white border-emerald-300 hover:bg-emerald-50 text-emerald-900 rounded-[999px] font-medium"
+          >
+            + RDE (Diretoria Executiva)
           </Button>
         </div>
       </div>
@@ -417,17 +474,27 @@ export default function AtasReunioesPage() {
           return (
             <div
               key={a.id}
-              className="bg-white rounded-xl border border-[#E5E7EB] shadow-xs p-4 hover:shadow-sm transition-shadow"
+              className="bg-white rounded-[16px] border border-[#E5E7EB] shadow-[0_2px_8px_rgba(0,0,0,0.06)] p-4 hover:border-emerald-200 transition-all"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
+                    {a.empresa && (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[999px] text-[11px] font-semibold bg-gray-100 text-gray-700 border border-gray-200">
+                        <EmpresaIcon empresa={a.empresa} size="xs" />
+                        {a.empresa}
+                      </span>
+                    )}
                     <h3 className="text-[15px] font-bold text-gray-900">{a.titulo}</h3>
                     {a.modalidade && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-[999px] bg-sky-50 text-sky-700 border border-sky-200">
                         {a.modalidade}
                       </span>
                     )}
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[999px] text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      Registrada
+                    </span>
                   </div>
                   <div className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-2">
                     <CalendarClock className="h-3 w-3" /> {fmtDataBRT(a.data)}
@@ -462,8 +529,8 @@ export default function AtasReunioesPage() {
                   )}
                 </div>
                 <div className="shrink-0 text-right space-y-2">
-                  <div className="inline-flex items-center gap-1 text-[11px] font-bold text-[#1B5E20] bg-emerald-50 border border-emerald-200 px-2 py-1 rounded-full">
-                    <ListTodo className="h-3 w-3" /> {items.length} action item(s)
+                  <div className="inline-flex items-center gap-1 text-[11px] font-bold text-[#1B5E20] bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-[999px]">
+                    <ListTodo className="h-3 w-3" /> {items.length} deliberações
                   </div>
                   {/* T-Xf: Editar e Excluir (não propagam o clique do card) */}
                   <div className="flex items-center justify-end gap-1.5">
@@ -563,15 +630,65 @@ export default function AtasReunioesPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Empresa do Grupo
+                </Label>
+                <Select
+                  value={form.empresa}
+                  onValueChange={(v) => setForm({ ...form, empresa: v })}
+                >
+                  <SelectTrigger className="h-10 bg-gray-50">
+                    <div className="flex items-center gap-2">
+                      <EmpresaIcon empresa={form.empresa} size="xs" />
+                      <span className="text-xs font-medium">{form.empresa}</span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Extrafruti">
+                      <div className="flex items-center gap-2">
+                        <EmpresaIcon empresa="Extrafruti" size="xs" />
+                        <span>Extrafruti</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="Casafruti">
+                      <div className="flex items-center gap-2">
+                        <EmpresaIcon empresa="Casafruti" size="xs" />
+                        <span>Casafruti</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="FoldBox">
+                      <div className="flex items-center gap-2">
+                        <EmpresaIcon empresa="FoldBox" size="xs" />
+                        <span>FoldBox</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Data *
+                </Label>
+                <Input
+                  type="date"
+                  value={form.data}
+                  onChange={(e) => setForm({ ...form, data: e.target.value })}
+                  className="h-10 bg-gray-50"
+                />
+              </div>
+            </div>
+
             <div className="grid gap-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Título *
+                Assunto / Título da Reunião *
               </Label>
               <Input
                 value={form.titulo}
                 onChange={(e) => setForm({ ...form, titulo: e.target.value })}
                 className="h-10 bg-gray-50"
-                placeholder="Ex.: Reunião de Resultados — Outubro"
+                placeholder="Ex.: ORÇAMENTO VENDAS EXTRABOM 2027 ou RDE"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">

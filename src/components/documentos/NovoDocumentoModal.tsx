@@ -248,6 +248,10 @@ export function NovoDocumentoModal({
         })
       } else if (tipoAba === 'atas') {
         const isAge = nomeLower.includes('age') || nomeLower.includes('extraordin')
+        const isBalanco =
+          nomeLower.includes('balanc') ||
+          nomeLower.includes('contabil') ||
+          nomeLower.includes('demonstr')
         const tituloSugerido = nomeArquivo
           .replace(/\.[^/.]+$/, '')
           .replace(/[_-]+/g, ' ')
@@ -256,17 +260,21 @@ export function NovoDocumentoModal({
         setForm((prev) => ({
           ...prev,
           empresa: empresaDetectada,
-          titulo: tituloSugerido || 'Ata de AGE - Deliberações Societárias',
+          titulo:
+            tituloSugerido ||
+            (isBalanco
+              ? `Ata de Aprovação das Contas e Balanço Patrimonial (${empresaDetectada})`
+              : 'Ata Contábil / Societária de AGE/AGO'),
           tipo_ata: isAge ? 'AGE' : 'AGO',
           data: agoraStr,
-          mesa_diretora: 'Presidente: Diretor Geral Executivo | Secretário: Coordenador Jurídico',
+          mesa_diretora: 'Presidente: Diretor Geral Executivo | Secretário: Contador Responsável',
           assinatura_eletronica: 'Assinatura digital padrão ICP-Brasil / DocuSign coletada',
-          participantes: 'Acionistas majoritários e membros do conselho de administração',
+          participantes: 'Sócios-administradores, Conselho Fiscal e Contador Responsável (CRC)',
           pauta:
-            '1. Exame, discussão e votação das demonstrações financeiras e diretrizes de expansão. 2. Abertura e consolidação de unidades operacionais.',
+            '1. Exame, discussão e aprovação das demonstrações contábeis e financeiras do exercício. 2. Destinação de resultados contábeis e distribuição de lucros/dividendos. 3. Ratificação dos lançamentos e livros contábeis.',
           deliberacoes:
-            'Aprovadas por unanimidade as matérias constantes da ordem do dia, autorizando a diretoria a praticar todos os atos necessários.',
-          resumo: `Ata societária vinculada à empresa ${empresaDetectada} deliberando sobre diretrizes corporativas e governança.`,
+            'Aprovadas sem reservas as demonstrações contábeis, balanço patrimonial e parecer do conselho, autorizando a escrituração contábil legal perante os órgãos competentes.',
+          resumo: `Ata contábil oficial da empresa ${empresaDetectada} com PDF arquivado para fins de auditoria e conformidade fiscal/societária.`,
           status: 'ativo',
         }))
       } else if (tipoAba === 'juridicos') {
@@ -348,13 +356,35 @@ export function NovoDocumentoModal({
             )
           : 0
 
+        const modeloContratoEscolhido =
+          tipoAba === 'contratos'
+            ? form.modelo_contrato || 'reajuste_periodico'
+            : 'reajuste_periodico'
+        const ehUnico = modeloContratoEscolhido === 'unico_aquisicao'
+
+        const valorTotalNum = form.valor_total
+          ? parseFloat(
+              String(form.valor_total)
+                .replace(/[R$\s.]/g, '')
+                .replace(',', '.'),
+            )
+          : valorAssinaturaNum
+
         const rec = await pb.collection('contratos').create({
           titulo: form.titulo,
           parte: form.parte || '',
           tipo: tipoAba === 'locacoes' ? 'locacao' : form.tipo || 'servico',
+          modelo_contrato: modeloContratoEscolhido,
+          valor_total: ehUnico ? (isNaN(valorTotalNum) ? 0 : valorTotalNum) : 0,
           empresa: form.empresa,
-          valor_mensal: isNaN(valorNum) ? 0 : valorNum,
-          valor_assinatura: isNaN(valorAssinaturaNum) ? 0 : valorAssinaturaNum,
+          valor_mensal: ehUnico ? 0 : isNaN(valorNum) ? 0 : valorNum,
+          valor_assinatura: ehUnico
+            ? isNaN(valorTotalNum)
+              ? 0
+              : valorTotalNum
+            : isNaN(valorAssinaturaNum)
+              ? 0
+              : valorAssinaturaNum,
           quantidade_caucoes: form.quantidade_caucoes ? Number(form.quantidade_caucoes) : 0,
           prazo_meses: form.prazo_meses ? Number(form.prazo_meses) : 0,
           inicio: form.inicio ? `${form.inicio} 00:00:00.000Z` : null,
@@ -638,14 +668,15 @@ export function NovoDocumentoModal({
                     required
                     value={form.numero || ''}
                     onChange={(e) => setCampo('numero', e.target.value)}
-                    placeholder="ALV-2026/0123"
+                    placeholder="2024/00123"
                     className="h-9 text-xs bg-gray-50"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-[11px] font-bold text-gray-700">Data de Validade</Label>
+                  <Label className="text-[11px] font-bold text-gray-700">Validade *</Label>
                   <Input
                     type="date"
+                    required
                     value={form.validade || ''}
                     onChange={(e) => setCampo('validade', e.target.value)}
                     className="h-9 text-xs bg-gray-50"
@@ -700,6 +731,45 @@ export function NovoDocumentoModal({
           {/* CAMPOS ESPECÍFICOS: CONTRATOS & LOCAÇÕES */}
           {(tipoAba === 'contratos' || tipoAba === 'locacoes') && (
             <>
+              {tipoAba === 'contratos' && (
+                <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5">
+                  <Label className="text-[11px] font-bold text-blue-900 block">
+                    Modelo do Contrato *
+                  </Label>
+                  <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-gray-800">
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="novo_modelo_contrato"
+                        value="reajuste_periodico"
+                        checked={
+                          (form.modelo_contrato || 'reajuste_periodico') === 'reajuste_periodico'
+                        }
+                        onChange={() => setCampo('modelo_contrato', 'reajuste_periodico')}
+                        className="text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>Reajuste periódico (mensalidade + índice)</span>
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="novo_modelo_contrato"
+                        value="unico_aquisicao"
+                        checked={form.modelo_contrato === 'unico_aquisicao'}
+                        onChange={() => setCampo('modelo_contrato', 'unico_aquisicao')}
+                        className="text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>Contrato único / Aquisição (sem recorrência)</span>
+                    </label>
+                  </div>
+                  <p className="text-[11px] text-gray-500">
+                    {form.modelo_contrato === 'unico_aquisicao'
+                      ? 'No modelo único/aquisição, valores mensais e índices de reajuste ficam desabilitados, exibindo valor total único.'
+                      : 'No modelo com reajuste periódico, são aplicadas parcelas mensais com régua de reajuste e indexador.'}
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-1">
                 <Label className="text-[11px] font-bold text-gray-700">
                   Título / Objeto Resumido *
@@ -733,30 +803,60 @@ export function NovoDocumentoModal({
                     className="h-9 text-xs bg-gray-50"
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-bold text-gray-700">Valor Mensal (R$)</Label>
-                  <Input
-                    value={form.valor_mensal || ''}
-                    onChange={(e) => setCampo('valor_mensal', e.target.value)}
-                    placeholder="16.000,00"
-                    className="h-9 text-xs bg-gray-50"
-                  />
-                </div>
+                {tipoAba === 'contratos' && form.modelo_contrato === 'unico_aquisicao' ? (
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-bold text-blue-900">
+                      Valor Total Único (R$) *
+                    </Label>
+                    <Input
+                      value={form.valor_total || form.valor_assinatura || ''}
+                      onChange={(e) => {
+                        setCampo('valor_total', e.target.value)
+                        setCampo('valor_assinatura', e.target.value)
+                      }}
+                      placeholder="150.000,00"
+                      className="h-9 text-xs bg-blue-50/50 border-blue-200"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-bold text-gray-700">Valor Mensal (R$)</Label>
+                    <Input
+                      value={form.valor_mensal || ''}
+                      onChange={(e) => setCampo('valor_mensal', e.target.value)}
+                      placeholder="16.000,00"
+                      className="h-9 text-xs bg-gray-50"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Campos compartilhados e detalhados de contratos e locações */}
               <div className="grid grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-[11px] font-bold text-gray-700">
-                    Valor na Assinatura (R$)
-                  </Label>
-                  <Input
-                    value={form.valor_assinatura || ''}
-                    onChange={(e) => setCampo('valor_assinatura', e.target.value)}
-                    placeholder="0,00"
-                    className="h-9 text-xs bg-gray-50"
-                  />
-                </div>
+                {tipoAba === 'contratos' && form.modelo_contrato === 'unico_aquisicao' ? (
+                  <div className="space-y-1 opacity-60">
+                    <Label className="text-[11px] font-bold text-gray-500">
+                      Valor Mensal (Recorrente)
+                    </Label>
+                    <Input
+                      disabled
+                      value="Não aplicável"
+                      className="h-9 text-xs bg-gray-100 cursor-not-allowed text-gray-500"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-bold text-gray-700">
+                      Valor na Assinatura (R$)
+                    </Label>
+                    <Input
+                      value={form.valor_assinatura || ''}
+                      onChange={(e) => setCampo('valor_assinatura', e.target.value)}
+                      placeholder="0,00"
+                      className="h-9 text-xs bg-gray-50"
+                    />
+                  </div>
+                )}
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold text-gray-700">
                     {tipoAba === 'locacoes' ? 'Qtd. Cauções' : 'Garantia / Cauções'}
@@ -896,12 +996,20 @@ export function NovoDocumentoModal({
                   <Label className="text-[11px] font-bold text-gray-700">
                     Índice de Reajuste e Periodicidade
                   </Label>
-                  <Input
-                    value={form.indexador || ''}
-                    onChange={(e) => setCampo('indexador', e.target.value)}
-                    placeholder="IGP-M (anual)"
-                    className="h-9 text-xs bg-gray-50"
-                  />
+                  {tipoAba === 'contratos' && form.modelo_contrato === 'unico_aquisicao' ? (
+                    <Input
+                      disabled
+                      value="Não aplicável"
+                      className="h-9 text-xs bg-gray-100 cursor-not-allowed text-gray-500 opacity-70"
+                    />
+                  ) : (
+                    <Input
+                      value={form.indexador || ''}
+                      onChange={(e) => setCampo('indexador', e.target.value)}
+                      placeholder="IGP-M (anual)"
+                      className="h-9 text-xs bg-gray-50"
+                    />
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Label className="text-[11px] font-bold text-gray-700">
@@ -952,36 +1060,55 @@ export function NovoDocumentoModal({
             </>
           )}
 
-          {/* CAMPOS ESPECÍFICOS: ATAS */}
+          {/* CAMPOS ESPECÍFICOS: ATAS CONTÁBEIS */}
           {tipoAba === 'atas' && (
             <>
+              <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl">
+                <p className="text-xs font-semibold text-amber-900">
+                  Aba Atas Contábeis (Módulo Documentos)
+                </p>
+                <p className="text-[11px] text-amber-800 mt-0.5">
+                  Destinada exclusivamente ao arquivamento de atas contábeis/societárias com PDF
+                  importado e validação de livros contábeis. Reuniões operacionais e deliberações de
+                  projetos ficam em <strong>Operação &gt; Atas &amp; Reuniões</strong>.
+                </p>
+              </div>
+
               <div className="space-y-1">
-                <Label className="text-[11px] font-bold text-gray-700">Título da Ata *</Label>
+                <Label className="text-[11px] font-bold text-gray-700">
+                  Título da Ata Contábil *
+                </Label>
                 <Input
                   required
                   value={form.titulo || ''}
                   onChange={(e) => setCampo('titulo', e.target.value)}
-                  placeholder="Ata de AGE - Abertura de Filial"
+                  placeholder="Ata de Aprovação das Contas e Demonstrações Contábeis"
                   className="h-9 text-xs bg-gray-50"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-[11px] font-bold text-gray-700">Tipo de Ata</Label>
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    Tipo de Ata Contábil
+                  </Label>
                   <Select
-                    value={form.tipo_ata || 'AGE'}
+                    value={form.tipo_ata || 'AGO'}
                     onValueChange={(val) => setCampo('tipo_ata', val)}
                   >
                     <SelectTrigger className="h-9 text-xs bg-gray-50 border-gray-200">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="AGE">AGE (Extraordinária)</SelectItem>
-                      <SelectItem value="AGO">AGO (Ordinária)</SelectItem>
-                      <SelectItem value="Reunião Diretoria">Reunião de Diretoria</SelectItem>
-                      <SelectItem value="Comitê">Comitê Executivo</SelectItem>
-                      <SelectItem value="Outro">Outro</SelectItem>
+                      <SelectItem value="AGO">AGO - Aprovação de Contas / Demonstrações</SelectItem>
+                      <SelectItem value="AGE">AGE - Alteração de Capital / Societária</SelectItem>
+                      <SelectItem value="Conselho Fiscal">
+                        Conselho Fiscal / Auditoria Contábil
+                      </SelectItem>
+                      <SelectItem value="Aprovação Balanço">
+                        Aprovação de Balanço / Distribuição
+                      </SelectItem>
+                      <SelectItem value="Outro">Outra Ata Contábil Oficial</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

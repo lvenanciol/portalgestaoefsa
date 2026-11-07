@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T11:36:49.415Z",
+  "generatedAt": "2026-11-07T12:08:00.752Z",
   "collections": [
     {
       "name": "users",
@@ -1551,6 +1551,19 @@
         {
           "name": "responsaveis",
           "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "modelo_contrato",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["reajuste_periodico", "unico_aquisicao"]
+        },
+        {
+          "name": "valor_total",
+          "type": "number",
           "required": false,
           "system": false
         }

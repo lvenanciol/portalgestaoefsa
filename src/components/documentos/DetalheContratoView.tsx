@@ -84,8 +84,13 @@ export function DetalheContratoView({
         .trim()
     : parteTexto
 
+  // Modelo de contrato: 'reajuste_periodico' vs 'unico_aquisicao'
+  const ehContratoUnico = documento.modelo_contrato === 'unico_aquisicao'
+  const valorTotalUnico = Number(documento.valor_total ?? documento.valor_assinatura) || 0
+
   // Valores financeiros
-  const valorMensal = valorMensalCustom ?? (Number(documento.valor_mensal) || 16000)
+  const valorMensal =
+    valorMensalCustom ?? (Number(documento.valor_mensal) || (ehContratoUnico ? 0 : 16000))
   const valorAnual = Number(documento.valor_assinatura) || valorMensal * 12
   const indiceReajuste = documento.indexador || 'IGP-M'
   const periodicidade = documento.periodicidade_reajuste || 'Anual'
@@ -307,105 +312,182 @@ export function DetalheContratoView({
 
           {/* Lado Direito: CARD HERÓI FINANCEIRO (Tipografia Dominante 40/48 mono) */}
           <div className="bg-white/95 backdrop-blur-xs text-gray-900 rounded-2xl p-5 shadow-lg border border-white/20 min-w-[280px] sm:min-w-[320px]">
-            <div className="text-[11px] font-bold uppercase tracking-[0.04em] text-gray-500">
-              VALOR MENSAL
-            </div>
-            <div className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight text-gray-950 mt-1">
-              {formatarMoeda(valorMensal)}
-            </div>
+            {ehContratoUnico ? (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-[0.04em] text-blue-700">
+                    VALOR TOTAL
+                  </span>
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
+                    Contrato Único / Aquisição
+                  </span>
+                </div>
+                <div className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight text-gray-950 mt-1">
+                  {formatarMoeda(valorTotalUnico)}
+                </div>
 
-            <div className="grid grid-cols-2 gap-4 mt-4 pt-3 border-t border-gray-200">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.04em] text-gray-400">
-                  ANUAL
+                <div className="grid grid-cols-2 gap-4 mt-4 pt-3 border-t border-gray-200">
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.04em] text-gray-400">
+                      RECORRÊNCIA
+                    </div>
+                    <div className="text-xs font-bold text-gray-700 mt-0.5">
+                      Sem parcelas periódicas
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.04em] text-gray-400">
+                      REAJUSTE
+                    </div>
+                    <div className="text-xs font-bold text-gray-500 mt-0.5">Não aplicável</div>
+                  </div>
                 </div>
-                <div className="text-sm font-bold font-mono text-gray-900 mt-0.5">
-                  {formatarMoeda(valorAnual)}
+              </>
+            ) : (
+              <>
+                <div className="text-[11px] font-bold uppercase tracking-[0.04em] text-gray-500">
+                  VALOR MENSAL
                 </div>
-              </div>
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.04em] text-gray-400">
-                  REAJUSTE
+                <div className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight text-gray-950 mt-1">
+                  {formatarMoeda(valorMensal)}
                 </div>
-                <div className="text-sm font-bold font-mono text-gray-900 mt-0.5">
-                  {indiceReajuste}
+
+                <div className="grid grid-cols-2 gap-4 mt-4 pt-3 border-t border-gray-200">
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.04em] text-gray-400">
+                      ANUAL
+                    </div>
+                    <div className="text-sm font-bold font-mono text-gray-900 mt-0.5">
+                      {formatarMoeda(valorAnual)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.04em] text-gray-400">
+                      REAJUSTE
+                    </div>
+                    <div className="text-sm font-bold font-mono text-gray-900 mt-0.5">
+                      {indiceReajuste}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      {/* 2. RÉGUA DE REAJUSTE HORIZONTAL COM NÓS ANUAIS E AÇÕES */}
+      {/* 2. RÉGUA DE REAJUSTE / VIGÊNCIA HORIZONTAL */}
       <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-[0.04em] text-gray-700">
-              Ciclo de Reajustes
-            </span>
-            <span className="text-xs text-gray-400">({periodicidade})</span>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setModalSimularAberto(true)}
-              className="h-8 px-3.5 text-xs font-semibold text-blue-700 border-blue-300 hover:bg-blue-50 rounded-full gap-1.5"
-            >
-              <TrendingUp className="h-3.5 w-3.5 text-blue-600" />
-              Simular reajuste
-            </Button>
-            <span
-              className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                reajusteCriticoAtrasado
-                  ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                  : 'bg-amber-50 text-amber-800 border border-amber-300'
-              }`}
-            >
-              <Clock className="h-3.5 w-3.5" />
-              {diasAteReajuste >= 0
-                ? `próximo em ${diasAteReajuste} dias`
-                : `reajuste vencido há ${Math.abs(diasAteReajuste)} dias`}
-            </span>
-          </div>
-        </div>
-
-        {/* Linha do tempo horizontal de nós anuais */}
-        <div className="relative pt-6 pb-2 px-4">
-          <div className="absolute top-[35px] left-8 right-8 h-[2px] border-t-2 border-dashed border-gray-300" />
-          <div className="grid grid-cols-3 gap-4 relative">
-            {/* Nó 1: Assinatura */}
-            <div className="flex flex-col items-start">
-              <div className="h-5 w-5 rounded-full bg-blue-700 border-4 border-white shadow-xs z-10 mb-2" />
-              <span className="text-xs font-mono font-bold text-gray-900">
-                {formatarMesAno(inicioData)}
-              </span>
-              <span className="text-[11px] text-gray-500 font-medium">Assinatura</span>
+        {ehContratoUnico ? (
+          <div>
+            <div className="flex items-center justify-between gap-4 mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-[0.04em] text-gray-700">
+                  Vigência da Aquisição / Execução
+                </span>
+                <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
+                  Vigência linear sem nós de reajuste
+                </span>
+              </div>
             </div>
 
-            {/* Nó 2: 1º Reajuste (Destacado) */}
-            <div className="flex flex-col items-center">
-              <div className="h-5 w-5 rounded-full bg-white border-4 border-blue-600 shadow-xs z-10 mb-2 ring-4 ring-blue-100" />
-              <span className="text-xs font-mono font-bold text-blue-900">
-                {formatarMesAno(data1Reajuste)}
-              </span>
-              <span className="text-[11px] text-blue-700 font-medium text-center">
-                1º reajuste {indiceReajuste}
-              </span>
-            </div>
+            <div className="relative pt-6 pb-2 px-4">
+              <div className="absolute top-[35px] left-8 right-8 h-[2px] bg-blue-200" />
+              <div className="grid grid-cols-2 gap-4 relative">
+                {/* Nó 1: Assinatura */}
+                <div className="flex flex-col items-start">
+                  <div className="h-5 w-5 rounded-full bg-emerald-600 border-4 border-white shadow-xs z-10 mb-2" />
+                  <span className="text-xs font-mono font-bold text-gray-900">
+                    {formatarData(inicioData)}
+                  </span>
+                  <span className="text-[11px] text-gray-500 font-medium">Início / Assinatura</span>
+                </div>
 
-            {/* Nó 3: 2º Reajuste */}
-            <div className="flex flex-col items-end">
-              <div className="h-5 w-5 rounded-full bg-white border-4 border-gray-400 shadow-xs z-10 mb-2" />
-              <span className="text-xs font-mono font-bold text-gray-600">
-                {formatarMesAno(data2Reajuste)}
-              </span>
-              <span className="text-[11px] text-gray-500 font-medium">2º reajuste</span>
+                {/* Nó 2: Término */}
+                <div className="flex flex-col items-end">
+                  <div className="h-5 w-5 rounded-full bg-blue-600 border-4 border-white shadow-xs z-10 mb-2" />
+                  <span className="text-xs font-mono font-bold text-gray-900">
+                    {formatarData(fimData)}
+                  </span>
+                  <span className="text-[11px] text-gray-500 font-medium">
+                    Término / Entrega Final
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div>
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-[0.04em] text-gray-700">
+                  Ciclo de Reajustes
+                </span>
+                <span className="text-xs text-gray-400">({periodicidade})</span>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setModalSimularAberto(true)}
+                  className="h-8 px-3.5 text-xs font-semibold text-blue-700 border-blue-300 hover:bg-blue-50 rounded-full gap-1.5"
+                >
+                  <TrendingUp className="h-3.5 w-3.5 text-blue-600" />
+                  Simular reajuste
+                </Button>
+                <span
+                  className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                    reajusteCriticoAtrasado
+                      ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                      : 'bg-amber-50 text-amber-800 border border-amber-300'
+                  }`}
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                  {diasAteReajuste >= 0
+                    ? `próximo em ${diasAteReajuste} dias`
+                    : `reajuste vencido há ${Math.abs(diasAteReajuste)} dias`}
+                </span>
+              </div>
+            </div>
+
+            {/* Linha do tempo horizontal de nós anuais */}
+            <div className="relative pt-6 pb-2 px-4">
+              <div className="absolute top-[35px] left-8 right-8 h-[2px] border-t-2 border-dashed border-gray-300" />
+              <div className="grid grid-cols-3 gap-4 relative">
+                {/* Nó 1: Assinatura */}
+                <div className="flex flex-col items-start">
+                  <div className="h-5 w-5 rounded-full bg-blue-700 border-4 border-white shadow-xs z-10 mb-2" />
+                  <span className="text-xs font-mono font-bold text-gray-900">
+                    {formatarMesAno(inicioData)}
+                  </span>
+                  <span className="text-[11px] text-gray-500 font-medium">Assinatura</span>
+                </div>
+
+                {/* Nó 2: 1º Reajuste (Destacado) */}
+                <div className="flex flex-col items-center">
+                  <div className="h-5 w-5 rounded-full bg-white border-4 border-blue-600 shadow-xs z-10 mb-2 ring-4 ring-blue-100" />
+                  <span className="text-xs font-mono font-bold text-blue-900">
+                    {formatarMesAno(data1Reajuste)}
+                  </span>
+                  <span className="text-[11px] text-blue-700 font-medium text-center">
+                    1º reajuste {indiceReajuste}
+                  </span>
+                </div>
+
+                {/* Nó 3: 2º Reajuste */}
+                <div className="flex flex-col items-end">
+                  <div className="h-5 w-5 rounded-full bg-white border-4 border-gray-400 shadow-xs z-10 mb-2" />
+                  <span className="text-xs font-mono font-bold text-gray-600">
+                    {formatarMesAno(data2Reajuste)}
+                  </span>
+                  <span className="text-[11px] text-gray-500 font-medium">2º reajuste</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 3. BARRA DE AÇÕES PRINCIPAIS */}
@@ -520,51 +602,111 @@ export function DetalheContratoView({
 
           {/* Card Condições financeiras */}
           <div className="bg-white rounded-2xl p-6 border border-gray-200 shadow-[0_2px_8px_rgba(0,0,0,0.06)] space-y-4">
-            <h2 className="text-base font-bold text-gray-900 tracking-tight">
-              Condições financeiras
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-gray-900 tracking-tight">
+                Condições financeiras
+              </h2>
+              <span
+                className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
+                  ehContratoUnico
+                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                }`}
+              >
+                {ehContratoUnico
+                  ? 'Modelo: Contrato Único / Aquisição'
+                  : 'Modelo: Reajuste Periódico'}
+              </span>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-6">
-              <CampoFormatado
-                label="VALOR MENSAL"
-                valor={formatarMoeda(valorMensal)}
-                valorClassName="font-mono font-bold text-gray-900"
-                estado="preenchido"
-              />
+              {ehContratoUnico ? (
+                <>
+                  <CampoFormatado
+                    label="VALOR TOTAL ÚNICO"
+                    valor={formatarMoeda(valorTotalUnico)}
+                    valorClassName="font-mono font-bold text-gray-900 text-base"
+                    estado={valorTotalUnico > 0 ? 'preenchido' : 'pendente'}
+                    onPreencher={onEditar}
+                  />
 
-              <CampoFormatado
-                label="ÍNDICE DE REAJUSTE"
-                valor={`${indiceReajuste} (reajuste ${periodicidade.toLowerCase()})`}
-                estado="preenchido"
-              />
+                  <CampoFormatado
+                    label="VALOR MENSAL"
+                    valor="Sem recorrência mensal"
+                    estado="nao_aplicavel"
+                  />
 
-              <CampoFormatado
-                label="GARANTIA"
-                valor={documento.garantia || 'Retenção técnica contratual'}
-                estado={documento.garantia ? 'preenchido' : 'nao_aplicavel'}
-                onPreencher={onEditar}
-              />
+                  <CampoFormatado
+                    label="ÍNDICE DE REAJUSTE"
+                    valor="Não aplicável"
+                    estado="nao_aplicavel"
+                  />
 
-              <CampoFormatado
-                label="VIGÊNCIA"
-                valor={`${formatarData(inicioData)} → ${formatarData(fimData)}`}
-                valorClassName="font-mono"
-                estado="preenchido"
-              />
+                  <CampoFormatado
+                    label="VIGÊNCIA"
+                    valor={`${formatarData(inicioData)} → ${formatarData(fimData)}`}
+                    valorClassName="font-mono"
+                    estado="preenchido"
+                  />
 
-              <CampoFormatado
-                label="RENOVAÇÃO"
-                valor={documento.rescisao || 'Automática por 12 meses'}
-                estado={documento.rescisao ? 'preenchido' : 'nao_aplicavel'}
-                onPreencher={onEditar}
-              />
+                  <CampoFormatado
+                    label="GARANTIA"
+                    valor={documento.garantia || 'Garantia técnica contratual'}
+                    estado={documento.garantia ? 'preenchido' : 'nao_aplicavel'}
+                    onPreencher={onEditar}
+                  />
 
-              <CampoFormatado
-                label="MULTA RESCISÓRIA"
-                valor={documento.multa_rescisao || '3 aluguéis'}
-                estado={documento.multa_rescisao ? 'preenchido' : 'nao_aplicavel'}
-                onPreencher={onEditar}
-              />
+                  <CampoFormatado
+                    label="MULTA RESCISÓRIA"
+                    valor={documento.multa_rescisao || 'Conforme cláusula rescisória'}
+                    estado={documento.multa_rescisao ? 'preenchido' : 'nao_aplicavel'}
+                    onPreencher={onEditar}
+                  />
+                </>
+              ) : (
+                <>
+                  <CampoFormatado
+                    label="VALOR MENSAL"
+                    valor={formatarMoeda(valorMensal)}
+                    valorClassName="font-mono font-bold text-gray-900"
+                    estado="preenchido"
+                  />
+
+                  <CampoFormatado
+                    label="ÍNDICE DE REAJUSTE"
+                    valor={`${indiceReajuste} (reajuste ${periodicidade.toLowerCase()})`}
+                    estado="preenchido"
+                  />
+
+                  <CampoFormatado
+                    label="GARANTIA"
+                    valor={documento.garantia || 'Retenção técnica contratual'}
+                    estado={documento.garantia ? 'preenchido' : 'nao_aplicavel'}
+                    onPreencher={onEditar}
+                  />
+
+                  <CampoFormatado
+                    label="VIGÊNCIA"
+                    valor={`${formatarData(inicioData)} → ${formatarData(fimData)}`}
+                    valorClassName="font-mono"
+                    estado="preenchido"
+                  />
+
+                  <CampoFormatado
+                    label="RENOVAÇÃO"
+                    valor={documento.rescisao || 'Automática por 12 meses'}
+                    estado={documento.rescisao ? 'preenchido' : 'nao_aplicavel'}
+                    onPreencher={onEditar}
+                  />
+
+                  <CampoFormatado
+                    label="MULTA RESCISÓRIA"
+                    valor={documento.multa_rescisao || '3 aluguéis'}
+                    estado={documento.multa_rescisao ? 'preenchido' : 'nao_aplicavel'}
+                    onPreencher={onEditar}
+                  />
+                </>
+              )}
             </div>
           </div>
 

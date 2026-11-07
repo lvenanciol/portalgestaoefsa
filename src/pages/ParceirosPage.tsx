@@ -296,10 +296,22 @@ export default function ParceirosPage() {
         </Select>
         <Select value={fEmpresa} onValueChange={setFEmpresa}>
           <SelectTrigger className="h-9 w-44 text-xs bg-gray-50">
-            <SelectValue />
+            {fEmpresa && fEmpresa !== 'todas' ? (
+              <div className="flex items-center gap-1.5 truncate">
+                {obterIconeEmpresa(fEmpresa)}
+                <span className="truncate">{fEmpresa}</span>
+              </div>
+            ) : (
+              <SelectValue placeholder="Todas as empresas" />
+            )}
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="todas">Todas as empresas</SelectItem>
+            <SelectItem value="todas">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-gray-300 shrink-0" />
+                <span>Todas as empresas</span>
+              </div>
+            </SelectItem>
             {listaEmpresas.map((e) => (
               <SelectItem key={e} value={e}>
                 <div className="flex items-center gap-1.5">
