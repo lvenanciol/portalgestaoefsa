@@ -15,6 +15,7 @@ import {
   E_ANEXO_IMAGEM,
   podeVisualizarAnexo,
 } from '@/components/documentos/DocumentoDetalheAnexos'
+import { extrairAnexos } from '@/components/documentos/documentos-anexos-utils'
 
 export { E_ANEXO_IMAGEM, podeVisualizarAnexo }
 
@@ -35,7 +36,6 @@ export function DocumentoDetalheModal({
   documento,
   empresas = [],
   onAtualizado,
-  onAbrirAnexos,
 }: DocumentoDetalheModalProps) {
   const [docAtual, setDocAtual] = useState<any>(documento)
   const [modalVisualizarAberto, setModalVisualizarAberto] = useState(false)
@@ -84,14 +84,8 @@ export function DocumentoDetalheModal({
 
   if (!docAtual) return null
 
-  // Lista normalizada de anexos do documento
-  const extrairListaAnexos = (): string[] => {
-    const val = docAtual.anexo
-    if (Array.isArray(val)) return val.map(String).filter(Boolean)
-    if (typeof val === 'string' && val.trim()) return [val.trim()]
-    return []
-  }
-  const listaAnexos = extrairListaAnexos()
+  // Lista normalizada de anexos do documento usando o extrator universal
+  const listaAnexos = extrairAnexos(docAtual.anexo)
 
   // Título e identificadores para o cabeçalho
   const tituloCabecalho =
@@ -157,9 +151,9 @@ export function DocumentoDetalheModal({
     <>
       <Dialog open={aberto} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-7xl w-[96vw] max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl p-6 border border-gray-200">
-          <DialogHeader className="border-b border-gray-100 pb-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1 min-w-0">
+          <DialogHeader className="border-b border-gray-100 pb-4 pr-12">
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1 min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge
                     variant="outline"
@@ -195,8 +189,8 @@ export function DocumentoDetalheModal({
                 )}
               </div>
 
-              {/* Botão de Parecer de IA do Documento */}
-              <div className="shrink-0 flex items-center gap-1.5">
+              {/* Botão de Parecer de IA do Documento: posicionado com margem e gap seguros do botão X (pr-12 no DialogHeader) */}
+              <div className="shrink-0 flex items-center gap-2">
                 <DocumentoParecerButton
                   documento={docAtual}
                   tipoAba={tipoAba as any}
@@ -216,12 +210,11 @@ export function DocumentoDetalheModal({
               onAtualizado={recarregarRegistro}
             />
 
-            {/* Caixa: ARQUIVOS ANEXOS DO DOCUMENTO */}
+            {/* Caixa: ARQUIVOS ANEXOS DO DOCUMENTO (gerencia, adiciona, baixa, visualiza e remove com clique na linha) */}
             <DocumentoDetalheAnexos
               colecaoNome={colecaoNome}
               recordId={docAtual.id}
               anexos={listaAnexos}
-              onAbrirAnexosModal={onAbrirAnexos ? () => onAbrirAnexos(docAtual) : undefined}
               onVisualizarArquivo={abrirVisualizador}
               onAnexosAlterados={(novaLista) => {
                 setDocAtual((prev: any) => ({ ...prev, anexo: novaLista }))
@@ -257,7 +250,7 @@ export function DocumentoDetalheModal({
       {/* Modal Embutido de Visualização de Anexo (PDF / Imagem / Arquivo) */}
       <Dialog open={modalVisualizarAberto} onOpenChange={setModalVisualizarAberto}>
         <DialogContent className="max-w-4xl max-h-[92vh] bg-white rounded-2xl shadow-2xl p-4 border border-gray-200 flex flex-col">
-          <DialogHeader className="border-b border-gray-100 pb-2">
+          <DialogHeader className="border-b border-gray-100 pb-2 pr-10">
             <div className="flex items-center justify-between gap-2">
               <DialogTitle className="text-sm font-bold text-gray-900 truncate">
                 Visualizando: {arquivoEmVisualizacao}

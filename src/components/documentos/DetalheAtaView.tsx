@@ -26,6 +26,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useToast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
+import { extrairAnexos } from './documentos-anexos-utils'
 
 export interface DetalheAtaProps {
   documentoId: string
@@ -198,7 +199,7 @@ export function DetalheAtaView({
   }, [doc.assinaturas])
 
   // Contadores de anexos
-  const qtdAnexos = Array.isArray(doc.anexo) ? doc.anexo.length : doc.anexo ? 1 : 0
+  const qtdAnexos = extrairAnexos(doc.anexo).length
   const qtdPautas = itensPauta.length
 
   // REGRAS DE NEGÓCIO — COMPLIANCE:

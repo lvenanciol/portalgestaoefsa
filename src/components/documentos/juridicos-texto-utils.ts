@@ -120,30 +120,15 @@ export function truncarCorpoEmBlocoEstruturado(texto: string): string {
  * Normaliza o valor do campo anexo do PocketBase (seja string única, array de strings ou nulo)
  * em uma lista de nomes de arquivos não vazia e sem duplicatas.
  */
+import { extrairAnexos } from './documentos-anexos-utils'
+
+/**
+ * Normaliza o valor do campo anexo do PocketBase (seja string única, array de strings ou JSON)
+ * em uma lista de nomes de arquivos não vazia e sem duplicatas.
+ * Delegado para o extrator universal extrairAnexos.
+ */
 export function extrairListaAnexos(anexo: any): string[] {
-  if (!anexo) return []
-  if (Array.isArray(anexo)) {
-    return anexo.map((item) => (item ? String(item).trim() : '')).filter((nome) => Boolean(nome))
-  }
-  if (typeof anexo === 'string') {
-    const trimmed = anexo.trim()
-    if (!trimmed) return []
-    // Se for string serializada em JSON ex: '["arq1.pdf","arq2.pdf"]'
-    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      try {
-        const parsed = JSON.parse(trimmed)
-        if (Array.isArray(parsed)) {
-          return parsed
-            .map((item) => (item ? String(item).trim() : ''))
-            .filter((nome) => Boolean(nome))
-        }
-      } catch {
-        // não é json válido, trata como nome simples
-      }
-    }
-    return [trimmed]
-  }
-  return []
+  return extrairAnexos(anexo)
 }
 
 /**

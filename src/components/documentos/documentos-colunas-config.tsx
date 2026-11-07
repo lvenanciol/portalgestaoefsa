@@ -34,6 +34,7 @@ import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { calcularPrazoValidade, obterStatusInfo, CampoFormatado } from './documentos-design-tokens'
+import { extrairAnexos } from '@/components/documentos/documentos-anexos-utils'
 
 export interface ColunaTipoConfig<T = any> {
   id: string
@@ -175,14 +176,12 @@ export const criarColunaAnexos = <T extends Record<string, any>>(): ColunaTipoCo
   sortable: true,
   isFixed: true,
   sortValue: (item) => {
-    const val = item.anexo
-    if (Array.isArray(val)) return val.length
-    if (typeof val === 'string' && val.trim()) return 1
-    return 0
+    const lista = extrairAnexos(item.anexo)
+    return lista.length
   },
   render: (item) => {
-    const val = item.anexo
-    const count = Array.isArray(val) ? val.filter(Boolean).length : val ? 1 : 0
+    const lista = extrairAnexos(item.anexo)
+    const count = lista.length
 
     if (count === 0) {
       return (

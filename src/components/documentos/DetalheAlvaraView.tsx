@@ -49,6 +49,7 @@ import {
 import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
 import { calcularPrazoValidade, CampoFormatado, obterStatusInfo } from './documentos-design-tokens'
+import { extrairAnexos, contarAnexos } from './documentos-anexos-utils'
 
 export interface DetalheAlvaraProps {
   documento: any
@@ -73,30 +74,13 @@ export function DetalheAlvaraView({
 
   // Lista de arquivos anexos
   const listaAnexos: string[] = React.useMemo(() => {
-    if (!documento.anexo) return []
-    if (Array.isArray(documento.anexo)) return documento.anexo.filter(Boolean)
-    if (typeof documento.anexo === 'string' && documento.anexo.trim()) {
-      try {
-        const parsed = JSON.parse(documento.anexo)
-        if (Array.isArray(parsed)) return parsed.filter(Boolean)
-      } catch {
-        return [documento.anexo.trim()]
-      }
-    }
-    return []
+    return extrairAnexos(documento.anexo)
   }, [documento.anexo])
 
   // Contagem de PDFs e imagens
   const contagemArquivos = React.useMemo(() => {
-    let pdfs = 0
-    let imagens = 0
-    listaAnexos.forEach((nome) => {
-      const ext = nome.split('.').pop()?.toLowerCase() || ''
-      if (ext === 'pdf') pdfs++
-      else if (['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif'].includes(ext)) imagens++
-    })
-    return { pdfs, imagens, total: listaAnexos.length }
-  }, [listaAnexos])
+    return contarAnexos(documento.anexo)
+  }, [documento.anexo])
 
   // Cálculo da régua de vigência (percentual 0 a 100)
   // Supondo um ciclo típico de 5 anos (1825 dias) ou proporcional aos dias restantes

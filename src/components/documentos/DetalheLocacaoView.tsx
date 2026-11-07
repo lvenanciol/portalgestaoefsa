@@ -48,6 +48,7 @@ import { toast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
 import { CampoFormatado, obterStatusInfo } from './documentos-design-tokens'
 import { SimularReajusteModal } from './SimularReajusteModal'
+import { extrairAnexos } from './documentos-anexos-utils'
 
 export interface DetalheLocacaoProps {
   documento: any
@@ -166,9 +167,7 @@ export function DetalheLocacaoView({
 
   // Anexos
   const listaAnexos: string[] = useMemo(() => {
-    if (Array.isArray(documento.anexo)) return documento.anexo.filter(Boolean)
-    if (typeof documento.anexo === 'string' && documento.anexo.trim()) return [documento.anexo]
-    return []
+    return extrairAnexos(documento.anexo)
   }, [documento.anexo])
 
   const temAnexos = listaAnexos.length > 0

@@ -5,7 +5,6 @@ import {
   Eye,
   Download,
   AlertTriangle,
-  ExternalLink,
   Loader2,
   Trash2,
   Upload,
@@ -23,16 +22,19 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import pb from '@/lib/pocketbase/client'
+import {
+  E_ANEXO_IMAGEM,
+  podeVisualizarAnexo,
+  extrairAnexos,
+} from '@/components/documentos/documentos-anexos-utils'
 
-export const E_ANEXO_IMAGEM = /\.(png|jpe?g|webp|gif|bmp|svg)$/i
-export const podeVisualizarAnexo = (nome: string): boolean =>
-  /\.(pdf|png|jpe?g|webp|gif|bmp|svg)$/i.test(nome || '')
+// Re-exporta para compatibilidade com outros arquivos que possam importar daqui
+export { E_ANEXO_IMAGEM, podeVisualizarAnexo }
 
 interface DocumentoDetalheAnexosProps {
   colecaoNome: string
   recordId: string
-  anexos: string[]
-  onAbrirAnexosModal?: () => void
+  anexos: string[] | any
   onVisualizarArquivo: (nomeArquivo: string) => void
   onAnexosAlterados?: (novaLista: string[]) => void
 }
@@ -41,26 +43,19 @@ export function DocumentoDetalheAnexos({
   colecaoNome,
   recordId,
   anexos,
-  onAbrirAnexosModal,
   onVisualizarArquivo,
   onAnexosAlterados,
 }: DocumentoDetalheAnexosProps) {
   const [removendo, setRemovendo] = React.useState<string | null>(null)
   const [arquivoParaRemover, setArquivoParaRemover] = React.useState<string | null>(null)
   const [fazendoUpload, setFazendoUpload] = React.useState(false)
-  const [listaLocal, setListaLocal] = React.useState<string[]>(anexos)
+  const [listaLocal, setListaLocal] = React.useState<string[]>(() => extrairAnexos(anexos))
   const inputUploadRef = React.useRef<HTMLInputElement>(null)
 
   // Mantém sincronizada com a prop externa quando esta mudar
   React.useEffect(() => {
-    setListaLocal(anexos)
+    setListaLocal(extrairAnexos(anexos))
   }, [anexos])
-
-  const extrairNomes = (val: any): string[] => {
-    if (Array.isArray(val)) return val.map(String).filter(Boolean)
-    if (typeof val === 'string' && val.trim()) return [val.trim()]
-    return []
-  }
 
   const handleDownload = (nome: string) => {
     try {
@@ -94,7 +89,7 @@ export function DocumentoDetalheAnexos({
 
       // Re-lê o registro para ter a lista exata gravada no banco
       const recFinal = await pb.collection(colecaoNome).getOne(recordId)
-      const novaLista = extrairNomes(recFinal?.anexo ?? recAtualizado?.anexo)
+      const novaLista = extrairAnexos(recFinal?.anexo ?? recAtualizado?.anexo)
 
       setListaLocal(novaLista)
       onAnexosAlterados?.(novaLista)
@@ -116,7 +111,6 @@ export function DocumentoDetalheAnexos({
       // PocketBase FileField com maxSelect > 1:
       // Para acrescentar arquivos aos já existentes sem sobrescrever,
       // utiliza-se a chave 'anexo+' no FormData.
-      // Se não houver arquivos prévios, 'anexo+' também funciona perfeitamente.
       const formData = new FormData()
       for (const f of files) {
         formData.append('anexo+', f)
@@ -127,7 +121,6 @@ export function DocumentoDetalheAnexos({
         recAtualizado = await pb.collection(colecaoNome).update(recordId, formData)
       } catch (errAppend) {
         console.warn('Tentativa com anexo+ falhou, tentando fallback com anexo simples:', errAppend)
-        // Fallback caso anexo+ não seja suportado em alguma versão específica
         const fdFallback = new FormData()
         for (const f of files) {
           fdFallback.append('anexo', f)
@@ -137,7 +130,7 @@ export function DocumentoDetalheAnexos({
 
       // Re-busca o registro atualizado no PocketBase para assegurar persistência no servidor
       const recFinal = await pb.collection(colecaoNome).getOne(recordId)
-      const novaLista = extrairNomes(recFinal?.anexo ?? recAtualizado?.anexo)
+      const novaLista = extrairAnexos(recFinal?.anexo ?? recAtualizado?.anexo)
 
       setListaLocal(novaLista)
       onAnexosAlterados?.(novaLista)
@@ -189,18 +182,6 @@ export function DocumentoDetalheAnexos({
             )}
             <span>Adicionar Anexo</span>
           </Button>
-          {onAbrirAnexosModal && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onAbrirAnexosModal}
-              className="h-7 text-xs bg-white text-blue-700 border-blue-300 hover:bg-blue-50 gap-1.5"
-            >
-              <ExternalLink className="h-3 w-3" />
-              <span>Gerenciar Anexos</span>
-            </Button>
-          )}
         </div>
       </div>
 
@@ -217,46 +198,87 @@ export function DocumentoDetalheAnexos({
             return (
               <div
                 key={`${nome}-${idx}`}
-                className="flex items-center justify-between gap-2 p-2 bg-white rounded-lg border border-gray-200 text-xs shadow-2xs hover:border-blue-300 transition-colors"
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  if (visualizavel) {
+                    onVisualizarArquivo(nome)
+                  } else {
+                    handleDownload(nome)
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    if (visualizavel) {
+                      onVisualizarArquivo(nome)
+                    } else {
+                      handleDownload(nome)
+                    }
+                  }
+                }}
+                className="group flex items-center justify-between gap-2 p-2 bg-white rounded-lg border border-gray-200 text-xs shadow-2xs hover:border-blue-400 hover:bg-blue-50/40 cursor-pointer transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                title={
+                  visualizavel ? `Clique para visualizar: ${nome}` : `Clique para baixar: ${nome}`
+                }
               >
                 <div className="flex items-center gap-2 min-w-0">
                   {ehImagem ? (
-                    <ImageIcon className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <ImageIcon className="h-4 w-4 text-emerald-600 shrink-0 group-hover:scale-110 transition-transform" />
                   ) : (
-                    <FileText className="h-4 w-4 text-blue-600 shrink-0" />
+                    <FileText className="h-4 w-4 text-blue-600 shrink-0 group-hover:scale-110 transition-transform" />
                   )}
-                  <span className="font-medium text-gray-800 truncate" title={nome}>
+                  <span className="font-medium text-gray-800 truncate group-hover:text-blue-900 transition-colors">
                     {nome}
                   </span>
+                  {visualizavel && (
+                    <span className="text-[10px] text-blue-600 font-medium opacity-0 group-hover:opacity-100 transition-opacity hidden sm:inline">
+                      (clique para ver)
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div
+                  className="flex items-center gap-1.5 shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   {visualizavel && (
                     <Button
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={() => onVisualizarArquivo(nome)}
-                      className="h-7 px-2 text-xs text-blue-700 hover:bg-blue-50 gap-1"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onVisualizarArquivo(nome)
+                      }}
+                      className="h-7 px-2 text-xs text-blue-700 hover:bg-blue-100/70 gap-1"
+                      title="Visualizar anexo"
                     >
                       <Eye className="h-3.5 w-3.5" />
-                      <span>Visualizar</span>
+                      <span className="hidden sm:inline">Visualizar</span>
                     </Button>
                   )}
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleDownload(nome)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDownload(nome)
+                    }}
                     className="h-7 px-2 text-xs text-gray-700 hover:bg-gray-100 gap-1"
+                    title="Baixar arquivo"
                   >
                     <Download className="h-3.5 w-3.5" />
-                    <span>Baixar</span>
+                    <span className="hidden sm:inline">Baixar</span>
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setArquivoParaRemover(nome)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setArquivoParaRemover(nome)
+                    }}
                     disabled={removendo === nome}
                     className="h-7 px-2 text-xs text-rose-600 hover:bg-rose-50 gap-1"
                     title="Remover anexo"
