@@ -60,7 +60,6 @@ import { DetalheLocacaoView } from '@/components/documentos/DetalheLocacaoView'
 import { DetalheAtaView } from '@/components/documentos/DetalheAtaView'
 import { DetalheJuridicoView } from '@/components/documentos/DetalheJuridicoView'
 
-import { DocumentoAnexoModal } from '@/components/documentos/DocumentoAnexoModal'
 import { DocumentoDetalheModal } from '@/components/documentos/DocumentoDetalheModal'
 import { JuridicosImportModal } from '@/components/documentos/JuridicosImportModal'
 import { ProcessoHistoricoModal } from '@/components/documentos/ProcessoHistoricoModal'
@@ -163,14 +162,6 @@ export function DocumentosPage() {
   const [docDetalheDedicado, setDocDetalheDedicado] = useState<any | null>(null)
 
   // Modais auxiliares
-  const [modalAnexoAberto, setModalAnexoAberto] = useState(false)
-  const [docAnexoSelecionado, setDocAnexoSelecionado] = useState<{
-    id: string
-    colecao: string
-    titulo: string
-    anexoNome?: string
-  } | null>(null)
-
   const [modalDetalheModalAberto, setModalDetalheModalAberto] = useState(false)
   const [docDetalheModal, setDocDetalheModal] = useState<any | null>(null)
 
@@ -426,23 +417,15 @@ export function DocumentosPage() {
     handleEditar(item)
   }
 
-  // Abertura de Anexos
-  const handleAbrirAnexos = (item: any) => {
-    const colecao = obterColecaoPorAba(abaAtiva)
-    const tit = item.titulo || item.tipo || item.numero || 'Documento'
-    setDocAnexoSelecionado({
-      id: item.id,
-      colecao,
-      titulo: tit,
-      anexoNome: item.anexo || item.arquivo,
-    })
-    setModalAnexoAberto(true)
-  }
-
   // Abertura de Edição
   const handleEditar = (item: any) => {
     setDocDetalheModal(item)
     setModalDetalheModalAberto(true)
+  }
+
+  // Abertura de Anexos (redireciona para o modal de detalhe com a seção de anexos)
+  const handleAbrirAnexos = (item: any) => {
+    handleEditar(item)
   }
 
   // Abertura do Histórico
@@ -590,21 +573,6 @@ export function DocumentosPage() {
               carregarDados()
             }}
             onAbrirAnexos={(doc) => handleAbrirAnexos(doc)}
-          />
-        )}
-
-        {/* Modal de Anexos */}
-        {modalAnexoAberto && docAnexoSelecionado && (
-          <DocumentoAnexoModal
-            aberto={modalAnexoAberto}
-            onOpenChange={setModalAnexoAberto}
-            collectionName={docAnexoSelecionado.colecao as any}
-            recordId={docAnexoSelecionado.id}
-            tituloDocumento={docAnexoSelecionado.titulo}
-            anexoAtual={docAnexoSelecionado.anexoNome}
-            onAnexoAtualizado={() => {
-              carregarDados()
-            }}
           />
         )}
       </div>
@@ -904,22 +872,7 @@ export function DocumentosPage() {
         />
       )}
 
-      {/* 8. MODAL DE GESTÃO DE ANEXOS */}
-      {modalAnexoAberto && docAnexoSelecionado && (
-        <DocumentoAnexoModal
-          aberto={modalAnexoAberto}
-          onOpenChange={setModalAnexoAberto}
-          collectionName={docAnexoSelecionado.colecao as any}
-          recordId={docAnexoSelecionado.id}
-          tituloDocumento={docAnexoSelecionado.titulo}
-          anexoAtual={docAnexoSelecionado.anexoNome}
-          onAnexoAtualizado={() => {
-            carregarDados()
-          }}
-        />
-      )}
-
-      {/* 9. MODAL NOVO DOCUMENTO */}
+      {/* 8. MODAL NOVO DOCUMENTO */}
       <NovoDocumentoModal
         aberto={modalNovoAberto}
         onOpenChange={setModalNovoAberto}

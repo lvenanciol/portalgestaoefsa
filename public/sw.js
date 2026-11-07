@@ -33,7 +33,8 @@
 // v28 (07/11/2026): redesenho da listagem Documentos (colunas dinâmicas, resumo lateral, filtros 1 linha) e padrão de referência de detalhe de Alvarás.
 // v29 (07/11/2026): telas de detalhe corporativas dedicadas para Contratos e Locações com régua de reajuste, card de mapa e KPIs financeiros.
 // v30 (07/11/2026): telas de detalhe dedicadas para Atas (compliance, pauta estruturada, assinaturas, completude) e Jurídicos (hero com 3 KPIs, faixa de audiência, timeline vertical autêntica).
-const CACHE_NAME = 'pge-pwa-v30'
+// v31 (07/11/2026): extração universal de anexos (extrairAnexos/contarAnexos) aplicada em todas as 5 views dedicadas e remoção de DocumentoAnexoModal legado.
+const CACHE_NAME = 'pge-pwa-v31'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

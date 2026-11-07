@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   FileText,
   AlertTriangle,
@@ -26,7 +26,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useToast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
-import { extrairAnexos } from './documentos-anexos-utils'
+import { extrairAnexos, contarAnexos } from './documentos-anexos-utils'
 
 export interface DetalheAtaProps {
   documentoId: string
@@ -198,8 +198,10 @@ export function DetalheAtaView({
     ]
   }, [doc.assinaturas])
 
-  // Contadores de anexos
-  const qtdAnexos = extrairAnexos(doc.anexo).length
+  // Lista de anexos normalizados e contadores
+  const listaAnexos = useMemo(() => extrairAnexos(doc.anexo), [doc.anexo])
+  const contagemAnexos = useMemo(() => contarAnexos(doc.anexo), [doc.anexo])
+  const qtdAnexos = contagemAnexos.total
   const qtdPautas = itensPauta.length
 
   // REGRAS DE NEGÓCIO — COMPLIANCE:

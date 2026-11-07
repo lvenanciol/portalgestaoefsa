@@ -34,7 +34,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
 import { DocumentoDetalheAnexos } from '@/components/documentos/DocumentoDetalheAnexos'
-import { extrairAnexos } from '@/components/documentos/documentos-anexos-utils'
+import { extrairAnexos, contarAnexos } from '@/components/documentos/documentos-anexos-utils'
 
 export interface DetalheJuridicoProps {
   documentoId: string
@@ -226,9 +226,13 @@ export function DetalheJuridicoView({
     ]
   }, [doc.observacoes])
 
-  // Trilha de evidências (anexos)
+  // Trilha de evidências (anexos) normalizada com contadores
   const anexosLista: string[] = React.useMemo(() => {
     return extrairAnexos(doc.anexo)
+  }, [doc.anexo])
+
+  const contagemAnexos = React.useMemo(() => {
+    return contarAnexos(doc.anexo)
   }, [doc.anexo])
 
   // Responsáveis (com marcação interno / externo)
