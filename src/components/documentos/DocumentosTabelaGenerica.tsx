@@ -268,12 +268,20 @@ export function DocumentosTabelaGenerica<T extends Record<string, any>>({
                 return (
                   <tr
                     key={item.id}
-                    className={`hover:bg-emerald-50/20 transition-colors group ${
+                    onClick={() => {
+                      // Ao clicar na linha, abre o detalhe em modo de edição
+                      if (onEditar) {
+                        onEditar(item)
+                      } else {
+                        onAbrirDetalhe(item)
+                      }
+                    }}
+                    className={`hover:bg-emerald-50/20 transition-colors group cursor-pointer ${
                       isSelected ? 'bg-emerald-50/40' : ''
                     }`}
                   >
                     {/* Checkbox individual */}
-                    <td className="px-3.5 py-3 text-center">
+                    <td className="px-3.5 py-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <Checkbox
                         checked={isSelected}
                         onCheckedChange={() => onToggleSelect && onToggleSelect(item.id)}
@@ -298,12 +306,21 @@ export function DocumentosTabelaGenerica<T extends Record<string, any>>({
                     ))}
 
                     {/* Coluna Ações: Botão 'Abrir' + Menu '…' */}
-                    <td className="px-3 py-3 text-center whitespace-nowrap align-middle">
+                    <td
+                      className="px-3 py-3 text-center whitespace-nowrap align-middle"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <div className="inline-flex items-center gap-1.5">
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => onAbrirDetalhe(item)}
+                          onClick={() => {
+                            if (onEditar) {
+                              onEditar(item)
+                            } else {
+                              onAbrirDetalhe(item)
+                            }
+                          }}
                           className="h-7 px-3 rounded-full text-xs font-semibold text-gray-700 hover:text-emerald-800 hover:border-emerald-300 hover:bg-emerald-50 shadow-none border-gray-200"
                         >
                           Abrir

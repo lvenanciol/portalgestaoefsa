@@ -420,21 +420,10 @@ export function DocumentosPage() {
     })
   }, [dadosAbaPura, filtros])
 
-  // Abertura do Detalhe (Primária: Botão "Abrir")
+  // Abertura do Detalhe (Primária: Botão "Abrir" / Clique na linha)
+  // Requisito: ao clicar na linha de qualquer registro das abas alvará, locações, contratos, atas e jurídicos a tela detalhe deve ser aberta em modo de edição
   const handleAbrirDetalhe = (item: any) => {
-    // Todas as 5 abas agora têm telas de detalhe dedicadas profissionais
-    if (
-      abaAtiva === 'alvaras' ||
-      abaAtiva === 'contratos' ||
-      abaAtiva === 'locacoes' ||
-      abaAtiva === 'atas' ||
-      abaAtiva === 'juridicos'
-    ) {
-      setDocDetalheDedicado(item)
-    } else {
-      setDocDetalheModal(item)
-      setModalDetalheModalAberto(true)
-    }
+    handleEditar(item)
   }
 
   // Abertura de Anexos
