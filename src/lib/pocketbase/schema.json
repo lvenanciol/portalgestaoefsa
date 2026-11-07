@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T09:38:58.741Z",
+  "generatedAt": "2026-11-07T10:00:54.682Z",
   "collections": [
     {
       "name": "users",
@@ -1407,6 +1407,102 @@
         {
           "name": "anexo",
           "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "logradouro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "numero_imovel",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "complemento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bairro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "municipio_uf",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cep",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "link_mapa",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "area_m2",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "finalidade_imovel",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "seguro_exigido",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "comprovante_deposito_status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "apolice_seguro_status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vistoria_status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_base_reajuste",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "reajuste_aplicado",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "responsaveis",
+          "type": "json",
           "required": false,
           "system": false
         }
