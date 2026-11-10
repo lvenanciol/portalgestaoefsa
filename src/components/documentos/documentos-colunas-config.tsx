@@ -15,6 +15,7 @@
  *     - Locações: Imóvel, Aluguel, Caução, Fim da Vigência
  *     - Atas: Tipo (AGE/AGO), Data, Deliberações, Assinaturas
  *     - Jurídicos: Processo (CNJ), Vara/Comarca, Próximo Prazo / Audiência, Risco
+ *     - Convenções: Sindicato, Vigência (fim), Data-base, Reajuste
  *
  * - Proibido "—" na renderização: campos vazios utilizam o estado "Não aplicável" ou "Pendente".
  */
@@ -656,14 +657,106 @@ export const COLUNAS_JURIDICOS: ColunaTipoConfig[] = [
 /**
  * Mapeador geral de colunas por tipo de aba
  */
-export type TipoAbaDocumento = 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+export type TipoAbaDocumento =
+  | 'alvaras'
+  | 'contratos'
+  | 'locacoes'
+  | 'atas'
+  | 'convencoes'
+  | 'juridicos'
 export type DocumentoGenericoItem = Record<string, any>
+
+/**
+ * CONFIGURAÇÃO ESPECÍFICA: CONVENÇÕES COLETIVAS
+ * Colunas específicas: Sindicato, Vigência (fim), Data-base, Reajuste
+ */
+export const COLUNAS_CONVENCOES: ColunaTipoConfig[] = [
+  // 1. Coluna Fixa: Documento
+  criarColunaDocumento(),
+  // Específica: Sindicato / Parte patronal
+  {
+    id: 'sindicato',
+    label: 'SINDICATO',
+    width: '220px',
+    sortable: true,
+    sortValue: (item) => item.sindicato || '',
+    render: (item) => (
+      <span
+        className="text-xs text-gray-700 block truncate max-w-[220px]"
+        title={item.sindicato || ''}
+      >
+        {item.sindicato || <CampoFormatado estado="nao_aplicavel" />}
+      </span>
+    ),
+  },
+  // 2. Coluna Fixa: Empresa
+  criarColunaEmpresa(),
+  // Específica: Vigência (fim com semáforo)
+  {
+    id: 'vigencia',
+    label: 'VIGÊNCIA (FIM)',
+    width: '140px',
+    sortable: true,
+    sortValue: (item) => item.vigencia_fim || '',
+    render: (item) => {
+      if (!item.vigencia_fim) {
+        return <CampoFormatado estado="pendente" textoAcao="Informar" />
+      }
+      const calculo = calcularPrazoValidade(item.vigencia_fim)
+      return (
+        <div className="flex flex-col text-xs leading-tight">
+          <span className="font-medium text-gray-900">{fmtData(item.vigencia_fim)}</span>
+          <span className={`text-[10.5px] font-medium ${calculo.corTexto}`}>
+            {calculo.textoAmigavel}
+          </span>
+        </div>
+      )
+    },
+  },
+  // Específica: Data-base
+  {
+    id: 'data_base',
+    label: 'DATA-BASE',
+    width: '120px',
+    sortable: true,
+    sortValue: (item) => item.data_base || '',
+    render: (item) => (
+      <span className="text-xs text-gray-800 font-medium">
+        {item.data_base || <CampoFormatado estado="nao_aplicavel" />}
+      </span>
+    ),
+  },
+  // Específica: Reajuste salarial
+  {
+    id: 'reajuste',
+    label: 'REAJUSTE',
+    width: '110px',
+    align: 'right',
+    sortable: true,
+    sortValue: (item) => item.percentual_reajuste ?? 0,
+    render: (item) => {
+      if (item.percentual_reajuste === undefined || item.percentual_reajuste === null) {
+        return <CampoFormatado estado="nao_aplicavel" />
+      }
+      return (
+        <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+          {String(item.percentual_reajuste).replace('.', ',')}%
+        </span>
+      )
+    },
+  },
+  // 3. Coluna Fixa: Status
+  criarColunaStatus('convencoes'),
+  // 4. Coluna Fixa: Anexos
+  criarColunaAnexos(),
+]
 
 export const CONFIG_COLUNAS_POR_TIPO: Record<TipoAbaDocumento, ColunaTipoConfig[]> = {
   alvaras: COLUNAS_ALVARAS,
   contratos: COLUNAS_CONTRATOS,
   locacoes: COLUNAS_LOCACOES,
   atas: COLUNAS_ATAS,
+  convencoes: COLUNAS_CONVENCOES,
   juridicos: COLUNAS_JURIDICOS,
 }
 
@@ -677,6 +770,8 @@ export function obterColunasPorTipo(tipoAba: string): ColunaTipoConfig[] {
       return COLUNAS_LOCACOES
     case 'atas':
       return COLUNAS_ATAS
+    case 'convencoes':
+      return COLUNAS_CONVENCOES
     case 'juridicos':
       return COLUNAS_JURIDICOS
     default:
