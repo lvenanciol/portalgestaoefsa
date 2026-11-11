@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Leaf, Lock, Eye, EyeOff, Loader2, CheckCircle2, AlertTriangle, Mail } from 'lucide-react'
+import {
+  Leaf,
+  Lock,
+  Eye,
+  EyeOff,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  Mail,
+  Building2,
+} from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 
@@ -15,6 +25,28 @@ import { getErrorMessage } from '@/lib/pocketbase/errors'
 //
 // Esta tela é PÚBLICA (fora do ProtectedRoute): quem chega aqui ainda não tem
 // sessão — está justamente tentando recuperar o acesso.
+//
+// v2 (11/11/2026) — CARROSSEL DE EMPRESAS: com o token em mãos o backend
+// identifica o dono (POST /backend/v1/public/reset-empresas) e devolve as
+// empresas do vínculo (users.empresas, fallback empresa_id — a mesma fonte do
+// Controle de Acessos e do seletor da sidebar). Mais de uma empresa → o quadrado
+// da marca ALTERNA entre as logos a cada 2s (mesmo visual/comportamento do
+// login, que troca a cada 2s com fade); uma só → exibida fixa; nenhuma → Leaf.
+// A troca de senha em si (confirmPasswordReset + e-mail de confirmação do hook
+// usuarios_troca_senha_confirmacao.js) segue EXATAMENTE como estava.
+
+interface EmpresaReset {
+  id: string
+  nome: string
+  cor: string
+}
+
+interface LogoItem {
+  url: string
+  cor: string
+  empresa: string
+}
+
 export default function ResetPassword() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
@@ -27,6 +59,11 @@ export default function ResetPassword() {
   const [ok, setOk] = useState(false)
   const [loading, setLoading] = useState(false)
 
+  // Empresas do dono do token + logos para o carrossel da marca
+  const [empresas, setEmpresas] = useState<EmpresaReset[]>([])
+  const [logos, setLogos] = useState<LogoItem[]>([])
+  const [logoIdx, setLogoIdx] = useState(0)
+
   // Sem token o formulário não tem o que fazer: avisa e oferece o caminho.
   const semToken = !token
 
@@ -34,6 +71,105 @@ export default function ResetPassword() {
     // Limpa a mensagem de erro assim que o usuário volta a digitar.
     if (erro && (senha || confirma)) setErro('')
   }, [senha, confirma])
+
+  // 1. Empresas do dono do token (endpoint público do hook reset_empresas_public.js)
+  useEffect(() => {
+    if (!token) return
+    let vivo = true
+    ;(async () => {
+      try {
+        const r = (await pb.send('/backend/v1/public/reset-empresas', {
+          method: 'POST',
+          body: JSON.stringify({ token }),
+        })) as { ok?: boolean; nome?: string; empresas?: EmpresaReset[] }
+        if (vivo && r && Array.isArray(r.empresas)) {
+          setEmpresas(r.empresas.filter((e) => e && e.id))
+        }
+      } catch (_) {
+        // best-effort: sem resposta a tela segue no Leaf, sem quebrar o fluxo
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [token])
+
+  // 2. Logos REAIS (coleção logomarcas, mesmo padrão do Login) para casar
+  //    empresa ↔ imagem no carrossel.
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      try {
+        const registros = await pb.collection('logomarcas').getFullList({
+          filter: 'ativo = true',
+          sort: 'empresa',
+        })
+        if (!vivo || !registros) return
+        const urls = (registros as any[])
+          .map((l) => {
+            const campo = l.emblema || l.logo
+            if (!campo) return null
+            const ext = String(campo).split('?')[0].split('.').pop()?.toLowerCase() || ''
+            const ehImagem = ['png', 'jpg', 'jpeg', 'svg', 'webp'].includes(ext)
+            if (!ehImagem) return null
+            return {
+              url: pb.files.getURL(l, campo),
+              cor: String(l.cor || '#1B5E20'),
+              empresa: String(l.empresa || ''),
+            }
+          })
+          .filter((item): item is LogoItem => item !== null)
+        if (vivo && urls.length > 0) setLogos(urls)
+      } catch (_) {
+        try {
+          const r = (await pb.send('/backend/v1/public/logos', { method: 'GET' })) as any
+          const urls = ((r && r.logos) || [])
+            .map((l: any) => {
+              const urlFinal = l.iconeUrl || l.emblemaUrl || l.logoUrl
+              if (!urlFinal) return null
+              return {
+                url: urlFinal as string,
+                cor: String(l.cor || '#1B5E20'),
+                empresa: String(l.empresa || ''),
+              }
+            })
+            .filter((item: any): item is LogoItem => item !== null)
+          if (vivo && urls.length > 0) setLogos(urls)
+        } catch (_) {
+          /* segue no Leaf */
+        }
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
+
+  // 3. Empresas do vínculo ↔ logomarcas: monta a lista que o quadrado alterna.
+  //    Só entra no carrossel a logo da empresa que o usuário tem vínculo.
+  const logosDoUsuario: LogoItem[] = (() => {
+    if (empresas.length === 0) return [] // sem vínculo identificado → Leaf puro
+    const norm = (s: string) => s.trim().toLowerCase()
+    const out: LogoItem[] = []
+    for (const emp of empresas) {
+      const rec = logos.find((l) => norm(l.empresa) === norm(emp.nome))
+      if (rec) {
+        out.push({ url: rec.url, cor: rec.cor || emp.cor, empresa: emp.nome })
+      } else {
+        // Sem imagem cadastrada: mostra o quadrado na cor da identidade
+        // (mesmo fallback de cor do login/sidebar).
+        out.push({ url: '', cor: emp.cor || '#1B5E20', empresa: emp.nome })
+      }
+    }
+    return out
+  })()
+
+  // Rotação a cada 2s quando há mais de uma empresa (mesmo ritmo do login)
+  useEffect(() => {
+    if (logosDoUsuario.length < 2) return
+    const t = setInterval(() => setLogoIdx((i) => (i + 1) % logosDoUsuario.length), 2000)
+    return () => clearInterval(t)
+  }, [logosDoUsuario.length, empresas.length, logos.length])
 
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -64,16 +200,74 @@ export default function ResetPassword() {
     }
   }
 
+  const marcaAtual =
+    logosDoUsuario.length > 0 ? logosDoUsuario[logoIdx % logosDoUsuario.length] : null
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#F3F4F6] p-4">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-sm p-8">
           <div className="flex flex-col items-center mb-6">
-            <div className="h-16 w-16 rounded-2xl flex items-center justify-center mb-4 bg-[#1B5E20] overflow-hidden">
-              <Leaf className="h-8 w-8 text-white" />
+            {/* Quadrado da marca: alterna entre as EMPRESAS DO USUÁRIO (não entre
+                todas as logos do grupo). Cor de fundo = cor da identidade. */}
+            <div
+              className="h-16 w-16 rounded-2xl flex items-center justify-center mb-4 overflow-hidden relative border border-gray-200"
+              style={{ backgroundColor: marcaAtual ? marcaAtual.cor : '#1B5E20' }}
+            >
+              {marcaAtual && marcaAtual.url ? (
+                <img
+                  key={marcaAtual.url}
+                  src={marcaAtual.url}
+                  alt={marcaAtual.empresa}
+                  className="h-full w-full object-contain p-1.5 animate-in fade-in duration-500"
+                />
+              ) : marcaAtual ? (
+                <span className="font-bold text-[15px] text-white drop-shadow-sm">
+                  {marcaAtual.empresa.slice(0, 2).toUpperCase()}
+                </span>
+              ) : (
+                <Leaf className="h-8 w-8 text-white" />
+              )}
             </div>
             <h1 className="text-xl font-bold text-gray-900 tracking-tight">extrafruti</h1>
             <p className="text-[13px] text-gray-500 mt-0.5">Portal de Gestão Executivo</p>
+
+            {/* Empresas do usuário: 1 → nome fixo; 2+ → carrossel com indicadores.
+                Comportamento espelha o login (alternância 2s + fade). */}
+            {logosDoUsuario.length === 1 && (
+              <div className="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-50 border border-gray-200">
+                <Building2 className="h-3.5 w-3.5 text-[#1B5E20]" />
+                <span className="text-[12px] font-semibold text-gray-700">
+                  {logosDoUsuario[0].empresa}
+                </span>
+              </div>
+            )}
+            {logosDoUsuario.length > 1 && (
+              <div className="mt-3 flex flex-col items-center gap-1.5">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-50 border border-gray-200">
+                  <Building2 className="h-3.5 w-3.5 text-[#1B5E20]" />
+                  <span
+                    key={marcaAtual?.empresa}
+                    className="text-[12px] font-semibold text-gray-700 animate-in fade-in duration-500"
+                  >
+                    {marcaAtual?.empresa}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {logosDoUsuario.map((l, i) => (
+                    <span
+                      key={l.empresa + i}
+                      className={
+                        'h-1.5 rounded-full transition-all duration-300 ' +
+                        (i === logoIdx % logosDoUsuario.length
+                          ? 'w-4 bg-[#1B5E20]'
+                          : 'w-1.5 bg-gray-300')
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* 1. Link sem token (ou já usado/copiado pela metade) */}
