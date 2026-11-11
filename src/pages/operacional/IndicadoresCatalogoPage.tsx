@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { useGate } from '@/services/botoes-service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -71,6 +72,8 @@ const fmtVal = (v: number, u?: string) => {
 
 export default function IndicadoresCatalogoPage() {
   const { user } = useAuth()
+  // Gate de botões: "Novo indicador" / "Atualizar" exigem concessão do grupo.
+  const { podeAcao } = useGate('indicadores')
   const [itens, setItens] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
@@ -203,9 +206,11 @@ export default function IndicadoresCatalogoPage() {
             Catálogo com metas — realizado vs meta vs anterior em semáforo
           </p>
         </div>
-        <Button onClick={abrirNovo} className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white">
-          <Plus className="h-4 w-4 mr-1" /> Novo indicador
-        </Button>
+        {podeAcao('atualizar') && (
+          <Button onClick={abrirNovo} className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white">
+            <Plus className="h-4 w-4 mr-1" /> Novo indicador
+          </Button>
+        )}
       </div>
 
       {erro && (

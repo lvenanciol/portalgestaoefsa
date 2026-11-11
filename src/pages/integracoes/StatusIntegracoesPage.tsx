@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { useAbas } from '@/hooks/use-abas'
 import { cn } from '@/lib/utils'
 
 // TAREFA A — Status Integrações (espelho do StatusIntegracoesAdmin do Foldbox,
@@ -119,6 +120,8 @@ function Linha({ label, valor }: { label: string; valor: React.ReactNode }) {
 
 export default function StatusIntegracoesPage() {
   const { user } = useAuth()
+  // Gate dos CARDS por grupo (Controle de Acessos → Integrações → ABAS).
+  const { abaVisivel } = useAbas('integracoes')
   const [data, setData] = useState<IntegracoesStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -206,147 +209,160 @@ export default function StatusIntegracoesPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* ===== SANKHYA ===== */}
-        <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Database className="w-5 h-5 text-indigo-600" />
-              <h2 className="font-semibold text-gray-900">Sankhya ERP</h2>
-            </div>
-            <StateBadge state={skState} />
-          </div>
-          {sk.erro && !sk.ok ? (
-            <p className="text-xs text-red-600">Erro: {sk.erro}</p>
-          ) : (
-            <div className="space-y-2.5 text-xs">
-              <Linha
-                label="Conexão"
-                valor={
-                  sk.ok
-                    ? 'OAuth OK (edge proxy)'
-                    : sk.configurado
-                      ? 'Falha na edge'
-                      : 'Não configurado'
-                }
-              />
-              <Linha label="Credenciais (cofre)" valor={sk.credenciais_cofre ? 'OK' : 'Ausentes'} />
-              <div className="pt-2 border-t border-gray-100">
-                <p className="font-semibold text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">
-                  Últimas ações registradas
-                </p>
-                {(sk.ultimas_acoes?.length ?? 0) === 0 ? (
-                  <p className="text-[11px] text-gray-400">Nenhum log recente.</p>
-                ) : (
-                  <div className="space-y-1">
-                    {sk.ultimas_acoes!.map((l, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-[11px]">
-                        <Clock className="w-3 h-3 text-gray-400 shrink-0" />
-                        <span className="text-gray-500">{fmtDateTime(l.created_at)}</span>
-                        <span className="text-gray-800">{l.action}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+        {abaVisivel('sankhya') && (
+          <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Database className="w-5 h-5 text-indigo-600" />
+                <h2 className="font-semibold text-gray-900">Sankhya ERP</h2>
               </div>
+              <StateBadge state={skState} />
             </div>
-          )}
-        </div>
-
-        {/* ===== WHATSAPP ===== */}
-        <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <MessageCircle className="w-5 h-5 text-emerald-600" />
-              <h2 className="font-semibold text-gray-900">WhatsApp (Meta API)</h2>
-            </div>
-            <StateBadge state={waState} />
-          </div>
-          {wa.erro ? (
-            <p className="text-xs text-red-600">Erro ao carregar: {wa.erro}</p>
-          ) : (
-            <div className="space-y-2.5 text-xs">
-              <Linha label="Ativo" valor={wa.ativo ? 'Sim' : 'Não'} />
-              <Linha label="Número" valor={wa.phone_display || '—'} />
-              <Linha label="Credenciais" valor={wa.credenciais_ok ? 'OK' : 'Incompletas'} />
-              <Linha
-                label="Meta API"
-                valor={
-                  wa.meta_ok
-                    ? 'OK' + (wa.quality ? ' · ' + wa.quality : '')
-                    : wa.meta_erro || 'não testado'
-                }
-              />
-              <Linha label="Verify token" valor={wa.webhook_verify || '—'} />
-              {wa.ultima_mensagem?.detalhe && (
-                <p className="text-[11px] text-gray-500 pt-1 border-t border-gray-100">
-                  Último teste: {wa.ultima_mensagem.detalhe}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* ===== E-MAIL ===== */}
-        <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Mail className="w-5 h-5 text-sky-600" />
-              <h2 className="font-semibold text-gray-900">E-mail</h2>
-            </div>
-            <StateBadge state={emState} />
-          </div>
-          <div className="space-y-2.5 text-xs">
-            <Linha label="Relay" valor={em.relay || '—'} />
-            {(['google', 'microsoft'] as const).map((p) => {
-              const o = em.oauth?.[p] || { conectado: false }
-              return (
+            {sk.erro && !sk.ok ? (
+              <p className="text-xs text-red-600">Erro: {sk.erro}</p>
+            ) : (
+              <div className="space-y-2.5 text-xs">
                 <Linha
-                  key={p}
-                  label={p === 'google' ? 'Gmail (OAuth)' : 'Outlook (OAuth)'}
+                  label="Conexão"
                   valor={
-                    o.conectado ? (
-                      <span className="text-emerald-700">
-                        Conectado{o.conta ? ' · ' + o.conta : ''}
-                      </span>
-                    ) : (
-                      <span className="text-gray-400">Desconectado</span>
-                    )
+                    sk.ok
+                      ? 'OAuth OK (edge proxy)'
+                      : sk.configurado
+                        ? 'Falha na edge'
+                        : 'Não configurado'
                   }
                 />
-              )
-            })}
+                <Linha
+                  label="Credenciais (cofre)"
+                  valor={sk.credenciais_cofre ? 'OK' : 'Ausentes'}
+                />
+                <div className="pt-2 border-t border-gray-100">
+                  <p className="font-semibold text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">
+                    Últimas ações registradas
+                  </p>
+                  {(sk.ultimas_acoes?.length ?? 0) === 0 ? (
+                    <p className="text-[11px] text-gray-400">Nenhum log recente.</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {sk.ultimas_acoes!.map((l, idx) => (
+                        <div key={idx} className="flex items-center gap-2 text-[11px]">
+                          <Clock className="w-3 h-3 text-gray-400 shrink-0" />
+                          <span className="text-gray-500">{fmtDateTime(l.created_at)}</span>
+                          <span className="text-gray-800">{l.action}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {/* ===== WHATSAPP ===== */}
+        {abaVisivel('whatsapp') && (
+          <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-5 h-5 text-emerald-600" />
+                <h2 className="font-semibold text-gray-900">WhatsApp (Meta API)</h2>
+              </div>
+              <StateBadge state={waState} />
+            </div>
+            {wa.erro ? (
+              <p className="text-xs text-red-600">Erro ao carregar: {wa.erro}</p>
+            ) : (
+              <div className="space-y-2.5 text-xs">
+                <Linha label="Ativo" valor={wa.ativo ? 'Sim' : 'Não'} />
+                <Linha label="Número" valor={wa.phone_display || '—'} />
+                <Linha label="Credenciais" valor={wa.credenciais_ok ? 'OK' : 'Incompletas'} />
+                <Linha
+                  label="Meta API"
+                  valor={
+                    wa.meta_ok
+                      ? 'OK' + (wa.quality ? ' · ' + wa.quality : '')
+                      : wa.meta_erro || 'não testado'
+                  }
+                />
+                <Linha label="Verify token" valor={wa.webhook_verify || '—'} />
+                {wa.ultima_mensagem?.detalhe && (
+                  <p className="text-[11px] text-gray-500 pt-1 border-t border-gray-100">
+                    Último teste: {wa.ultima_mensagem.detalhe}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== E-MAIL ===== */}
+        {abaVisivel('email') && (
+          <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Mail className="w-5 h-5 text-sky-600" />
+                <h2 className="font-semibold text-gray-900">E-mail</h2>
+              </div>
+              <StateBadge state={emState} />
+            </div>
+            <div className="space-y-2.5 text-xs">
+              <Linha label="Relay" valor={em.relay || '—'} />
+              {(['google', 'microsoft'] as const).map((p) => {
+                const o = em.oauth?.[p] || { conectado: false }
+                return (
+                  <Linha
+                    key={p}
+                    label={p === 'google' ? 'Gmail (OAuth)' : 'Outlook (OAuth)'}
+                    valor={
+                      o.conectado ? (
+                        <span className="text-emerald-700">
+                          Conectado{o.conta ? ' · ' + o.conta : ''}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">Desconectado</span>
+                      )
+                    }
+                  />
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* ===== GEMINI ===== */}
-        <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-amber-500" />
-              <h2 className="font-semibold text-gray-900">Gemini Flash (IA)</h2>
+        {abaVisivel('gemini') && (
+          <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-500" />
+                <h2 className="font-semibold text-gray-900">Gemini Flash (IA)</h2>
+              </div>
+              <StateBadge state={gmState} />
             </div>
-            <StateBadge state={gmState} />
+            <div className="space-y-2.5 text-xs">
+              <Linha label="Gateway" valor="Skip $ai — chave gerenciada" />
+              <Linha label="Modelo" valor={gm.model || 'fast'} />
+              {gm.erro && <p className="text-[11px] text-red-600">Erro: {gm.erro}</p>}
+            </div>
           </div>
-          <div className="space-y-2.5 text-xs">
-            <Linha label="Gateway" valor="Skip $ai — chave gerenciada" />
-            <Linha label="Modelo" valor={gm.model || 'fast'} />
-            {gm.erro && <p className="text-[11px] text-red-600">Erro: {gm.erro}</p>}
-          </div>
-        </div>
+        )}
 
         {/* ===== POWER BI ===== */}
-        <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <ChartColumnBig className="w-5 h-5 text-yellow-600" />
-              <h2 className="font-semibold text-gray-900">Power BI</h2>
+        {abaVisivel('powerbi') && (
+          <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ChartColumnBig className="w-5 h-5 text-yellow-600" />
+                <h2 className="font-semibold text-gray-900">Power BI</h2>
+              </div>
+              <StateBadge state={pbiState} />
             </div>
-            <StateBadge state={pbiState} />
+            <div className="space-y-2.5 text-xs">
+              <Linha label="Modo" valor="Embed para organização" />
+              <Linha label="Detalhe" valor={pbi.detalhe || '—'} />
+            </div>
           </div>
-          <div className="space-y-2.5 text-xs">
-            <Linha label="Modo" valor="Embed para organização" />
-            <Linha label="Detalhe" valor={pbi.detalhe || '—'} />
-          </div>
-        </div>
+        )}
 
         {/* ===== MERCADO LIVRE (sem integração no PGE — card informativo) ===== */}
         <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs space-y-3 opacity-75">

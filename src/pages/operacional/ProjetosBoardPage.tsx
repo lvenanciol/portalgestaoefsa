@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { useGate } from '@/services/botoes-service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -92,6 +93,8 @@ type ChipFiltro = 'todos' | 'em_andamento' | 'planejamento' | 'em_risco' | 'conc
 
 export default function ProjetosBoardPage() {
   const { user } = useAuth()
+  // Gate de botões: "Novo projeto" exige concessão do grupo.
+  const { podeAcao } = useGate('projetos')
   const navigate = useNavigate()
   const [itens, setItens] = useState<any[]>([])
   const [loading, setLoading] = useState(true)

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Sparkles, Loader2, History, X, Bot } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { useAbas } from '@/hooks/use-abas'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -29,6 +30,8 @@ const parse = (v: any) => {
 }
 
 export default function IaCentroPage() {
+  // Gate de ABAS por grupo: biblioteca e histórico (Controle de Acessos → IA).
+  const { abaVisivel } = useAbas('ia')
   const { user } = useAuth()
   const [prompts, setPrompts] = useState<any[]>([])
   const [selecionado, setSelecionado] = useState<any>(null)
@@ -132,9 +135,11 @@ export default function IaCentroPage() {
             Biblioteca de prompts editáveis + pareceres estruturados com histórico versionado
           </p>
         </div>
-        <Button variant="outline" onClick={() => setHistAberto(true)} className="h-9">
-          <History className="h-4 w-4 mr-1.5" /> Histórico ({historico.length})
-        </Button>
+        {abaVisivel('historico') && (
+          <Button variant="outline" onClick={() => setHistAberto(true)} className="h-9">
+            <History className="h-4 w-4 mr-1.5" /> Histórico ({historico.length})
+          </Button>
+        )}
       </div>
 
       {erro && (
@@ -145,30 +150,32 @@ export default function IaCentroPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Biblioteca de prompts */}
-        <div className="space-y-2">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
-            Biblioteca de prompts
+        {abaVisivel('biblioteca') && (
+          <div className="space-y-2">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+              Biblioteca de prompts
+            </div>
+            {prompts.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  setSelecionado(p)
+                  setInstrucoes(p.instrucoes)
+                }}
+                className={cn(
+                  'block w-full text-left bg-white rounded-lg border p-3 transition-all',
+                  selecionado?.id === p.id
+                    ? 'border-[#1B5E20] ring-1 ring-[#1B5E20]/30'
+                    : 'border-[#E5E7EB] hover:border-gray-300',
+                )}
+              >
+                <div className="text-[13px] font-bold text-gray-900">{p.titulo}</div>
+                <div className="text-[11px] text-gray-500 line-clamp-1">{p.instrucoes}</div>
+              </button>
+            ))}
           </div>
-          {prompts.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => {
-                setSelecionado(p)
-                setInstrucoes(p.instrucoes)
-              }}
-              className={cn(
-                'block w-full text-left bg-white rounded-lg border p-3 transition-all',
-                selecionado?.id === p.id
-                  ? 'border-[#1B5E20] ring-1 ring-[#1B5E20]/30'
-                  : 'border-[#E5E7EB] hover:border-gray-300',
-              )}
-            >
-              <div className="text-[13px] font-bold text-gray-900">{p.titulo}</div>
-              <div className="text-[11px] text-gray-500 line-clamp-1">{p.instrucoes}</div>
-            </button>
-          ))}
-        </div>
+        )}
 
         {/* Execução */}
         <div className="lg:col-span-2 space-y-3">

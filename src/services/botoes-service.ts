@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import pb from '@/lib/pocketbase/client'
-import { carregarPermissoes, permissoesCache, Permissoes } from '@/services/permissoes-service'
+import { carregarPermissoes, permissoesCache, Permissoes, can } from '@/services/permissoes-service'
 
 // Fase 9 — Controle de acesso por BOTÃO (fail-open).
 // Registry central: a matriz BOTÕES (Controle de Acessos) e os gates das
@@ -152,6 +152,64 @@ export function podeVerBotao(p: Permissoes | null, screenKey: string, buttonKey:
   return !(oc[screenKey] || []).includes(buttonKey)
 }
 
+// ---------------------------------------------------------------------------
+// 11/11/2026 — GATE ÚNICO (botão + matriz CRUD + módulo).
+//
+// Antes cada tela combinava as três fontes na mão (ou esquecia uma): o admin
+// desmarcava "Editar" na matriz, ou escondia o botão, e o botão continuava na
+// tela porque só uma das fontes era lida. Aqui a decisão é UMA:
+//
+//   tela pertence ao grupo (módulo com 'ver')
+//     E o botão não está oculto (permissoes.botoes[tela])
+//     E a matriz CRUD não revogou a operação (crud_<tela>_<acao>:off)
+//
+// chave do botão  → ação da matriz
+//   novo          → criar
+//   editar        → editar
+//   excluir       → excluir
+//   (exportar_csv, atualizar, gerar… NÃO têm coluna na matriz: só o toggle)
+export const TELA_MODULO: Record<string, string> = {
+  dashboard: 'dashboard-executivo',
+  financeiro: 'financeiro-contabil',
+  financeiro_real: 'financeiro-contabil',
+  desempenho: 'desempenho-unidade',
+  indicadores: 'indicadores',
+  documentos: 'documentos-importacoes',
+  tarefas: 'tarefas-agenda',
+  projetos: 'projetos',
+  atas: 'atas-reunioes',
+  emails: 'emails',
+  contratos: 'contratos',
+  'power-bi': 'power-bi',
+  ia: 'ia-gemini',
+  menus: 'arvore-menus',
+  acessos: 'controle-acessos',
+  configuracoes: 'configuracoes',
+}
+
+const ACOES_CRUD: Record<string, string> = {
+  novo: 'criar',
+  editar: 'editar',
+  excluir: 'excluir',
+  ver: 'ver',
+}
+
+// podeOperacao(p, 'atas', 'editar') — três fontes em uma resposta.
+export function podeOperacao(p: Permissoes | null, tela: string, chaveBotao: string): boolean {
+  // fail-open APENAS sem permissões carregadas (mesmo contrato de antes)
+  if (!p) return true
+  if (p.grupoNome === 'Admin') return true
+  // 1) a tela está concedida ao grupo?
+  const modulo = TELA_MODULO[tela]
+  if (modulo && !can(p, modulo, 'ver')) return false
+  // 2) o toggle do botão está ligado?
+  if (!podeVerBotao(p, tela, chaveBotao)) return false
+  // 3) a matriz CRUD não revogou a operação?
+  const acao = ACOES_CRUD[chaveBotao]
+  if (acao && modulo && !can(p, modulo, acao)) return false
+  return true
+}
+
 // Hook: carrega permissões (cache 5min) e expõe pode(screen, btn).
 export function useBotoes() {
   const [p, setP] = useState<Permissoes | null>(permissoesCache())
@@ -169,6 +227,29 @@ export function useBotoes() {
     [p],
   )
   return { pode, permissoes: p }
+}
+
+/**
+ * Gate por TELA — a forma recomendada nas telas novas.
+ *   const { podeAcao } = useGate('atas')
+ *   {podeAcao('novo') && <Button>Nova ata</Button>}
+ * Combina módulo + toggle do botão + matriz CRUD (ver podeOperacao).
+ */
+export function useGate(tela: string) {
+  const [p, setP] = useState<Permissoes | null>(permissoesCache())
+
+  useEffect(() => {
+    let ativo = true
+    carregarPermissoes().then((r) => {
+      if (ativo) setP(r)
+    })
+    return () => {
+      ativo = false
+    }
+  }, [])
+
+  const podeAcao = useCallback((chaveBotao: string) => podeOperacao(p, tela, chaveBotao), [p, tela])
+  return { podeAcao, permissoes: p }
 }
 
 // Salva os botões ocultos de um grupo (via hook backend admin-only).

@@ -119,20 +119,24 @@ const ABAS_POR_TELA: Record<string, { key: string; label: string }[]> = {
     { key: 'seguros', label: 'Aba Seguros' },
     { key: 'juridicos', label: 'Aba Jurídicos' },
   ],
-  // Integrações: cada conexão é uma tela própria.
+  // Integrações: os cards do painel de status. As telas Sankhya/WhatsApp/E-mail
+  // são ROTAS próprias (/integracoes/...) e caem no gate da raiz — o card aqui
+  // esconde a leitura do status daquele conector.
   integracoes: [
-    { key: 'status', label: 'Aba Status' },
-    { key: 'sankhya', label: 'Aba Sankhya' },
-    { key: 'whatsapp', label: 'Aba WhatsApp' },
-    { key: 'email', label: 'Aba E-mail' },
+    { key: 'sankhya', label: 'Card Sankhya' },
+    { key: 'whatsapp', label: 'Card WhatsApp' },
+    { key: 'email', label: 'Card E-mail' },
+    { key: 'gemini', label: 'Card Gemini (IA)' },
+    { key: 'powerbi', label: 'Card Power BI' },
   ],
-  // Configurações: abas da tela completa.
+  // Configurações: as SEÇÕES reais da tela (não existem abas aqui — o registro
+  // antigo listava "Geral/Aparência", que nunca existiram e não escondiam nada).
   configuracoes: [
-    { key: 'geral', label: 'Aba Geral' },
-    { key: 'seguranca', label: 'Aba Segurança' },
-    { key: 'notificacoes', label: 'Aba Notificações' },
-    { key: 'integracoes', label: 'Aba Integrações' },
-    { key: 'aparencia', label: 'Aba Aparência' },
+    { key: 'integracoes', label: 'Seção Integrações' },
+    { key: 'globalizacao', label: 'Seção Globalização' },
+    { key: 'seguranca', label: 'Seção Segurança (sessão)' },
+    { key: 'backup', label: 'Seção Backup & Restore' },
+    { key: 'auditoria', label: 'Seção Auditoria' },
   ],
 }
 

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { useGate } from '@/services/botoes-service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -60,6 +61,8 @@ const parse = (v: any) => {
 
 export default function AtasReunioesPage() {
   const { user } = useAuth()
+  // Gate de botões: "Nova ata" e "Editar prompt" só com concessão do grupo.
+  const { podeAcao } = useGate('atas')
   const [itens, setItens] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
@@ -401,12 +404,14 @@ export default function AtasReunioesPage() {
             )}
             Parecer IA
           </Button>
-          <Button
-            onClick={() => abrirNova()}
-            className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white rounded-[10px]"
-          >
-            <Plus className="h-4 w-4 mr-1.5" /> + Nova reunião
-          </Button>
+          {podeAcao('novo') && (
+            <Button
+              onClick={() => abrirNova()}
+              className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white rounded-[10px]"
+            >
+              <Plus className="h-4 w-4 mr-1.5" /> + Nova reunião
+            </Button>
+          )}
         </div>
       </div>
 

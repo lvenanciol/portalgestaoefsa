@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { useGate } from '@/services/botoes-service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -92,6 +93,8 @@ interface Detalhe {
 
 export default function EmailsPage() {
   const { user } = useAuth()
+  // Gate de botões: "Novo e-mail" exige concessão do grupo.
+  const { podeAcao } = useGate('emails')
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
   const [oauth, setOauth] = useState<Record<string, { conectado: boolean; conta?: string }>>({

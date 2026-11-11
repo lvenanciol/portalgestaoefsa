@@ -53,7 +53,7 @@ import { EmpresaIcon, useEmpresaLogos } from '@/components/common/EmpresaIcon'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { usePermissoes } from '@/hooks/use-permissoes'
-import { useBotoes } from '@/services/botoes-service'
+import { useGate } from '@/services/botoes-service'
 import { useApp } from '@/context/AppContext'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -111,15 +111,12 @@ const fmtData = (s?: string) => {
 export default function TarefasKanbanPage() {
   const { user } = useAuth()
   // Grupo do usuário: admin enxerga todas as tarefas; os demais só as suas.
-  const { permissoes, can } = usePermissoes()
-  // Gate de BOTÕES (Fase 9) + matriz CRUD do Controle de Acessos.
-  // `pode` esconde o botão oculto na tela ControlAccessos; `can` respeita a
-  // grade CRUD (e a coluna TODAS). Os dois juntos = botão só aparece com
-  // concessão explícita do grupo.
-  const { pode } = useBotoes()
-  const podeNovo = pode('tarefas', 'novo') && can('tarefas-agenda', 'criar')
-  const podeEditar = pode('tarefas', 'editar') && can('tarefas-agenda', 'editar')
-  const podeExcluir = pode('tarefas', 'excluir') && can('tarefas-agenda', 'excluir')
+  const { permissoes } = usePermissoes()
+  // Gate ÚNICO (módulo + toggle do botão + matriz CRUD) — ver useGate.
+  const { podeAcao } = useGate('tarefas')
+  const podeNovo = podeAcao('novo')
+  const podeEditar = podeAcao('editar')
+  const podeExcluir = podeAcao('excluir')
   const grupoUsuario = permissoes?.grupoNome || ''
   const { empresas, selectedCompany } = useApp()
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>('__default__')
