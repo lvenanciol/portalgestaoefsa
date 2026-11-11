@@ -10,23 +10,14 @@
  */
 
 import React, { useState, useMemo } from 'react'
-import {
-  FileText,
-  ArrowLeft,
-  Download,
-  Paperclip,
-  Pencil,
-  Users,
-  CalendarDays,
-  Percent,
-  Handshake,
-} from 'lucide-react'
+import { ArrowLeft, Paperclip, Pencil, Users, CalendarDays, Percent, Handshake } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
-import { extrairAnexos, contarAnexos } from './documentos-anexos-utils'
+import { contarAnexos } from './documentos-anexos-utils'
 import { AnexoVisualizadorInline } from './AnexoVisualizadorInline'
+import { DocumentoDetalheAnexos } from './DocumentoDetalheAnexos'
 import { CampoEditorInline, DefinicaoCampo } from './CampoEditorInline'
 import { ResponsaveisEditorDialog } from './ResponsaveisEditorDialog'
 import { DocumentoParecerButton } from './DocumentoParecerButton'
@@ -88,7 +79,6 @@ export function DetalheConvencaoView({
     }
   }, [documentoId])
 
-  const listaAnexos = useMemo(() => extrairAnexos(doc.anexo), [doc.anexo])
   // contarAnexos devolve OBJETO { total, pdfs, imagens } — renderizar o objeto
   // direto no JSX imprimia "[object Object]" no título da caixa de anexos.
   const anexosResumo = useMemo(() => contarAnexos(doc.anexo), [doc.anexo])
@@ -173,27 +163,9 @@ export function DetalheConvencaoView({
     }
   }
 
-  const baixarAnexo = async (nome: string) => {
-    try {
-      const url = pb.files.getUrl(doc, nome, { download: true })
-      const resp = await fetch(url)
-      const blob = await resp.blob()
-      const urlBlob = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = urlBlob
-      a.download = nome
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(urlBlob)
-    } catch (e: any) {
-      toast({
-        title: 'Erro no download',
-        description: e?.message || 'Não foi possível baixar o anexo.',
-        variant: 'destructive',
-      })
-    }
-  }
+  // O download/visualização/remoção de anexos agora é responsabilidade do
+  // DocumentoDetalheAnexos (mesmo componente das outras abas). A função local
+  // baixarAnexo ficou sem uso e foi removida — import/função órfã quebra o typecheck.
 
   const prazoVigencia = doc.vigencia_fim ? calcularPrazoValidade(String(doc.vigencia_fim)) : null
 
@@ -396,50 +368,26 @@ export function DetalheConvencaoView({
                 Anexos ({qtdAnexos})
               </h2>
             </div>
-            {listaAnexos.length === 0 ? (
-              <div className="text-xs text-slate-500 py-3">
-                Nenhum anexo nesta convenção. Utilize o menu "…" na listagem para anexar arquivos.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {listaAnexos.map((nome: string) => (
-                  <div
-                    key={nome}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5 hover:bg-slate-50 transition"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setAnexoVisualizando(nome)}
-                      className="flex items-center gap-2.5 min-w-0 flex-1 text-left"
-                    >
-                      <FileText className="h-4 w-4 text-rose-600 shrink-0" />
-                      <span className="text-xs font-medium text-slate-800 truncate">{nome}</span>
-                    </button>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setAnexoVisualizando(nome)}
-                        className="rounded-lg text-[11px] h-7 px-2"
-                      >
-                        Visualizar
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => baixarAnexo(nome)}
-                        className="rounded-lg text-[11px] h-7 px-2"
-                      >
-                        <Download className="h-3 w-3 mr-1" />
-                        Baixar
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* ANEXOS — mesmo componente das outras abas: permite Anexar (upload
+                múltiplo via campo 'anexo+'), visualizar inline, baixar e remover.
+                Antes a tela só listava e mandava usar o menu "…" da listagem, o que
+                não permitia anexar a convenção coletiva (PDF) pela própria tela. */}
+            <DocumentoDetalheAnexos
+              colecaoNome="convencoes"
+              recordId={documentoId}
+              anexos={doc.anexo}
+              onVisualizarArquivo={(nome) => setAnexoVisualizando(nome)}
+              onAnexosAlterados={() => {
+                // Recarrega o registro para refletir a lista real gravada no servidor
+                pb.collection('convencoes')
+                  .getOne(documentoId)
+                  .then((r) => {
+                    setDoc(r)
+                    onSalvo?.()
+                  })
+                  .catch(() => {})
+              }}
+            />
           </div>
 
           {/* Responsáveis */}
