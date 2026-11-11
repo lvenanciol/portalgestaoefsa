@@ -281,7 +281,10 @@ export function DocumentosPage() {
     // nenhum dos setState rodava. Resultado: TODAS as abas apareciam vazias, não
     // só a nova. Com `allSettled`, cada coleção carrega de forma independente e
     // a que falhar não derruba as outras.
-    const seguro = async <T,>(p: Promise<T>, rotulo: string): Promise<T[]> => {
+    const seguro = async <T extends { id: string }>(
+      p: Promise<T[]>,
+      rotulo: string,
+    ): Promise<T[]> => {
       try {
         const r = await p
         return Array.isArray(r) ? r : []

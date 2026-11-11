@@ -76,6 +76,7 @@ export function AudienciasModal({
   const [audForm, setAudForm] = useState<Record<string, string>>({})
   const [salvandoAud, setSalvandoAud] = useState(false)
   const [erroAud, setErroAud] = useState<string | null>(null)
+  const [audParaExcluir, setAudParaExcluir] = useState<any | null>(null)
 
   // Estados da importação
   const [arquivo, setArquivo] = useState<File | null>(null)

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-11T14:12:15.945Z",
+  "generatedAt": "2026-11-11T16:18:47.468Z",
   "collections": [
     {
       "name": "users",
@@ -3625,6 +3625,20 @@
           "type": "file",
           "required": false,
           "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": ["CREATE INDEX idx_convencoes_empresa ON convencoes (empresa)"]
@@ -3741,6 +3755,20 @@
           "type": "file",
           "required": false,
           "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [

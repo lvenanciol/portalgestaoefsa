@@ -53,7 +53,9 @@
 // dos campos de sistema created/updated nas coleções convencoes e seguros (migração 0065),
 // que era a causa de a grade de Convenções e Seguros ficar vazia; modal de Nova Convenção
 // mais largo e diálogos amigáveis de confirmação em "Enviar Login" e exclusão de audiência.
-const CACHE_NAME = 'pge-pwa-v44'
+// v45 (11/11/2026): correção do ReferenceError "audParaExcluir is not defined" no
+// modal de Audiências — estado declarado para o diálogo de confirmação de exclusão.
+const CACHE_NAME = 'pge-pwa-v45'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
