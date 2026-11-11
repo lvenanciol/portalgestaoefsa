@@ -15,6 +15,20 @@ export interface UsuarioLista {
   /** CAC (11/11/2026): parceiro de "Parceiros & Contatos" vinculado ao usuário */
   parceiro_id?: string
   parceiro_nome?: string
+  /** Dados do parceiro, usados para preencher a tela do usuário */
+  parceiro_documento?: string
+  parceiro_cargo?: string
+  parceiro_telefone?: string
+  parceiro_whatsapp?: string
+  parceiro_email?: string
+  /** Múltiplos vínculos de empresa (11/11/2026). empresa é a principal. */
+  empresas_ids?: string[]
+  empresas_nomes?: string[]
+  telefone?: string
+  whatsapp?: string
+  centro_resultado?: string
+  centro_resultado_codigo?: string
+  observacao?: string
 }
 
 export const listarUsuarios = () =>
@@ -31,6 +45,13 @@ export const criarUsuario = (data: {
   ativo?: boolean
   /** Vínculo com um registro de "Parceiros & Contatos" (tarefa CAC, 11/11/2026) */
   parceiro_id?: string
+  /** Múltiplas empresas; a primeira vira a principal no backend */
+  empresas?: string[]
+  telefone?: string
+  whatsapp?: string
+  centro_resultado?: string
+  centro_resultado_codigo?: string
+  observacao?: string
 }) => pb.send('/backend/v1/usuarios', { method: 'POST', body: JSON.stringify(data) })
 
 // CAC (11/11/2026) — "Enviar Login": dispara o e-mail com o endereço do Portal,
@@ -54,6 +75,13 @@ export const editarUsuario = (
     senha?: string
     /** Vínculo com "Parceiros & Contatos" (tarefa CAC) — '' desvincula */
     parceiro_id?: string
+    /** Lista completa de empresas; a primeira vira a principal */
+    empresas?: string[]
+    telefone?: string
+    whatsapp?: string
+    centro_resultado?: string
+    centro_resultado_codigo?: string
+    observacao?: string
   },
 ) => pb.send(`/backend/v1/usuarios/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
 
@@ -67,11 +95,19 @@ export interface ParceiroOpcao {
   cnpj?: string
   email?: string
   tipo?: string
+  cargo?: string
+  telefone?: string
+  whatsapp?: string
+  centro_resultado?: string
+  centro_resultado_codigo?: string
+  observacao?: string
 }
 
 export const listarParceiros = async (termo = '', limite = 20): Promise<ParceiroOpcao[]> => {
   const t = termo.trim()
-  const filtro = t ? pb.filter('(nome ~ {:t} || cnpj ~ {:t} || email ~ {:t})', { t }) : ''
+  // A coleção `parceiros` usa `documento` (não `cnpj`) — o filtro antigo
+  // referenciava um campo inexistente e derrubava a busca com 400.
+  const filtro = t ? pb.filter('(nome ~ {:t} || documento ~ {:t} || email ~ {:t})', { t }) : ''
   try {
     const regs = await pb.collection('parceiros').getList(1, limite, {
       sort: '-created',
@@ -80,9 +116,16 @@ export const listarParceiros = async (termo = '', limite = 20): Promise<Parceiro
     return (regs.items || []).map((r: any) => ({
       id: r.id,
       nome: r.nome || r.razao_social || r.name || '(sem nome)',
-      cnpj: r.cnpj || r.documento || '',
+      cnpj: r.documento || r.cnpj || '',
       email: r.email || '',
       tipo: r.tipo || r.categoria || '',
+      // Campos usados para preencher a tela do usuário ao vincular
+      cargo: r.cargo || '',
+      telefone: r.telefone || '',
+      whatsapp: r.whatsapp || '',
+      centro_resultado: r.centro_resultado || '',
+      centro_resultado_codigo: r.centro_resultado_codigo || '',
+      observacao: r.observacao || '',
     }))
   } catch (e) {
     console.warn('[CAC] Falha ao listar parceiros:', (e as any)?.message || e)

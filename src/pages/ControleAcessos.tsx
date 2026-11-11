@@ -36,6 +36,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
   DialogContent,
@@ -175,8 +176,16 @@ export default function ControleAcessos() {
   const [fSenha, setFSenha] = useState('')
   const [fCargo, setFCargo] = useState('')
   const [fGrupo, setFGrupo] = useState('')
-  const [fEmpresa, setFEmpresa] = useState('')
+  // (11/11/2026) MÚLTIPLAS empresas: a tela passou a aceitar mais de um vínculo.
+  // A primeira selecionada é a principal (vai para empresa_id no backend).
+  const [fEmpresas, setFEmpresas] = useState<string[]>([])
   const [fUnidade, setFUnidade] = useState('')
+  // Dados herdados do parceiro (preenchem a tela do usuário)
+  const [fTelefone, setFTelefone] = useState('')
+  const [fWhatsapp, setFWhatsapp] = useState('')
+  const [fCentroResultado, setFCentroResultado] = useState('')
+  const [fCentroResultadoCodigo, setFCentroResultadoCodigo] = useState('')
+  const [fObservacao, setFObservacao] = useState('')
   const [fAtivo, setFAtivo] = useState(true)
   const [salvando, setSalvando] = useState(false)
 
@@ -298,7 +307,14 @@ export default function ControleAcessos() {
     setFSenha('')
     setFCargo('')
     setFGrupo('')
-    setFEmpresa('')
+    setFEmpresas([])
+    setFTelefone('')
+    setFWhatsapp('')
+    setFCentroResultado('')
+    setFCentroResultadoCodigo('')
+    setFObservacao('')
+    setFParceiro('')
+    setBuscaParceiro('')
     setFUnidade('')
     setFAtivo(true)
     setFParceiro('')
@@ -314,7 +330,7 @@ export default function ControleAcessos() {
     const g = grupos.find((x) => x.nome === u.grupo)
     setFGrupo(g?.id || '')
     const e = empresas.find((x) => x.nome === u.empresa)
-    setFEmpresa(e?.id || '')
+    setFEmpresas(Array.isArray(u.empresas_ids) ? u.empresas_ids : [])
     const un = unidades.find((x) => x.nome === u.unidade)
     setFUnidade(un?.id || '')
     setFAtivo(u.ativo)
@@ -373,10 +389,15 @@ export default function ControleAcessos() {
         senha: fSenha,
         cargo: fCargo,
         grupo_id: fGrupo || undefined,
-        empresa_id: fEmpresa || undefined,
+        empresas: fEmpresas,
         unidade_id: fUnidade || undefined,
         parceiro_id: fParceiro || undefined,
         ativo: fAtivo,
+        telefone: fTelefone,
+        whatsapp: fWhatsapp,
+        centro_resultado: fCentroResultado,
+        centro_resultado_codigo: fCentroResultadoCodigo,
+        observacao: fObservacao,
       })
       setDialogNovo(false)
       await carregar()
@@ -396,10 +417,15 @@ export default function ControleAcessos() {
         cargo: fCargo,
         ativo: fAtivo,
         grupo_id: fGrupo,
-        empresa_id: fEmpresa,
+        empresas: fEmpresas,
         unidade_id: fUnidade,
         // '' desvincula o parceiro de forma explícita
         parceiro_id: fParceiro,
+        telefone: fTelefone,
+        whatsapp: fWhatsapp,
+        centro_resultado: fCentroResultado,
+        centro_resultado_codigo: fCentroResultadoCodigo,
+        observacao: fObservacao,
         ...(fSenha ? { senha: fSenha } : {}),
       })
       setDialogEditar(null)
@@ -471,8 +497,11 @@ export default function ControleAcessos() {
   )
 
   // T6d: "todas" = sem filtro (valor explícito do dropdown)
+  // Unidades da empresa PRINCIPAL (a primeira selecionada). Sem empresa marcada,
+  // mostra todas — evita campo vazio antes da escolha.
+  const empresaPrincipalId = fEmpresas[0] || ''
   const unidadesDaEmpresa = unidades.filter(
-    (u) => !fEmpresa || fEmpresa === 'todas' || u.empresa_id === fEmpresa,
+    (u) => !empresaPrincipalId || u.empresa_id === empresaPrincipalId,
   )
 
   return (
@@ -778,9 +807,83 @@ export default function ControleAcessos() {
             <DialogTitle>{dialogEditar ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-3 py-2">
+            {/* ===== 1) PRIMEIRO CAMPO: vínculo com Parceiros & Contatos =====
+                O parceiro é a FONTE DE VERDADE do cadastro: ao selecioná-lo, a
+                tela é preenchida com os dados existentes nele (nome, e-mail,
+                cargo, telefone, WhatsApp, centro de resultado, observação).
+                Por isso ele vem antes de tudo — quem vincula preenche primeiro. */}
             <div className="grid gap-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Nome
+                1. Parceiro / Contato vinculado
+              </Label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <Input
+                    value={buscaParceiro}
+                    onChange={(e) => setBuscaParceiro(e.target.value)}
+                    placeholder="Buscar por nome, CNPJ ou e-mail…"
+                    className="h-10 bg-gray-50 pl-8"
+                  />
+                </div>
+                <Select
+                  value={fParceiro || 'nenhum'}
+                  onValueChange={(v) => {
+                    if (v === 'nenhum') {
+                      setFParceiro('')
+                      return
+                    }
+                    setFParceiro(v)
+                    // Preenche a tela com os dados do parceiro selecionado
+                    const p = opcoesParceiro.find((o) => o.id === v)
+                    if (p) {
+                      if (p.nome) setFNome(p.nome)
+                      if (p.email) setFEmail(String(p.email).toLowerCase())
+                      if (p.cargo) setFCargo(p.cargo)
+                      if (p.telefone) setFTelefone(p.telefone)
+                      if (p.whatsapp) setFWhatsapp(p.whatsapp)
+                      if (p.centro_resultado) setFCentroResultado(p.centro_resultado)
+                      if (p.centro_resultado_codigo)
+                        setFCentroResultadoCodigo(p.centro_resultado_codigo)
+                      if (p.observacao) setFObservacao(p.observacao)
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-10 bg-gray-50 w-[46%]">
+                    <SelectValue placeholder={carregandoParceiros ? 'Buscando…' : 'Selecione'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nenhum">Sem vínculo</SelectItem>
+                    {opcoesParceiro.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.nome}
+                        {p.cnpj ? ` · ${p.cnpj}` : ''}
+                      </SelectItem>
+                    ))}
+                    {!carregandoParceiros && opcoesParceiro.length === 0 && (
+                      <div className="px-2 py-1.5 text-[11px] text-gray-500">
+                        Nenhum parceiro encontrado.
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              {fParceiro ? (
+                <span className="text-[11px] text-emerald-700 font-medium">
+                  Vinculado: {opcoesParceiro.find((p) => p.id === fParceiro)?.nome || fParceiro}
+                  {' — '}os campos abaixo foram preenchidos com os dados dele.
+                </span>
+              ) : (
+                <span className="text-[11px] text-gray-500">
+                  Opcional. Ao escolher, nome, e-mail, cargo e contatos são preenchidos
+                  automaticamente.
+                </span>
+              )}
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                2. Nome
               </Label>
               <Input
                 value={fNome}
@@ -856,95 +959,142 @@ export default function ControleAcessos() {
                 </SelectContent>
               </Select>
             </div>
-            {/* CAC (11/11/2026): vínculo com Parceiros & Contatos.
-                Busca no servidor por nome/CNPJ/e-mail; a lista abre com os 20
-                mais recentes e filtra conforme digita. Sem vínculo é permitido. */}
+
+            {/* ===== Empresas (MÚLTIPLAS) =====
+                O usuário pode responder por mais de uma empresa do grupo.
+                A PRIMEIRA marcada é a principal (escopo e relatórios). */}
             <div className="grid gap-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                Parceiro / Contato vinculado
+                Empresas vinculadas
               </Label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-                  <Input
-                    value={buscaParceiro}
-                    onChange={(e) => setBuscaParceiro(e.target.value)}
-                    placeholder="Buscar por nome, CNPJ ou e-mail…"
-                    className="h-10 bg-gray-50 pl-8"
-                  />
-                </div>
-                <Select
-                  value={fParceiro || 'nenhum'}
-                  onValueChange={(v) => setFParceiro(v === 'nenhum' ? '' : v)}
-                >
-                  <SelectTrigger className="h-10 bg-gray-50 w-[46%]">
-                    <SelectValue placeholder={carregandoParceiros ? 'Buscando…' : 'Selecione'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nenhum">Sem vínculo</SelectItem>
-                    {opcoesParceiro.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.nome}
-                        {p.cnpj ? ` · ${p.cnpj}` : ''}
-                      </SelectItem>
-                    ))}
-                    {!carregandoParceiros && opcoesParceiro.length === 0 && (
-                      <div className="px-2 py-1.5 text-[11px] text-gray-500">
-                        Nenhum parceiro encontrado.
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
+              <div className="flex flex-wrap gap-1.5">
+                {empresas.map((e) => {
+                  const marcada = fEmpresas.includes(e.id)
+                  const principal = fEmpresas[0] === e.id
+                  return (
+                    <button
+                      key={e.id}
+                      type="button"
+                      onClick={() => {
+                        setFEmpresas((prev) => {
+                          const nova = prev.includes(e.id)
+                            ? prev.filter((x) => x !== e.id)
+                            : [...prev, e.id]
+                          return nova
+                        })
+                        setFUnidade('')
+                      }}
+                      className={
+                        'inline-flex items-center gap-1.5 h-9 px-3 rounded-full border text-[12px] font-semibold transition-colors ' +
+                        (marcada
+                          ? 'bg-emerald-50 border-emerald-400 text-emerald-800'
+                          : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400')
+                      }
+                      title={principal ? 'Empresa principal (1ª selecionada)' : e.nome}
+                    >
+                      <span
+                        className={
+                          'h-3.5 w-3.5 rounded-full border-2 flex items-center justify-center ' +
+                          (marcada
+                            ? 'border-emerald-700 bg-emerald-700'
+                            : 'border-gray-400 bg-transparent')
+                        }
+                      >
+                        {marcada ? <span className="h-1.5 w-1.5 rounded-full bg-white" /> : null}
+                      </span>
+                      {e.nome}
+                      {principal ? (
+                        <span className="text-[9px] uppercase tracking-wide text-emerald-700/80">
+                          principal
+                        </span>
+                      ) : null}
+                    </button>
+                  )
+                })}
+                {empresas.length === 0 && (
+                  <span className="text-[11px] text-gray-500">Nenhuma empresa cadastrada.</span>
+                )}
               </div>
-              {fParceiro && (
-                <span className="text-[11px] text-emerald-700 font-medium">
-                  Vinculado: {opcoesParceiro.find((p) => p.id === fParceiro)?.nome || fParceiro}
-                </span>
-              )}
+              <span className="text-[11px] text-gray-500">
+                Selecione uma ou mais. A primeira marcada vira a empresa principal.
+              </span>
             </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Unidade da empresa principal
+              </Label>
+              <Select value={fUnidade} onValueChange={setFUnidade}>
+                <SelectTrigger className="h-10 bg-gray-50">
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  {unidadesDaEmpresa.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* ===== Dados do contato (vêm do parceiro, editáveis) ===== */}
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Empresa
+                  Telefone
                 </Label>
-                <Select
-                  value={fEmpresa}
-                  onValueChange={(v) => {
-                    setFEmpresa(v)
-                    setFUnidade('')
-                  }}
-                >
-                  <SelectTrigger className="h-10 bg-gray-50">
-                    <SelectValue placeholder="Todas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {/* T6d: opção "Todas" explícita no dropdown empresa */}
-                    <SelectItem value="todas">Todas</SelectItem>
-                    {empresas.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input
+                  value={fTelefone}
+                  onChange={(e) => setFTelefone(e.target.value)}
+                  className="h-10 bg-gray-50"
+                />
               </div>
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Unidade
+                  WhatsApp
                 </Label>
-                <Select value={fUnidade} onValueChange={setFUnidade}>
-                  <SelectTrigger className="h-10 bg-gray-50">
-                    <SelectValue placeholder="Todas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {unidadesDaEmpresa.map((u) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Input
+                  value={fWhatsapp}
+                  onChange={(e) => setFWhatsapp(e.target.value)}
+                  className="h-10 bg-gray-50"
+                />
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Centro de resultado
+                </Label>
+                <Input
+                  value={fCentroResultado}
+                  onChange={(e) => setFCentroResultado(e.target.value)}
+                  className="h-10 bg-gray-50"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Código do centro de resultado
+                </Label>
+                <Input
+                  value={fCentroResultadoCodigo}
+                  onChange={(e) => setFCentroResultadoCodigo(e.target.value)}
+                  className="h-10 bg-gray-50"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Observação
+              </Label>
+              <Textarea
+                value={fObservacao}
+                onChange={(e) => setFObservacao(e.target.value)}
+                rows={2}
+                className="bg-gray-50 resize-none"
+              />
             </div>
             <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5">
               <span className="text-[13px] font-semibold text-gray-700">Usuário ativo</span>
