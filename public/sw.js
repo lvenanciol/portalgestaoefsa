@@ -62,7 +62,10 @@
 // v48 (11/11/2026): confirmação de e-mail de redefinição — hook que envia aviso de
 // segurança ao usuário após a troca de senha na tela /reset-password, além de
 // visual de sucesso reforçado na própria tela.
-const CACHE_NAME = 'pge-pwa-v48'
+// v49 (11/11/2026): carrossel de empresas do usuário na tela /reset-password
+// (endpoint público /backend/v1/public/reset-empresas resolve o dono do token) e
+// sub-rotas de Integrações (Sankhya/WhatsApp) no mapa de permissões da sidebar.
+const CACHE_NAME = 'pge-pwa-v49'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

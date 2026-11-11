@@ -126,6 +126,11 @@ export const MENU_MODULOS: Record<string, string> = {
   '/parceiros': 'parceiros',
   '/logomarcas': 'logomarcas',
   '/integracoes': 'integracoes',
+  // Sub-rotas de Integrações: sem estas entradas o item correspondente da
+  // sidebar ficava OCULTO para quem não é Admin (fail-closed), mesmo com a
+  // seção liberada no Controle de Acessos — e a URL digitada era bloqueada.
+  '/integracoes/sankhya': 'integracoes',
+  '/integracoes/whatsapp': 'integracoes',
   '/power-bi': 'power-bi',
   '/ia': 'ia-gemini',
   '/menus': 'arvore-menus',
