@@ -27,7 +27,9 @@ export interface ParecerResultado {
 
 interface DocumentoParecerButtonProps {
   documento: Record<string, any>
-  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  // 'convencoes' faltava aqui: a aba Convenções (DetalheConvencaoView) passa esse
+  // valor e o typecheck quebrava ("Type '\"convencoes\"' is not assignable...").
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos' | 'convencoes'
   promptPadrao: string
   onSalvarPromptPadrao?: (novoPrompt: string) => void
 }

@@ -262,9 +262,29 @@ export interface StatusInfo {
   tipo: 'sucesso' | 'alerta' | 'perigo' | 'neutro'
   badgeClass: string
   icone: React.ReactNode
+  // Aliases usados pelas views de detalhe (DetalheConvencaoView, DetalheAlvaraView):
+  // a mesma informação com o nome que a tela consome — `corClasses` é o badgeClass
+  // e `rotulo` é o label. Sem isso o typecheck acusa "Property 'corClasses' does
+  // not exist on type 'StatusInfo'".
+  corClasses?: string
+  rotulo?: string
+}
+
+/**
+ * Aliases para as views de detalhe. As telas leem `corClasses` e `rotulo`; o
+ * domínio devolve `badgeClass` e `label`. Em vez de duplicar a taxonomia em cada
+ * view, este wrapper preenche os dois nomes com o MESMO valor — assim o badge da
+ * tela mostra a cor e o texto corretos, sem cada view reimplementar o mapeamento.
+ */
+function comAliases(info: StatusInfo): StatusInfo {
+  return { ...info, corClasses: info.badgeClass, rotulo: info.label }
 }
 
 export function obterStatusInfo(statusBruto: string | undefined, tipoAba: string): StatusInfo {
+  return comAliases(obterStatusInfoBase(statusBruto, tipoAba))
+}
+
+function obterStatusInfoBase(statusBruto: string | undefined, tipoAba: string): StatusInfo {
   const norm = String(statusBruto || '')
     .toLowerCase()
     .trim()

@@ -96,6 +96,53 @@ export function DetalheConvencaoView({
     [doc.status],
   )
 
+  // ===== ALINHAMENTO DE CAMPOS (11/11/2026) =====
+  // A view lia nomes que NÃO existem na coleção `convencoes` (migração 0060):
+  //   lido aqui       -> campo real no PocketBase
+  //   sindicato       -> entidade_sindical
+  //   percentual_reajuste -> reajuste_percentual
+  //   responsavel_interno/externo -> responsaveis (campo único)
+  // Resultado: a tela mostrava "Não informado" mesmo com o dado gravado, e as
+  // edições inline salvavam em campos inexistentes (erro 400 do PocketBase).
+  const sindicato = doc.entidade_sindical || doc.sindicato || ''
+  const partePatronal = doc.parte_patronal || ''
+  const percentualReajuste = doc.reajuste_percentual ?? doc.percentual_reajuste ?? null
+  const responsaveisTexto =
+    doc.responsaveis || doc.responsavel_interno || doc.responsavel_externo || ''
+
+  // Data-base é texto livre na coleção ('Outubro'), mas o editor de data exige
+  // ISO. Converte só quando o conteúdo for uma data real; senão o campo abre vazio
+  // e o usuário perde o que estava gravado.
+  const dataBaseIso = (() => {
+    const bruto = String(doc.data_base || '').trim()
+    if (!bruto) return ''
+    if (/^\d{4}-\d{2}-\d{2}/.test(bruto)) return bruto.slice(0, 10)
+    const meses: Record<string, string> = {
+      janeiro: '01',
+      fevereiro: '02',
+      marco: '03',
+      abril: '04',
+      maio: '05',
+      junho: '06',
+      julho: '07',
+      agosto: '08',
+      setembro: '09',
+      outubro: '10',
+      novembro: '11',
+      dezembro: '12',
+    }
+    const norm = bruto
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+    const mes = Object.keys(meses).find((m) => norm.startsWith(m))
+    if (mes) {
+      const ano = (norm.match(/(\d{4})/) || [])[1] || String(new Date().getFullYear())
+      return `${ano}-${meses[mes]}-01`
+    }
+    return ''
+  })()
+
   const abrirEditor = (campos: DefinicaoCampo[]) => {
     setCamposEmEdicao(campos)
     setEditorAberto(true)
@@ -186,7 +233,7 @@ export function DetalheConvencaoView({
                   </Badge>
                 </div>
                 <p className="text-xs text-slate-500 mt-1 truncate">
-                  {doc.sindicato ? `${doc.sindicato} · ` : ''}
+                  {sindicato ? `${sindicato} · ` : ''}
                   {doc.empresa || 'Empresa não informada'}
                 </p>
               </div>
@@ -235,7 +282,7 @@ export function DetalheConvencaoView({
             <button
               type="button"
               onClick={() =>
-                abrirEditor([{ campo: 'data_base', rotulo: 'Data-base', tipo: 'data' }])
+                abrirEditor([{ campo: 'data_base', rotulo: 'Data-base', tipo: 'texto' }])
               }
               className="text-left rounded-[16px] bg-white border border-slate-200 p-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] hover:ring-2 hover:ring-emerald-700/30 transition"
             >
@@ -244,10 +291,10 @@ export function DetalheConvencaoView({
                 Data-base
               </div>
               <div className="mt-2 font-mono text-sm font-semibold text-slate-900 tabular-nums">
-                {fmtDataBR(doc.data_base) || 'Não informada'}
+                {String(doc.data_base || '') || 'Não informada'}
               </div>
               <div className="text-[10.5px] font-medium text-slate-500 mt-1">
-                {doc.data_base ? 'Categoria para reajuste' : 'Clique para informar'}
+                {doc.data_base ? 'Mês-base da categoria' : 'Clique para informar'}
               </div>
             </button>
 
@@ -256,7 +303,7 @@ export function DetalheConvencaoView({
               onClick={() =>
                 abrirEditor([
                   {
-                    campo: 'percentual_reajuste',
+                    campo: 'reajuste_percentual',
                     rotulo: 'Percentual de reajuste (%)',
                     tipo: 'numero',
                   },
@@ -269,12 +316,12 @@ export function DetalheConvencaoView({
                 Reajuste salarial
               </div>
               <div className="mt-2 font-mono text-sm font-semibold text-emerald-800 tabular-nums">
-                {doc.percentual_reajuste !== null && doc.percentual_reajuste !== undefined
-                  ? `${String(doc.percentual_reajuste).replace('.', ',')}%`
+                {percentualReajuste !== null && percentualReajuste !== undefined
+                  ? `${String(percentualReajuste).replace('.', ',')}%`
                   : 'Não informado'}
               </div>
               <div className="text-[10.5px] font-medium text-slate-500 mt-1">
-                {doc.percentual_reajuste != null ? 'Percentual aplicado' : 'Clique para informar'}
+                {percentualReajuste != null ? 'Percentual aplicado' : 'Clique para informar'}
               </div>
             </button>
           </div>
@@ -289,8 +336,13 @@ export function DetalheConvencaoView({
               {[
                 { campo: 'titulo', rotulo: 'Título', tipo: 'texto' as const, obrigatorio: true },
                 { campo: 'empresa', rotulo: 'Empresa', tipo: 'texto' as const },
-                { campo: 'sindicato', rotulo: 'Sindicato', tipo: 'texto' as const },
-                { campo: 'numero_registro', rotulo: 'Nº registro MTE', tipo: 'texto' as const },
+                {
+                  campo: 'entidade_sindical',
+                  rotulo: 'Entidade sindical',
+                  tipo: 'texto' as const,
+                },
+                { campo: 'parte_patronal', rotulo: 'Parte patronal', tipo: 'texto' as const },
+                { campo: 'piso_salarial', rotulo: 'Piso salarial (R$)', tipo: 'moeda' as const },
                 { campo: 'status', rotulo: 'Status', tipo: 'texto' as const },
                 {
                   campo: 'observacoes',
@@ -311,7 +363,22 @@ export function DetalheConvencaoView({
                     <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-60 transition" />
                   </div>
                   <div className="text-xs text-slate-900 mt-0.5 whitespace-pre-wrap break-words">
-                    {doc[c.campo] || <span className="text-slate-400">Não informado</span>}
+                    {(() => {
+                      const bruto = doc[c.campo]
+                      if (bruto === null || bruto === undefined || bruto === '') {
+                        return <span className="text-slate-400">Não informado</span>
+                      }
+                      if (c.tipo === 'moeda') {
+                        const n = Number(bruto)
+                        return Number.isFinite(n)
+                          ? n.toLocaleString('pt-BR', {
+                              style: 'currency',
+                              currency: 'BRL',
+                            })
+                          : String(bruto)
+                      }
+                      return String(bruto)
+                    })()}
                   </div>
                 </div>
               ))}
@@ -390,22 +457,15 @@ export function DetalheConvencaoView({
                 Editar responsáveis
               </Button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2.5">
-                <div className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-wide">
-                  Interno
-                </div>
-                <div className="text-xs font-medium text-slate-900 mt-0.5">
-                  {doc.responsavel_interno || <span className="text-slate-400">Não informado</span>}
-                </div>
+            {/* A coleção tem UM campo `responsaveis` (texto). Antes a tela procurava
+                responsavel_interno/responsavel_externo, que não existem no schema —
+                exibia "Não informado" mesmo com o dado gravado. */}
+            <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2.5">
+              <div className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-wide">
+                Responsáveis
               </div>
-              <div className="rounded-xl bg-slate-50 border border-slate-100 px-3 py-2.5">
-                <div className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-wide">
-                  Externo
-                </div>
-                <div className="text-xs font-medium text-slate-900 mt-0.5">
-                  {doc.responsavel_externo || <span className="text-slate-400">Não informado</span>}
-                </div>
+              <div className="text-xs font-medium text-slate-900 mt-0.5 whitespace-pre-wrap break-words">
+                {responsaveisTexto || <span className="text-slate-400">Não informado</span>}
               </div>
             </div>
           </div>
