@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Leaf, Lock, Eye, EyeOff, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Leaf, Lock, Eye, EyeOff, Loader2, CheckCircle2, AlertTriangle, Mail } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 
@@ -102,11 +102,22 @@ export default function ResetPassword() {
           {/* 2. Senha redefinida */}
           {!semToken && ok && (
             <div className="space-y-4 text-center">
-              <CheckCircle2 className="h-12 w-12 text-[#1B5E20] mx-auto" />
-              <h2 className="text-base font-bold text-gray-900">Senha alterada</h2>
+              <div className="flex justify-center">
+                <div className="h-16 w-16 rounded-full bg-[#1B5E20]/10 flex items-center justify-center">
+                  <CheckCircle2 className="h-10 w-10 text-[#1B5E20]" />
+                </div>
+              </div>
+              <h2 className="text-base font-bold text-gray-900">Senha alterada com sucesso</h2>
               <p className="text-[13px] text-gray-600 leading-relaxed">
                 Sua nova senha já está valendo. Você será levado ao login.
               </p>
+              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 flex items-start gap-2 text-left">
+                <Mail className="h-4 w-4 text-[#1B5E20] mt-0.5 shrink-0" />
+                <p className="text-[13px] text-[#0F3D13] leading-relaxed">
+                  Enviamos um e-mail de confirmação de segurança para o seu endereço cadastrado,
+                  avisando que a senha foi alterada. Se não foi você, contate o administrador.
+                </p>
+              </div>
               <button
                 onClick={() => navigate('/login', { replace: true })}
                 className="w-full h-11 rounded-lg bg-[#1B5E20] hover:bg-[#0F3D13] text-white text-sm font-bold transition-colors"
