@@ -8,7 +8,11 @@
 //  - topo da arte com as LOGOMARCAS das empresas às quais o usuário tem vínculo
 //    (empresa_id + empresa da unidade). As imagens de /api/files são servidas
 //    publicamente sem autenticação, então carregam no e-mail.
-//  - endereço do portal passa a ser https://portalefsa.goskip.app
+// - endereço do portal passa a ser https://portalefsa.goskip.app
+// v3 (11/11/2026): o link "Trocar minha senha" e o botão "Cadastrar / trocar senha"
+//  apontavam para /configuracoes (rota protegida) — quem clicava sem sessão caía no
+//  login. Agora apontam para /reset-password?token=... (rota pública da SPA), com um
+//  token de redefinição de senha gerado aqui para o próprio usuário.
 routerAdd(
   'POST',
   '/backend/v1/usuarios/{id}/enviar-login',
@@ -40,7 +44,14 @@ routerAdd(
 
     const nome = usuario.getString('name') || email
     const portalUrl = 'https://portalefsa.goskip.app'
-    const linkSenha = portalUrl + '/configuracoes?secao=seguranca'
+    // Link de troca de senha: rota pública /reset-password com token de redefinição
+    // (funciona sem sessão ativa, direto do e-mail).
+    let linkSenha = portalUrl + '/reset-password'
+    try {
+      linkSenha += '?token=' + encodeURIComponent(usuario.newPasswordResetToken())
+    } catch (err) {
+      console.log('enviar-login: falha ao gerar token de redefinição: ' + String(err))
+    }
 
     // ===== Empresas vinculadas ao usuário =====
     // Origem: empresa_id do próprio usuário + empresa da unidade (quando houver).

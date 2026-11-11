@@ -57,7 +57,9 @@
 // modal de Audiências — estado declarado para o diálogo de confirmação de exclusão.
 // v46 (11/11/2026): e-mail de acesso com a faixa das logomarcas das empresas
 // vinculadas ao usuário no topo da arte e endereço do portal em portalefsa.goskip.app.
-const CACHE_NAME = 'pge-pwa-v46'
+// v47 (11/11/2026): links "Trocar minha senha" e "Cadastrar / trocar senha" do e-mail de
+// acesso apontam para /reset-password?token=... (tela pública de troca de senha).
+const CACHE_NAME = 'pge-pwa-v47'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
