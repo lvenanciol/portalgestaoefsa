@@ -783,7 +783,7 @@ export function DocumentosPage() {
           `no-scrollbar` escondia a barra de rolagem, então não havia como ver o resto —
           a aba parecia truncada. Agora a barra ROLA de verdade (scrollbar fina visível),
           os rótulos não quebram linha e há folga lateral para não encostar na borda. */}
-      <div className="border-b border-gray-200/90 flex items-center gap-5 sm:gap-6 overflow-x-auto pb-0 pt-1 px-1 [scrollbar-width:thin]">
+      <div className="border-b border-gray-200/90 flex flex-wrap items-center gap-x-4 gap-y-1 pb-0 pt-1 px-1">
         {(
           [
             'alvaras',

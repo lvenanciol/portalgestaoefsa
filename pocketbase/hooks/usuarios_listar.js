@@ -33,6 +33,19 @@ routerAdd(
       try {
         unidadeNome = $app.findRecordById('unidades', r.getString('unidade_id')).getString('nome')
       } catch (_) {}
+      // CAC (11/11/2026): devolve também o parceiro vinculado, para que a tela
+      // de edição abra com o vínculo já selecionado (antes vinha vazio e o
+      // salvar sobrescrevia sem o usuário perceber).
+      let parceiroId = ''
+      let parceiroNome = ''
+      try {
+        parceiroId = r.getString('parceiro_id')
+        if (parceiroId) {
+          parceiroNome = $app.findRecordById('parceiros', parceiroId).getString('nome')
+        }
+      } catch (_) {
+        parceiroNome = ''
+      }
       out.push({
         id: r.id,
         nome: r.getString('name'),
@@ -43,6 +56,8 @@ routerAdd(
         grupo: grupoNome,
         empresa: empresaNome,
         unidade: unidadeNome,
+        parceiro_id: parceiroId,
+        parceiro_nome: parceiroNome,
       })
     }
     return e.json(200, { usuarios: out })

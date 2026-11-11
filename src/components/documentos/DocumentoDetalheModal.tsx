@@ -44,14 +44,21 @@ export function DocumentoDetalheModal({
   const [carregandoVisualizacao, setCarregandoVisualizacao] = useState(false)
 
   // Mapeia aba ativa para a coleção correspondente no PocketBase
+  // Mapeamento explícito por aba: convencoes e seguros têm coleção própria.
+  // Antes caíam no default 'contratos' e os anexos dessas abas eram lidos/gravados
+  // na coleção errada (por isso o anexo "sumia" depois de anexar).
   const colecaoNome =
     tipoAba === 'alvaras'
       ? 'alvaras'
       : tipoAba === 'atas'
         ? 'atas'
-        : tipoAba === 'juridicos'
-          ? 'processos_juridicos'
-          : 'contratos'
+        : tipoAba === 'convencoes'
+          ? 'convencoes'
+          : tipoAba === 'seguros'
+            ? 'seguros'
+            : tipoAba === 'juridicos'
+              ? 'processos_juridicos'
+              : 'contratos'
 
   // Mantém estado interno em sincronia quando o documento da prop mudar ou abrir
   useEffect(() => {

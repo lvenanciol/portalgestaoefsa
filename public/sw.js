@@ -42,7 +42,9 @@
 // v38 (07/11/2026): validação da importação dos relatórios jurídicos Extrafruti (trabalhista e cível) e timeline cronológica de observações
 // v39 (07/11/2026): cards KPI hero de Locações sem corte, tabela de valores e campos fiéis do PDF em Dados do Processo Jurídico
 // v40 (07/11/2026): detalhe jurídico com ícone+empresa na linha Processo, título longo quebrando sem corte e substituição de Cliente principal por Polo estruturado
-const CACHE_NAME = 'pge-pwa-v41'
+// v42 (11/11/2026): rebuild para purgar cache do PWA e exibir no preview a aba
+// Convenções completa, a aba Seguros e o CRUD de grupos/parceiros do CAC.
+const CACHE_NAME = 'pge-pwa-v42'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

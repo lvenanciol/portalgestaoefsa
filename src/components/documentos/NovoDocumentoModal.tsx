@@ -42,7 +42,7 @@ import pb from '@/lib/pocketbase/client'
 interface NovoDocumentoModalProps {
   aberto: boolean
   onOpenChange: (aberto: boolean) => void
-  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'convencoes' | 'juridicos'
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'convencoes' | 'seguros' | 'juridicos'
   empresas: Array<{ id: string; nome: string }>
   empresaPreSelecionada?: string
   onCriadoSucesso: () => void
@@ -470,6 +470,36 @@ export function NovoDocumentoModal({
           observacoes: form.observacoes || '',
         })
         novoId = rec.id
+      } else if (tipoAba === 'seguros') {
+        if (!form.titulo) throw new Error('Título da apólice é obrigatório.')
+        colecaoDestino = 'seguros'
+        const numero = (v: any) => {
+          const n = parseFloat(
+            String(v || '')
+              .replace(/[R$\s.]/g, '')
+              .replace(',', '.'),
+          )
+          return isNaN(n) ? 0 : n
+        }
+        const rec = await pb.collection('seguros').create({
+          titulo: form.titulo,
+          empresa: form.empresa,
+          seguradora: form.seguradora || '',
+          corretora: form.corretora || '',
+          numero_apolice: form.numero_apolice || '',
+          ramo: form.ramo || '',
+          objeto: form.objeto || '',
+          cobertura: form.cobertura || '',
+          importancia_segurada: numero(form.importancia_segurada),
+          premio_total: numero(form.premio_total),
+          franquia: numero(form.franquia),
+          vigencia_inicio: form.vigencia_inicio ? `${form.vigencia_inicio} 00:00:00.000Z` : null,
+          vigencia_fim: form.vigencia_fim ? `${form.vigencia_fim} 00:00:00.000Z` : null,
+          status: form.status || 'ativo',
+          responsaveis: form.responsaveis || '',
+          observacoes: form.observacoes || '',
+        })
+        novoId = rec.id
       } else if (tipoAba === 'atas') {
         if (!form.titulo) throw new Error('Título da ata é obrigatório.')
         colecaoDestino = 'atas'
@@ -565,6 +595,7 @@ export function NovoDocumentoModal({
     locacoes: 'Novo Contrato de Locação',
     atas: 'Nova Ata de Assembleia / Reunião',
     convencoes: 'Nova Convenção Coletiva',
+    seguros: 'Nova Apólice de Seguro',
     juridicos: 'Novo Processo Jurídico',
   }
 
@@ -1214,6 +1245,149 @@ export function NovoDocumentoModal({
                   rows={2}
                   className="text-xs bg-gray-50 resize-none"
                   placeholder="Cláusulas relevantes, condicionantes ou notas adicionais..."
+                />
+              </div>
+            </>
+          )}
+
+          {/* CAMPOS ESPECÍFICOS: SEGUROS (apólice + anexo de PDF) */}
+          {tipoAba === 'seguros' && (
+            <>
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-gray-700">Título da Apólice *</Label>
+                <Input
+                  required
+                  value={form.titulo || ''}
+                  onChange={(e) => setCampo('titulo', e.target.value)}
+                  placeholder="Apólice de Seguro Patrimonial 2026"
+                  className="h-9 text-xs bg-gray-50"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">Seguradora</Label>
+                  <Input
+                    value={form.seguradora || ''}
+                    onChange={(e) => setCampo('seguradora', e.target.value)}
+                    placeholder="Ex.: Porto Seguro"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">Corretora</Label>
+                  <Input
+                    value={form.corretora || ''}
+                    onChange={(e) => setCampo('corretora', e.target.value)}
+                    placeholder="Ex.: Corretora Central"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">Nº da Apólice</Label>
+                  <Input
+                    value={form.numero_apolice || ''}
+                    onChange={(e) => setCampo('numero_apolice', e.target.value)}
+                    placeholder="0000 0000 0000"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">Ramo</Label>
+                  <Input
+                    value={form.ramo || ''}
+                    onChange={(e) => setCampo('ramo', e.target.value)}
+                    placeholder="Patrimonial / Frota / RC"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">Início da Vigência</Label>
+                  <Input
+                    type="date"
+                    value={form.vigencia_inicio || ''}
+                    onChange={(e) => setCampo('vigencia_inicio', e.target.value)}
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">Fim da Vigência</Label>
+                  <Input
+                    type="date"
+                    value={form.vigencia_fim || ''}
+                    onChange={(e) => setCampo('vigencia_fim', e.target.value)}
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    Importância Segurada
+                  </Label>
+                  <Input
+                    value={form.importancia_segurada || ''}
+                    onChange={(e) => setCampo('importancia_segurada', e.target.value)}
+                    placeholder="0,00"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">Prêmio Total</Label>
+                  <Input
+                    value={form.premio_total || ''}
+                    onChange={(e) => setCampo('premio_total', e.target.value)}
+                    placeholder="0,00"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">Franquia</Label>
+                  <Input
+                    value={form.franquia || ''}
+                    onChange={(e) => setCampo('franquia', e.target.value)}
+                    placeholder="0,00"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-gray-700">Objeto do Seguro</Label>
+                <Input
+                  value={form.objeto || ''}
+                  onChange={(e) => setCampo('objeto', e.target.value)}
+                  placeholder="Bens, frota ou responsabilidade cobertos"
+                  className="h-9 text-xs bg-gray-50"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-gray-700">Coberturas</Label>
+                <Textarea
+                  value={form.cobertura || ''}
+                  onChange={(e) => setCampo('cobertura', e.target.value)}
+                  rows={2}
+                  className="text-xs bg-gray-50 resize-none"
+                  placeholder="Coberturas contratadas, limites e exclusões relevantes..."
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-gray-700">Observações</Label>
+                <Textarea
+                  value={form.observacoes || ''}
+                  onChange={(e) => setCampo('observacoes', e.target.value)}
+                  rows={2}
+                  className="text-xs bg-gray-50 resize-none"
+                  placeholder="Condições, endossos ou notas adicionais..."
                 />
               </div>
             </>

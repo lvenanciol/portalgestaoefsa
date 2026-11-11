@@ -96,6 +96,10 @@ const COLUNAS_CRUD = [
 ]
 const CHAVE_CRUD = (tela: string, col: string) => 'crud_' + tela + '_' + col
 
+// Escopo válido no select 'escopo' de grupos_permissao (grupo|empresa|unidade).
+// 'Padrão' NÃO existe nos valores permitidos e faria o create falhar (400).
+const ESCOPO_PADRAO = 'grupo'
+
 export default function ControleAcessos() {
   const { user } = useAuth()
   const { pode } = useBotoes()
@@ -127,6 +131,7 @@ export default function ControleAcessos() {
   const [fEmpresa, setFEmpresa] = useState('')
   const [fUnidade, setFUnidade] = useState('')
   const [fAtivo, setFAtivo] = useState(true)
+  const [salvando, setSalvando] = useState(false)
 
   // ===== CAC (11/11/2026) — parceiro vinculado + CRUD de grupos =====
   const [fParceiro, setFParceiro] = useState('')
@@ -135,77 +140,8 @@ export default function ControleAcessos() {
   const [carregandoParceiros, setCarregandoParceiros] = useState(false)
   const [dialogGrupo, setDialogGrupo] = useState<Grupo | 'novo' | null>(null)
   const [gNome, setGNome] = useState('')
-  const [gEscopo, setGEscopo] = useState('')
+  const [gEscopo, setGEscopo] = useState(ESCOPO_PADRAO)
   const [salvandoGrupo, setSalvandoGrupo] = useState(false)
-
-  // Busca parceiros no servidor (nome/CNPJ/e-mail) com debounce
-  useEffect(() => {
-    if (!dialogNovo && !dialogEditar) return
-    let vivo = true
-    const t = setTimeout(async () => {
-      setCarregandoParceiros(true)
-      const lista = await listarParceiros(buscaParceiro, 20)
-      if (vivo) {
-        setOpcoesParceiro(lista)
-        setCarregandoParceiros(false)
-      }
-    }, 300)
-    return () => {
-      vivo = false
-      clearTimeout(t)
-    }
-  }, [buscaParceiro, dialogNovo, dialogEditar])
-
-  const abrirNovoGrupo = () => {
-    setGNome('')
-    setGEscopo('Padrão')
-    setDialogGrupo('novo')
-  }
-
-  const abrirEditarGrupo = (g: Grupo) => {
-    setGNome(g.nome)
-    setGEscopo(g.escopo || 'Padrão')
-    setDialogGrupo(g)
-  }
-
-  const salvarGrupoHandler = async () => {
-    const nome = gNome.trim()
-    if (!nome) {
-      setErro('Informe o nome do grupo.')
-      return
-    }
-    setSalvandoGrupo(true)
-    setErro('')
-    try {
-      if (dialogGrupo === 'novo') {
-        await criarGrupo({ nome, escopo: gEscopo.trim() || 'Padrão' })
-      } else if (dialogGrupo) {
-        await editarGrupo(dialogGrupo.id, { nome, escopo: gEscopo.trim() || 'Padrão' })
-      }
-      setDialogGrupo(null)
-      await carregar()
-    } catch (e) {
-      setErro(getErrorMessage(e) || 'Erro ao salvar grupo.')
-    } finally {
-      setSalvandoGrupo(false)
-    }
-  }
-
-  const excluirGrupoHandler = async (g: Grupo) => {
-    const emUso = usuarios.filter((u) => u.grupo === g.nome).length
-    if (emUso > 0) {
-      setErro(`O grupo "${g.nome}" tem ${emUso} usuário(s) vinculado(s). Mova-os antes de excluir.`)
-      return
-    }
-    if (typeof window !== 'undefined' && !window.confirm(`Excluir o grupo "${g.nome}"?`)) return
-    try {
-      await excluirGrupo(g.id)
-      await carregar()
-    } catch (e) {
-      setErro(getErrorMessage(e) || 'Erro ao excluir grupo.')
-    }
-  }
-  const [salvando, setSalvando] = useState(false)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -239,6 +175,76 @@ export default function ControleAcessos() {
     carregar()
   }, [carregar])
 
+  // Busca parceiros no servidor (nome/CNPJ/e-mail) com debounce
+  useEffect(() => {
+    if (!dialogNovo && !dialogEditar) return
+    let vivo = true
+    const t = setTimeout(async () => {
+      setCarregandoParceiros(true)
+      const lista = await listarParceiros(buscaParceiro, 20)
+      if (vivo) {
+        setOpcoesParceiro(lista)
+        setCarregandoParceiros(false)
+      }
+    }, 300)
+    return () => {
+      vivo = false
+      clearTimeout(t)
+    }
+  }, [buscaParceiro, dialogNovo, dialogEditar])
+
+  // ===== CRUD de Grupos de permissão (tarefa CAC) =====
+  const abrirNovoGrupo = () => {
+    setGNome('')
+    setGEscopo(ESCOPO_PADRAO)
+    setDialogGrupo('novo')
+  }
+
+  const abrirEditarGrupo = (g: Grupo) => {
+    setGNome(g.nome)
+    setGEscopo(g.escopo || ESCOPO_PADRAO)
+    setDialogGrupo(g)
+  }
+
+  const salvarGrupoHandler = async () => {
+    const nome = gNome.trim()
+    if (!nome) {
+      setErro('Informe o nome do grupo.')
+      return
+    }
+    setSalvandoGrupo(true)
+    setErro('')
+    try {
+      const escopo = gEscopo || ESCOPO_PADRAO
+      if (dialogGrupo === 'novo') {
+        await criarGrupo({ nome, escopo })
+      } else if (dialogGrupo) {
+        await editarGrupo(dialogGrupo.id, { nome, escopo })
+      }
+      setDialogGrupo(null)
+      await carregar()
+    } catch (e) {
+      setErro(getErrorMessage(e) || 'Erro ao salvar grupo.')
+    } finally {
+      setSalvandoGrupo(false)
+    }
+  }
+
+  const excluirGrupoHandler = async (g: Grupo) => {
+    const emUso = usuarios.filter((u) => u.grupo === g.nome).length
+    if (emUso > 0) {
+      setErro(`O grupo "${g.nome}" tem ${emUso} usuário(s) vinculado(s). Mova-os antes de excluir.`)
+      return
+    }
+    if (typeof window !== 'undefined' && !window.confirm(`Excluir o grupo "${g.nome}"?`)) return
+    try {
+      await excluirGrupo(g.id)
+      await carregar()
+    } catch (e) {
+      setErro(getErrorMessage(e) || 'Erro ao excluir grupo.')
+    }
+  }
+
   const abrirNovo = () => {
     setFNome('')
     setFEmail('')
@@ -248,6 +254,8 @@ export default function ControleAcessos() {
     setFEmpresa('')
     setFUnidade('')
     setFAtivo(true)
+    setFParceiro('')
+    setBuscaParceiro('')
     setDialogNovo(true)
   }
 
@@ -263,6 +271,16 @@ export default function ControleAcessos() {
     const un = unidades.find((x) => x.nome === u.unidade)
     setFUnidade(un?.id || '')
     setFAtivo(u.ativo)
+    // CAC: recupera o parceiro já vinculado para não sobrescrever no salvar
+    setFParceiro(u.parceiro_id || '')
+    setBuscaParceiro('')
+    if (u.parceiro_id && u.parceiro_nome) {
+      setOpcoesParceiro((prev) =>
+        prev.some((p) => p.id === u.parceiro_id)
+          ? prev
+          : [{ id: u.parceiro_id as string, nome: u.parceiro_nome as string }, ...prev],
+      )
+    }
     setDialogEditar(u)
   }
 
@@ -413,7 +431,19 @@ export default function ControleAcessos() {
 
       {/* Grupos de permissão */}
       <section>
-        <h2 className="text-sm font-bold text-gray-900 mb-3">Grupos de Permissão</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-bold text-gray-900">Grupos de Permissão</h2>
+          {isAdmin && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={abrirNovoGrupo}
+              className="h-8 text-xs gap-1"
+            >
+              <Plus className="h-3.5 w-3.5" /> Novo Grupo
+            </Button>
+          )}
+        </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
           {grupos.map((g) => (
             <div
@@ -572,6 +602,61 @@ export default function ControleAcessos() {
         )}
       </section>
 
+      {/* Dialog Grupo de permissão (CRUD — tarefa CAC) */}
+      <Dialog open={dialogGrupo !== null} onOpenChange={(o) => !o && setDialogGrupo(null)}>
+        <DialogContent className="bg-white max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {dialogGrupo && dialogGrupo !== 'novo' ? 'Editar Grupo' : 'Novo Grupo'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Nome do grupo
+              </Label>
+              <Input
+                value={gNome}
+                onChange={(e) => setGNome(e.target.value)}
+                className="h-10 bg-gray-50"
+                placeholder="Ex.: Comercial"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Escopo
+              </Label>
+              <Select value={gEscopo} onValueChange={setGEscopo}>
+                <SelectTrigger className="h-10 bg-gray-50">
+                  <SelectValue placeholder="Selecione o escopo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="grupo">Grupo (acesso total)</SelectItem>
+                  <SelectItem value="empresa">Empresa</SelectItem>
+                  <SelectItem value="unidade">Unidade</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-[11px] text-gray-400">
+                Define a que nível de escopo este grupo se aplica.
+              </span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogGrupo(null)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={salvarGrupoHandler}
+              disabled={salvandoGrupo}
+              className="bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+            >
+              {salvandoGrupo && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Dialog Novo/Editar usuário */}
       <Dialog
         open={dialogNovo || Boolean(dialogEditar)}
@@ -687,9 +772,7 @@ export default function ControleAcessos() {
                   onValueChange={(v) => setFParceiro(v === 'nenhum' ? '' : v)}
                 >
                   <SelectTrigger className="h-10 bg-gray-50 w-[46%]">
-                    <SelectValue
-                      placeholder={carregandoParceiros ? 'Buscando…' : 'Selecione'}
-                    />
+                    <SelectValue placeholder={carregandoParceiros ? 'Buscando…' : 'Selecione'} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="nenhum">Sem vínculo</SelectItem>
@@ -711,12 +794,8 @@ export default function ControleAcessos() {
                 <span className="text-[11px] text-emerald-700 font-medium">
                   Vinculado: {opcoesParceiro.find((p) => p.id === fParceiro)?.nome || fParceiro}
                 </span>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Empresa
-                </Label>
-=======
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">

@@ -12,6 +12,9 @@ export interface UsuarioLista {
   grupo: string
   empresa: string
   unidade: string
+  /** CAC (11/11/2026): parceiro de "Parceiros & Contatos" vinculado ao usuário */
+  parceiro_id?: string
+  parceiro_nome?: string
 }
 
 export const listarUsuarios = () =>
@@ -79,10 +82,12 @@ export const listarParceiros = async (termo = '', limite = 20): Promise<Parceiro
 }
 
 // ===== CRUD de Grupos de permissão (tarefa CAC) =====
+// 'escopo' é um select com valores fixos (grupo|empresa|unidade). O default
+// 'Padrão' não existe no schema e fazia o create falhar com 400.
 export const criarGrupo = (data: { nome: string; escopo?: string }) =>
   pb.collection('grupos_permissao').create({
     nome: data.nome,
-    escopo: data.escopo || 'Padrão',
+    escopo: data.escopo || 'grupo',
   })
 
 export const editarGrupo = (id: string, data: { nome?: string; escopo?: string }) =>

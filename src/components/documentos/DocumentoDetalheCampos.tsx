@@ -26,7 +26,7 @@ import pb from '@/lib/pocketbase/client'
 
 interface DocumentoDetalheCamposProps {
   documento: any
-  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'convencoes' | 'seguros' | 'juridicos'
   colecaoNome: string
   empresas: { id: string; nome: string }[]
   onAtualizado?: () => void
@@ -106,6 +106,51 @@ export function DocumentoDetalheCampos({
         payload.valor_atualizado =
           form.valor_atualizado !== undefined ? Number(form.valor_atualizado) : null
         payload.valor_causa = form.valor_causa !== undefined ? Number(form.valor_causa) : null
+      } else if (tipoAba === 'convencoes') {
+        // Convenções: só os campos da própria coleção. Antes caía no ramo de
+        // contratos e gravava título/parte/valor_mensal em convencoes (erro 400).
+        payload.titulo = form.titulo || ''
+        payload.empresa = form.empresa || ''
+        payload.entidade_sindical = form.entidade_sindical || ''
+        payload.parte_patronal = form.parte_patronal || ''
+        payload.vigencia_inicio = form.vigencia_inicio || null
+        payload.vigencia_fim = form.vigencia_fim || null
+        payload.data_base = form.data_base || ''
+        payload.reajuste_percentual =
+          form.reajuste_percentual !== undefined && form.reajuste_percentual !== ''
+            ? Number(form.reajuste_percentual)
+            : null
+        payload.piso_salarial =
+          form.piso_salarial !== undefined && form.piso_salarial !== ''
+            ? Number(form.piso_salarial)
+            : null
+        payload.status = form.status || 'ativo'
+        payload.responsaveis = form.responsaveis || ''
+        payload.observacoes = form.observacoes || ''
+      } else if (tipoAba === 'seguros') {
+        payload.titulo = form.titulo || ''
+        payload.empresa = form.empresa || ''
+        payload.seguradora = form.seguradora || ''
+        payload.corretora = form.corretora || ''
+        payload.numero_apolice = form.numero_apolice || ''
+        payload.ramo = form.ramo || ''
+        payload.objeto = form.objeto || ''
+        payload.cobertura = form.cobertura || ''
+        payload.importancia_segurada =
+          form.importancia_segurada !== undefined && form.importancia_segurada !== ''
+            ? Number(form.importancia_segurada)
+            : null
+        payload.premio_total =
+          form.premio_total !== undefined && form.premio_total !== ''
+            ? Number(form.premio_total)
+            : null
+        payload.franquia =
+          form.franquia !== undefined && form.franquia !== '' ? Number(form.franquia) : null
+        payload.vigencia_inicio = form.vigencia_inicio || null
+        payload.vigencia_fim = form.vigencia_fim || null
+        payload.status = form.status || 'ativo'
+        payload.responsaveis = form.responsaveis || ''
+        payload.observacoes = form.observacoes || ''
       } else {
         // contratos / locacoes
         payload.titulo = form.titulo || ''

@@ -840,6 +840,8 @@ export function obterColunasPorTipo(tipoAba: string): ColunaTipoConfig[] {
       return COLUNAS_ATAS
     case 'convencoes':
       return COLUNAS_CONVENCOES
+    case 'seguros':
+      return COLUNAS_SEGUROS
     case 'juridicos':
       return COLUNAS_JURIDICOS
     default:
