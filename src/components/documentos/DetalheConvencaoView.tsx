@@ -89,7 +89,10 @@ export function DetalheConvencaoView({
   }, [documentoId])
 
   const listaAnexos = useMemo(() => extrairAnexos(doc.anexo), [doc.anexo])
-  const qtdAnexos = useMemo(() => contarAnexos(doc.anexo), [doc.anexo])
+  // contarAnexos devolve OBJETO { total, pdfs, imagens } — renderizar o objeto
+  // direto no JSX imprimia "[object Object]" no título da caixa de anexos.
+  const anexosResumo = useMemo(() => contarAnexos(doc.anexo), [doc.anexo])
+  const qtdAnexos = anexosResumo.total
 
   const statusInfo = useMemo(
     () => obterStatusInfo(String(doc.status || ''), 'convencoes'),
