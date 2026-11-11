@@ -293,12 +293,24 @@ export function DocumentosPage() {
 
     const [resAlv, resCont, resLoc, resAtas, resConv, resSeg, resJur] = await Promise.all([
       seguro(pb.collection('alvaras').getFullList({ sort: '-created' }), 'alvaras'),
+      // CAUSA-RAIZ DOS "REGISTROS ANTIGOS SUMIDOS" (11/11/2026):
+      // no PocketBase `campo != 'valor'` NÃO casa registros com o campo vazio/nulo.
+      // Os contratos antigos foram gravados sem `tipo`, então sumiam da aba
+      // Contratos E da aba Locações (nenhum dos dois filtros os pegava).
+      // Agora: contratos = tudo que não é locação OU está sem tipo;
+      // locações = tipo locacao (ou legado com 'locação' acentuado).
       seguro(
-        pb.collection('contratos').getFullList({ filter: "tipo != 'locacao'", sort: '-created' }),
+        pb.collection('contratos').getFullList({
+          filter: "(tipo != 'locacao' && tipo != 'locação') || tipo = ''",
+          sort: '-created',
+        }),
         'contratos',
       ),
       seguro(
-        pb.collection('contratos').getFullList({ filter: "tipo = 'locacao'", sort: '-created' }),
+        pb.collection('contratos').getFullList({
+          filter: "tipo = 'locacao' || tipo = 'locação'",
+          sort: '-created',
+        }),
         'locacoes',
       ),
       seguro(pb.collection('atas').getFullList({ sort: '-data' }), 'atas'),

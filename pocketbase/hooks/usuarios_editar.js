@@ -29,8 +29,14 @@ routerAdd(
     if (body.grupo_id !== undefined) rec.set('grupo_id', body.grupo_id)
     if (body.empresa_id !== undefined) rec.set('empresa_id', body.empresa_id)
     if (body.unidade_id !== undefined) rec.set('unidade_id', body.unidade_id)
-    // v3 (11/11/2026): vínculo com Parceiros & Contatos (tarefa CAC)
-    if (body.parceiro_id !== undefined) rec.set('parceiro_id', String(body.parceiro_id || ''))
+    // v3 (11/11/2026): vínculo com Parceiros & Contatos (tarefa CAC).
+    // Defensivo: se a migração 0063 (campo parceiro_id) ainda não tiver rodado,
+    // não derruba a edição inteira do usuário por causa de um campo OPCIONAL.
+    if (body.parceiro_id !== undefined) {
+      try {
+        rec.set('parceiro_id', String(body.parceiro_id || ''))
+      } catch (_) {}
+    }
     if (body.senha) {
       if (String(body.senha).length < 8) return e.badRequestError('senha mínima de 8 caracteres')
       rec.setPassword(String(body.senha))

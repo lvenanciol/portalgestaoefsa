@@ -37,7 +37,12 @@ routerAdd(
     if (body.grupo_id) rec.set('grupo_id', body.grupo_id)
     if (body.empresa_id) rec.set('empresa_id', body.empresa_id)
     if (body.unidade_id) rec.set('unidade_id', body.unidade_id)
-    if (body.parceiro_id) rec.set('parceiro_id', String(body.parceiro_id))
+    // Defensivo: campo opcional (migração 0063). Nunca bloqueia a criação.
+    if (body.parceiro_id) {
+      try {
+        rec.set('parceiro_id', String(body.parceiro_id))
+      } catch (_) {}
+    }
     try {
       $app.save(rec)
     } catch (err) {
