@@ -33,6 +33,15 @@ export const criarUsuario = (data: {
   parceiro_id?: string
 }) => pb.send('/backend/v1/usuarios', { method: 'POST', body: JSON.stringify(data) })
 
+// CAC (11/11/2026) — "Enviar Login": dispara o e-mail com o endereço do Portal,
+// o login e o passo a passo de primeiro acesso. A senha NÃO é enviada.
+export const enviarLoginUsuario = (id: string) =>
+  pb.send(`/backend/v1/usuarios/${id}/enviar-login`, { method: 'POST' }) as Promise<{
+    ok: boolean
+    para?: string
+    erro?: string
+  }>
+
 export const editarUsuario = (
   id: string,
   data: {

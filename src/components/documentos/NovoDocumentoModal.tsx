@@ -109,6 +109,78 @@ export function NovoDocumentoModal({
     setForm((prev) => ({ ...prev, [campo]: valor }))
   }
 
+  // ===== Helpers de extração (11/11/2026) =====
+  // O PDF.js usado na importação quebra tokens com espaços internos:
+  // "202 6", "1. 770 ,00", "5 ,00%", "SEGUND O". Sem normalizar, toda regex
+  // de número/data falha em silêncio e o formulário fica vazio.
+  function normalizarTextoPdf(entrada: string): string {
+    let x = String(entrada || '').replace(/\s+/g, ' ')
+    x = x.replace(/R\s*\$\s*/g, 'R$ ')
+    for (let i = 0; i < 6; i++) {
+      const antes = x
+      x = x.replace(/(\d) (\d)/g, '$1$2')
+      if (x === antes) break
+    }
+    for (let i = 0; i < 6; i++) {
+      const antes = x
+      x = x.replace(/(\d)\s*([.,])\s*(\d)/g, '$1$2$3')
+      if (x === antes) break
+    }
+    for (let i = 0; i < 4; i++) x = x.replace(/(\d)\s*\/\s*(\d)/g, '$1/$2')
+    const quebradas: Array<[RegExp, string]> = [
+      [/\bSEGUND O\b/g, 'SEGUNDO'],
+      [/\bPRIMEIR O\b/g, 'PRIMEIRO'],
+      [/\bTERCEIR O\b/g, 'TERCEIRO'],
+      [/\bCONVEN ÇÃO\b/g, 'CONVENÇÃO'],
+      [/\bTRABALH O\b/g, 'TRABALHO'],
+      [/\bEMPREGAD OS\b/g, 'EMPREGADOS'],
+      [/\bSALARIA L\b/g, 'SALARIAL'],
+    ]
+    for (const [re, ok] of quebradas) x = x.replace(re, ok)
+    return x
+  }
+
+  // Número em pt-BR: "1.770,00" -> 1770 | "5,00" -> 5 | "5.2" -> 5.2
+  function numeroBR(v: any): number {
+    const s = String(v ?? '')
+      .replace(/[^\d.,-]/g, '')
+      .trim()
+    if (!s) return 0
+    const limpo = s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s
+    const n = parseFloat(limpo)
+    return isNaN(n) ? 0 : n
+  }
+
+  const MESES_PT: Record<string, number> = {
+    janeiro: 1,
+    fevereiro: 2,
+    marco: 3,
+    março: 3,
+    abril: 4,
+    maio: 5,
+    junho: 6,
+    julho: 7,
+    agosto: 8,
+    setembro: 9,
+    outubro: 10,
+    novembro: 11,
+    dezembro: 12,
+  }
+
+  function isoDePartes(dia: string, mes: string, ano: string): string {
+    const mm = MESES_PT[String(mes || '').toLowerCase()]
+    if (!mm) return ''
+    return `${ano}-${String(mm).padStart(2, '0')}-${String(Number(dia)).padStart(2, '0')}`
+  }
+
+  // "29/10/26" | "29/10/2026" -> "2026-10-29"
+  function isoDeBR(s?: string): string {
+    const m = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(String(s || ''))
+    if (!m) return ''
+    const ano = m[3].length === 2 ? `20${m[3]}` : m[3]
+    return `${ano}-${String(Number(m[2])).padStart(2, '0')}-${String(Number(m[1])).padStart(2, '0')}`
+  }
+
   // Extração inteligente de metadados a partir do arquivo (pdf, docx, xlsx)
   const handleImportarArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -252,34 +324,133 @@ export function NovoDocumentoModal({
           .replace(/[_-]+/g, ' ')
           .trim()
 
-        // Tenta extrair datas de vigência (dd/mm/aaaa) do texto do PDF
-        const datas = textoExtraido.match(/\d{2}\/\d{2}\/\d{4}/g) || []
-        const anos = datas.map((d) => d.split('/')[2])
-        const vigInicio = datas[0] ? datas[0].split('/').reverse().join('-') : ''
-        const vigFim =
-          datas.length > 1 ? datas[datas.length - 1].split('/').reverse().join('-') : ''
+        // Texto normalizado — sem isso "202 6" e "1. 770 ,00" quebram toda regex
+        const txt = normalizarTextoPdf(textoExtraido)
 
-        // Detecta sindicato no texto
-        let sindicatoDetectado = ''
-        const matchSind = textoExtraido.match(/SINDICATO\s+D[AEOS]?[^\n,;]{3,80}/i)
-        if (matchSind) sindicatoDetectado = matchSind[0].trim()
+        // TÍTULO: cabeçalho real do instrumento, não o nome do arquivo
+        const mTitulo = txt.match(
+          /((?:PRIMEIRO|SEGUNDO|TERCEIRO)\s+ADITIVO\s+[ÀA]\s+CONVENÇÃO[\s\S]{0,60}?\d{4}\s*\/\s*\d{4})/i,
+        )
+        const tituloDoc = mTitulo ? mTitulo[1].replace(/\s+/g, ' ').trim() : ''
 
-        // Detecta percentual de reajuste (ex: 4,5%)
-        const matchReaj = textoExtraido.match(/reajust\w*[^\d]{0,40}(\d{1,2}[.,]\d{1,2})\s*%/i)
-        const reajustePct = matchReaj ? matchReaj[1].replace(',', '.') : ''
+        // ENTIDADE SINDICAL
+        const mEntidade = txt.match(/(SINDICATO\s+DOS\s+EMPREGADOS[\s\S]{0,120}?SANTO)/i)
+        const entidade = mEntidade ? mEntidade[1].replace(/\s+/g, ' ').trim() : ''
+
+        // REAJUSTE (%) e PISO SALARIAL
+        const mReaj = txt.match(/reajuste\s+salarial\s+de\s*(\d+(?:[.,]\d+)?)\s*%/i)
+        const reajuste = mReaj ? numeroBR(mReaj[1]) : 0
+        const mPiso = txt.match(/piso\s+salarial[\s\S]{0,220}?R\$\s*([\d.]*\d,\d{2})/i)
+        const piso = mPiso ? numeroBR(mPiso[1]) : 0
+
+        // DATA-BASE: "a partir de 1º de novembro de 2026"
+        const mDataBase = txt.match(/a\s+partir\s+de\s+1\s*[ºo°]?\s+de\s+([a-zç]+)\s+de\s+(\d{4})/i)
+        const mesBase = mDataBase ? mDataBase[1] : ''
+        const anoBase = mDataBase ? mDataBase[2] : ''
+
+        // VIGÊNCIA: NUNCA a primeira data do texto. Numa CCT ela é a data da
+        // Lei 13.467 (13/07/2017) ou o prazo de oposição — era isso que gravava
+        // vigencia_inicio em 2017. Usamos a cláusula de vigência.
+        const mVig = txt.match(
+          /per[ií]odo\s+de\s+(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})\s+a\s+(\d{1,2})\s+de\s+([a-zç]+)\s+de\s+(\d{4})/i,
+        )
+        let vigInicio = mVig ? isoDePartes(mVig[1], mVig[2], mVig[3]) : ''
+        let vigFim = mVig ? isoDePartes(mVig[4], mVig[5], mVig[6]) : ''
+        if (!vigInicio && mesBase && anoBase) {
+          vigInicio = isoDePartes('1', mesBase, anoBase)
+          const mm = String(MESES_PT[mesBase.toLowerCase()] || 1).padStart(2, '0')
+          vigFim = `${Number(anoBase) + 1}-${mm}-28`
+        }
 
         setForm((prev) => ({
           ...prev,
           empresa: empresaDetectada,
-          titulo: tituloSugerido || 'Convenção Coletiva de Trabalho',
-          sindicato: sindicatoDetectado || 'Sindicato da categoria',
+          titulo: tituloDoc || tituloSugerido || 'Convenção Coletiva de Trabalho',
+          // Schema REAL da coleção `convencoes` (migração 0060). Os nomes antigos
+          // (sindicato / percentual_reajuste_texto / abrangencia) não existem no
+          // schema: a importação "preenchia" campos que a tela não lê.
+          entidade_sindical: entidade,
           vigencia_inicio: vigInicio,
           vigencia_fim: vigFim,
-          data_base: anos.length > 0 ? `Mês-base ${anos[0]}` : '',
-          percentual_reajuste_texto: reajustePct ? `${reajustePct.replace('.', ',')}%` : '',
-          abrangencia: `Empresas do grupo ${empresaDetectada} representadas pela categoria`,
+          data_base:
+            mesBase && anoBase
+              ? `${mesBase.charAt(0).toUpperCase()}${mesBase.slice(1)}/${anoBase}`
+              : '',
+          reajuste_percentual: reajuste || '',
+          piso_salarial: piso || '',
           status: 'ativo',
           observacoes: `Campos preenchidos automaticamente a partir do arquivo "${nomeArquivo}". Favor conferir os dados antes de salvar.`,
+        }))
+      } else if (tipoAba === 'seguros') {
+        // IMPORTAÇÃO DE APÓLICE / ENDOSSO (11/11/2026) — antes NÃO existia branch
+        // para `seguros`: a cadeia ia de convencoes direto para atas, nenhum
+        // setForm rodava e a tela ainda assim dizia "importado com sucesso".
+        const txt = normalizarTextoPdf(textoExtraido)
+        const tituloArquivo = nomeArquivo
+          .replace(/\.[^/.]+$/, '')
+          .replace(/[_-]+/g, ' ')
+          .trim()
+
+        // Nº da apólice original: "Apólice Original 7871425"
+        const mApolice = txt.match(/Ap[óo]lice\s+Original\s*(\d{5,})/i)
+
+        // Vigência do endosso (ignora "Início Vigência Original")
+        const mIni = txt.match(
+          /In[íi]cio\s+Vig[êe]ncia\s*(\d{1,2}\/\d{1,2}\/\d{2,4})[\s\S]{0,80}?Fim\s+Vig[êe]ncia/i,
+        )
+        const mFim = txt.match(/Fim\s+Vig[êe]ncia\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)
+
+        const mSeguradora = txt.match(
+          /(Banestes\s+Seguros|Porto\s+Seguro|Zurich|Tokio\s+Marine|Allianz|HDI\s+Seguros|Mapfre|SulAm[ée]rica|Bradesco\s+Seguros|Ita[úu]\s+Seguros)/i,
+        )
+        const mCorretora = txt.match(
+          /Corretores[\s\S]{0,220}?\d{6,9}\s+([A-ZÀ-Ú][A-ZÀ-Ú0-9 ,.&-]{4,60}?LTDA)/i,
+        )
+
+        // Prêmio: "Prêmio + Serviços: R$ 191,08" tem prioridade sobre o total
+        const mPremioServ = txt.match(/Pr[êe]mio\s*\+\s*Servi[çc]os:?\s*R\$\s*([\d.,]+)/i)
+        const mPremioTotal = txt.match(/Pr[êe]mio\s+Total[\s\S]{0,90}?R\$\s*([\d.]*\d,\d{2})/i)
+        const premio = mPremioServ
+          ? numeroBR(mPremioServ[1])
+          : mPremioTotal
+            ? numeroBR(mPremioTotal[1])
+            : 0
+
+        const mFranquia = txt.match(/Franquia[\s\S]{0,160}?R\$\s*([\d.]*\d,\d{2})/i)
+
+        const mPlaca = txt.match(/\b([A-Z]{3}\d[A-Z0-9]\d{2})\b/)
+        const mModelo = txt.match(
+          /((?:PICANTO|YARIS|SONG\s+PLUS|HB20|ONIX|COROLLA|KWID|ARGO|MOBI|COMPASS|RENEGADE)[A-Za-z0-9 .,/-]{0,40})/i,
+        )
+        const objetoPartes: string[] = []
+        if (mModelo) objetoPartes.push(mModelo[1].replace(/\s+/g, ' ').trim())
+        if (mPlaca) objetoPartes.push(`Placa ${mPlaca[1]}`)
+
+        const cobertura = [
+          /100%\s*Tabela\s+Fipe/i.test(txt) ? 'Casco 100% Tabela FIPE' : '',
+          /RCFV\/Danos\s+Corporais/i.test(txt) ? 'RCFV Danos Corporais/Materiais/Morais' : '',
+          /APP\//i.test(txt) ? 'APP por passageiro' : '',
+          /Assist[êe]ncia\s+24/i.test(txt) ? 'Assistência 24h' : '',
+        ]
+          .filter(Boolean)
+          .join(' | ')
+
+        setForm((prev) => ({
+          ...prev,
+          empresa: empresaDetectada,
+          titulo: tituloArquivo || 'Apólice de Seguro',
+          seguradora: mSeguradora ? mSeguradora[1] : '',
+          corretora: mCorretora ? mCorretora[1].replace(/\s+/g, ' ').trim() : '',
+          numero_apolice: mApolice ? mApolice[1] : '',
+          ramo: mPlaca || mModelo ? 'Automóvel' : '',
+          objeto: objetoPartes.join(' — '),
+          cobertura,
+          premio_total: premio || '',
+          franquia: mFranquia ? numeroBR(mFranquia[1]) : '',
+          vigencia_inicio: mIni ? isoDeBR(mIni[1]) : '',
+          vigencia_fim: mFim ? isoDeBR(mFim[1]) : '',
+          status: 'ativo',
+          observacoes: `Dados extraídos do arquivo "${nomeArquivo}". Revise antes de salvar — em PDF digitalizado (sem texto) o preenchimento manual é obrigatório.`,
         }))
       } else if (tipoAba === 'atas') {
         const isAge = nomeLower.includes('age') || nomeLower.includes('extraordin')

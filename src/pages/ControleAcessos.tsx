@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { ShieldCheck, Plus, Loader2, Search, X, MousePointerClick } from 'lucide-react'
+import { ShieldCheck, Plus, Loader2, Search, X, MousePointerClick, Mail } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import {
   useBotoes,
@@ -11,6 +11,7 @@ import {
   listarUsuarios,
   criarUsuario,
   editarUsuario,
+  enviarLoginUsuario,
   listarGrupos,
   listarEmpresas,
   listarUnidades,
@@ -364,6 +365,36 @@ export default function ControleAcessos() {
     }
   }
 
+  // CAC (11/11/2026) — "Enviar Login": manda ao usuário o link do Portal, o
+  // login (e-mail) e o passo a passo de primeiro acesso. A senha não vai no
+  // e-mail: mandá-la em claro criaria uma credencial permanente na caixa de
+  // entrada. Quem define a senha é o admin, no cadastro.
+  const [enviandoLoginId, setEnviandoLoginId] = useState<string | null>(null)
+
+  const enviarLogin = async (u: UsuarioLista) => {
+    if (
+      !window.confirm(
+        `Enviar o acesso do Portal para ${u.nome} <${u.email}>?\n\nO e-mail leva o endereço do Portal, o login e as instruções de primeiro acesso. A senha NÃO é enviada.`,
+      )
+    ) {
+      return
+    }
+    setEnviandoLoginId(u.id)
+    setErro('')
+    try {
+      const res = await enviarLoginUsuario(u.id)
+      if (res && res.ok) {
+        window.alert(`Acesso enviado para ${res.para || u.email}.`)
+      } else {
+        setErro(res?.erro || 'Falha ao enviar o e-mail de acesso.')
+      }
+    } catch (e) {
+      setErro(getErrorMessage(e) || 'Erro ao enviar o login.')
+    } finally {
+      setEnviandoLoginId(null)
+    }
+  }
+
   const alternarAtivo = async (u: UsuarioLista) => {
     try {
       await editarUsuario(u.id, { ativo: !u.ativo })
@@ -576,14 +607,31 @@ export default function ControleAcessos() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         {isAdmin && pode('acessos', 'editar_usuario') && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 text-xs"
-                            onClick={() => abrirEditar(u)}
-                          >
-                            Editar
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-xs text-[#1B5E20] hover:text-[#0F3D13]"
+                              title="Enviar e-mail com o acesso ao Portal"
+                              disabled={enviandoLoginId === u.id}
+                              onClick={() => enviarLogin(u)}
+                            >
+                              {enviandoLoginId === u.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                              ) : (
+                                <Mail className="h-3.5 w-3.5 mr-1" />
+                              )}
+                              Enviar Login
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-xs"
+                              onClick={() => abrirEditar(u)}
+                            >
+                              Editar
+                            </Button>
+                          </div>
                         )}
                       </td>
                     </tr>

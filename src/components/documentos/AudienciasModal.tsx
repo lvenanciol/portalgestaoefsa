@@ -15,6 +15,8 @@ import {
   ExternalLink,
   Plus,
   Filter,
+  Pencil,
+  Trash2,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -56,6 +58,14 @@ export function AudienciasModal({
   const [audiencias, setAudiencias] = useState<any[]>([])
   const [carregando, setCarregando] = useState(false)
   const [busca, setBusca] = useState('')
+
+  // ===== CRUD manual de audiências (11/11/2026) =====
+  // Antes só existia importação de planilha: não havia como incluir uma
+  // audiência avulsa, corrigir um horário ou remover uma linha errada.
+  const [dialogAud, setDialogAud] = useState<null | 'nova' | string>(null)
+  const [audForm, setAudForm] = useState<Record<string, string>>({})
+  const [salvandoAud, setSalvandoAud] = useState(false)
+  const [erroAud, setErroAud] = useState<string | null>(null)
 
   // Estados da importação
   const [arquivo, setArquivo] = useState<File | null>(null)
@@ -119,24 +129,38 @@ export function AudienciasModal({
         throw new Error('A planilha selecionada está vazia ou não possui cabeçalho válido.')
       }
 
-      // Localizar linha de cabeçalho defensivamente (pode ser linha 1, 2 ou 3)
-      let headerIdx = 0
-      for (let r = 0; r < Math.min(rawRows.length, 10); r++) {
+      // Localizar a linha de cabeçalho pelo MAIOR NÚMERO DE COLUNAS PREENCHIDAS.
+      // (11/11/2026) Antes o laço parava no PRIMEIRO hit, e o título da planilha
+      // "Pauta de Audiências" contém "audiência" — então headerIdx virava 0 e
+      // toda a planilha era lida por posição. Resultado medido com a pauta real
+      // da Extrafruti: 4 registros gravados em vez de 2, sendo dois deles o
+      // próprio cabeçalho ("Pasta", "Data da emissão:").
+      let headerIdx = -1
+      let melhorScore = 0
+      for (let r = 0; r < Math.min(rawRows.length, 15); r++) {
         const rowArr = Array.isArray(rawRows[r]) ? rawRows[r] : []
+        const preenchidas = rowArr.filter(
+          (c) => c !== null && c !== undefined && String(c).trim() !== '',
+        ).length
         const rowText = rowArr
           .map((c) => (c !== null && c !== undefined ? String(c).toLowerCase() : ''))
           .join(' ')
-        if (
-          rowText.includes('pasta') ||
-          rowText.includes('processo') ||
-          rowText.includes('audiência') ||
-          rowText.includes('audiencia') ||
-          rowText.includes('vara')
-        ) {
+        const palavrasChave = [
+          'pasta',
+          'processo',
+          'vara',
+          'audiência',
+          'audiencia',
+          'advogado',
+          'data',
+        ]
+        const hits = palavrasChave.filter((k) => rowText.includes(k)).length
+        if (preenchidas >= 4 && hits >= 2 && preenchidas > melhorScore) {
           headerIdx = r
-          break
+          melhorScore = preenchidas
         }
       }
+      if (headerIdx < 0) headerIdx = 0
 
       const headerRow = Array.isArray(rawRows[headerIdx]) ? rawRows[headerIdx] : []
       const headers = headerRow.map((h) =>
@@ -213,6 +237,12 @@ export function AudienciasModal({
 
         if (!pasta && !numProc) continue
 
+        // (11/11/2026) DESCARTE DE LINHAS QUE NÃO SÃO AUDIÊNCIA.
+        // Sem número de processo com cara de CNJ nem pasta numérica, a linha é
+        // cabeçalho, título ou totalizador — e não pode virar registro.
+        const pareceProcesso = /\d{5,}/.test(numProc) || /\d{4,}/.test(pasta)
+        if (!pareceProcesso) continue
+
         const vara = getCol(colVara >= 0 ? colVara : 2)
         const cidadeUf = getCol(colCidade >= 0 ? colCidade : 3)
         const natureza = getCol(colNatureza >= 0 ? colNatureza : 4)
@@ -223,28 +253,33 @@ export function AudienciasModal({
         const advogado = getCol(colAdvogado >= 0 ? colAdvogado : 9)
         const tipoAud = getCol(colTipo >= 0 ? colTipo : 10)
 
-        // Converter data para ISO string defensivamente
+        // (11/11/2026) DATA: formato brasileiro PRIMEIRO, nunca new Date() direto.
+        // `new Date("10/11/2026 08:40:00")` é interpretado como MM/DD pelo JS e
+        // devolvia 11 de OUTUBRO — toda audiência com dia <= 12 caía no mês
+        // errado, e o fallback brasileiro nunca rodava porque a data "era válida"
+        // na leitura americana. Medido com a pauta real: 10/11/2026 -> 11/10/2026.
         let isoData = ''
         if (dataStr) {
-          const parsedDate = new Date(dataStr)
-          if (!isNaN(parsedDate.getTime())) {
-            isoData = parsedDate.toISOString()
-          } else {
-            // Tenta formato brasileiro DD/MM/AAAA HH:mm ou DD/MM/AAAA
-            const matchBR = /(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?/.exec(dataStr)
-            if (matchBR) {
-              const [_, dia, mes, ano, h = '00', m = '00'] = matchBR
-              const parsedBR = new Date(
-                Number(ano),
-                Number(mes) - 1,
-                Number(dia),
-                Number(h),
-                Number(m),
-              )
-              if (!isNaN(parsedBR.getTime())) {
-                isoData = parsedBR.toISOString()
-              }
+          const matchBR = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[\sT]+(\d{1,2}):(\d{2}))?/.exec(
+            dataStr,
+          )
+          if (matchBR) {
+            const dia = Number(matchBR[1])
+            const mes = Number(matchBR[2])
+            let ano = Number(matchBR[3])
+            if (ano < 100) ano += 2000
+            const h = Number(matchBR[4] || 0)
+            const mi = Number(matchBR[5] || 0)
+            if (dia >= 1 && dia <= 31 && mes >= 1 && mes <= 12) {
+              // Monta no fuso LOCAL e devolve o mesmo instante em ISO.
+              const d = new Date(ano, mes - 1, dia, h, mi, 0)
+              if (!isNaN(d.getTime())) isoData = d.toISOString()
             }
+          }
+          // Fallback: já vem em ISO/carimbo do Excel
+          if (!isoData) {
+            const parsedDate = new Date(dataStr)
+            if (!isNaN(parsedDate.getTime())) isoData = parsedDate.toISOString()
           }
         }
 
@@ -382,6 +417,119 @@ export function AudienciasModal({
     }
   }
 
+  const audCamposVazios = () => ({
+    pasta: '',
+    numero_processo: '',
+    numero_cnj: '',
+    vara: '',
+    cidade_uf: '',
+    natureza_posicao: '',
+    cliente_principal: 'Extrafruti',
+    parte_contraria: '',
+    audiencia_tipo: 'Audiência',
+    data_hora_local: '',
+    advogado_responsavel: '',
+    tipo_audiencia: 'Presencial',
+    observacoes: '',
+  })
+
+  const abrirNovaAudiencia = () => {
+    setErroAud(null)
+    setAudForm(audCamposVazios())
+    setDialogAud('nova')
+  }
+
+  // ISO -> valor de <input type="datetime-local"> no fuso local
+  const isoParaLocalInput = (iso: string) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return ''
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+  }
+
+  const abrirEditarAudiencia = (a: any) => {
+    setErroAud(null)
+    setAudForm({
+      pasta: a.pasta || '',
+      numero_processo: a.numero_processo || '',
+      numero_cnj: a.numero_cnj || '',
+      vara: a.vara || '',
+      cidade_uf: a.cidade_uf || '',
+      natureza_posicao: a.natureza_posicao || '',
+      cliente_principal: a.cliente_principal || 'Extrafruti',
+      parte_contraria: a.parte_contraria || '',
+      audiencia_tipo: a.audiencia_tipo || 'Audiência',
+      data_hora_local: isoParaLocalInput(a.data_hora_inicio),
+      advogado_responsavel: a.advogado_responsavel || '',
+      tipo_audiencia: a.tipo_audiencia || 'Presencial',
+      observacoes: a.observacoes || '',
+    })
+    setDialogAud(a.id)
+  }
+
+  const salvarAudiencia = async () => {
+    setSalvandoAud(true)
+    setErroAud(null)
+    try {
+      if (!audForm.numero_processo && !audForm.pasta) {
+        throw new Error('Informe a pasta ou o número do processo.')
+      }
+      if (!audForm.data_hora_local) {
+        throw new Error('Informe a data e a hora da audiência.')
+      }
+      // datetime-local não traz fuso; new Date(y,m,d,h,mi) usa o fuso local
+      const [dataP, horaP = '00:00'] = audForm.data_hora_local.split('T')
+      const [ano, mes, dia] = dataP.split('-').map(Number)
+      const [h, mi] = horaP.split(':').map(Number)
+      const inicio = new Date(ano, mes - 1, dia, h, mi, 0)
+      if (isNaN(inicio.getTime())) throw new Error('Data/hora inválida.')
+
+      const payload: Record<string, any> = {
+        pasta: audForm.pasta.trim(),
+        numero_processo: (audForm.numero_processo || audForm.pasta).trim(),
+        numero_cnj: (audForm.numero_cnj || audForm.numero_processo || audForm.pasta).trim(),
+        vara: audForm.vara.trim(),
+        cidade_uf: audForm.cidade_uf.trim(),
+        natureza_posicao: audForm.natureza_posicao.trim(),
+        cliente_principal: audForm.cliente_principal.trim() || 'Extrafruti',
+        parte_contraria: audForm.parte_contraria.trim(),
+        audiencia_tipo: audForm.audiencia_tipo.trim() || 'Audiência',
+        data_hora_inicio: inicio.toISOString(),
+        advogado_responsavel: audForm.advogado_responsavel.trim(),
+        tipo_audiencia: audForm.tipo_audiencia.trim() || 'Presencial',
+        observacoes: audForm.observacoes.trim(),
+      }
+
+      if (dialogAud === 'nova') {
+        await pb.collection('audiencias').create(payload)
+      } else if (dialogAud) {
+        await pb.collection('audiencias').update(dialogAud, payload)
+      }
+      setDialogAud(null)
+      await carregarAudiencias()
+      if (onAudienciasAlteradas) onAudienciasAlteradas()
+    } catch (err: any) {
+      setErroAud(err?.message || 'Erro ao salvar a audiência.')
+    } finally {
+      setSalvandoAud(false)
+    }
+  }
+
+  const excluirAudiencia = async (a: any) => {
+    const rotulo = a.numero_cnj || a.numero_processo || a.pasta || 'esta audiência'
+    if (!window.confirm(`Excluir a audiência de ${rotulo}? Esta ação não pode ser desfeita.`)) {
+      return
+    }
+    try {
+      await pb.collection('audiencias').delete(a.id)
+      await carregarAudiencias()
+      if (onAudienciasAlteradas) onAudienciasAlteradas()
+    } catch (err: any) {
+      setErroImportacao(err?.message || 'Erro ao excluir a audiência.')
+    }
+  }
+
   const fmtDataHora = (dataStr: string) => {
     if (!dataStr) return '—'
     try {
@@ -480,15 +628,27 @@ export function AudienciasModal({
                   className="pl-8 h-8 text-xs border-gray-200 rounded-lg"
                 />
               </div>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => setAbaAtiva('importar')}
-                className="h-8 text-xs bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
-              >
-                <Upload className="h-3.5 w-3.5 mr-1" />
-                Importar Nova Pauta
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={abrirNovaAudiencia}
+                  className="h-8 text-xs bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Nova Audiência
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setAbaAtiva('importar')}
+                  className="h-8 text-xs"
+                >
+                  <Upload className="h-3.5 w-3.5 mr-1" />
+                  Importar Pauta
+                </Button>
+              </div>
             </div>
 
             {carregando ? (
@@ -544,6 +704,28 @@ export function AudienciasModal({
                       >
                         {aud.tipo_audiencia || 'Presencial'}
                       </Badge>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-[11px] text-gray-600"
+                          title="Editar audiência"
+                          onClick={() => abrirEditarAudiencia(aud)}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-[11px] text-red-600 hover:text-red-700"
+                          title="Excluir audiência"
+                          onClick={() => excluirAudiencia(aud)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px] text-gray-600 bg-gray-50/80 p-2.5 rounded-lg">
@@ -779,6 +961,145 @@ export function AudienciasModal({
           </div>
         )}
       </DialogContent>
+
+      {/* Dialog: incluir / editar audiência manualmente */}
+      <Dialog open={dialogAud !== null} onOpenChange={(o) => !o && setDialogAud(null)}>
+        <DialogContent className="bg-white max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-gray-900">
+              {dialogAud === 'nova' ? 'Nova Audiência' : 'Editar Audiência'}
+            </DialogTitle>
+          </DialogHeader>
+
+          {erroAud && (
+            <div className="p-2.5 bg-red-50 border border-red-200 rounded-lg text-[11px] text-red-700">
+              {erroAud}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 py-1">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-700">Pasta</label>
+              <Input
+                value={audForm.pasta || ''}
+                onChange={(e) => setAudForm((p) => ({ ...p, pasta: e.target.value }))}
+                className="h-8 text-xs"
+                placeholder="1.0019632"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-700">Nº do processo (CNJ)</label>
+              <Input
+                value={audForm.numero_processo || ''}
+                onChange={(e) => setAudForm((p) => ({ ...p, numero_processo: e.target.value }))}
+                className="h-8 text-xs"
+                placeholder="0001015-86.2026.5.05.0532"
+              />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <label className="text-[11px] font-bold text-gray-700">Data e hora *</label>
+              <Input
+                type="datetime-local"
+                value={audForm.data_hora_local || ''}
+                onChange={(e) => setAudForm((p) => ({ ...p, data_hora_local: e.target.value }))}
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-700">Vara</label>
+              <Input
+                value={audForm.vara || ''}
+                onChange={(e) => setAudForm((p) => ({ ...p, vara: e.target.value }))}
+                className="h-8 text-xs"
+                placeholder="2 - Vara do Trabalho"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-700">Cidade - UF</label>
+              <Input
+                value={audForm.cidade_uf || ''}
+                onChange={(e) => setAudForm((p) => ({ ...p, cidade_uf: e.target.value }))}
+                className="h-8 text-xs"
+                placeholder="VITÓRIA - ESPÍRITO SANTO"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-700">Tipo de ato</label>
+              <Input
+                value={audForm.audiencia_tipo || ''}
+                onChange={(e) => setAudForm((p) => ({ ...p, audiencia_tipo: e.target.value }))}
+                className="h-8 text-xs"
+                placeholder="Audiência - Instrução e Julgamento"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-700">Formato</label>
+              <Input
+                value={audForm.tipo_audiencia || ''}
+                onChange={(e) => setAudForm((p) => ({ ...p, tipo_audiencia: e.target.value }))}
+                className="h-8 text-xs"
+                placeholder="Virtual / Presencial / Híbrida"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-700">Parte contrária</label>
+              <Input
+                value={audForm.parte_contraria || ''}
+                onChange={(e) => setAudForm((p) => ({ ...p, parte_contraria: e.target.value }))}
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-700">Advogado responsável</label>
+              <Input
+                value={audForm.advogado_responsavel || ''}
+                onChange={(e) =>
+                  setAudForm((p) => ({ ...p, advogado_responsavel: e.target.value }))
+                }
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-gray-700">Cliente principal</label>
+              <Input
+                value={audForm.cliente_principal || ''}
+                onChange={(e) => setAudForm((p) => ({ ...p, cliente_principal: e.target.value }))}
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <label className="text-[11px] font-bold text-gray-700">Observações</label>
+              <Input
+                value={audForm.observacoes || ''}
+                onChange={(e) => setAudForm((p) => ({ ...p, observacoes: e.target.value }))}
+                className="h-8 text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => setDialogAud(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 text-xs bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+              onClick={salvarAudiencia}
+              disabled={salvandoAud}
+            >
+              {salvandoAud ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+              Salvar Audiência
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }
