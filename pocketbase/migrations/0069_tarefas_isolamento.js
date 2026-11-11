@@ -58,12 +58,13 @@ migrate(
     // acesso aninhado a `@request.auth.grupo_id.nome` não é garantido em todas
     // as versões e uma regra inválida derrubaria a migração inteira.
     // O `?=` é o operador de "contém" para campos multi-relação.
+    // `@request.auth.email` é CAMPO, não função — `email()` é erro de gramática
+    // do PocketBase (a migração falha com "unknown function").
     const regraDono =
       "@request.auth.id != '' && (" +
       'responsaveis_ids.id ?= @request.auth.id || ' +
-      'criado_por = @request.auth.email()' +
+      'criado_por = @request.auth.email' +
       ')'
-
     col.listRule = regraDono
     col.viewRule = regraDono
     col.updateRule = regraDono
