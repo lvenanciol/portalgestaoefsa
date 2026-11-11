@@ -26,6 +26,35 @@ routerAdd(
       return e.notFoundError('Usuário não encontrado')
     }
 
+    // (11/11/2026) E-mail de acesso: derivado do parceiro vinculado. Quando o
+    // parceiro muda de e-mail, o login da conta precisa acompanhar — senão a
+    // tela exibe um endereço e a autenticação usa outro.
+    if (body.email !== undefined) {
+      const novoEmail = String(body.email || '')
+        .trim()
+        .toLowerCase()
+      if (novoEmail) {
+        const atual = String(rec.getString('email') || '').toLowerCase()
+        if (novoEmail !== atual) {
+          // não permite colidir com outra conta
+          let emUso = false
+          try {
+            const outro = $app.findAuthRecordByEmail('users', novoEmail)
+            if (outro && outro.id !== rec.id) emUso = true
+          } catch (_) {}
+          if (emUso) {
+            return e.badRequestError(
+              'O e-mail ' + novoEmail + ' já pertence a outro usuário do sistema.',
+            )
+          }
+          rec.setEmail(novoEmail)
+          // e-mail mudou → exige nova verificação? mantém verificado porque é
+          // uma conta corporativa criada pelo admin.
+          rec.setVerified(true)
+        }
+      }
+    }
+
     if (body.nome !== undefined) rec.set('name', String(body.nome))
     if (body.cargo !== undefined) rec.set('cargo', String(body.cargo))
     if (body.ativo !== undefined) rec.set('ativo', Boolean(body.ativo))

@@ -323,7 +323,11 @@ export default function ControleAcessos() {
 
   const abrirEditar = (u: UsuarioLista) => {
     setFNome(u.nome)
-    setFEmail(u.email)
+    // (11/11/2026) E-MAIL: o painel afirma "vem do parceiro vinculado", então
+    // tem de exibir o e-mail DO PARCEIRO. Antes usava `u.email` (o do usuário),
+    // que em cadastros antigos ficou diferente do parceiro — e a tela mostrava
+    // um endereço contradizendo a própria legenda.
+    setFEmail(u.parceiro_email || u.email)
     setFSenha('')
     setFCargo(u.cargo)
     const g = grupos.find((x) => x.nome === u.grupo)
@@ -339,7 +343,18 @@ export default function ControleAcessos() {
       setOpcoesParceiro((prev) =>
         prev.some((p) => p.id === u.parceiro_id)
           ? prev
-          : [{ id: u.parceiro_id as string, nome: u.parceiro_nome as string }, ...prev],
+          : [
+              {
+                id: u.parceiro_id as string,
+                nome: u.parceiro_nome as string,
+                cnpj: u.parceiro_documento || '',
+                email: u.parceiro_email || '',
+                cargo: u.parceiro_cargo || '',
+                telefone: u.parceiro_telefone || '',
+                whatsapp: u.parceiro_whatsapp || '',
+              },
+              ...prev,
+            ],
       )
     }
     setDialogEditar(u)
@@ -424,6 +439,8 @@ export default function ControleAcessos() {
         centro_resultado: fCentroResultado,
         centro_resultado_codigo: fCentroResultadoCodigo,
         observacao: fObservacao,
+        // E-mail de acesso acompanha o parceiro vinculado (fonte de verdade)
+        ...(fEmail ? { email: fEmail } : {}),
         ...(fSenha ? { senha: fSenha } : {}),
       })
       setDialogEditar(null)
