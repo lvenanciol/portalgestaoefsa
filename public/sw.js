@@ -62,10 +62,13 @@
 // v48 (11/11/2026): confirmação de e-mail de redefinição — hook que envia aviso de
 // segurança ao usuário após a troca de senha na tela /reset-password, além de
 // visual de sucesso reforçado na própria tela.
-// v49 (11/11/2026): carrossel de empresas do usuário na tela /reset-password
-// (endpoint público /backend/v1/public/reset-empresas resolve o dono do token) e
-// sub-rotas de Integrações (Sankhya/WhatsApp) no mapa de permissões da sidebar.
-const CACHE_NAME = 'pge-pwa-v49'
+// v50 (11/11/2026): correção do carrossel de empresas em /reset-password — o
+// endpoint público agora decodifica o token de redefinição manualmente (o
+// parse de JWT usado antes não existe no JSVM do PocketBase e a lista voltava
+// vazia) e já devolve a URL pública da logomarca de cada empresa; a tela usa
+// essa URL como fonte primária (a leitura direta da coleção logomarcas exige
+// sessão e resolvia vazia sem erro). Rebuild para purgar cache do PWA.
+const CACHE_NAME = 'pge-pwa-v50'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

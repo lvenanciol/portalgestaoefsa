@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Leaf,
@@ -26,19 +26,26 @@ import { getErrorMessage } from '@/lib/pocketbase/errors'
 // Esta tela é PÚBLICA (fora do ProtectedRoute): quem chega aqui ainda não tem
 // sessão — está justamente tentando recuperar o acesso.
 //
-// v2 (11/11/2026) — CARROSSEL DE EMPRESAS: com o token em mãos o backend
-// identifica o dono (POST /backend/v1/public/reset-empresas) e devolve as
-// empresas do vínculo (users.empresas, fallback empresa_id — a mesma fonte do
-// Controle de Acessos e do seletor da sidebar). Mais de uma empresa → o quadrado
-// da marca ALTERNA entre as logos a cada 2s (mesmo visual/comportamento do
-// login, que troca a cada 2s com fade); uma só → exibida fixa; nenhuma → Leaf.
-// A troca de senha em si (confirmPasswordReset + e-mail de confirmação do hook
-// usuarios_troca_senha_confirmacao.js) segue EXATAMENTE como estava.
+// v3 (11/11/2026) — CORREÇÃO DO CARROSSEL: a busca de logomarcas via SDK
+// (`pb.collection('logomarcas').getFullList`) falha SILACIOSAMENTE aqui, porque
+// a coleção exige autenticação (@request.auth.id != '') e o visitante da tela
+// pública não está logado — a promise RESOLVE com lista vazia (não rejeita),
+// então o fallback do endpoint público /backend/v1/public/logos nunca rodava e
+// o casamento empresa↔logo ficava vazio. Agora a fonte PRIMÁRIA é o endpoint
+// público reset-empresas, que volta com `logoUrl` de cada empresa já resolvida
+// no servidor (hook reset_empresas_public.js v3); o endpoint /public/logos é só
+// fallback. A troca de senha em si (confirmPasswordReset + e-mail de confirmação
+// do hook usuarios_troca_senha_confirmacao.js) segue EXATAMENTE como estava.
+//
+// Requisitos do dono (mantidos da v0.0.343): 2+ empresas → quadrado alternando
+// a cada 2s com fade e indicadores, usando as logomarcas reais; 1 empresa →
+// pill fixo com o nome; nenhuma → ícone padrão (Leaf).
 
 interface EmpresaReset {
   id: string
   nome: string
   cor: string
+  logoUrl?: string
 }
 
 interface LogoItem {
@@ -72,7 +79,8 @@ export default function ResetPassword() {
     if (erro && (senha || confirma)) setErro('')
   }, [senha, confirma])
 
-  // 1. Empresas do dono do token (endpoint público do hook reset_empresas_public.js)
+  // 1. Empresas do dono do token (endpoint público do hook reset_empresas_public.js).
+  //    Já volta com logoUrl (imagem pública da logomarca) por empresa.
   useEffect(() => {
     if (!token) return
     let vivo = true
@@ -83,7 +91,7 @@ export default function ResetPassword() {
           body: JSON.stringify({ token }),
         })) as { ok?: boolean; nome?: string; empresas?: EmpresaReset[] }
         if (vivo && r && Array.isArray(r.empresas)) {
-          setEmpresas(r.empresas.filter((e) => e && e.id))
+          setEmpresas(r.empresas.filter((e) => e && e.id && e.nome))
         }
       } catch (_) {
         // best-effort: sem resposta a tela segue no Leaf, sem quebrar o fluxo
@@ -94,50 +102,27 @@ export default function ResetPassword() {
     }
   }, [token])
 
-  // 2. Logos REAIS (coleção logomarcas, mesmo padrão do Login) para casar
-  //    empresa ↔ imagem no carrossel.
+  // 2. Fallback de logos (endpoint público, mesmo padrão do Login): só usado
+  //    para empresas que o reset-empresas não trouxe com imagem.
   useEffect(() => {
     let vivo = true
     ;(async () => {
       try {
-        const registros = await pb.collection('logomarcas').getFullList({
-          filter: 'ativo = true',
-          sort: 'empresa',
-        })
-        if (!vivo || !registros) return
-        const urls = (registros as any[])
-          .map((l) => {
-            const campo = l.emblema || l.logo
-            if (!campo) return null
-            const ext = String(campo).split('?')[0].split('.').pop()?.toLowerCase() || ''
-            const ehImagem = ['png', 'jpg', 'jpeg', 'svg', 'webp'].includes(ext)
-            if (!ehImagem) return null
+        const r = (await pb.send('/backend/v1/public/logos', { method: 'GET' })) as any
+        const urls = ((r && r.logos) || [])
+          .map((l: any) => {
+            const urlFinal = l.iconeUrl || l.emblemaUrl || l.logoUrl
+            if (!urlFinal) return null
             return {
-              url: pb.files.getURL(l, campo),
+              url: urlFinal as string,
               cor: String(l.cor || '#1B5E20'),
               empresa: String(l.empresa || ''),
             }
           })
-          .filter((item): item is LogoItem => item !== null)
+          .filter((item: any): item is LogoItem => item !== null)
         if (vivo && urls.length > 0) setLogos(urls)
       } catch (_) {
-        try {
-          const r = (await pb.send('/backend/v1/public/logos', { method: 'GET' })) as any
-          const urls = ((r && r.logos) || [])
-            .map((l: any) => {
-              const urlFinal = l.iconeUrl || l.emblemaUrl || l.logoUrl
-              if (!urlFinal) return null
-              return {
-                url: urlFinal as string,
-                cor: String(l.cor || '#1B5E20'),
-                empresa: String(l.empresa || ''),
-              }
-            })
-            .filter((item: any): item is LogoItem => item !== null)
-          if (vivo && urls.length > 0) setLogos(urls)
-        } catch (_) {
-          /* segue no Leaf */
-        }
+        /* segue no Leaf */
       }
     })()
     return () => {
@@ -146,30 +131,29 @@ export default function ResetPassword() {
   }, [])
 
   // 3. Empresas do vínculo ↔ logomarcas: monta a lista que o quadrado alterna.
-  //    Só entra no carrossel a logo da empresa que o usuário tem vínculo.
-  const logosDoUsuario: LogoItem[] = (() => {
+  //    Prioridade: logoUrl vinda do reset-empresas (pública, resolvida no
+  //    servidor) → logo do /public/logos → quadrado na cor da identidade.
+  const logosDoUsuario: LogoItem[] = useMemo(() => {
     if (empresas.length === 0) return [] // sem vínculo identificado → Leaf puro
-    const norm = (s: string) => s.trim().toLowerCase()
+    const norm = (s: string) =>
+      String(s || '')
+        .trim()
+        .toLowerCase()
     const out: LogoItem[] = []
     for (const emp of empresas) {
       const rec = logos.find((l) => norm(l.empresa) === norm(emp.nome))
-      if (rec) {
-        out.push({ url: rec.url, cor: rec.cor || emp.cor, empresa: emp.nome })
-      } else {
-        // Sem imagem cadastrada: mostra o quadrado na cor da identidade
-        // (mesmo fallback de cor do login/sidebar).
-        out.push({ url: '', cor: emp.cor || '#1B5E20', empresa: emp.nome })
-      }
+      const url = emp.logoUrl || (rec ? rec.url : '')
+      out.push({ url, cor: emp.cor || (rec ? rec.cor : '#1B5E20'), empresa: emp.nome })
     }
     return out
-  })()
+  }, [empresas, logos])
 
   // Rotação a cada 2s quando há mais de uma empresa (mesmo ritmo do login)
   useEffect(() => {
     if (logosDoUsuario.length < 2) return
     const t = setInterval(() => setLogoIdx((i) => (i + 1) % logosDoUsuario.length), 2000)
     return () => clearInterval(t)
-  }, [logosDoUsuario.length, empresas.length, logos.length])
+  }, [logosDoUsuario.length])
 
   const handleSalvar = async (e: React.FormEvent) => {
     e.preventDefault()
