@@ -55,7 +55,9 @@
 // mais largo e diálogos amigáveis de confirmação em "Enviar Login" e exclusão de audiência.
 // v45 (11/11/2026): correção do ReferenceError "audParaExcluir is not defined" no
 // modal de Audiências — estado declarado para o diálogo de confirmação de exclusão.
-const CACHE_NAME = 'pge-pwa-v45'
+// v46 (11/11/2026): e-mail de acesso com a faixa das logomarcas das empresas
+// vinculadas ao usuário no topo da arte e endereço do portal em portalefsa.goskip.app.
+const CACHE_NAME = 'pge-pwa-v46'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

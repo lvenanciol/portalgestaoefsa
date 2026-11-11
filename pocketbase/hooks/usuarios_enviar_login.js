@@ -3,9 +3,12 @@
 //
 // Envia ao usuário as instruções e o endereço de acesso ao Portal de Gestão
 // Executivo. Decisão de segurança: a SENHA NÃO vai no corpo do e-mail.
-// Ela é definida no cadastro e só o administrador a conhece; enviá-la em claro
-// criaria uma credencial permanente na caixa de entrada de terceiros.
-// O e-mail leva o link, o login (e-mail) e o passo a passo de primeiro acesso.
+//
+// v2 (11/11/2026):
+//  - topo da arte com as LOGOMARCAS das empresas às quais o usuário tem vínculo
+//    (empresa_id + empresa da unidade). As imagens de /api/files são servidas
+//    publicamente sem autenticação, então carregam no e-mail.
+//  - endereço do portal passa a ser https://portalefsa.goskip.app
 routerAdd(
   'POST',
   '/backend/v1/usuarios/{id}/enviar-login',
@@ -36,11 +39,120 @@ routerAdd(
     if (!email) return e.badRequestError('Usuário sem e-mail cadastrado.')
 
     const nome = usuario.getString('name') || email
-    const portalUrl = 'https://portal-de-gestao-executivo-b4d94.goskip.app'
-    // Link direto para cadastro/troca de senha dentro do PGE
+    const portalUrl = 'https://portalefsa.goskip.app'
     const linkSenha = portalUrl + '/configuracoes?secao=seguranca'
 
-    // Grupo do usuário, quando houver (só informativo no corpo)
+    // ===== Empresas vinculadas ao usuário =====
+    // Origem: empresa_id do próprio usuário + empresa da unidade (quando houver).
+    // Nomes normalizados para casar com a coleção `logomarcas`.
+    const norm = (s) =>
+      String(s || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+
+    const nomesEmpresas = []
+    const addEmpresa = (n) => {
+      const v = String(n || '').trim()
+      if (!v) return
+      for (const ja of nomesEmpresas) {
+        if (norm(ja) === norm(v)) return
+      }
+      nomesEmpresas.push(v)
+    }
+
+    try {
+      const empId = usuario.getString('empresa_id')
+      if (empId) addEmpresa($app.findRecordById('empresas', empId).getString('nome'))
+    } catch (_) {}
+
+    try {
+      const uniId = usuario.getString('unidade_id')
+      if (uniId) {
+        const uni = $app.findRecordById('unidades', uniId)
+        // `unidades` só tem a relação empresa_id (não existe campo texto 'empresa')
+        const empDaUnidade = uni.getString('empresa_id')
+        if (empDaUnidade) {
+          addEmpresa($app.findRecordById('empresas', empDaUnidade).getString('nome'))
+        }
+      }
+    } catch (_) {}
+
+    // ===== Logomarcas das empresas vinculadas =====
+    let base = ''
+    try {
+      base = String($app.settings().meta.appUrl || '')
+    } catch (_) {}
+    if (!base) {
+      try {
+        base = String($secrets.get('PB_INSTANCE_URL') || '')
+      } catch (_) {}
+    }
+    base = base.replace(/\/_\/$/, '').replace(/\/$/, '')
+    const colLogosId = 'pbc_3701359284' // coleção logomarcas
+
+    const logos = []
+    if (base) {
+      for (const nomeEmpresa of nomesEmpresas) {
+        try {
+          // Assinatura: (collection, filter, sort, limit, offset) — 5 args, sem objeto de bind
+          const empEscapada = nomeEmpresa.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+          const filtro = 'ativo = true && empresa = "' + empEscapada + '"'
+          const achados = $app.findRecordsByFilter('logomarcas', filtro, 'empresa', 1, 0)
+          if (achados && achados.length > 0) {
+            const rec = achados[0]
+            const arquivo = rec.getString('logo') || rec.getString('emblema')
+            if (arquivo) {
+              logos.push({
+                empresa: rec.getString('empresa'),
+                url: base + '/api/files/' + colLogosId + '/' + rec.id + '/' + arquivo,
+              })
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Fallback: nenhuma logo encontrada por vínculo -> usa todas as ativas,
+      // para a arte nunca aparecer sem identidade visual.
+      if (logos.length === 0) {
+        try {
+          const todas = $app.findRecordsByFilter('logomarcas', 'ativo = true', 'empresa', 6, 0)
+          for (const rec of todas || []) {
+            const arquivo = rec.getString('logo') || rec.getString('emblema')
+            if (arquivo) {
+              logos.push({
+                empresa: rec.getString('empresa'),
+                url: base + '/api/files/' + colLogosId + '/' + rec.id + '/' + arquivo,
+              })
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    // Faixa de logomarcas no topo da arte
+    const logomarcasHtml =
+      logos.length > 0
+        ? '<tr><td style="background:#ffffff;padding:18px 20px;border:1px solid #e5e7eb;' +
+          'border-top:0;border-bottom:0;text-align:center">' +
+          logos
+            .map(
+              (l) =>
+                '<img src="' +
+                l.url +
+                '" alt="' +
+                l.empresa +
+                '" title="' +
+                l.empresa +
+                '" height="42" style="height:42px;width:auto;max-height:42px;max-width:140px;' +
+                'margin:0 12px;vertical-align:middle;border:0;outline:none;text-decoration:none" />',
+            )
+            .join('') +
+          '</td></tr>'
+        : ''
+
+    // Grupo do usuário (só informativo no corpo)
     let grupoNome = ''
     try {
       const grupoId = usuario.getString('grupo_id')
@@ -76,14 +188,22 @@ routerAdd(
 
     const html =
       '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#1f2937">' +
-      '<div style="background:#1B5E20;color:#fff;padding:14px 20px;border-radius:8px 8px 0 0">' +
-      '<strong style="font-size:15px">Portal de Gestão Executivo — Extrafruti</strong></div>' +
+      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" ' +
+      'style="border-collapse:collapse">' +
+      // 1. Faixa com as logomarcas das empresas do usuário
+      logomarcasHtml +
+      // 2. Barra de marca
+      '<tr><td style="background:#1B5E20;color:#fff;padding:14px 20px;border-radius:0">' +
+      '<strong style="font-size:15px">Portal de Gestão Executivo</strong>' +
+      '<span style="font-size:11px;opacity:.85;display:block;margin-top:2px">' +
+      'Grupo Extrafruti · Casafruti · FoldBox</span></td></tr>' +
+      '</table>' +
       '<div style="padding:20px;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 8px 8px">' +
       '<h2 style="margin:0 0 12px;font-size:16px">Seu acesso está liberado</h2>' +
       '<p style="font-size:14px;line-height:1.6">Olá, <strong>' +
       nome +
       '</strong>!</p>' +
-      '<p style="font-size:14px;line-height:1.6">Seu acesso ao <strong>Portal de Gestão Executivo</strong> do Grupo Extrafruti está disponível.</p>' +
+      '<p style="font-size:14px;line-height:1.6">Seu acesso ao <strong>Portal de Gestão Executivo</strong> está disponível.</p>' +
       '<table style="width:100%;font-size:14px;border-collapse:collapse;margin:14px 0">' +
       '<tr><td style="padding:6px 0;color:#6b7280;width:130px">Endereço</td>' +
       '<td style="padding:6px 0"><a href="' +
@@ -102,6 +222,11 @@ routerAdd(
       (grupoNome
         ? '<tr><td style="padding:6px 0;color:#6b7280">Perfil</td><td style="padding:6px 0">' +
           grupoNome +
+          '</td></tr>'
+        : '') +
+      (nomesEmpresas.length > 0
+        ? '<tr><td style="padding:6px 0;color:#6b7280">Empresa(s)</td><td style="padding:6px 0">' +
+          nomesEmpresas.join(' · ') +
           '</td></tr>'
         : '') +
       '</table>' +
@@ -170,7 +295,13 @@ routerAdd(
           id: aid,
           uid: auth.id,
           uemail: auth.getString('email'),
-          det: email + (erro ? ' (ERRO: ' + erro.slice(0, 80) + ')' : ''),
+          det:
+            email +
+            ' | empresas: ' +
+            (nomesEmpresas.join(',') || '-') +
+            ' | logos: ' +
+            logos.length +
+            (erro ? ' (ERRO: ' + erro.slice(0, 80) + ')' : ''),
           now: new DateTime().string(),
         })
         .execute()
@@ -179,7 +310,12 @@ routerAdd(
     if (status === 'erro') {
       return e.json(502, { ok: false, erro: erro || 'falha no envio' })
     }
-    return e.json(200, { ok: true, para: email })
+    return e.json(200, {
+      ok: true,
+      para: email,
+      empresas: nomesEmpresas,
+      logos: logos.length,
+    })
   },
   $apis.requireAuth(),
 )
