@@ -104,6 +104,32 @@ const ABAS_POR_TELA: Record<string, { key: string; label: string }[]> = {
     { key: 'biblioteca', label: 'Biblioteca de prompts' },
     { key: 'historico', label: 'Histórico de pareceres' },
   ],
+  // Documentos: as 7 abas de tipo documental — ocultar por grupo evita que um
+  // usuário de RH abra Seguros ou Jurídicos, por exemplo.
+  documentos: [
+    { key: 'alvaras', label: 'Aba Alvarás' },
+    { key: 'contratos', label: 'Aba Contratos' },
+    { key: 'locacoes', label: 'Aba Locações' },
+    { key: 'atas', label: 'Aba Atas' },
+    { key: 'convencoes', label: 'Aba Convenções' },
+    { key: 'seguros', label: 'Aba Seguros' },
+    { key: 'juridicos', label: 'Aba Jurídicos' },
+  ],
+  // Integrações: cada conexão é uma tela própria.
+  integracoes: [
+    { key: 'status', label: 'Aba Status' },
+    { key: 'sankhya', label: 'Aba Sankhya' },
+    { key: 'whatsapp', label: 'Aba WhatsApp' },
+    { key: 'email', label: 'Aba E-mail' },
+  ],
+  // Configurações: abas da tela completa.
+  configuracoes: [
+    { key: 'geral', label: 'Aba Geral' },
+    { key: 'seguranca', label: 'Aba Segurança' },
+    { key: 'notificacoes', label: 'Aba Notificações' },
+    { key: 'integracoes', label: 'Aba Integrações' },
+    { key: 'aparencia', label: 'Aba Aparência' },
+  ],
 }
 
 // T6b: grade CRUD — colunas por tela (cada coluna = permissão marcável)

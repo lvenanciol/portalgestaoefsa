@@ -42,6 +42,8 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { toast } from '@/hooks/use-toast'
+import { useBotoes } from '@/services/botoes-service'
+import { useAbas } from '@/hooks/use-abas'
 import pb from '@/lib/pocketbase/client'
 
 import {
@@ -210,6 +212,41 @@ export function DocumentosPage() {
       setIdsSelecionados(dadosFiltrados.map((d) => d.id))
     }
   }
+
+  // Gate de botão por grupo (matriz BOTÕES do Controle de Acessos).
+  // Fail-open: sem permissões carregadas o botão aparece.
+  const { pode } = useBotoes()
+  const { filtrarAbas } = useAbas('documentos')
+  const TODAS_ABAS_TIPO: TipoAbaDocumento[] = [
+    'alvaras',
+    'contratos',
+    'locacoes',
+    'atas',
+    'convencoes',
+    'seguros',
+    'juridicos',
+  ]
+  const filtrarAbasTipoAba = filtrarAbas(TODAS_ABAS_TIPO)
+
+  // Se a aba ativa (inclusive vinda da URL) não estiver liberada para o grupo,
+  // cai para a primeira aba permitida.
+  useEffect(() => {
+    if (filtrarAbasTipoAba.length === 0) return
+    if (!filtrarAbasTipoAba.includes(abaAtiva)) {
+      setAbaAtiva(filtrarAbasTipoAba[0])
+    }
+  }, [filtrarAbasTipoAba.join(','), abaAtiva])
+
+  // Se a aba ativa (inclusive vinda da URL) não estiver liberada para o grupo,
+  // cai para a primeira aba permitida — evita renderizar conteúdo bloqueado
+  // mantendo a aba visível na barra.
+  useEffect(() => {
+    if (filtrarAbasTipoAba.length === 0) return
+    if (!filtrarAbasTipoAba.includes(abaAtiva)) {
+      setAbaAtiva(filtrarAbasTipoAba[0])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtrarAbasTipoAba.join(','), abaAtiva])
 
   const handleExportarAba = () => {
     try {
@@ -770,14 +807,16 @@ export function DocumentosPage() {
             </>
           )}
 
-          <Button
-            type="button"
-            onClick={() => setModalNovoAberto(true)}
-            className="h-9 px-4 text-xs font-semibold bg-emerald-800 hover:bg-emerald-900 text-white rounded-full shadow-xs gap-1.5"
-          >
-            <Plus className="h-4 w-4" />
-            Novo Documento
-          </Button>
+          {pode('documentos', 'novo') && (
+            <Button
+              type="button"
+              onClick={() => setModalNovoAberto(true)}
+              className="h-9 px-4 text-xs font-semibold bg-emerald-800 hover:bg-emerald-900 text-white rounded-full shadow-xs gap-1.5"
+            >
+              <Plus className="h-4 w-4" />
+              Novo Documento
+            </Button>
+          )}
 
           <Button
             type="button"
@@ -799,17 +838,10 @@ export function DocumentosPage() {
           a aba parecia truncada. Agora a barra ROLA de verdade (scrollbar fina visível),
           os rótulos não quebram linha e há folga lateral para não encostar na borda. */}
       <div className="border-b border-gray-200/90 flex flex-wrap items-center gap-x-4 gap-y-1 pb-0 pt-1 px-1">
-        {(
-          [
-            'alvaras',
-            'contratos',
-            'locacoes',
-            'atas',
-            'convencoes',
-            'seguros',
-            'juridicos',
-          ] as TipoAbaDocumento[]
-        ).map((chave) => {
+        {/* Gate de abas por grupo: a mesma fonte da matriz ABAS do Controle de
+            Acessos (permissoes.botoes.documentos = ['aba_seguros', ...]).
+            Fail-open — grupo Admin ou sem permissões vê todas as abas. */}
+        {filtrarAbasTipoAba.map((chave) => {
           const ativa = abaAtiva === chave
           const icone =
             chave === 'alvaras' ? (
@@ -879,7 +911,7 @@ export function DocumentosPage() {
         filtroAtivo={filtros.statusFiltro}
         onSelecionarFiltro={(alvo) => handleFiltrosChange({ statusFiltro: alvo })}
         onAbrirDocumento={handleAbrirDetalhe}
-        onExportar={handleExportarAba}
+        onExportar={pode('documentos', 'exportar_csv') ? handleExportarAba : undefined}
       />
 
       {/* 4. FAIXA CONTEXTUAL SOB AS ABAS */}
@@ -933,7 +965,7 @@ export function DocumentosPage() {
             porPagina={itensPorPagina}
             onPaginaChange={(p) => setPaginaAtual(p)}
             onAbrirDetalhe={handleAbrirDetalhe}
-            onEditar={handleEditar}
+            onEditar={pode('documentos', 'editar') ? handleEditar : () => {}}
             onAnexar={handleAbrirAnexos}
             onVerHistorico={handleVerHistorico}
             onVerNoChat={(item) =>
@@ -942,7 +974,7 @@ export function DocumentosPage() {
                 description: `Chat para o documento ${item.numero || item.titulo}`,
               })
             }
-            onExcluirSeguro={handleSolicitarExclusao}
+            onExcluirSeguro={pode('documentos', 'excluir') ? handleSolicitarExclusao : () => {}}
             selectedIds={idsSelecionados}
             onToggleSelect={handleToggleSelecionarId}
             onSelectAll={handleToggleSelecionarTodos}

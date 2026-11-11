@@ -4,6 +4,7 @@ import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider, useAuth } from '@/hooks/use-auth'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
+import { RotaProtegida } from '@/components/RotaProtegida'
 import Index from './pages/Index'
 import Login from './pages/Login'
 import ControleAcessos from './pages/ControleAcessos'
@@ -44,28 +45,185 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       >
-        <Route path="/" element={<Index />} />
-        <Route path="/financeiro" element={<FinanceiroPage />} />
-        <Route path="/desempenho" element={<DesempenhoPage />} />
-        <Route path="/documentos" element={<DocumentosPage />} />
-        <Route path="/tarefas" element={<TarefasPage />} />
-        <Route path="/projetos" element={<ProjetosPage />} />
-        <Route path="/projetos/:id" element={<ProjetoDetalhePage />} />
-        <Route path="/atas" element={<AtasPage />} />
-        <Route path="/emails" element={<EmailsPage />} />
-        <Route path="/contratos" element={<ContratosPage />} />
-        <Route path="/indicadores" element={<IndicadoresPage />} />
-        <Route path="/ia" element={<IaPage />} />
-        <Route path="/power-bi" element={<PowerBiPage />} />
-        <Route path="/menus" element={<MenusPage />} />
-        <Route path="/parceiros" element={<ParceirosPage />} />
-        <Route path="/logomarcas" element={<LogomarcasPage />} />
-        <Route path="/integracoes" element={<StatusIntegracoesPage />} />
-        <Route path="/integracoes/sankhya" element={<SankhyaIntegracaoPage />} />
-        <Route path="/integracoes/whatsapp" element={<WhatsAppIntegracaoPage />} />
-        <Route path="/integracoes/email" element={<EmailIntegracaoPage />} />
-        <Route path="/configuracoes" element={<ConfiguracoesPage />} />
-        <Route path="/acessos" element={<ControleAcessos />} />
+        {/* Cada rota embrulhada em RotaProtegida: esconder o item da Sidebar não
+            bastava — digitar a URL na barra de endereço entrava na tela.
+            O guard exige a permissão "ver" do módulo correspondente. */}
+        <Route
+          path="/"
+          element={
+            <RotaProtegida>
+              <Index />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/financeiro"
+          element={
+            <RotaProtegida>
+              <FinanceiroPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/desempenho"
+          element={
+            <RotaProtegida>
+              <DesempenhoPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/documentos"
+          element={
+            <RotaProtegida>
+              <DocumentosPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/tarefas"
+          element={
+            <RotaProtegida>
+              <TarefasPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/projetos"
+          element={
+            <RotaProtegida>
+              <ProjetosPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/projetos/:id"
+          element={
+            <RotaProtegida>
+              <ProjetoDetalhePage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/atas"
+          element={
+            <RotaProtegida>
+              <AtasPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/emails"
+          element={
+            <RotaProtegida>
+              <EmailsPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/contratos"
+          element={
+            <RotaProtegida>
+              <ContratosPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/indicadores"
+          element={
+            <RotaProtegida>
+              <IndicadoresPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/ia"
+          element={
+            <RotaProtegida>
+              <IaPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/power-bi"
+          element={
+            <RotaProtegida>
+              <PowerBiPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/menus"
+          element={
+            <RotaProtegida>
+              <MenusPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/parceiros"
+          element={
+            <RotaProtegida>
+              <ParceirosPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/logomarcas"
+          element={
+            <RotaProtegida>
+              <LogomarcasPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/integracoes"
+          element={
+            <RotaProtegida>
+              <StatusIntegracoesPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/integracoes/sankhya"
+          element={
+            <RotaProtegida>
+              <SankhyaIntegracaoPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/integracoes/whatsapp"
+          element={
+            <RotaProtegida>
+              <WhatsAppIntegracaoPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/integracoes/email"
+          element={
+            <RotaProtegida>
+              <EmailIntegracaoPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/configuracoes"
+          element={
+            <RotaProtegida>
+              <ConfiguracoesPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/acessos"
+          element={
+            <RotaProtegida>
+              <ControleAcessos />
+            </RotaProtegida>
+          }
+        />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
