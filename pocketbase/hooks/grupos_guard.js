@@ -9,38 +9,81 @@
 //
 // Esta guarda fecha a API: só membro do grupo "Admin" grava em grupos_permissao.
 // $app.save() interno (migrações/hooks) NÃO passa por aqui.
-
-function _isAdminAuth(rec) {
-  if (!rec) return false
-  try {
-    if (rec.collection().name === '_superusers') return true
-  } catch (_) {}
-  try {
-    const gid = rec.getString('grupo_id')
-    if (!gid) return false
-    const g = $app.findRecordById('grupos_permissao', gid)
-    return String(g.getString('nome')).trim() === 'Admin'
-  } catch (_) {
-    return false
-  }
-}
+//
+// NOTA DE RUNTIME: o JSVM do PocketBase executa cada callback em um pool
+// separado — função/const de topo dá ReferenceError. Por isso a checagem é
+// repetida INLINE dentro de cada callback (validado pelo QA do Skip).
 
 onRecordCreateRequest((e) => {
-  if (!_isAdminAuth(e.auth)) {
+  const auth = e.auth
+  let permitido = false
+  if (auth) {
+    try {
+      if (auth.collection().name === '_superusers') {
+        permitido = true
+      }
+    } catch (_) {}
+    if (!permitido) {
+      try {
+        const gid = auth.getString('grupo_id')
+        if (gid) {
+          const g = $app.findRecordById('grupos_permissao', gid)
+          permitido = String(g.getString('nome')).trim() === 'Admin'
+        }
+      } catch (_) {}
+    }
+  }
+  if (!permitido) {
     throw new ForbiddenError('Somente administradores podem criar grupos de permissão.')
   }
   return e.next()
 }, 'grupos_permissao')
 
 onRecordUpdateRequest((e) => {
-  if (!_isAdminAuth(e.auth)) {
+  const auth = e.auth
+  let permitido = false
+  if (auth) {
+    try {
+      if (auth.collection().name === '_superusers') {
+        permitido = true
+      }
+    } catch (_) {}
+    if (!permitido) {
+      try {
+        const gid = auth.getString('grupo_id')
+        if (gid) {
+          const g = $app.findRecordById('grupos_permissao', gid)
+          permitido = String(g.getString('nome')).trim() === 'Admin'
+        }
+      } catch (_) {}
+    }
+  }
+  if (!permitido) {
     throw new ForbiddenError('Somente administradores podem alterar permissões de grupo.')
   }
   return e.next()
 }, 'grupos_permissao')
 
 onRecordDeleteRequest((e) => {
-  if (!_isAdminAuth(e.auth)) {
+  const auth = e.auth
+  let permitido = false
+  if (auth) {
+    try {
+      if (auth.collection().name === '_superusers') {
+        permitido = true
+      }
+    } catch (_) {}
+    if (!permitido) {
+      try {
+        const gid = auth.getString('grupo_id')
+        if (gid) {
+          const g = $app.findRecordById('grupos_permissao', gid)
+          permitido = String(g.getString('nome')).trim() === 'Admin'
+        }
+      } catch (_) {}
+    }
+  }
+  if (!permitido) {
     throw new ForbiddenError('Somente administradores podem excluir grupos de permissão.')
   }
   return e.next()
