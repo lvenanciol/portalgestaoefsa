@@ -79,11 +79,17 @@ routerAdd(
       }
     }
 
-    // Defensivo: campo de migração posterior não derruba a edição inteira.
+    // Vínculo com Parceiros & Contatos.
+    // (11/11/2026) Sem `catch` mudo: se o campo não existir, a edição FALHA com
+    // mensagem, em vez de salvar o usuário sem o vínculo e parecer que deu certo.
     if (body.parceiro_id !== undefined) {
       try {
         rec.set('parceiro_id', String(body.parceiro_id || ''))
-      } catch (_) {}
+      } catch (err) {
+        return e.badRequestError(
+          'Falha ao gravar o parceiro vinculado: ' + String(err).slice(0, 160),
+        )
+      }
     }
 
     if (body.senha) {

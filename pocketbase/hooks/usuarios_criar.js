@@ -69,14 +69,28 @@ routerAdd(
       }
     }
 
-    // Defensivo: campos de migrações posteriores nunca bloqueiam a criação.
+    // Vínculo com Parceiros & Contatos.
+    // (11/11/2026) NÃO engolir o erro: o `try/catch` vazio anterior fazia o
+    // usuário ser salvo SEM o vínculo quando o campo não existia, sem avisar
+    // ninguém — foi assim que o problema passou despercebido.
     try {
       rec.set('empresas', JSON.stringify(empresasIds))
-    } catch (_) {}
+    } catch (err) {
+      return e.badRequestError(
+        'Falha ao gravar as empresas do usuário: ' + String(err).slice(0, 160),
+      )
+    }
     if (body.parceiro_id) {
-      try {
-        rec.set('parceiro_id', String(body.parceiro_id))
-      } catch (_) {}
+      const pid = String(body.parceiro_id).trim()
+      if (pid) {
+        try {
+          rec.set('parceiro_id', pid)
+        } catch (err) {
+          return e.badRequestError(
+            'Falha ao gravar o parceiro vinculado: ' + String(err).slice(0, 160),
+          )
+        }
+      }
     }
 
     try {
