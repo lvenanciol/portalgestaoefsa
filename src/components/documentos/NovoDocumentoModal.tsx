@@ -42,7 +42,7 @@ import pb from '@/lib/pocketbase/client'
 interface NovoDocumentoModalProps {
   aberto: boolean
   onOpenChange: (aberto: boolean) => void
-  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos'
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'convencoes' | 'juridicos'
   empresas: Array<{ id: string; nome: string }>
   empresaPreSelecionada?: string
   onCriadoSucesso: () => void
@@ -246,6 +246,41 @@ export function NovoDocumentoModal({
           ...criarEstadoLimpo(camposExtraidos.empresa),
           ...camposExtraidos,
         })
+      } else if (tipoAba === 'convencoes') {
+        const tituloSugerido = nomeArquivo
+          .replace(/\.[^/.]+$/, '')
+          .replace(/[_-]+/g, ' ')
+          .trim()
+
+        // Tenta extrair datas de vigência (dd/mm/aaaa) do texto do PDF
+        const datas = textoExtraido.match(/\d{2}\/\d{2}\/\d{4}/g) || []
+        const anos = datas.map((d) => d.split('/')[2])
+        const vigInicio = datas[0] ? datas[0].split('/').reverse().join('-') : ''
+        const vigFim =
+          datas.length > 1 ? datas[datas.length - 1].split('/').reverse().join('-') : ''
+
+        // Detecta sindicato no texto
+        let sindicatoDetectado = ''
+        const matchSind = textoExtraido.match(/SINDICATO\s+D[AEOS]?[^\n,;]{3,80}/i)
+        if (matchSind) sindicatoDetectado = matchSind[0].trim()
+
+        // Detecta percentual de reajuste (ex: 4,5%)
+        const matchReaj = textoExtraido.match(/reajust\w*[^\d]{0,40}(\d{1,2}[.,]\d{1,2})\s*%/i)
+        const reajustePct = matchReaj ? matchReaj[1].replace(',', '.') : ''
+
+        setForm((prev) => ({
+          ...prev,
+          empresa: empresaDetectada,
+          titulo: tituloSugerido || 'Convenção Coletiva de Trabalho',
+          sindicato: sindicatoDetectado || 'Sindicato da categoria',
+          vigencia_inicio: vigInicio,
+          vigencia_fim: vigFim,
+          data_base: anos.length > 0 ? `Mês-base ${anos[0]}` : '',
+          percentual_reajuste_texto: reajustePct ? `${reajustePct.replace('.', ',')}%` : '',
+          abrangencia: `Empresas do grupo ${empresaDetectada} representadas pela categoria`,
+          status: 'ativo',
+          observacoes: `Campos preenchidos automaticamente a partir do arquivo "${nomeArquivo}". Favor conferir os dados antes de salvar.`,
+        }))
       } else if (tipoAba === 'atas') {
         const isAge = nomeLower.includes('age') || nomeLower.includes('extraordin')
         const isBalanco =
@@ -408,6 +443,33 @@ export function NovoDocumentoModal({
           observacao: form.observacao || '',
         })
         novoId = rec.id
+      } else if (tipoAba === 'convencoes') {
+        if (!form.titulo) throw new Error('Título da convenção é obrigatório.')
+        colecaoDestino = 'convencoes'
+
+        const parseNum = (v: any) => {
+          const n = parseFloat(
+            String(v || '')
+              .replace(/[R$\s.%]/g, '')
+              .replace(',', '.'),
+          )
+          return isNaN(n) ? 0 : n
+        }
+
+        const rec = await pb.collection('convencoes').create({
+          titulo: form.titulo,
+          empresa: form.empresa,
+          sindicato: form.sindicato || '',
+          vigencia_inicio: form.vigencia_inicio ? `${form.vigencia_inicio} 00:00:00.000Z` : null,
+          vigencia_fim: form.vigencia_fim ? `${form.vigencia_fim} 00:00:00.000Z` : null,
+          data_base: form.data_base || '',
+          percentual_reajuste: parseNum(form.percentual_reajuste),
+          percentual_reajuste_texto: form.percentual_reajuste_texto || '',
+          abrangencia: form.abrangencia || '',
+          status: form.status || 'ativo',
+          observacoes: form.observacoes || '',
+        })
+        novoId = rec.id
       } else if (tipoAba === 'atas') {
         if (!form.titulo) throw new Error('Título da ata é obrigatório.')
         colecaoDestino = 'atas'
@@ -502,6 +564,7 @@ export function NovoDocumentoModal({
     contratos: 'Novo Contrato Comercial',
     locacoes: 'Novo Contrato de Locação',
     atas: 'Nova Ata de Assembleia / Reunião',
+    convencoes: 'Nova Convenção Coletiva',
     juridicos: 'Novo Processo Jurídico',
   }
 
@@ -1060,7 +1123,102 @@ export function NovoDocumentoModal({
             </>
           )}
 
-          {/* CAMPOS ESPECÍFICOS: ATAS CONTÁBEIS */}
+          {/* CAMPOS ESPECÍFICOS: CONVENÇÕES COLETIVAS */}
+          {tipoAba === 'convencoes' && (
+            <>
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-gray-700">Título da Convenção *</Label>
+                <Input
+                  required
+                  value={form.titulo || ''}
+                  onChange={(e) => setCampo('titulo', e.target.value)}
+                  placeholder="Segundo Aditivo à CCT 2025/2027"
+                  className="h-9 text-xs bg-gray-50"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    Sindicato / Entidade
+                  </Label>
+                  <Input
+                    value={form.sindicato || ''}
+                    onChange={(e) => setCampo('sindicato', e.target.value)}
+                    placeholder="SINDICOMERCIÁRIOS"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    Data-Base da Categoria
+                  </Label>
+                  <Input
+                    value={form.data_base || ''}
+                    onChange={(e) => setCampo('data_base', e.target.value)}
+                    placeholder="Outubro / mês da data-base"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">Início da Vigência</Label>
+                  <Input
+                    type="date"
+                    value={form.vigencia_inicio || ''}
+                    onChange={(e) => setCampo('vigencia_inicio', e.target.value)}
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">Fim da Vigência</Label>
+                  <Input
+                    type="date"
+                    value={form.vigencia_fim || ''}
+                    onChange={(e) => setCampo('vigencia_fim', e.target.value)}
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">
+                    Reajuste Acordado (%)
+                  </Label>
+                  <Input
+                    value={form.percentual_reajuste_texto || ''}
+                    onChange={(e) => setCampo('percentual_reajuste_texto', e.target.value)}
+                    placeholder="Ex.: 5,2% ou conforme cláusula"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[11px] font-bold text-gray-700">Abrangência</Label>
+                  <Input
+                    value={form.abrangencia || ''}
+                    onChange={(e) => setCampo('abrangencia', e.target.value)}
+                    placeholder="Ex.: Comércio de Vitória/ES"
+                    className="h-9 text-xs bg-gray-50"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-gray-700">Observações</Label>
+                <Textarea
+                  value={form.observacoes || ''}
+                  onChange={(e) => setCampo('observacoes', e.target.value)}
+                  rows={2}
+                  className="text-xs bg-gray-50 resize-none"
+                  placeholder="Cláusulas relevantes, condicionantes ou notas adicionais..."
+                />
+              </div>
+            </>
+          )}
+
           {tipoAba === 'atas' && (
             <>
               <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl">

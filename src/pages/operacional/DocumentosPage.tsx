@@ -17,6 +17,7 @@ import {
   Shield,
   Briefcase,
   Building2,
+  Handshake,
   FileCheck,
   FileSpreadsheet,
   Plus,
@@ -58,6 +59,7 @@ import { DetalheAlvaraView } from '@/components/documentos/DetalheAlvaraView'
 import { DetalheContratoView } from '@/components/documentos/DetalheContratoView'
 import { DetalheLocacaoView } from '@/components/documentos/DetalheLocacaoView'
 import { DetalheAtaView } from '@/components/documentos/DetalheAtaView'
+import { DetalheConvencaoView } from '@/components/documentos/DetalheConvencaoView'
 import { DetalheJuridicoView } from '@/components/documentos/DetalheJuridicoView'
 
 import { DocumentoDetalheModal } from '@/components/documentos/DocumentoDetalheModal'
@@ -75,6 +77,7 @@ const ROTULOS_ABAS: Record<TipoAbaDocumento, string> = {
   contratos: 'Contratos',
   locacoes: 'Locações',
   atas: 'Atas',
+  convencoes: 'Convenções',
   juridicos: 'Jurídicos',
 }
 
@@ -157,6 +160,7 @@ export function DocumentosPage() {
   const [contratos, setContratos] = useState<any[]>([])
   const [locacoes, setLocacoes] = useState<any[]>([])
   const [atas, setAtas] = useState<any[]>([])
+  const [convencoes, setConvencoes] = useState<any[]>([])
   const [juridicos, setJuridicos] = useState<any[]>([])
   const [empresas, setEmpresas] = useState<Array<{ id: string; nome: string }>>([])
   const [carregando, setCarregando] = useState(false)
@@ -268,7 +272,7 @@ export function DocumentosPage() {
   const carregarDados = useCallback(async () => {
     setCarregando(true)
     try {
-      const [resAlv, resCont, resLoc, resAtas, resJur] = await Promise.all([
+      const [resAlv, resCont, resLoc, resAtas, resConv, resJur] = await Promise.all([
         pb.collection('alvaras').getFullList({ sort: '-created' }),
         pb.collection('contratos').getFullList({
           filter: "tipo != 'locacao'",
@@ -279,6 +283,7 @@ export function DocumentosPage() {
           sort: '-created',
         }),
         pb.collection('atas').getFullList({ sort: '-data' }),
+        pb.collection('convencoes').getFullList({ sort: '-created' }),
         pb.collection('processos_juridicos').getFullList({ sort: '-created' }),
       ])
 
@@ -286,6 +291,7 @@ export function DocumentosPage() {
       setContratos(resCont || [])
       setLocacoes(resLoc || [])
       setAtas(resAtas || [])
+      setConvencoes(resConv || [])
       setJuridicos(resJur || [])
 
       // Atualiza o documento aberto no detalhe caso esteja visualizando
@@ -311,6 +317,8 @@ export function DocumentosPage() {
         return 'alvaras'
       case 'atas':
         return 'atas'
+      case 'convencoes':
+        return 'convencoes'
       case 'juridicos':
         return 'processos_juridicos'
       default:
@@ -329,12 +337,14 @@ export function DocumentosPage() {
         return locacoes
       case 'atas':
         return atas
+      case 'convencoes':
+        return convencoes
       case 'juridicos':
         return juridicos
       default:
         return []
     }
-  }, [abaAtiva, alvaras, contratos, locacoes, atas, juridicos])
+  }, [abaAtiva, alvaras, contratos, locacoes, atas, convencoes, juridicos])
 
   // Filtragem dos dados da aba ativa
   const dadosFiltrados = useMemo(() => {
@@ -369,6 +379,9 @@ export function DocumentosPage() {
           item.contraparte,
           item.locador,
           item.imovel,
+          item.sindicato,
+          item.data_base,
+          item.percentual_reajuste,
           item.empresa,
           item.cliente_principal,
           item.contrario_principal,
@@ -560,6 +573,16 @@ export function DocumentosPage() {
           />
         )}
 
+        {abaAtiva === 'convencoes' && (
+          <DetalheConvencaoView
+            documentoId={docDetalheDedicado.id}
+            registroInicial={docDetalheDedicado}
+            onVoltar={() => setDocDetalheDedicado(null)}
+            onSalvo={carregarDados}
+            onAbrirAnexoModal={(d) => handleAbrirAnexos(d)}
+          />
+        )}
+
         {abaAtiva === 'juridicos' && (
           <DetalheJuridicoView
             documentoId={docDetalheDedicado.id}
@@ -718,59 +741,70 @@ export function DocumentosPage() {
 
       {/* 2. ABAS COM RÓTULO EM NEGRITO, UNDERLINE 3PX E BADGE CIRCULAR */}
       <div className="border-b border-gray-200/90 flex items-center gap-6 overflow-x-auto no-scrollbar pt-1">
-        {(['alvaras', 'contratos', 'locacoes', 'atas', 'juridicos'] as TipoAbaDocumento[]).map(
-          (chave) => {
-            const ativa = abaAtiva === chave
-            const icone =
-              chave === 'alvaras' ? (
-                <Shield className="h-4 w-4" />
-              ) : chave === 'contratos' ? (
-                <Briefcase className="h-4 w-4" />
-              ) : chave === 'locacoes' ? (
-                <Building2 className="h-4 w-4" />
-              ) : chave === 'atas' ? (
-                <FileCheck className="h-4 w-4" />
-              ) : (
-                <FileSpreadsheet className="h-4 w-4" />
-              )
+        {(
+          [
+            'alvaras',
+            'contratos',
+            'locacoes',
+            'atas',
+            'convencoes',
+            'juridicos',
+          ] as TipoAbaDocumento[]
+        ).map((chave) => {
+          const ativa = abaAtiva === chave
+          const icone =
+            chave === 'alvaras' ? (
+              <Shield className="h-4 w-4" />
+            ) : chave === 'contratos' ? (
+              <Briefcase className="h-4 w-4" />
+            ) : chave === 'locacoes' ? (
+              <Building2 className="h-4 w-4" />
+            ) : chave === 'atas' ? (
+              <FileCheck className="h-4 w-4" />
+            ) : chave === 'convencoes' ? (
+              <Handshake className="h-4 w-4" />
+            ) : (
+              <FileSpreadsheet className="h-4 w-4" />
+            )
 
-            const total =
-              chave === 'alvaras'
-                ? alvaras.length
-                : chave === 'contratos'
-                  ? contratos.length
-                  : chave === 'locacoes'
-                    ? locacoes.length
-                    : chave === 'atas'
-                      ? atas.length
+          const total =
+            chave === 'alvaras'
+              ? alvaras.length
+              : chave === 'contratos'
+                ? contratos.length
+                : chave === 'locacoes'
+                  ? locacoes.length
+                  : chave === 'atas'
+                    ? atas.length
+                    : chave === 'convencoes'
+                      ? convencoes.length
                       : juridicos.length
 
-            return (
-              <button
-                key={chave}
-                type="button"
-                onClick={() => handleMudarAba(chave)}
-                className={`pb-3 inline-flex items-center gap-2 text-sm transition-all relative shrink-0 ${
-                  ativa
-                    ? 'font-bold text-gray-900 border-b-3 border-emerald-800 -mb-[1px]'
-                    : 'font-medium text-gray-600 hover:text-gray-900 border-b-3 border-transparent'
+          return (
+            <button
+              key={chave}
+              type="button"
+              onClick={() => handleMudarAba(chave)}
+              className={`pb-3 inline-flex items-center gap-2 text-sm transition-all relative shrink-0 ${
+                ativa
+                  ? 'font-bold text-gray-900 border-b-3 border-emerald-800 -mb-[1px]'
+                  : 'font-medium text-gray-600 hover:text-gray-900 border-b-3 border-transparent'
+              }`}
+            >
+              <span className={ativa ? 'text-emerald-800' : 'text-gray-400'}>{icone}</span>
+              <span>{ROTULOS_ABAS[chave]}</span>
+
+              {/* Badge Circular com contagem real */}
+              <span
+                className={`inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full text-[11px] font-bold ${
+                  ativa ? 'bg-emerald-800 text-white' : 'bg-gray-100 text-gray-700'
                 }`}
               >
-                <span className={ativa ? 'text-emerald-800' : 'text-gray-400'}>{icone}</span>
-                <span>{ROTULOS_ABAS[chave]}</span>
-
-                {/* Badge Circular com contagem real */}
-                <span
-                  className={`inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full text-[11px] font-bold ${
-                    ativa ? 'bg-emerald-800 text-white' : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {total}
-                </span>
-              </button>
-            )
-          },
-        )}
+                {total}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       {/* 3. LINHA HORIZONTAL DE INDICADORES (Cards sob as abas) */}
