@@ -18,6 +18,7 @@ import {
   Briefcase,
   Building2,
   Handshake,
+  ShieldCheck,
   FileCheck,
   FileSpreadsheet,
   Plus,
@@ -60,6 +61,7 @@ import { DetalheContratoView } from '@/components/documentos/DetalheContratoView
 import { DetalheLocacaoView } from '@/components/documentos/DetalheLocacaoView'
 import { DetalheAtaView } from '@/components/documentos/DetalheAtaView'
 import { DetalheConvencaoView } from '@/components/documentos/DetalheConvencaoView'
+import { DetalheSeguroView } from '@/components/documentos/DetalheSeguroView'
 import { DetalheJuridicoView } from '@/components/documentos/DetalheJuridicoView'
 
 import { DocumentoDetalheModal } from '@/components/documentos/DocumentoDetalheModal'
@@ -78,6 +80,7 @@ const ROTULOS_ABAS: Record<TipoAbaDocumento, string> = {
   locacoes: 'Locações',
   atas: 'Atas',
   convencoes: 'Convenções',
+  seguros: 'Seguros',
   juridicos: 'Jurídicos',
 }
 
@@ -161,6 +164,7 @@ export function DocumentosPage() {
   const [locacoes, setLocacoes] = useState<any[]>([])
   const [atas, setAtas] = useState<any[]>([])
   const [convencoes, setConvencoes] = useState<any[]>([])
+  const [seguros, setSeguros] = useState<any[]>([])
   const [juridicos, setJuridicos] = useState<any[]>([])
   const [empresas, setEmpresas] = useState<Array<{ id: string; nome: string }>>([])
   const [carregando, setCarregando] = useState(false)
@@ -271,32 +275,53 @@ export function DocumentosPage() {
   // Carrega dados de todas as coleções ou da aba ativa
   const carregarDados = useCallback(async () => {
     setCarregando(true)
-    try {
-      const [resAlv, resCont, resLoc, resAtas, resConv, resJur] = await Promise.all([
-        pb.collection('alvaras').getFullList({ sort: '-created' }),
-        pb.collection('contratos').getFullList({
-          filter: "tipo != 'locacao'",
-          sort: '-created',
-        }),
-        pb.collection('contratos').getFullList({
-          filter: "tipo = 'locacao'",
-          sort: '-created',
-        }),
-        pb.collection('atas').getFullList({ sort: '-data' }),
-        pb.collection('convencoes').getFullList({ sort: '-created' }),
-        pb.collection('processos_juridicos').getFullList({ sort: '-created' }),
-      ])
+    // CAUSA-RAIZ DOS "REGISTROS SUMIDOS" (11/11/2026):
+    // era `Promise.all` — se UMA coleção falhasse (ex.: `convencoes` ainda não
+    // existia no PocketBase após a criação da aba), a Promise.all REJEITAVA e
+    // nenhum dos setState rodava. Resultado: TODAS as abas apareciam vazias, não
+    // só a nova. Com `allSettled`, cada coleção carrega de forma independente e
+    // a que falhar não derruba as outras.
+    const seguro = async <T,>(p: Promise<T>, rotulo: string): Promise<T[]> => {
+      try {
+        const r = await p
+        return Array.isArray(r) ? r : []
+      } catch (e: any) {
+        console.error(`[Documentos] Falha ao carregar '${rotulo}':`, e?.message || e)
+        return []
+      }
+    }
 
-      setAlvaras(resAlv || [])
-      setContratos(resCont || [])
-      setLocacoes(resLoc || [])
-      setAtas(resAtas || [])
-      setConvencoes(resConv || [])
-      setJuridicos(resJur || [])
+    const [resAlv, resCont, resLoc, resAtas, resConv, resSeg, resJur] = await Promise.all([
+      seguro(pb.collection('alvaras').getFullList({ sort: '-created' }), 'alvaras'),
+      seguro(
+        pb.collection('contratos').getFullList({ filter: "tipo != 'locacao'", sort: '-created' }),
+        'contratos',
+      ),
+      seguro(
+        pb.collection('contratos').getFullList({ filter: "tipo = 'locacao'", sort: '-created' }),
+        'locacoes',
+      ),
+      seguro(pb.collection('atas').getFullList({ sort: '-data' }), 'atas'),
+      seguro(pb.collection('convencoes').getFullList({ sort: '-created' }), 'convencoes'),
+      seguro(pb.collection('seguros').getFullList({ sort: '-created' }), 'seguros'),
+      seguro(
+        pb.collection('processos_juridicos').getFullList({ sort: '-created' }),
+        'processos_juridicos',
+      ),
+    ])
+
+    try {
+      setAlvaras(resAlv)
+      setContratos(resCont)
+      setLocacoes(resLoc)
+      setAtas(resAtas)
+      setConvencoes(resConv)
+      setSeguros(resSeg)
+      setJuridicos(resJur)
 
       // Atualiza o documento aberto no detalhe caso esteja visualizando
       if (docDetalheDedicado) {
-        const achado = (resAlv || []).find((d) => d.id === docDetalheDedicado.id)
+        const achado = resAlv.find((d) => d.id === docDetalheDedicado.id)
         if (achado) setDocDetalheDedicado(achado)
       }
     } catch (err) {
@@ -319,6 +344,8 @@ export function DocumentosPage() {
         return 'atas'
       case 'convencoes':
         return 'convencoes'
+      case 'seguros':
+        return 'seguros'
       case 'juridicos':
         return 'processos_juridicos'
       default:
@@ -339,12 +366,14 @@ export function DocumentosPage() {
         return atas
       case 'convencoes':
         return convencoes
+      case 'seguros':
+        return seguros
       case 'juridicos':
         return juridicos
       default:
         return []
     }
-  }, [abaAtiva, alvaras, contratos, locacoes, atas, convencoes, juridicos])
+  }, [abaAtiva, alvaras, contratos, locacoes, atas, convencoes, seguros, juridicos])
 
   // Filtragem dos dados da aba ativa
   const dadosFiltrados = useMemo(() => {
@@ -583,6 +612,16 @@ export function DocumentosPage() {
           />
         )}
 
+        {abaAtiva === 'seguros' && (
+          <DetalheSeguroView
+            documentoId={docDetalheDedicado.id}
+            registroInicial={docDetalheDedicado}
+            onVoltar={() => setDocDetalheDedicado(null)}
+            onSalvo={carregarDados}
+            onAbrirAnexoModal={(d) => handleAbrirAnexos(d)}
+          />
+        )}
+
         {abaAtiva === 'juridicos' && (
           <DetalheJuridicoView
             documentoId={docDetalheDedicado.id}
@@ -672,7 +711,7 @@ export function DocumentosPage() {
   const empresasListaNomes = ['FoldBox', 'Extrafruti', 'Casafruti', 'LL5']
 
   return (
-    <div className="p-6 max-w-[1700px] mx-auto space-y-6">
+    <div className="p-6 max-w-[1700px] mx-auto space-y-6 w-full min-w-0">
       {/* 1. CABEÇALHO DA TELA */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-gray-100">
         <div>
@@ -740,7 +779,11 @@ export function DocumentosPage() {
       </div>
 
       {/* 2. ABAS COM RÓTULO EM NEGRITO, UNDERLINE 3PX E BADGE CIRCULAR */}
-      <div className="border-b border-gray-200/90 flex items-center gap-6 overflow-x-auto no-scrollbar pt-1">
+      {/* LARGURA DAS ABAS (11/11/2026): com 7 abas o rótulo "Convenções" era cortado.
+          `no-scrollbar` escondia a barra de rolagem, então não havia como ver o resto —
+          a aba parecia truncada. Agora a barra ROLA de verdade (scrollbar fina visível),
+          os rótulos não quebram linha e há folga lateral para não encostar na borda. */}
+      <div className="border-b border-gray-200/90 flex items-center gap-5 sm:gap-6 overflow-x-auto pb-0 pt-1 px-1 [scrollbar-width:thin]">
         {(
           [
             'alvaras',
@@ -748,6 +791,7 @@ export function DocumentosPage() {
             'locacoes',
             'atas',
             'convencoes',
+            'seguros',
             'juridicos',
           ] as TipoAbaDocumento[]
         ).map((chave) => {
@@ -763,6 +807,8 @@ export function DocumentosPage() {
               <FileCheck className="h-4 w-4" />
             ) : chave === 'convencoes' ? (
               <Handshake className="h-4 w-4" />
+            ) : chave === 'seguros' ? (
+              <ShieldCheck className="h-4 w-4" />
             ) : (
               <FileSpreadsheet className="h-4 w-4" />
             )
@@ -778,18 +824,21 @@ export function DocumentosPage() {
                     ? atas.length
                     : chave === 'convencoes'
                       ? convencoes.length
-                      : juridicos.length
+                      : chave === 'seguros'
+                        ? seguros.length
+                        : juridicos.length
 
           return (
             <button
               key={chave}
               type="button"
               onClick={() => handleMudarAba(chave)}
-              className={`pb-3 inline-flex items-center gap-2 text-sm transition-all relative shrink-0 ${
+              className={`pb-3 inline-flex items-center gap-1.5 text-[13px] whitespace-nowrap transition-all relative shrink-0 px-0.5 ${
                 ativa
                   ? 'font-bold text-gray-900 border-b-3 border-emerald-800 -mb-[1px]'
                   : 'font-medium text-gray-600 hover:text-gray-900 border-b-3 border-transparent'
               }`}
+              title={ROTULOS_ABAS[chave]}
             >
               <span className={ativa ? 'text-emerald-800' : 'text-gray-400'}>{icone}</span>
               <span>{ROTULOS_ABAS[chave]}</span>

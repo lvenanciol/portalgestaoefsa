@@ -663,6 +663,7 @@ export type TipoAbaDocumento =
   | 'locacoes'
   | 'atas'
   | 'convencoes'
+  | 'seguros'
   | 'juridicos'
 export type DocumentoGenericoItem = Record<string, any>
 
@@ -733,14 +734,18 @@ export const COLUNAS_CONVENCOES: ColunaTipoConfig[] = [
     width: '110px',
     align: 'right',
     sortable: true,
-    sortValue: (item) => item.percentual_reajuste ?? 0,
+    // O schema da coleção usa `reajuste_percentual` (migração 0060). A coluna
+    // lia `percentual_reajuste`, que não existe — a célula mostrava sempre
+    // "Não aplicável" mesmo com o percentual gravado.
+    sortValue: (item) => item.reajuste_percentual ?? item.percentual_reajuste ?? 0,
     render: (item) => {
-      if (item.percentual_reajuste === undefined || item.percentual_reajuste === null) {
+      const valor = item.reajuste_percentual ?? item.percentual_reajuste
+      if (valor === undefined || valor === null || valor === '') {
         return <CampoFormatado estado="nao_aplicavel" />
       }
       return (
         <span className="text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-          {String(item.percentual_reajuste).replace('.', ',')}%
+          {String(valor).replace('.', ',')}%
         </span>
       )
     },
@@ -751,12 +756,75 @@ export const COLUNAS_CONVENCOES: ColunaTipoConfig[] = [
   criarColunaAnexos(),
 ]
 
+/**
+ * CONFIGURAÇÃO ESPECÍFICA: SEGUROS
+ * Colunas: Seguradora, Apólice, Vigência (fim), Prêmio
+ */
+export const COLUNAS_SEGUROS: ColunaTipoConfig[] = [
+  criarColunaDocumento(),
+  {
+    id: 'seguradora',
+    label: 'SEGURADORA',
+    width: '200px',
+    sortable: true,
+    render: (item) => <span className="text-xs text-slate-800">{item.seguradora || '—'}</span>,
+  },
+  {
+    id: 'apolice',
+    label: 'APÓLICE',
+    width: '150px',
+    sortable: true,
+    render: (item) => (
+      <span className="font-mono text-xs text-slate-700">{item.numero_apolice || '—'}</span>
+    ),
+  },
+  {
+    id: 'vigencia_fim',
+    label: 'VIGÊNCIA (FIM)',
+    width: '130px',
+    sortable: true,
+    sortValue: (item) => (item.vigencia_fim ? String(item.vigencia_fim) : ''),
+    render: (item) => {
+      if (!item.vigencia_fim) return <CampoFormatado estado="pendente" />
+      const s = String(item.vigencia_fim).slice(0, 10)
+      const [y, m, d] = s.split('-')
+      return (
+        <span className="font-mono text-xs tabular-nums text-slate-800">
+          {d && m && y ? `${d}/${m}/${y}` : s}
+        </span>
+      )
+    },
+  },
+  {
+    id: 'premio',
+    label: 'PRÊMIO',
+    width: '130px',
+    align: 'right',
+    sortable: true,
+    sortValue: (item) => Number(item.premio_total ?? 0),
+    render: (item) => {
+      const v = Number(item.premio_total)
+      if (!Number.isFinite(v) || item.premio_total == null) {
+        return <CampoFormatado estado="nao_aplicavel" />
+      }
+      return (
+        <span className="font-mono text-xs tabular-nums text-slate-800">
+          {v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+        </span>
+      )
+    },
+  },
+  criarColunaStatus('seguros'),
+  criarColunaAnexos(),
+]
+
 export const CONFIG_COLUNAS_POR_TIPO: Record<TipoAbaDocumento, ColunaTipoConfig[]> = {
   alvaras: COLUNAS_ALVARAS,
   contratos: COLUNAS_CONTRATOS,
   locacoes: COLUNAS_LOCACOES,
   atas: COLUNAS_ATAS,
   convencoes: COLUNAS_CONVENCOES,
+  seguros: COLUNAS_SEGUROS,
   juridicos: COLUNAS_JURIDICOS,
 }
 

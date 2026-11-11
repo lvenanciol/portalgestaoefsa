@@ -29,7 +29,7 @@ interface DocumentoParecerButtonProps {
   documento: Record<string, any>
   // 'convencoes' faltava aqui: a aba Convenções (DetalheConvencaoView) passa esse
   // valor e o typecheck quebrava ("Type '\"convencoes\"' is not assignable...").
-  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos' | 'convencoes'
+  tipoAba: 'alvaras' | 'contratos' | 'locacoes' | 'atas' | 'juridicos' | 'convencoes' | 'seguros'
   promptPadrao: string
   onSalvarPromptPadrao?: (novoPrompt: string) => void
 }
