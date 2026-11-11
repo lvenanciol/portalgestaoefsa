@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import {
   ShieldCheck,
   Plus,
@@ -63,6 +63,9 @@ import {
   AlertDialogAction,
 } from '@/components/ui/alert-dialog'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
+import pb from '@/lib/pocketbase/client'
+// Máscara de telefone compartilhada com Parceiros & Contatos — mesmo formato.
+import { mascaraTelefone } from '@/components/operacional/ParceiroCadastroDialog'
 import { fmtDataBRT } from '@/lib/brt'
 import { cn } from '@/lib/utils'
 
@@ -185,6 +188,13 @@ export default function ControleAcessos() {
   const [fWhatsapp, setFWhatsapp] = useState('')
   const [fCentroResultado, setFCentroResultado] = useState('')
   const [fCentroResultadoCodigo, setFCentroResultadoCodigo] = useState('')
+  // Centro de resultado: autocomplete alimentado pelo Sankhya (mesma origem da
+  // tela de Parceiros & Contatos — hook sankhya_centros).
+  const [centros, setCentros] = useState<{ codigo: string | number; descricao: string }[]>([])
+  const [centrosCarregados, setCentrosCarregados] = useState(false)
+  const [centrosBuscando, setCentrosBuscando] = useState(false)
+  const [centrosErro, setCentrosErro] = useState('')
+  const [dropCentro, setDropCentro] = useState(false)
   const [fObservacao, setFObservacao] = useState('')
   const [fAtivo, setFAtivo] = useState(true)
   const [salvando, setSalvando] = useState(false)
@@ -230,6 +240,46 @@ export default function ControleAcessos() {
   useEffect(() => {
     carregar()
   }, [carregar])
+
+  // Busca os centros de resultado no Sankhya (mesma rota da tela de Parceiros)
+  const buscarCentros = useCallback(async (q: string) => {
+    setCentrosErro('')
+    setCentrosBuscando(true)
+    try {
+      const r = (await pb.send(
+        '/backend/v1/sankhya/centros-resultado?busca=' + encodeURIComponent(q || ''),
+        { method: 'GET' },
+      )) as any
+      setCentros(r.itens || [])
+      setCentrosCarregados(true)
+      if (!(r.itens || []).length) {
+        setCentrosErro(
+          r.erro || (r.fonte === 'cache' ? 'Cache vazio — tente novamente em instantes.' : ''),
+        )
+      }
+    } catch (e: any) {
+      setCentros([])
+      setCentrosCarregados(true)
+      setCentrosErro(
+        String(e?.response?.message || e?.message || e).slice(0, 200) ||
+          'Falha ao consultar o Sankhya.',
+      )
+    } finally {
+      setCentrosBuscando(false)
+    }
+  }, [])
+
+  const centrosFiltrados = useMemo(() => {
+    const q = (fCentroResultado || '').trim().toLowerCase()
+    if (!q) return centros
+    return centros.filter(
+      (c) =>
+        (c.descricao || '').toLowerCase().includes(q) ||
+        String(c.codigo || '')
+          .toLowerCase()
+          .includes(q),
+    )
+  }, [centros, fCentroResultado])
 
   // Carrega os parceiros ao abrir o dialog.
   // (11/11/2026) O campo de busca foi removido a pedido do dono — a lista
@@ -337,6 +387,19 @@ export default function ControleAcessos() {
     const un = unidades.find((x) => x.nome === u.unidade)
     setFUnidade(un?.id || '')
     setFAtivo(u.ativo)
+
+    // (11/11/2026) PREENCHIMENTO DOS CAMPOS DO PARCEIRO.
+    // Faltava isto: o formulário de edição nunca preenchia telefone, whatsapp,
+    // centro de resultado e observação — chegavam vazios mesmo com o parceiro
+    // vinculado e com os dados gravados. Sem parceiro, usa o que está no usuário.
+    const tel = u.telefone || u.parceiro_telefone || ''
+    const whats = u.whatsapp || u.parceiro_whatsapp || ''
+    setFTelefone(tel)
+    setFWhatsapp(whats || tel)
+    setFCentroResultado(u.centro_resultado || '')
+    setFCentroResultadoCodigo(u.centro_resultado_codigo || '')
+    setFObservacao(u.observacao || '')
+
     // CAC: recupera o parceiro já vinculado para não sobrescrever no salvar
     setFParceiro(u.parceiro_id || '')
     if (u.parceiro_id && u.parceiro_nome) {
@@ -1065,51 +1128,104 @@ export default function ControleAcessos() {
               </Select>
             </div>
 
-            {/* ===== Dados do contato (vêm do parceiro, editáveis) ===== */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Telefone
-                </Label>
-                <Input
-                  value={fTelefone}
-                  onChange={(e) => setFTelefone(e.target.value)}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  WhatsApp
-                </Label>
-                <Input
-                  value={fWhatsapp}
-                  onChange={(e) => setFWhatsapp(e.target.value)}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
+            {/* ===== Dados do contato — MESMO FORMATO de Parceiros & Contatos =====
+                (11/11/2026) Máscara de telefone e centro de resultado como
+                autocomplete do Sankhya, idênticos ao ParceiroCadastroDialog. */}
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                WhatsApp / Telefone
+              </Label>
+              <Input
+                value={fWhatsapp || fTelefone || ''}
+                onChange={(e) => {
+                  const m = mascaraTelefone(e.target.value)
+                  setFWhatsapp(m)
+                  setFTelefone(m)
+                }}
+                className="h-10 bg-gray-50"
+                placeholder="(27) 99999-9999"
+                inputMode="tel"
+              />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Centro de resultado
-                </Label>
+            {/* Centro de resultado (Sankhya) — dropdown com busca */}
+            <div
+              className="grid gap-1.5 relative"
+              onBlur={(e) => {
+                if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropCentro(false)
+              }}
+            >
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Centro de resultado (Sankhya)
+              </Label>
+              <div className="flex items-center gap-2">
                 <Input
-                  value={fCentroResultado}
-                  onChange={(e) => setFCentroResultado(e.target.value)}
-                  className="h-10 bg-gray-50"
+                  value={fCentroResultado || ''}
+                  onChange={(e) => {
+                    setFCentroResultado(e.target.value)
+                    setFCentroResultadoCodigo('')
+                    setDropCentro(true)
+                    if (!centrosCarregados) buscarCentros('')
+                  }}
+                  onFocus={() => {
+                    setDropCentro(true)
+                    if (!centrosCarregados) buscarCentros('')
+                  }}
+                  placeholder="digite para filtrar os centros..."
+                  className="h-10 bg-gray-50 flex-1"
                 />
+                {fCentroResultado ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFCentroResultado('')
+                      setFCentroResultadoCodigo('')
+                    }}
+                    className="p-2 text-gray-400 hover:text-gray-600"
+                    title="Limpar centro de resultado"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                ) : null}
+                {centrosBuscando ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                ) : null}
               </div>
-              <div className="grid gap-1.5">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                  Código do centro de resultado
-                </Label>
-                <Input
-                  value={fCentroResultadoCodigo}
-                  onChange={(e) => setFCentroResultadoCodigo(e.target.value)}
-                  className="h-10 bg-gray-50"
-                />
-              </div>
+
+              {fCentroResultadoCodigo ? (
+                <span className="text-[11px] text-emerald-700 font-medium">
+                  Código Sankhya: {fCentroResultadoCodigo}
+                </span>
+              ) : null}
+
+              {centrosCarregados && dropCentro && (
+                <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                  {centrosFiltrados.length > 0 ? (
+                    centrosFiltrados.map((c) => (
+                      <button
+                        key={c.codigo}
+                        type="button"
+                        onClick={() => {
+                          setFCentroResultado(c.descricao)
+                          setFCentroResultadoCodigo(String(c.codigo))
+                          setDropCentro(false)
+                        }}
+                        className="block w-full text-left px-3 py-2 hover:bg-emerald-50 text-[12px]"
+                      >
+                        <span className="font-semibold text-gray-800">{c.descricao}</span>
+                        <span className="ml-2 text-gray-400 tabular-nums">{c.codigo}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-[11px] text-gray-500">
+                      {centrosBuscando ? 'Consultando o Sankhya…' : 'Nenhum centro encontrado.'}
+                    </div>
+                  )}
+                </div>
+              )}
+              {centrosErro ? (
+                <span className="text-[11px] text-amber-700">{centrosErro}</span>
+              ) : null}
             </div>
 
             <div className="grid gap-1.5">
