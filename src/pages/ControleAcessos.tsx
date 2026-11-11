@@ -15,6 +15,11 @@ import {
   listarEmpresas,
   listarUnidades,
   listarAuditoria,
+  listarParceiros,
+  criarGrupo,
+  editarGrupo,
+  excluirGrupo,
+  ParceiroOpcao,
   UsuarioLista,
 } from '@/services/usuarios-service'
 import { Button } from '@/components/ui/button'
@@ -122,6 +127,84 @@ export default function ControleAcessos() {
   const [fEmpresa, setFEmpresa] = useState('')
   const [fUnidade, setFUnidade] = useState('')
   const [fAtivo, setFAtivo] = useState(true)
+
+  // ===== CAC (11/11/2026) — parceiro vinculado + CRUD de grupos =====
+  const [fParceiro, setFParceiro] = useState('')
+  const [buscaParceiro, setBuscaParceiro] = useState('')
+  const [opcoesParceiro, setOpcoesParceiro] = useState<ParceiroOpcao[]>([])
+  const [carregandoParceiros, setCarregandoParceiros] = useState(false)
+  const [dialogGrupo, setDialogGrupo] = useState<Grupo | 'novo' | null>(null)
+  const [gNome, setGNome] = useState('')
+  const [gEscopo, setGEscopo] = useState('')
+  const [salvandoGrupo, setSalvandoGrupo] = useState(false)
+
+  // Busca parceiros no servidor (nome/CNPJ/e-mail) com debounce
+  useEffect(() => {
+    if (!dialogNovo && !dialogEditar) return
+    let vivo = true
+    const t = setTimeout(async () => {
+      setCarregandoParceiros(true)
+      const lista = await listarParceiros(buscaParceiro, 20)
+      if (vivo) {
+        setOpcoesParceiro(lista)
+        setCarregandoParceiros(false)
+      }
+    }, 300)
+    return () => {
+      vivo = false
+      clearTimeout(t)
+    }
+  }, [buscaParceiro, dialogNovo, dialogEditar])
+
+  const abrirNovoGrupo = () => {
+    setGNome('')
+    setGEscopo('Padrão')
+    setDialogGrupo('novo')
+  }
+
+  const abrirEditarGrupo = (g: Grupo) => {
+    setGNome(g.nome)
+    setGEscopo(g.escopo || 'Padrão')
+    setDialogGrupo(g)
+  }
+
+  const salvarGrupoHandler = async () => {
+    const nome = gNome.trim()
+    if (!nome) {
+      setErro('Informe o nome do grupo.')
+      return
+    }
+    setSalvandoGrupo(true)
+    setErro('')
+    try {
+      if (dialogGrupo === 'novo') {
+        await criarGrupo({ nome, escopo: gEscopo.trim() || 'Padrão' })
+      } else if (dialogGrupo) {
+        await editarGrupo(dialogGrupo.id, { nome, escopo: gEscopo.trim() || 'Padrão' })
+      }
+      setDialogGrupo(null)
+      await carregar()
+    } catch (e) {
+      setErro(getErrorMessage(e) || 'Erro ao salvar grupo.')
+    } finally {
+      setSalvandoGrupo(false)
+    }
+  }
+
+  const excluirGrupoHandler = async (g: Grupo) => {
+    const emUso = usuarios.filter((u) => u.grupo === g.nome).length
+    if (emUso > 0) {
+      setErro(`O grupo "${g.nome}" tem ${emUso} usuário(s) vinculado(s). Mova-os antes de excluir.`)
+      return
+    }
+    if (typeof window !== 'undefined' && !window.confirm(`Excluir o grupo "${g.nome}"?`)) return
+    try {
+      await excluirGrupo(g.id)
+      await carregar()
+    } catch (e) {
+      setErro(getErrorMessage(e) || 'Erro ao excluir grupo.')
+    }
+  }
   const [salvando, setSalvando] = useState(false)
 
   const carregar = useCallback(async () => {
@@ -227,6 +310,7 @@ export default function ControleAcessos() {
         grupo_id: fGrupo || undefined,
         empresa_id: fEmpresa || undefined,
         unidade_id: fUnidade || undefined,
+        parceiro_id: fParceiro || undefined,
         ativo: fAtivo,
       })
       setDialogNovo(false)
@@ -249,6 +333,8 @@ export default function ControleAcessos() {
         grupo_id: fGrupo,
         empresa_id: fEmpresa,
         unidade_id: fUnidade,
+        // '' desvincula o parceiro de forma explícita
+        parceiro_id: fParceiro,
         ...(fSenha ? { senha: fSenha } : {}),
       })
       setDialogEditar(null)
@@ -344,13 +430,30 @@ export default function ControleAcessos() {
                 {usuarios.filter((u) => u.grupo === g.nome).length} usuário(s)
               </p>
               {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => abrirBotoes(g)}
-                  className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#1B5E20] hover:text-[#0F3D13] transition-colors"
-                >
-                  <MousePointerClick className="h-3.5 w-3.5" /> Permissões
-                </button>
+                <div className="mt-2 flex items-center gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => abrirBotoes(g)}
+                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#1B5E20] hover:text-[#0F3D13] transition-colors"
+                  >
+                    <MousePointerClick className="h-3.5 w-3.5" /> Permissões
+                  </button>
+                  {/* CRUD de grupos (tarefa CAC, 11/11/2026) */}
+                  <button
+                    type="button"
+                    onClick={() => abrirEditarGrupo(g)}
+                    className="text-[11px] font-semibold text-gray-500 hover:text-gray-900 transition-colors"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => excluirGrupoHandler(g)}
+                    className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 transition-colors"
+                  >
+                    Excluir
+                  </button>
+                </div>
               )}
             </div>
           ))}
@@ -562,6 +665,59 @@ export default function ControleAcessos() {
                 </SelectContent>
               </Select>
             </div>
+            {/* CAC (11/11/2026): vínculo com Parceiros & Contatos.
+                Busca no servidor por nome/CNPJ/e-mail; a lista abre com os 20
+                mais recentes e filtra conforme digita. Sem vínculo é permitido. */}
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                Parceiro / Contato vinculado
+              </Label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <Input
+                    value={buscaParceiro}
+                    onChange={(e) => setBuscaParceiro(e.target.value)}
+                    placeholder="Buscar por nome, CNPJ ou e-mail…"
+                    className="h-10 bg-gray-50 pl-8"
+                  />
+                </div>
+                <Select
+                  value={fParceiro || 'nenhum'}
+                  onValueChange={(v) => setFParceiro(v === 'nenhum' ? '' : v)}
+                >
+                  <SelectTrigger className="h-10 bg-gray-50 w-[46%]">
+                    <SelectValue
+                      placeholder={carregandoParceiros ? 'Buscando…' : 'Selecione'}
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nenhum">Sem vínculo</SelectItem>
+                    {opcoesParceiro.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.nome}
+                        {p.cnpj ? ` · ${p.cnpj}` : ''}
+                      </SelectItem>
+                    ))}
+                    {!carregandoParceiros && opcoesParceiro.length === 0 && (
+                      <div className="px-2 py-1.5 text-[11px] text-gray-500">
+                        Nenhum parceiro encontrado.
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              {fParceiro && (
+                <span className="text-[11px] text-emerald-700 font-medium">
+                  Vinculado: {opcoesParceiro.find((p) => p.id === fParceiro)?.nome || fParceiro}
+                </span>
+              )}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Empresa
+                </Label>
+=======
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">

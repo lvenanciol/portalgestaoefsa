@@ -1,7 +1,6 @@
 // Fase 3 — CRUD de usuários (Controle de Acessos). Somente Admin.
-// redeploy v2 — arquivo não subiu no build v0.0.10 (deploy gap)
-// POST cria usuário (grupo/empresa/unidade/ativo); PATCH edita vínculos;
-// GET lista usuários com grupo expandido. Auditoria em toda ação.
+// v3 (11/11/2026): aceita `parceiro_id` para vincular o usuário a um registro
+// de "Parceiros & Contatos" (tarefa CAC). Campo opcional.
 routerAdd(
   'POST',
   '/backend/v1/usuarios',
@@ -38,6 +37,7 @@ routerAdd(
     if (body.grupo_id) rec.set('grupo_id', body.grupo_id)
     if (body.empresa_id) rec.set('empresa_id', body.empresa_id)
     if (body.unidade_id) rec.set('unidade_id', body.unidade_id)
+    if (body.parceiro_id) rec.set('parceiro_id', String(body.parceiro_id))
     try {
       $app.save(rec)
     } catch (err) {
@@ -52,7 +52,7 @@ routerAdd(
       }
       a.set('acao', 'criar')
       a.set('modulo', 'usuarios')
-      a.set('detalhe', { email: email })
+      a.set('detalhe', { email: email, parceiro_id: body.parceiro_id || '' })
       $app.save(a)
     } catch (_) {}
     return e.json(200, { id: rec.id, email: email })
