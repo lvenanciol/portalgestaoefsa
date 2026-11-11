@@ -6,6 +6,7 @@ import {
   can as canFn,
   Permissoes,
 } from '@/services/permissoes-service'
+import pb from '@/lib/pocketbase/client'
 
 /**
  * Hook único de permissões do app.
@@ -43,6 +44,20 @@ export function usePermissoes() {
     limparCachePermissoes()
     await carregar(true)
   }, [carregar])
+
+  // 11/11/2026 — invalida o cache quando o USUÁRIO TROCA (login/logout direto
+  // no authStore). Sem isto, o cache de 5 min do usuário anterior sobrevivia à
+  // troca de conta no mesmo dispositivo e o novo usuário via menus do antigo.
+  const usuarioId = pb.authStore.record?.id || ''
+  useEffect(() => {
+    limparCachePermissoes()
+    setPermissoes(null)
+    setCarregando(true)
+    carregarPermissoes(true).then((p) => {
+      setPermissoes(p)
+      setCarregando(false)
+    })
+  }, [usuarioId])
 
   /** can('documentos-importacoes', 'editar') */
   const can = useCallback(

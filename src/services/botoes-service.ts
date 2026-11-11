@@ -144,10 +144,16 @@ export function botoesOcultos(p: Permissoes | null): Record<string, string[]> {
   return out
 }
 
-// podeVerBotao(screenKey, buttonKey) — fail-open por construção.
+// podeVerBotao(screenKey, buttonKey).
+// 11/11/2026 (pedido "só exibir telas e botões com permissão"): era fail-open —
+// enquanto as permissões carregavam (ou se nunca chegassem) TODO botão aparecia.
+// Agora: sem permissões carregadas o botão fica OCULTO (fail-closed); Admin
+// bypass; os demais só veem se a tela for do grupo e o botão não estiver oculto.
 export function podeVerBotao(p: Permissoes | null, screenKey: string, buttonKey: string): boolean {
-  if (!p) return true // sem permissões carregadas → fail-open
+  if (!p) return false // sem permissões carregadas → fail-closed (antes liberava)
   if (p.grupoNome === 'Admin') return true
+  const modulo = TELA_MODULO[screenKey]
+  if (modulo && !can(p, modulo, 'ver')) return false
   const oc = botoesOcultos(p)
   return !(oc[screenKey] || []).includes(buttonKey)
 }
@@ -196,8 +202,8 @@ const ACOES_CRUD: Record<string, string> = {
 
 // podeOperacao(p, 'atas', 'editar') — três fontes em uma resposta.
 export function podeOperacao(p: Permissoes | null, tela: string, chaveBotao: string): boolean {
-  // fail-open APENAS sem permissões carregadas (mesmo contrato de antes)
-  if (!p) return true
+  // 11/11/2026: fail-closed também aqui — sem permissões carregadas, nega.
+  if (!p) return false
   if (p.grupoNome === 'Admin') return true
   // 1) a tela está concedida ao grupo?
   const modulo = TELA_MODULO[tela]

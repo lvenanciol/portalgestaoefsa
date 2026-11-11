@@ -12,21 +12,23 @@ import { useBotoes } from '@/services/botoes-service'
  *   abaVisivel('seguros')       // false se o grupo não pode ver a aba
  *   filtrarAbas(['alvaras'])    // já filtrado
  *
- * Fail-open por construção: sem grupo, sem permissões carregadas ou grupo
- * Admin, tudo é visível — o mesmo contrato dos botões.
+ * 11/11/2026 (pedido "só exibir abas com permissão"): era fail-open — a aba
+ * aparecia até as permissões chegarem (pronto=false devolvia true) e para
+ * qualquer grupo sem registro específico. Agora é fail-closed: aba visível
+ * somente se a tela pertence ao grupo (módulo com 'ver') E a aba não está
+ * oculta; Admin bypass; durante o load, nada aparece de mais.
  */
 export function useAbas(tela: string) {
   const { pode, permissoes } = useBotoes()
-  const [pronto, setPronto] = useState(false)
+  const [pronto, setPronto] = useState(permissoes !== null)
 
   useEffect(() => {
-    const t = setTimeout(() => setPronto(true), 0)
-    return () => clearTimeout(t)
+    setPronto(permissoes !== null)
   }, [permissoes])
 
   const abaVisivel = useCallback(
     (key: string) => {
-      if (!pronto) return true
+      if (!pronto) return false // permissões ainda carregando → oculto
       return pode(tela, 'aba_' + key)
     },
     [pode, tela, pronto],

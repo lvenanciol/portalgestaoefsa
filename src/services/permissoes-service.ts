@@ -68,8 +68,15 @@ export function can(p: Permissoes | null, modulo: string, acao: string): boolean
   if (tela && crudNegado(p, tela, acao)) return false
   const mod = p.permissoes[modulo]
   if (mod && mod[acao] === true) return true
-  const wildcard = p.permissoes['*']
-  if (wildcard && wildcard[acao] === true) return true
+  // 11/11/2026 (pedido "só exibir telas com permissão"): o curinga '*' era
+  // tratado como concessão universal em QUALQUER grupo — o grupo Suprimentos
+  // tinha '*' com ver:true (herdado da seed do Auditor) e via tudo. Agora o
+  // curinga só vale para Admin; grupo não-Admin precisa da entrada específica
+  // do módulo (fail-closed). Migração 0071/0072 remove o curinga dos demais.
+  if (p.grupoNome === 'Admin') {
+    const wildcard = p.permissoes['*']
+    if (wildcard && wildcard[acao] === true) return true
+  }
   return false
 }
 

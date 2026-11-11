@@ -16,6 +16,14 @@
 // Admin do grupo e superuser passam. Sem sessão, cai na regra da coleção.
 // Coleção fora do mapa: não é tocada.
 //
+// 11/11/2026 (pedido "só exibir telas/botões com permissão"): o curinga '*' no
+// JSON de permissões era tratado como concessão universal em QUALQUER grupo —
+// o grupo Suprimentos tinha '*' com ver:true (herdado da seed do Auditor, mig
+// 0003) e lia/criava/editava/excluía por cima de módulos NÃO concedidos, mesmo
+// depois de a sidebar esconder as telas. Regra nova: curinga só vale para o
+// grupo Admin; os demais grupos precisam da entrada ESPECÍFICA do módulo
+// (fail-closed). As migrações 0071/0072 removem o curinga dos grupos no banco.
+//
 // RUNTIME (JSVM): callbacks não enxergam função/const de topo — a tabela vai
 // LITERAL dentro de cada callback. Registrar sem coleção fixa (um handler por
 // operação) evita 18×5 registros repetidos; toda saída é `return e.next()` ou
@@ -73,7 +81,7 @@ onRecordsListRequest((e) => {
     const m = perm ? perm[mods[i]] : null
     if (m && m.ver === true) ok = true
   }
-  if (!ok && perm && perm['*'] && perm['*'].ver === true) ok = true
+  if (!ok && perm && perm['*'] && perm['*'].ver === true && nome === 'Admin') ok = true
   if (!ok) throw new ForbiddenError('Seu grupo nao tem acesso a este modulo do portal.')
   return e.next()
 })
@@ -130,7 +138,7 @@ onRecordViewRequest((e) => {
     const m = perm ? perm[mods[i]] : null
     if (m && m.ver === true) ok = true
   }
-  if (!ok && perm && perm['*'] && perm['*'].ver === true) ok = true
+  if (!ok && perm && perm['*'] && perm['*'].ver === true && nome === 'Admin') ok = true
   if (!ok) throw new ForbiddenError('Seu grupo nao tem acesso a este modulo do portal.')
   return e.next()
 })
@@ -177,7 +185,7 @@ onRecordCreateRequest((e) => {
   let ok = false
   const m = perm ? perm[cfg[0]] : null
   if (m && m.criar === true) ok = true
-  if (!ok && perm && perm['*'] && perm['*'].criar === true) ok = true
+  if (!ok && perm && perm['*'] && perm['*'].criar === true && nome === 'Admin') ok = true
   try {
     const b = perm && perm['botoes'] ? perm['botoes'][cfg[1]] : null
     if (Array.isArray(b)) {
@@ -231,7 +239,7 @@ onRecordUpdateRequest((e) => {
   let ok = false
   const m = perm ? perm[cfg[0]] : null
   if (m && m.editar === true) ok = true
-  if (!ok && perm && perm['*'] && perm['*'].editar === true) ok = true
+  if (!ok && perm && perm['*'] && perm['*'].editar === true && nome === 'Admin') ok = true
   try {
     const b = perm && perm['botoes'] ? perm['botoes'][cfg[1]] : null
     if (Array.isArray(b)) {
@@ -285,7 +293,7 @@ onRecordDeleteRequest((e) => {
   let ok = false
   const m = perm ? perm[cfg[0]] : null
   if (m && m.excluir === true) ok = true
-  if (!ok && perm && perm['*'] && perm['*'].excluir === true) ok = true
+  if (!ok && perm && perm['*'] && perm['*'].excluir === true && nome === 'Admin') ok = true
   try {
     const b = perm && perm['botoes'] ? perm['botoes'][cfg[1]] : null
     if (Array.isArray(b)) {

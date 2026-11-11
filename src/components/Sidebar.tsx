@@ -97,7 +97,11 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
   const { selectedCompany, setSelectedCompany, empresas } = useApp()
   const navigate = useNavigate()
   const location = useLocation()
-  const [permissoes, setPermissoes] = useState<Permissoes | null>(null)
+  // 11/11/2026: 'null' = ainda carregando, 'false' = carregou sem permissões.
+  // Era 'null' como "carregado e vazio" — com permissoes=null o menuVisivel
+  // devolvia false para tudo e a sidebar piscava vazia antes de encher; pior,
+  // qualquer caminho que tratasse null como "sem restrição" mostrava tudo.
+  const [permissoes, setPermissoes] = useState<Permissoes | null | false>(null)
   const [menusDb, setMenusDb] = useState<any[] | null>(null)
   const [idiomaTick, setIdiomaTick] = useState(0)
   const [seletorEmpresas, setSeletorEmpresas] = useState(false)
@@ -114,8 +118,15 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
   }
 
   useEffect(() => {
-    carregarPermissoes().then(setPermissoes)
+    let vivo = true
+    setPermissoes(null) // troca de usuário: volta a carregar sem herdar estado
+    carregarPermissoes().then((p) => {
+      if (vivo) setPermissoes(p || false)
+    })
     carregarLogos()
+    return () => {
+      vivo = false
+    }
   }, [user])
 
   // T4d-2 (21/10): upload na tela Logomarcas reflete na sidebar NA HORA (realtime)
@@ -346,78 +357,89 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
 
       {/* Navegação — item SEM permissão fica OCULTO (Fase 3) */}
       <nav className="flex-1 px-3 py-2 space-y-4 overflow-y-auto scrollbar-none">
-        {secoesDinamicas.map((section) => {
-          const visiveis = section.items.filter((item) => menuVisivel(permissoes, item.rota))
-          if (visiveis.length === 0) return null
-          return (
-            <div key={section.title} className="space-y-1">
-              <div className="px-3 text-[11px] font-bold tracking-wider text-emerald-100/60 uppercase">
-                {section.title}
-              </div>
-              <div className="space-y-0.5">
-                {visiveis.map((item) => {
-                  const Icon = item.icon
-                  const isActive =
-                    item.rota === '/'
-                      ? location.pathname === '/'
-                      : location.pathname.startsWith(item.rota)
-                  // i18n: rótulo do dicionário pela rota (fallback = label do banco/estático)
-                  const CHAVES_I18N: Record<string, string> = {
-                    '/': 'dashboard',
-                    '/financeiro': 'financeiro',
-                    '/desempenho': 'desempenho',
-                    '/indicadores': 'indicadores',
-                    '/documentos': 'documentos',
-                    '/tarefas': 'tarefas',
-                    '/projetos': 'projetos',
-                    '/atas': 'atas',
-                    '/emails': 'emails',
-                    '/contratos': 'contratos',
-                    '/parceiros': 'parceiros',
-                    '/power-bi': 'powerbi',
-                    '/ia': 'ia',
-                    '/menus': 'menus',
-                    '/acessos': 'acessos',
-                    '/configuracoes': 'configuracoes',
-                  }
-                  const chave = CHAVES_I18N[item.rota]
-                  const rotulo = chave ? traduzir(idiomaSalvo(), chave) : item.label
+        {/* 11/11/2026: enquanto as permissões não chegam, nada é renderizado —
+            antes o primeiro paint exibia o menu completo (fail-open) e o
+            print do mobile mostrava telas não concedidas ao grupo. */}
+        {permissoes === null && (
+          <div className="px-3 py-4 text-[11px] font-medium text-emerald-100/50">
+            Carregando permissões…
+          </div>
+        )}
+        {permissoes !== null &&
+          secoesDinamicas.map((section) => {
+            const visiveis = section.items.filter((item) =>
+              menuVisivel(permissoes === false ? null : permissoes, item.rota),
+            )
+            if (visiveis.length === 0) return null
+            return (
+              <div key={section.title} className="space-y-1">
+                <div className="px-3 text-[11px] font-bold tracking-wider text-emerald-100/60 uppercase">
+                  {section.title}
+                </div>
+                <div className="space-y-0.5">
+                  {visiveis.map((item) => {
+                    const Icon = item.icon
+                    const isActive =
+                      item.rota === '/'
+                        ? location.pathname === '/'
+                        : location.pathname.startsWith(item.rota)
+                    // i18n: rótulo do dicionário pela rota (fallback = label do banco/estático)
+                    const CHAVES_I18N: Record<string, string> = {
+                      '/': 'dashboard',
+                      '/financeiro': 'financeiro',
+                      '/desempenho': 'desempenho',
+                      '/indicadores': 'indicadores',
+                      '/documentos': 'documentos',
+                      '/tarefas': 'tarefas',
+                      '/projetos': 'projetos',
+                      '/atas': 'atas',
+                      '/emails': 'emails',
+                      '/contratos': 'contratos',
+                      '/parceiros': 'parceiros',
+                      '/power-bi': 'powerbi',
+                      '/ia': 'ia',
+                      '/menus': 'menus',
+                      '/acessos': 'acessos',
+                      '/configuracoes': 'configuracoes',
+                    }
+                    const chave = CHAVES_I18N[item.rota]
+                    const rotulo = chave ? traduzir(idiomaSalvo(), chave) : item.label
 
-                  return (
-                    <button
-                      key={item.label}
-                      type="button"
-                      onClick={() => {
-                        navigate(item.rota)
-                        if (onItemClick) onItemClick()
-                      }}
-                      className={cn(
-                        'group relative flex items-center w-full h-[36px] px-3 gap-3 rounded-lg text-[13.5px] font-medium transition-all duration-150 text-left',
-                        isActive
-                          ? 'bg-white/15 text-white shadow-sm'
-                          : 'text-emerald-50/80 hover:text-white hover:bg-white/5',
-                      )}
-                    >
-                      {isActive && (
-                        <span className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-emerald-300 rounded-r transition-all duration-150" />
-                      )}
-
-                      <Icon
+                    return (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => {
+                          navigate(item.rota)
+                          if (onItemClick) onItemClick()
+                        }}
                         className={cn(
-                          'h-4 w-4 shrink-0 transition-colors',
+                          'group relative flex items-center w-full h-[36px] px-3 gap-3 rounded-lg text-[13.5px] font-medium transition-all duration-150 text-left',
                           isActive
-                            ? 'text-emerald-300'
-                            : 'text-emerald-100/70 group-hover:text-white',
+                            ? 'bg-white/15 text-white shadow-sm'
+                            : 'text-emerald-50/80 hover:text-white hover:bg-white/5',
                         )}
-                      />
-                      <span className="truncate">{rotulo}</span>
-                    </button>
-                  )
-                })}
+                      >
+                        {isActive && (
+                          <span className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-emerald-300 rounded-r transition-all duration-150" />
+                        )}
+
+                        <Icon
+                          className={cn(
+                            'h-4 w-4 shrink-0 transition-colors',
+                            isActive
+                              ? 'text-emerald-300'
+                              : 'text-emerald-100/70 group-hover:text-white',
+                          )}
+                        />
+                        <span className="truncate">{rotulo}</span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
       </nav>
 
       {/* Rodapé: usuário logado + Sair */}

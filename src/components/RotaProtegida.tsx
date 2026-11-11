@@ -42,7 +42,9 @@ function AcessoNegado() {
 
 /**
  * Guard de rota por permissão.
- * - Sem permissões carregadas: libera (não pisca bloqueio durante o load).
+ * - Sem permissões carregadas: MANTÉM AGUARDANDO (antes liberava — fail-open;
+ *   11/11/2026, pedido "só acessar telas concedidas": agora espera o load
+ *   terminar e decide com as permissões reais; se nunca chegarem, bloqueia).
  * - Admin: libera tudo.
  * - Demais: exige `ver` no módulo da rota (MENU_MODULOS); se a rota exata não
  *   estiver mapeada, tenta a raiz (ex.: /integracoes/sankhya -> /integracoes).
