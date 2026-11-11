@@ -49,7 +49,11 @@
 // nova branch de importação de Seguros lendo apólice/endosso; parser da Pauta de Audiências
 // corrigido (cabeçalho não vira registro, data BR sem troca dia/mês); CRUD manual de audiências;
 // botão "Enviar Login" no CAC.
-const CACHE_NAME = 'pge-pwa-v43'
+// v44 (11/11/2026): rebuild de conferência + purga de cache do PWA. Inclui o reparo
+// dos campos de sistema created/updated nas coleções convencoes e seguros (migração 0065),
+// que era a causa de a grade de Convenções e Seguros ficar vazia; modal de Nova Convenção
+// mais largo e diálogos amigáveis de confirmação em "Enviar Login" e exclusão de audiência.
+const CACHE_NAME = 'pge-pwa-v44'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
