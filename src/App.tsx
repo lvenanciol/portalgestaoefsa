@@ -7,6 +7,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { RotaProtegida } from '@/components/RotaProtegida'
 import Index from './pages/Index'
 import Login from './pages/Login'
+import ResetPassword from './pages/ResetPassword'
 import ControleAcessos from './pages/ControleAcessos'
 import FinanceiroPage from './pages/FinanceiroPage'
 import DesempenhoPage from './pages/DesempenhoPage'
@@ -38,6 +39,10 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
+      {/* PÚBLICA: o e-mail de redefinição aponta para /reset-password (placeholder
+          {RESET_URL}) e a rota não existia — o link caía no NotFound. Quem chega
+          aqui ainda não tem sessão, por isso NÃO fica dentro do ProtectedRoute. */}
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route
         element={
           <ProtectedRoute>
