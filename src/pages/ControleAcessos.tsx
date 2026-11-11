@@ -191,7 +191,7 @@ export default function ControleAcessos() {
 
   // ===== CAC (11/11/2026) — parceiro vinculado + CRUD de grupos =====
   const [fParceiro, setFParceiro] = useState('')
-  const [buscaParceiro, setBuscaParceiro] = useState('')
+
   const [opcoesParceiro, setOpcoesParceiro] = useState<ParceiroOpcao[]>([])
   const [carregandoParceiros, setCarregandoParceiros] = useState(false)
   const [dialogGrupo, setDialogGrupo] = useState<Grupo | 'novo' | null>(null)
@@ -231,23 +231,24 @@ export default function ControleAcessos() {
     carregar()
   }, [carregar])
 
-  // Busca parceiros no servidor (nome/CNPJ/e-mail) com debounce
+  // Carrega os parceiros ao abrir o dialog.
+  // (11/11/2026) O campo de busca foi removido a pedido do dono — a lista
+  // completa vem direto no dropdown, sem termo.
   useEffect(() => {
     if (!dialogNovo && !dialogEditar) return
     let vivo = true
-    const t = setTimeout(async () => {
-      setCarregandoParceiros(true)
-      const lista = await listarParceiros(buscaParceiro, 20)
-      if (vivo) {
-        setOpcoesParceiro(lista)
-        setCarregandoParceiros(false)
-      }
-    }, 300)
+    setCarregandoParceiros(true)
+    listarParceiros('', 200)
+      .then((lista) => {
+        if (vivo) setOpcoesParceiro(lista)
+      })
+      .finally(() => {
+        if (vivo) setCarregandoParceiros(false)
+      })
     return () => {
       vivo = false
-      clearTimeout(t)
     }
-  }, [buscaParceiro, dialogNovo, dialogEditar])
+  }, [dialogNovo, dialogEditar])
 
   // ===== CRUD de Grupos de permissão (tarefa CAC) =====
   const abrirNovoGrupo = () => {
@@ -314,7 +315,6 @@ export default function ControleAcessos() {
     setFCentroResultadoCodigo('')
     setFObservacao('')
     setFParceiro('')
-    setBuscaParceiro('')
     setFUnidade('')
     setFAtivo(true)
     setFParceiro('')
@@ -816,58 +816,53 @@ export default function ControleAcessos() {
               <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                 1. Parceiro / Contato vinculado
               </Label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-                  <Input
-                    value={buscaParceiro}
-                    onChange={(e) => setBuscaParceiro(e.target.value)}
-                    placeholder="Buscar por nome, CNPJ ou e-mail…"
-                    className="h-10 bg-gray-50 pl-8"
+              {/* (11/11/2026) Campo de busca removido: era redundante com o
+                  próprio dropdown, que já lista os parceiros. O e-mail do
+                  usuário passa a ser DERIVADO deste vínculo. */}
+              <Select
+                value={fParceiro || 'nenhum'}
+                onValueChange={(v) => {
+                  if (v === 'nenhum') {
+                    setFParceiro('')
+                    setFEmail('')
+                    return
+                  }
+                  setFParceiro(v)
+                  // Preenche a tela com os dados do parceiro selecionado
+                  const p = opcoesParceiro.find((o) => o.id === v)
+                  if (p) {
+                    if (p.nome) setFNome(p.nome)
+                    setFEmail(String(p.email || '').toLowerCase())
+                    if (p.cargo) setFCargo(p.cargo)
+                    if (p.telefone) setFTelefone(p.telefone)
+                    if (p.whatsapp) setFWhatsapp(p.whatsapp)
+                    if (p.centro_resultado) setFCentroResultado(p.centro_resultado)
+                    if (p.centro_resultado_codigo)
+                      setFCentroResultadoCodigo(p.centro_resultado_codigo)
+                    if (p.observacao) setFObservacao(p.observacao)
+                  }
+                }}
+              >
+                <SelectTrigger className="h-10 bg-gray-50 w-full">
+                  <SelectValue
+                    placeholder={carregandoParceiros ? 'Carregando…' : 'Selecione o parceiro'}
                   />
-                </div>
-                <Select
-                  value={fParceiro || 'nenhum'}
-                  onValueChange={(v) => {
-                    if (v === 'nenhum') {
-                      setFParceiro('')
-                      return
-                    }
-                    setFParceiro(v)
-                    // Preenche a tela com os dados do parceiro selecionado
-                    const p = opcoesParceiro.find((o) => o.id === v)
-                    if (p) {
-                      if (p.nome) setFNome(p.nome)
-                      if (p.email) setFEmail(String(p.email).toLowerCase())
-                      if (p.cargo) setFCargo(p.cargo)
-                      if (p.telefone) setFTelefone(p.telefone)
-                      if (p.whatsapp) setFWhatsapp(p.whatsapp)
-                      if (p.centro_resultado) setFCentroResultado(p.centro_resultado)
-                      if (p.centro_resultado_codigo)
-                        setFCentroResultadoCodigo(p.centro_resultado_codigo)
-                      if (p.observacao) setFObservacao(p.observacao)
-                    }
-                  }}
-                >
-                  <SelectTrigger className="h-10 bg-gray-50 w-[46%]">
-                    <SelectValue placeholder={carregandoParceiros ? 'Buscando…' : 'Selecione'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nenhum">Sem vínculo</SelectItem>
-                    {opcoesParceiro.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.nome}
-                        {p.cnpj ? ` · ${p.cnpj}` : ''}
-                      </SelectItem>
-                    ))}
-                    {!carregandoParceiros && opcoesParceiro.length === 0 && (
-                      <div className="px-2 py-1.5 text-[11px] text-gray-500">
-                        Nenhum parceiro encontrado.
-                      </div>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nenhum">Sem vínculo</SelectItem>
+                  {opcoesParceiro.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.nome}
+                      {p.cnpj ? ` · ${p.cnpj}` : ''}
+                    </SelectItem>
+                  ))}
+                  {!carregandoParceiros && opcoesParceiro.length === 0 && (
+                    <div className="px-2 py-1.5 text-[11px] text-gray-500">
+                      Nenhum parceiro cadastrado.
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
               {fParceiro ? (
                 <span className="text-[11px] text-emerald-700 font-medium">
                   Vinculado: {opcoesParceiro.find((p) => p.id === fParceiro)?.nome || fParceiro}
@@ -891,19 +886,36 @@ export default function ControleAcessos() {
                 className="h-10 bg-gray-50"
               />
             </div>
+            {/* ===== 3. E-MAIL: DERIVADO DO PARCEIRO =====
+                (11/11/2026) O e-mail de acesso deixou de ser digitado: ele vem
+                do vínculo com Parceiros & Contatos, que é a fonte de verdade do
+                cadastro. Sem vínculo não há e-mail — a conta não pode ser criada. */}
+            <div className="grid gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                3. E-mail de acesso
+              </Label>
+              <Input
+                type="email"
+                value={fEmail}
+                readOnly
+                disabled
+                placeholder="Selecione um parceiro para obter o e-mail"
+                className="h-10 bg-gray-100 text-gray-700 cursor-not-allowed"
+              />
+              {fEmail ? (
+                <span className="text-[11px] text-emerald-700 font-medium">
+                  Vem do parceiro vinculado. Para alterar, edite o e-mail em Parceiros &amp;
+                  Contatos.
+                </span>
+              ) : (
+                <span className="text-[11px] text-amber-700">
+                  Obrigatório: vincule um parceiro que tenha e-mail cadastrado.
+                </span>
+              )}
+            </div>
+
             {!dialogEditar && (
               <>
-                <div className="grid gap-1.5">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                    E-mail
-                  </Label>
-                  <Input
-                    type="email"
-                    value={fEmail}
-                    onChange={(e) => setFEmail(e.target.value)}
-                    className="h-10 bg-gray-50"
-                  />
-                </div>
                 <div className="grid gap-1.5">
                   <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
                     Senha inicial
