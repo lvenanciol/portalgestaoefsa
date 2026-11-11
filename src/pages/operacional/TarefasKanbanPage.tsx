@@ -52,6 +52,7 @@ import { TarefaFormDialog } from '@/components/operacional/TarefaFormDialog'
 import { EmpresaIcon, useEmpresaLogos } from '@/components/common/EmpresaIcon'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
+import { usePermissoes } from '@/hooks/use-permissoes'
 import { useApp } from '@/context/AppContext'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -108,6 +109,9 @@ const fmtData = (s?: string) => {
 
 export default function TarefasKanbanPage() {
   const { user } = useAuth()
+  // Grupo do usuário: admin enxerga todas as tarefas; os demais só as suas.
+  const { permissoes } = usePermissoes()
+  const grupoUsuario = permissoes?.grupoNome || ''
   const { empresas, selectedCompany } = useApp()
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>('__default__')
   const [itens, setItens] = useState<any[]>([])
@@ -168,9 +172,27 @@ export default function TarefasKanbanPage() {
     try {
       const r = await pb.collection('tarefas').getFullList({
         sort: '-created',
-        expand: 'projeto_id,marco_id',
+        expand: 'projeto_id,marco_id,responsaveis_ids',
       })
-      setItens(r as any[])
+      // (11/11/2026) ISOLAMENTO POR USUÁRIO — fail-closed.
+      // Antes: getFullList() sem filtro mostrava as tarefas de TODOS os usuários,
+      // e a regra do banco era "@request.auth.id != ''" (qualquer logado lê tudo).
+      // Agora: só entra na tela a tarefa em que o usuário é responsável ou criador.
+      // Atenção ao inverso: aqui NÃO se usa "sem responsável = visível" — tarefa
+      // sem vínculo aparece apenas para quem a criou (senão vazaria para todos).
+      const meuId = String((user as any)?.id || '')
+      const meuEmail = String((user as any)?.email || '').toLowerCase()
+      const isAdmin = grupoUsuario === 'Admin'
+      const visiveis = isAdmin
+        ? (r as any[])
+        : (r as any[]).filter((t) => {
+            const ids = Array.isArray(t.responsaveis_ids) ? t.responsaveis_ids : []
+            if (meuId && ids.includes(meuId)) return true
+            const criador = String(t.criado_por || '').toLowerCase()
+            if (meuEmail && criador === meuEmail) return true
+            return false
+          })
+      setItens(visiveis)
       setErro('')
     } catch (e) {
       setErro(String(e))
