@@ -46,15 +46,23 @@ function AcessoNegado() {
  * - Admin: libera tudo.
  * - Demais: exige `ver` no módulo da rota (MENU_MODULOS); se a rota exata não
  *   estiver mapeada, tenta a raiz (ex.: /integracoes/sankhya -> /integracoes).
- * - Rota não mapeada em nenhum nível: libera, para não quebrar telas novas que
- *   ainda não foram incluídas no mapa de módulos.
+ * - Rota não mapeada em nenhum nível: NEGA para quem não é Admin.
+ *
+ * MUDANÇA 11/11/2026 (pedido do dono: "só acessa as telas concedidas ao grupo"):
+ * o guard era FAIL-OPEN — rota fora do mapa liberava, e com isso /logomarcas e
+ * /integracoes (que faltavam no MENU_MODULOS) entravam por URL digitada em
+ * qualquer grupo. Agora é FAIL-CLOSED: sem módulo declarado, sem acesso.
+ * Tela nova precisa ser registrada em MENU_MODULOS para valer a alguém que não
+ * seja Admin — é o preço consciente de não vazar tela por esquecimento.
  */
 export function RotaProtegida({ children }: { children: ReactNode }) {
   const { carregando, permissoes } = usePermissoes()
   const location = useLocation()
 
+  // Enquanto carrega não decidimos nada (evita piscar/bloquear no F5).
   if (carregando) return <>{children}</>
-  if (!permissoes) return <>{children}</>
+  // Sem permissões não há como provar concessão: nega em vez de liberar.
+  if (!permissoes) return <AcessoNegado />
   if (permissoes.grupoNome === 'Admin') return <>{children}</>
 
   const caminho = location.pathname
@@ -68,5 +76,5 @@ export function RotaProtegida({ children }: { children: ReactNode }) {
     return menuVisivel(permissoes, raiz) ? <>{children}</> : <AcessoNegado />
   }
 
-  return <>{children}</>
+  return <AcessoNegado />
 }

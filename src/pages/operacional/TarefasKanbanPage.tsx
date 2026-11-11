@@ -53,6 +53,7 @@ import { EmpresaIcon, useEmpresaLogos } from '@/components/common/EmpresaIcon'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { usePermissoes } from '@/hooks/use-permissoes'
+import { useBotoes } from '@/services/botoes-service'
 import { useApp } from '@/context/AppContext'
 import { toast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
@@ -110,7 +111,15 @@ const fmtData = (s?: string) => {
 export default function TarefasKanbanPage() {
   const { user } = useAuth()
   // Grupo do usuário: admin enxerga todas as tarefas; os demais só as suas.
-  const { permissoes } = usePermissoes()
+  const { permissoes, can } = usePermissoes()
+  // Gate de BOTÕES (Fase 9) + matriz CRUD do Controle de Acessos.
+  // `pode` esconde o botão oculto na tela ControlAccessos; `can` respeita a
+  // grade CRUD (e a coluna TODAS). Os dois juntos = botão só aparece com
+  // concessão explícita do grupo.
+  const { pode } = useBotoes()
+  const podeNovo = pode('tarefas', 'novo') && can('tarefas-agenda', 'criar')
+  const podeEditar = pode('tarefas', 'editar') && can('tarefas-agenda', 'editar')
+  const podeExcluir = pode('tarefas', 'excluir') && can('tarefas-agenda', 'excluir')
   const grupoUsuario = permissoes?.grupoNome || ''
   const { empresas, selectedCompany } = useApp()
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>('__default__')
@@ -1195,6 +1204,7 @@ export default function TarefasKanbanPage() {
           const textoHistorico = `Tarefa criada via captura por IA: «${fraseCapturaIa.trim()}»`
           const chatFd = new FormData()
           chatFd.append('tarefa_id', tarefaGravadaId)
+          chatFd.append('tarefa', tarefaGravadaId)
           chatFd.append('autor', user?.email || 'Assistente IA')
           chatFd.append('autor_tipo', 'ia')
           chatFd.append('texto', textoHistorico)
@@ -1262,6 +1272,9 @@ export default function TarefasKanbanPage() {
     try {
       const fd = new FormData()
       fd.append('tarefa_id', detalhe.id)
+      // Regra de acesso do chat (migração 0070) exige a RELAÇÃO `tarefa`:
+      // `tarefa_id` é texto e não serve para o filtro do PocketBase.
+      fd.append('tarefa', detalhe.id)
       fd.append('autor', user?.email || '')
       fd.append('autor_tipo', 'portal')
       if (novoChat.trim()) fd.append('texto', novoChat.trim())
@@ -1734,13 +1747,15 @@ export default function TarefasKanbanPage() {
             disabled={loading || itensLista.length === 0}
           />
 
-          {/* Botão Nova tarefa */}
-          <Button
-            onClick={() => abrirNova('triagem')}
-            className="h-9 px-3.5 text-xs font-semibold bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs rounded-lg flex items-center gap-1.5 cursor-pointer shrink-0"
-          >
-            <Plus className="h-4 w-4" /> Nova tarefa
-          </Button>
+          {/* Botão Nova tarefa — só com permissão de criar do grupo */}
+          {podeNovo && (
+            <Button
+              onClick={() => abrirNova('triagem')}
+              className="h-9 px-3.5 text-xs font-semibold bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs rounded-lg flex items-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <Plus className="h-4 w-4" /> Nova tarefa
+            </Button>
+          )}
         </div>
 
         {/* Limpar filtros ativos se houver */}
@@ -1895,7 +1910,7 @@ export default function TarefasKanbanPage() {
                       </span>
                     )}
 
-                    {isTriagem && (
+                    {isTriagem && podeNovo && (
                       <button
                         type="button"
                         onClick={() => abrirNova('triagem')}
@@ -2016,21 +2031,25 @@ export default function TarefasKanbanPage() {
 
                                 <div className="my-1 border-t border-gray-100" />
 
-                                <DropdownMenuItem
-                                  onClick={() => abrirEditar(t)}
-                                  className="text-xs font-medium cursor-pointer flex items-center gap-2 text-gray-700"
-                                >
-                                  <Pencil className="h-3.5 w-3.5 text-gray-500" />
-                                  <span>Editar tarefa</span>
-                                </DropdownMenuItem>
+                                {podeEditar && (
+                                  <DropdownMenuItem
+                                    onClick={() => abrirEditar(t)}
+                                    className="text-xs font-medium cursor-pointer flex items-center gap-2 text-gray-700"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5 text-gray-500" />
+                                    <span>Editar tarefa</span>
+                                  </DropdownMenuItem>
+                                )}
 
-                                <DropdownMenuItem
-                                  onClick={() => setExcluindoTarefa(t)}
-                                  className="text-xs font-medium cursor-pointer flex items-center gap-2 text-red-600 focus:text-red-700 focus:bg-red-50"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                                  <span>Excluir tarefa</span>
-                                </DropdownMenuItem>
+                                {podeExcluir && (
+                                  <DropdownMenuItem
+                                    onClick={() => setExcluindoTarefa(t)}
+                                    className="text-xs font-medium cursor-pointer flex items-center gap-2 text-red-600 focus:text-red-700 focus:bg-red-50"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                                    <span>Excluir tarefa</span>
+                                  </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>

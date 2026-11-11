@@ -99,7 +99,7 @@ const ABAS_POR_TELA: Record<string, { key: string; label: string }[]> = {
     { key: 'real', label: 'Aba Real (Sankhya)' },
     { key: 'dre', label: 'Aba DRE' },
     { key: 'fluxo', label: 'Aba Fluxo de Caixa' },
-    { key: 'apar', label: 'Aba A/P & A/R' },
+    { key: 'ap_ar', label: 'Aba A Pagar & Receber' },
     { key: 'balancete', label: 'Aba Balancete' },
     { key: 'fechamento', label: 'Aba Fechamento' },
     { key: 'importar', label: 'Aba Importar' },

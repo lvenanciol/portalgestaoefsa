@@ -18,6 +18,7 @@ import BalancetePage from './financeiro/BalancetePage'
 import FechamentoPage from './financeiro/FechamentoPage'
 import ImportarDemonstrativos from './financeiro/ImportarDemonstrativos'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { useAbas } from '@/hooks/use-abas'
 
 // Fase 8 — Financeiro & Contábil: módulos em abas (Real, DRE, Fluxo,
 // A/P-A/R, Balancete, Fechamento) + Importação de demonstrativos.
@@ -33,7 +34,16 @@ const ABAS = [
 ]
 
 export default function FinanceiroPage() {
+  // Gate de ABAS por grupo (Controle de Acessos → linha Financeiro → ABAS).
+  // As chaves abaixo são as MESMAS de ABAS_POR_TELA.financeiro no CAC; antes
+  // a coluna gravava 'apar' e a tela usava 'ap_ar', então desmarcar a aba
+  // A Pagar & Receber não escondia nada.
+  const { filtrarAbas } = useAbas('financeiro')
+  const abasVisiveis = filtrarAbas(ABAS.map((a) => a.value))
   const [aba, setAba] = useState('real')
+
+  // Aba ativa precisa existir para o grupo; senão cai na primeira liberada.
+  const abaEfetiva = abasVisiveis.includes(aba) ? aba : abasVisiveis[0] || ''
 
   return (
     <div className="space-y-5 pb-8">
@@ -54,9 +64,9 @@ export default function FinanceiroPage() {
         <div className="hidden sm:block" />
       </div>
 
-      <Tabs value={aba} onValueChange={setAba}>
+      <Tabs value={abaEfetiva} onValueChange={setAba}>
         <TabsList className="bg-gray-100 p-1 rounded-lg h-10 w-full justify-start overflow-x-auto">
-          {ABAS.map((a) => {
+          {ABAS.filter((a) => abasVisiveis.includes(a.value)).map((a) => {
             const Icon = a.icon
             return (
               <TabsTrigger

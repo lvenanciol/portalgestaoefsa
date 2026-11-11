@@ -56,8 +56,16 @@ export function limparCachePermissoes() {
 
 // can('financeiro-contabil', 'ver') → boolean
 // '*' no módulo = catch-all do grupo (Admin/Auditor)
+//
+// 11/11/2026 — a MATRIZ CRUD do Controle de Acessos passou a valer de verdade.
+// Antes ela era gravada em permissoes.botoes['crud_<tela>_<acao>:off'] e
+// NINGUÉM lia: o admin desmarcava "Editar" na tela e o botão continuava lá.
+// Agora a marcação é uma REVOGAÇÃO que se sobrepõe ao JSON de módulos —
+// nunca amplia acesso, só retira (fail-safe na direção segura).
 export function can(p: Permissoes | null, modulo: string, acao: string): boolean {
   if (!p || !p.permissoes) return false
+  const tela = MODULO_TELA[modulo]
+  if (tela && crudNegado(p, tela, acao)) return false
   const mod = p.permissoes[modulo]
   if (mod && mod[acao] === true) return true
   const wildcard = p.permissoes['*']
@@ -65,7 +73,45 @@ export function can(p: Permissoes | null, modulo: string, acao: string): boolean
   return false
 }
 
-// Menus visíveis: item oculto quando o grupo não tem 'ver' no módulo da rota
+// Nome do módulo (JSON de permissões) → chave da tela (BUTTON_GATES).
+function MODULO_TELA_LOOKUP(): Record<string, string> {
+  return {
+    'dashboard-executivo': 'dashboard',
+    'financeiro-contabil': 'financeiro',
+    'desempenho-unidade': 'desempenho',
+    indicadores: 'indicadores',
+    'documentos-importacoes': 'documentos',
+    'tarefas-agenda': 'tarefas',
+    projetos: 'projetos',
+    'atas-reunioes': 'atas',
+    emails: 'emails',
+    contratos: 'contratos',
+    'power-bi': 'power-bi',
+    'ia-gemini': 'ia',
+    'arvore-menus': 'menus',
+    'controle-acessos': 'acessos',
+    configuracoes: 'configuracoes',
+  }
+}
+const MODULO_TELA = MODULO_TELA_LOOKUP()
+
+// A matriz marca o que está HABILITADO; o armazenamento guarda o que está
+// OCULTO com o sufixo ':off'. Este helper responde "esta operação foi revogada?".
+function crudNegado(p: Permissoes | null, tela: string, acao: string): boolean {
+  if (!p || !p.permissoes) return false
+  const b = (p.permissoes as Record<string, unknown>)['botoes']
+  if (!b || typeof b !== 'object') return false
+  const lista = (b as Record<string, unknown>)[tela]
+  if (!Array.isArray(lista)) return false
+  const chave = 'crud_' + tela + '_' + acao + ':off'
+  const colTodas = 'crud_' + tela + '_todas:off'
+  return lista.map(String).includes(chave) || lista.map(String).includes(colTodas)
+}
+
+// Menus visíveis: item oculto quando o grupo não tem 'ver' no módulo da rota.
+// FAIL-CLOSED: rota sem módulo declarado NÃO aparece para quem não é Admin —
+// /logomarcas e /integracoes ficavam de fora do mapa e por isso entravam por
+// URL digitada em qualquer grupo.
 export const MENU_MODULOS: Record<string, string> = {
   '/': 'dashboard-executivo',
   '/financeiro': 'financeiro-contabil',
@@ -78,6 +124,8 @@ export const MENU_MODULOS: Record<string, string> = {
   '/emails': 'emails',
   '/contratos': 'contratos',
   '/parceiros': 'parceiros',
+  '/logomarcas': 'logomarcas',
+  '/integracoes': 'integracoes',
   '/power-bi': 'power-bi',
   '/ia': 'ia-gemini',
   '/menus': 'arvore-menus',
