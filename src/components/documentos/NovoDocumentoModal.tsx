@@ -459,13 +459,18 @@ export function NovoDocumentoModal({
         const rec = await pb.collection('convencoes').create({
           titulo: form.titulo,
           empresa: form.empresa,
-          sindicato: form.sindicato || '',
+          // Schema REAL da coleção `convencoes` (migração 0060):
+          // entidade_sindical / parte_patronal / reajuste_percentual / piso_salarial
+          // Os nomes antigos (sindicato, percentual_reajuste_texto, abrangencia) não
+          // existem na coleção e faziam o create falhar com 400.
+          entidade_sindical: form.entidade_sindical || form.sindicato || '',
+          parte_patronal: form.parte_patronal || form.abrangencia || '',
           vigencia_inicio: form.vigencia_inicio ? `${form.vigencia_inicio} 00:00:00.000Z` : null,
           vigencia_fim: form.vigencia_fim ? `${form.vigencia_fim} 00:00:00.000Z` : null,
           data_base: form.data_base || '',
-          percentual_reajuste: parseNum(form.percentual_reajuste),
-          percentual_reajuste_texto: form.percentual_reajuste_texto || '',
-          abrangencia: form.abrangencia || '',
+          reajuste_percentual: parseNum(form.reajuste_percentual ?? form.percentual_reajuste_texto),
+          piso_salarial: parseNum(form.piso_salarial),
+          responsaveis: form.responsaveis || '',
           status: form.status || 'ativo',
           observacoes: form.observacoes || '',
         })
@@ -1170,12 +1175,10 @@ export function NovoDocumentoModal({
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <Label className="text-[11px] font-bold text-gray-700">
-                    Sindicato / Entidade
-                  </Label>
+                  <Label className="text-[11px] font-bold text-gray-700">Entidade Sindical</Label>
                   <Input
-                    value={form.sindicato || ''}
-                    onChange={(e) => setCampo('sindicato', e.target.value)}
+                    value={form.entidade_sindical || ''}
+                    onChange={(e) => setCampo('entidade_sindical', e.target.value)}
                     placeholder="SINDICOMERCIÁRIOS"
                     className="h-9 text-xs bg-gray-50"
                   />
@@ -1220,17 +1223,18 @@ export function NovoDocumentoModal({
                     Reajuste Acordado (%)
                   </Label>
                   <Input
-                    value={form.percentual_reajuste_texto || ''}
-                    onChange={(e) => setCampo('percentual_reajuste_texto', e.target.value)}
-                    placeholder="Ex.: 5,2% ou conforme cláusula"
+                    inputMode="decimal"
+                    value={form.reajuste_percentual || ''}
+                    onChange={(e) => setCampo('reajuste_percentual', e.target.value)}
+                    placeholder="Ex.: 5.2"
                     className="h-9 text-xs bg-gray-50"
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-[11px] font-bold text-gray-700">Abrangência</Label>
+                  <Label className="text-[11px] font-bold text-gray-700">Parte Patronal</Label>
                   <Input
-                    value={form.abrangencia || ''}
-                    onChange={(e) => setCampo('abrangencia', e.target.value)}
+                    value={form.parte_patronal || ''}
+                    onChange={(e) => setCampo('parte_patronal', e.target.value)}
                     placeholder="Ex.: Comércio de Vitória/ES"
                     className="h-9 text-xs bg-gray-50"
                   />
