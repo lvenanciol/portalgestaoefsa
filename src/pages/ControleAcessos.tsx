@@ -711,7 +711,6 @@ export default function ControleAcessos() {
                 <span className="text-[11px] text-emerald-700 font-medium">
                   Vinculado: {opcoesParceiro.find((p) => p.id === fParceiro)?.nome || fParceiro}
                 </span>
-              )}
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
