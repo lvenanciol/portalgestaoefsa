@@ -1,5 +1,15 @@
 import { useEffect, useState, useCallback } from 'react'
-import { ShieldCheck, Plus, Loader2, Search, X, MousePointerClick, Mail } from 'lucide-react'
+import {
+  ShieldCheck,
+  Plus,
+  Loader2,
+  Search,
+  X,
+  MousePointerClick,
+  Mail,
+  CheckCircle2,
+  AlertTriangle,
+} from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import {
   useBotoes,
@@ -41,6 +51,16 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { fmtDataBRT } from '@/lib/brt'
 import { cn } from '@/lib/utils'
@@ -370,26 +390,38 @@ export default function ControleAcessos() {
   // e-mail: mandá-la em claro criaria uma credencial permanente na caixa de
   // entrada. Quem define a senha é o admin, no cadastro.
   const [enviandoLoginId, setEnviandoLoginId] = useState<string | null>(null)
+  // Diálogo de confirmação do design system (no lugar do window.confirm nativo)
+  const [confirmarLogin, setConfirmarLogin] = useState<UsuarioLista | null>(null)
+  const [resultadoLogin, setResultadoLogin] = useState<{
+    ok: boolean
+    nome: string
+    email: string
+    motivo?: string
+  } | null>(null)
 
-  const enviarLogin = async (u: UsuarioLista) => {
-    if (
-      !window.confirm(
-        `Enviar o acesso do Portal para ${u.nome} <${u.email}>?\n\nO e-mail leva o endereço do Portal, o login e as instruções de primeiro acesso. A senha NÃO é enviada.`,
-      )
-    ) {
-      return
-    }
+  const executarEnvioLogin = async (u: UsuarioLista) => {
+    setConfirmarLogin(null)
     setEnviandoLoginId(u.id)
     setErro('')
     try {
       const res = await enviarLoginUsuario(u.id)
       if (res && res.ok) {
-        window.alert(`Acesso enviado para ${res.para || u.email}.`)
+        setResultadoLogin({ ok: true, nome: u.nome, email: res.para || u.email })
       } else {
-        setErro(res?.erro || 'Falha ao enviar o e-mail de acesso.')
+        setResultadoLogin({
+          ok: false,
+          nome: u.nome,
+          email: u.email,
+          motivo: res?.erro || 'O servidor não confirmou o envio.',
+        })
       }
     } catch (e) {
-      setErro(getErrorMessage(e) || 'Erro ao enviar o login.')
+      setResultadoLogin({
+        ok: false,
+        nome: u.nome,
+        email: u.email,
+        motivo: getErrorMessage(e) || 'Erro ao enviar o login.',
+      })
     } finally {
       setEnviandoLoginId(null)
     }
@@ -614,7 +646,7 @@ export default function ControleAcessos() {
                               className="h-8 text-xs text-[#1B5E20] hover:text-[#0F3D13]"
                               title="Enviar e-mail com o acesso ao Portal"
                               disabled={enviandoLoginId === u.id}
-                              onClick={() => enviarLogin(u)}
+                              onClick={() => setConfirmarLogin(u)}
                             >
                               {enviandoLoginId === u.id ? (
                                 <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
@@ -1155,6 +1187,99 @@ export default function ControleAcessos() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmação amigável — Enviar Login */}
+      <AlertDialog
+        open={confirmarLogin !== null}
+        onOpenChange={(o) => !o && setConfirmarLogin(null)}
+      >
+        <AlertDialogContent className="bg-white max-w-md rounded-2xl border border-gray-200">
+          <AlertDialogHeader>
+            <div className="h-11 w-11 rounded-full bg-emerald-50 flex items-center justify-center text-[#1B5E20] mb-1">
+              <Mail className="h-5 w-5" />
+            </div>
+            <AlertDialogTitle className="text-base font-bold text-gray-900">
+              Enviar acesso ao Portal?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-gray-600 leading-relaxed">
+              Vamos enviar um e-mail de boas-vindas para{' '}
+              <strong className="text-gray-900">{confirmarLogin?.nome}</strong> (
+              <span className="font-mono text-[11px]">{confirmarLogin?.email}</span>).
+              <br />
+              <br />
+              O e-mail contém os dados de cadastro, o login de acesso, o link para cadastrar/trocar
+              a senha e o endereço do PGE.
+              <br />
+              <br />
+              <span className="text-amber-700">
+                Por segurança, a senha não é enviada por e-mail.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-9 text-xs">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="h-9 text-xs bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+              onClick={(ev) => {
+                ev.preventDefault()
+                if (confirmarLogin) void executarEnvioLogin(confirmarLogin)
+              }}
+            >
+              Enviar Acesso
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Retorno do envio */}
+      <AlertDialog
+        open={resultadoLogin !== null}
+        onOpenChange={(o) => !o && setResultadoLogin(null)}
+      >
+        <AlertDialogContent className="bg-white max-w-md rounded-2xl border border-gray-200">
+          <AlertDialogHeader>
+            <div
+              className={
+                'h-11 w-11 rounded-full flex items-center justify-center mb-1 ' +
+                (resultadoLogin?.ok ? 'bg-emerald-50 text-[#1B5E20]' : 'bg-rose-50 text-rose-700')
+              }
+            >
+              {resultadoLogin?.ok ? (
+                <CheckCircle2 className="h-5 w-5" />
+              ) : (
+                <AlertTriangle className="h-5 w-5" />
+              )}
+            </div>
+            <AlertDialogTitle className="text-base font-bold text-gray-900">
+              {resultadoLogin?.ok ? 'Acesso enviado' : 'Não foi possível enviar'}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-gray-600 leading-relaxed">
+              {resultadoLogin?.ok ? (
+                <>
+                  O e-mail com as instruções de acesso foi enviado para{' '}
+                  <strong className="text-gray-900">{resultadoLogin?.email}</strong>. Peça para
+                  conferir a caixa de entrada e o spam.
+                </>
+              ) : (
+                <>
+                  O envio para <strong className="text-gray-900">{resultadoLogin?.email}</strong>{' '}
+                  não foi concluído.
+                  {resultadoLogin?.motivo ? (
+                    <span className="block mt-2 font-mono text-[11px] text-rose-700 break-words">
+                      {resultadoLogin.motivo}
+                    </span>
+                  ) : null}
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction className="h-9 text-xs bg-[#1B5E20] hover:bg-[#0F3D13] text-white">
+              Entendi
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

@@ -37,6 +37,8 @@ routerAdd(
 
     const nome = usuario.getString('name') || email
     const portalUrl = 'https://portal-de-gestao-executivo-b4d94.goskip.app'
+    // Link direto para cadastro/troca de senha dentro do PGE
+    const linkSenha = portalUrl + '/configuracoes?secao=seguranca'
 
     // Grupo do usuário, quando houver (só informativo no corpo)
     let grupoNome = ''
@@ -63,9 +65,11 @@ routerAdd(
       'Primeiro acesso:\n' +
       '1. Abra o endereço acima no navegador.\n' +
       '2. Informe o e-mail acima como login, junto com a senha que lhe foi entregue.\n' +
-      '3. No primeiro acesso, recomendamos trocar a senha em Configurações.\n\n' +
+      '3. Cadastre ou troque sua senha em: ' +
+      linkSenha +
+      '\n\n' +
       'Por segurança, a senha não é enviada por e-mail. Se você não a recebeu ou\n' +
-      'precisar redefini-la, solicite ao administrador do sistema.\n\n' +
+      'precisar redefini-la, use o link acima ou solicite ao administrador do sistema.\n\n' +
       'Atenção: este é um sistema corporativo de uso restrito. Não compartilhe suas\n' +
       'credenciais e encerre a sessão ao usar computadores compartilhados.\n\n' +
       'Equipe de TI — Grupo Extrafruti · Casafruti · FoldBox'
@@ -91,6 +95,10 @@ routerAdd(
       '<td style="padding:6px 0;font-weight:bold">' +
       email +
       '</td></tr>' +
+      '<tr><td style="padding:6px 0;color:#6b7280">Nome</td>' +
+      '<td style="padding:6px 0">' +
+      nome +
+      '</td></tr>' +
       (grupoNome
         ? '<tr><td style="padding:6px 0;color:#6b7280">Perfil</td><td style="padding:6px 0">' +
           grupoNome +
@@ -101,11 +109,18 @@ routerAdd(
       '<ol style="font-size:13px;line-height:1.7;color:#374151;margin:0 0 16px 18px;padding:0">' +
       '<li>Abra o endereço acima no navegador.</li>' +
       '<li>Informe o e-mail como login e a senha que lhe foi entregue.</li>' +
-      '<li>No primeiro acesso, recomendamos trocar a senha em Configurações.</li>' +
+      '<li>Cadastre ou troque a senha neste link: ' +
+      '<a href="' +
+      linkSenha +
+      '" style="color:#1B5E20;font-weight:bold">Trocar minha senha</a></li>' +
       '</ol>' +
+      '<p style="margin:0 0 16px"><a href="' +
+      linkSenha +
+      '" style="display:inline-block;background:#1B5E20;color:#fff;text-decoration:none;' +
+      'padding:10px 18px;border-radius:8px;font-size:13px;font-weight:bold">Cadastrar / trocar senha</a></p>' +
       '<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px;font-size:12px;color:#92400e;line-height:1.6">' +
-      '<strong>Por segurança, a senha não é enviada por e-mail.</strong> Se você não a recebeu ' +
-      'ou precisar redefini-la, solicite ao administrador do sistema.</div>' +
+      '<strong>Por segurança, a senha não é enviada por e-mail.</strong> Use o botão acima ' +
+      'para definir a sua, ou solicite ao administrador do sistema.</div>' +
       '<p style="margin-top:20px;font-size:11px;color:#9ca3af">Sistema corporativo de uso restrito. ' +
       'Não compartilhe suas credenciais. Grupo Extrafruti · Casafruti · FoldBox</p>' +
       '</div></div>'

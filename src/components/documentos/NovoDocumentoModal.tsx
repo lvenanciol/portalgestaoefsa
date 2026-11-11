@@ -781,7 +781,7 @@ export function NovoDocumentoModal({
 
   return (
     <Dialog open={aberto} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-white max-w-xl max-h-[88vh] overflow-y-auto p-6 rounded-2xl shadow-xl border border-gray-200">
+      <DialogContent className="bg-white max-w-4xl w-[95vw] max-h-[88vh] overflow-y-auto p-6 rounded-2xl shadow-xl border border-gray-200">
         <DialogHeader>
           <div className="flex items-center justify-between gap-3 pb-2 border-b border-gray-100">
             <DialogTitle className="flex items-center gap-2 text-base font-bold text-gray-900">

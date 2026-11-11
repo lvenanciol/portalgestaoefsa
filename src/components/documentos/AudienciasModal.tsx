@@ -20,6 +20,16 @@ import {
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -721,7 +731,7 @@ export function AudienciasModal({
                           size="sm"
                           className="h-7 px-2 text-[11px] text-red-600 hover:text-red-700"
                           title="Excluir audiência"
-                          onClick={() => excluirAudiencia(aud)}
+                          onClick={() => setAudParaExcluir(aud)}
                         >
                           <Trash2 className="h-3 w-3" />
                         </Button>
@@ -1100,6 +1110,56 @@ export function AudienciasModal({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmação amigável de exclusão da audiência */}
+      <AlertDialog
+        open={audParaExcluir !== null}
+        onOpenChange={(o) => !o && setAudParaExcluir(null)}
+      >
+        <AlertDialogContent className="bg-white max-w-md rounded-2xl border border-gray-200">
+          <AlertDialogHeader>
+            <div className="h-11 w-11 rounded-full bg-rose-50 flex items-center justify-center text-rose-700 mb-1">
+              <Trash2 className="h-5 w-5" />
+            </div>
+            <AlertDialogTitle className="text-base font-bold text-gray-900">
+              Excluir esta audiência?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-gray-600 leading-relaxed">
+              A audiência de{' '}
+              <strong className="text-gray-900">
+                {audParaExcluir?.numero_cnj ||
+                  audParaExcluir?.numero_processo ||
+                  audParaExcluir?.pasta}
+              </strong>
+              {audParaExcluir?.data_hora_inicio ? (
+                <>
+                  {' '}
+                  marcada para{' '}
+                  <strong className="text-gray-900">
+                    {fmtDataHora(audParaExcluir.data_hora_inicio)}
+                  </strong>
+                </>
+              ) : null}{' '}
+              será removida da pauta.
+              <br />
+              <br />
+              <span className="text-rose-700">Esta ação não pode ser desfeita.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-9 text-xs">Manter</AlertDialogCancel>
+            <AlertDialogAction
+              className="h-9 text-xs bg-rose-600 hover:bg-rose-700 text-white"
+              onClick={(ev) => {
+                ev.preventDefault()
+                if (audParaExcluir) void excluirAudiencia(audParaExcluir)
+              }}
+            >
+              Excluir Audiência
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   )
 }
