@@ -318,7 +318,6 @@ export default function ControleAcessos() {
     setFUnidade('')
     setFAtivo(true)
     setFParceiro('')
-    setBuscaParceiro('')
     setDialogNovo(true)
   }
 
@@ -336,7 +335,6 @@ export default function ControleAcessos() {
     setFAtivo(u.ativo)
     // CAC: recupera o parceiro já vinculado para não sobrescrever no salvar
     setFParceiro(u.parceiro_id || '')
-    setBuscaParceiro('')
     if (u.parceiro_id && u.parceiro_nome) {
       setOpcoesParceiro((prev) =>
         prev.some((p) => p.id === u.parceiro_id)
