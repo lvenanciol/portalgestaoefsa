@@ -37,8 +37,10 @@ export default function Login() {
         if (registros && registros.length > 0) {
           const urls = registros
             .map((l: any) => {
-              // Prioriza ícone (emblema); fallback para logomarca
-              const campo = l.emblema || l.logo
+              // Fonte da marca: LOGOMARCA (arte completa). O emblema pode ter sido
+              // gerado no modo "Preencher Espaço" (cover) e sair cortado — a logo
+              // com object-contain no quadrado nunca corta.
+              const campo = l.logo || l.emblema
               if (!campo) return null
               const ext = String(campo).split('?')[0].split('.').pop()?.toLowerCase() || ''
               const ehImagem = ['png', 'jpg', 'jpeg', 'svg', 'webp'].includes(ext)
@@ -64,9 +66,9 @@ export default function Login() {
         const r = (await pb.send('/backend/v1/public/logos', { method: 'GET' })) as any
         const urls = ((r && r.logos) || [])
           .map((l: any) => {
-            // Prioriza ícone (emblemaUrl / emblema / iconeUrl); fallback para logomarca
-            const urlFinal = l.iconeUrl || l.emblemaUrl || l.logoUrl
-            const campo = l.emblema || l.logo
+            // Mesma prioridade do SDK: logo (completa) antes do emblema (pode estar cortado)
+            const urlFinal = l.logoUrl || l.iconeUrl || l.emblemaUrl
+            const campo = l.logo || l.emblema
             const urlResolvida =
               urlFinal ||
               (campo ? pb.files.getURL({ collectionId: 'logomarcas', id: l.id }, campo) : '')

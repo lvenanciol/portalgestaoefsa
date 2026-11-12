@@ -76,10 +76,12 @@ export function EmpresaLogosProvider({ children }: { children: React.ReactNode }
         return pb.files.getURL(logoRec, val)
       }
 
-      const urlEmb = getUrl('emblema')
-      if (urlEmb) return urlEmb
+      // Preferência: LOGOMARCA (arte completa) antes do emblema — emblemas gerados
+      // no modo "Preencher Espaço" (cover) saíam cortados (bug Extrafruti).
       const urlLogo = getUrl('logo')
       if (urlLogo) return urlLogo
+      const urlEmb = getUrl('emblema')
+      if (urlEmb) return urlEmb
       return null
     }
 

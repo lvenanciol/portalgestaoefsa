@@ -25,8 +25,9 @@ routerAdd('GET', '/backend/v1/public/logos', (e) => {
       const cor = rec.getString('cor') || '#1B5E20'
       const logo = rec.getString('logo')
       const emblema = rec.getString('emblema')
-      // ícone tem precedência sobre logo para emblema/icone; fallback para logo
-      const icone = emblema || logo
+      // LOGOMARCA tem precedência: emblemas gerados no modo "Preencher Espaço"
+      // (cover) saíam cortados (bug Extrafruti) — a logo com contain nunca corta.
+      const icone = logo || emblema
 
       const colId = col.id || 'logomarcas'
       const logoUrl = logo
@@ -39,7 +40,7 @@ routerAdd('GET', '/backend/v1/public/logos', (e) => {
           ? base + '/api/files/' + colId + '/' + id + '/' + emblema
           : '/api/files/' + colId + '/' + id + '/' + emblema
         : ''
-      const iconeUrl = emblemaUrl || logoUrl
+      const iconeUrl = logoUrl || emblemaUrl
 
       return {
         id: id,

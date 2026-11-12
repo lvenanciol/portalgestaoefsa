@@ -50,7 +50,6 @@ export default function LogomarcasPage() {
   const [imgSrc, setImgSrc] = useState('')
   const [zoom, setZoom] = useState(1)
   const [offset, setOffset] = useState({ x: 0, y: 0 })
-  const [fitMode, setFitMode] = useState<'contain' | 'cover'>('contain')
   const [salvando, setSalvando] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
 
@@ -112,7 +111,6 @@ export default function LogomarcasPage() {
     setEditImg({ file, campo, nomeOrig: file.name })
     setZoom(1)
     setOffset({ x: 0, y: 0 })
-    setFitMode('contain')
     setImgSrc(URL.createObjectURL(file))
   }
 
@@ -143,12 +141,10 @@ export default function LogomarcasPage() {
     ctx.fillStyle = '#ffffff'
     ctx.fillRect(0, 0, 512, 512)
 
-    // 'contain' ajusta para caber 100% dentro de 512x512 com margem de segurança de respiro
-    // 'cover' preenche tudo
-    const baseEscala =
-      fitMode === 'contain'
-        ? 480 / Math.max(img.width, img.height)
-        : 512 / Math.min(img.width, img.height)
+    // SEMPRE encaixe completo (contain): a imagem é escalada para caber 100% dentro
+    // do quadrado 512×512, sem cortar laterais — corrige o bug da logomarca
+    // horizontal (Extrafruti) que saía cortada no modo "Preencher Espaço".
+    const baseEscala = 480 / Math.max(img.width, img.height)
 
     const escala = baseEscala * zoom
     const w = img.width * escala
@@ -487,11 +483,18 @@ export default function LogomarcasPage() {
                       <Label className="text-[10px] font-semibold uppercase tracking-wider text-gray-600">
                         Ícone / Emblema
                       </Label>
-                      {url(l, 'emblema') && (
+                      {(url(l, 'emblema') || url(l, 'logo')) && (
                         <button
                           type="button"
                           onClick={() =>
-                            abrirEditorDeUrl(url(l, 'emblema'), 'emblema', `${l.empresa}-icone.png`)
+                            // Fonte = LOGOMARCA (original completo): emblemas gerados por
+                            // versões anteriores no modo "Preencher Espaço" saíam cortados;
+                            // reajustar a partir do próprio emblema preservaria o corte.
+                            abrirEditorDeUrl(
+                              url(l, 'logo') || url(l, 'emblema'),
+                              'emblema',
+                              `${l.empresa}-icone.png`,
+                            )
                           }
                           className="text-[11px] font-medium text-[#1B5E20] hover:underline flex items-center gap-1"
                         >
@@ -500,10 +503,10 @@ export default function LogomarcasPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
-                      {url(l, 'emblema') && (
+                      {(url(l, 'emblema') || url(l, 'logo')) && (
                         <div className="h-10 w-10 rounded border border-gray-200 bg-white flex items-center justify-center p-1 shrink-0 overflow-hidden">
                           <img
-                            src={url(l, 'emblema')}
+                            src={url(l, 'emblema') || url(l, 'logo')}
                             alt="ícone atual"
                             className="max-h-full max-w-full object-contain"
                           />
@@ -716,8 +719,6 @@ export default function LogomarcasPage() {
         setZoom={setZoom}
         offset={offset}
         setOffset={setOffset}
-        fitMode={fitMode}
-        setFitMode={setFitMode}
         onAplicar={aplicarCrop}
         onFechar={() => setEditImg(null)}
       />
@@ -734,8 +735,6 @@ function DialogCrop({
   setZoom,
   offset,
   setOffset,
-  fitMode,
-  setFitMode,
   onAplicar,
   onFechar,
 }: {
@@ -746,8 +745,6 @@ function DialogCrop({
   setZoom: (z: number) => void
   offset: { x: number; y: number }
   setOffset: (o: { x: number; y: number }) => void
-  fitMode: 'contain' | 'cover'
-  setFitMode: (m: 'contain' | 'cover') => void
   onAplicar: () => void
   onFechar: () => void
 }) {
@@ -756,7 +753,6 @@ function DialogCrop({
   const resetar = () => {
     setZoom(1)
     setOffset({ x: 0, y: 0 })
-    setFitMode('contain')
   }
 
   return (
@@ -793,11 +789,8 @@ function DialogCrop({
               src={imgSrc}
               alt="ajuste"
               draggable={false}
-              className="absolute m-auto max-h-none max-w-none cursor-move select-none transition-transform duration-75"
+              className="absolute inset-0 m-auto max-h-[85%] max-w-[85%] object-contain cursor-move select-none transition-transform duration-75"
               style={{
-                width: fitMode === 'contain' ? '85%' : '100%',
-                height: fitMode === 'contain' ? '85%' : '100%',
-                objectFit: fitMode,
                 transform: `scale(${zoom}) translate(${offset.x}px, ${offset.y}px)`,
               }}
               onMouseDown={(e) => {
@@ -824,35 +817,11 @@ function DialogCrop({
           </span>
         </div>
 
-        {/* Modos de encaixe */}
-        <div className="flex items-center justify-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setFitMode('contain')
-              setZoom(1)
-            }}
-            className={cn(
-              'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all',
-              fitMode === 'contain'
-                ? 'bg-emerald-50 text-[#1B5E20] border-emerald-300 shadow-xs'
-                : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100',
-            )}
-          >
-            Encaixar Completa (sem corte)
-          </button>
-          <button
-            type="button"
-            onClick={() => setFitMode('cover')}
-            className={cn(
-              'px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all',
-              fitMode === 'cover'
-                ? 'bg-emerald-50 text-[#1B5E20] border-emerald-300 shadow-xs'
-                : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100',
-            )}
-          >
-            Preencher Espaço
-          </button>
+        {/* Modo de encaixe FIXO: sempre completo (contain) — sem opção de corte */}
+        <div className="flex items-center justify-center">
+          <span className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-emerald-50 text-[#1B5E20] border-emerald-300 shadow-xs">
+            Encaixe completo (sem corte)
+          </span>
         </div>
 
         {/* Controles de Zoom */}

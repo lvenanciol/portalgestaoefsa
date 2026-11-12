@@ -155,7 +155,8 @@ routerAdd('POST', '/backend/v1/public/reset-empresas', (e) => {
       const nomeEmp = rec.getString('empresa')
       const emblema = rec.getString('emblema')
       const logo = rec.getString('logo')
-      const arquivo = emblema || logo
+      // Logo primeiro: emblema pode ter sido gerado cortado (bug Extrafruti)
+      const arquivo = logo || emblema
       if (!arquivo) continue
       logosPorEmpresa[String(nomeEmp).toLowerCase()] =
         base + '/api/files/' + colIdLogos + '/' + rec.id + '/' + arquivo

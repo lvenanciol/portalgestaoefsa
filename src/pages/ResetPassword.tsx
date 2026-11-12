@@ -111,7 +111,8 @@ export default function ResetPassword() {
         const r = (await pb.send('/backend/v1/public/logos', { method: 'GET' })) as any
         const urls = ((r && r.logos) || [])
           .map((l: any) => {
-            const urlFinal = l.iconeUrl || l.emblemaUrl || l.logoUrl
+            // Logo primeiro: emblema pode ter sido gerado cortado (bug Extrafruti)
+            const urlFinal = l.logoUrl || l.iconeUrl || l.emblemaUrl
             if (!urlFinal) return null
             return {
               url: urlFinal as string,

@@ -72,7 +72,12 @@
 // DENTRO dos callbacks (Hook scoping error da rodada anterior); rodada
 // Suprimentos concluída — sidebar sem PLATAFORMA/Configurações e backend
 // bloqueando módulos sem permissão.
-const CACHE_NAME = 'pge-pwa-v52'
+// v53 (12/11/2026): correção da logomarca cortada (bug Extrafruti) — modal de
+// ajuste de ícone agora SEMPRE encaixa a arte completa (contain, sem o modo
+// "Preencher Espaço" que cortava laterais); exibição (login, EmpresaIcon,
+// logos públicas) prioriza a LOGOMARCA completa; emblema cortado limpo do
+// registro via migração 0074.
+const CACHE_NAME = 'pge-pwa-v53'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

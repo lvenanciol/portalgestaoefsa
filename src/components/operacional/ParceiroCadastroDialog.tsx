@@ -163,19 +163,20 @@ export function ParceiroCadastroDialog({
     const urlEmb = urlImagem(logoRec, 'emblema')
     const urlLogo = urlImagem(logoRec, 'logo')
 
-    if (urlEmb) {
+    // LOGOMARCA primeiro: emblema pode ter sido gerado cortado (bug Extrafruti)
+    if (urlLogo) {
       return (
         <img
-          src={urlEmb}
+          src={urlLogo}
           alt={nomeEmpresa}
           className="h-4 w-4 object-contain rounded-xs shrink-0"
         />
       )
     }
-    if (urlLogo) {
+    if (urlEmb) {
       return (
         <img
-          src={urlLogo}
+          src={urlEmb}
           alt={nomeEmpresa}
           className="h-4 w-4 object-contain rounded-xs shrink-0"
         />
