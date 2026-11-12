@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-12T13:35:00.537Z",
+  "generatedAt": "2026-11-12T14:15:52.398Z",
   "collections": [
     {
       "name": "users",
@@ -710,11 +710,11 @@
       "name": "tarefas",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != \"\" && (responsaveis_ids.id ?= @request.auth.id || criado_por = @request.auth.email || @request.auth.grupo_id.nome = \"Admin\")",
-        "view": "@request.auth.id != \"\" && (responsaveis_ids.id ?= @request.auth.id || criado_por = @request.auth.email || @request.auth.grupo_id.nome = \"Admin\")",
+        "list": "@request.auth.id != '' && (responsaveis_ids.id ?= @request.auth.id || parceiros.id ?= @request.auth.parceiro_id || criado_por = @request.auth.email)",
+        "view": "@request.auth.id != '' && (responsaveis_ids.id ?= @request.auth.id || parceiros.id ?= @request.auth.parceiro_id || criado_por = @request.auth.email)",
         "create": "@request.auth.id != ''",
-        "update": "@request.auth.id != \"\" && (responsaveis_ids.id ?= @request.auth.id || criado_por = @request.auth.email || @request.auth.grupo_id.nome = \"Admin\")",
-        "delete": "@request.auth.id != \"\" && (responsaveis_ids.id ?= @request.auth.id || criado_por = @request.auth.email || @request.auth.grupo_id.nome = \"Admin\")"
+        "update": "@request.auth.id != '' && (responsaveis_ids.id ?= @request.auth.id || parceiros.id ?= @request.auth.parceiro_id || criado_por = @request.auth.email)",
+        "delete": "@request.auth.id != '' && (responsaveis_ids.id ?= @request.auth.id || parceiros.id ?= @request.auth.parceiro_id || criado_por = @request.auth.email)"
       },
       "fields": [
         {

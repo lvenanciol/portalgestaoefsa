@@ -53,6 +53,7 @@ import { EmpresaIcon, useEmpresaLogos } from '@/components/common/EmpresaIcon'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { usePermissoes } from '@/hooks/use-permissoes'
+import { usuarioTemVinculoTarefa } from '@/lib/alertas-usuario'
 import { useGate } from '@/services/botoes-service'
 import { useApp } from '@/context/AppContext'
 import { toast } from '@/hooks/use-toast'
@@ -183,21 +184,22 @@ export default function TarefasKanbanPage() {
       // (11/11/2026) ISOLAMENTO POR USUÁRIO — fail-closed.
       // Antes: getFullList() sem filtro mostrava as tarefas de TODOS os usuários,
       // e a regra do banco era "@request.auth.id != ''" (qualquer logado lê tudo).
-      // Agora: só entra na tela a tarefa em que o usuário é responsável ou criador.
+      // Agora: só entra na tela a tarefa em que o usuário tem vínculo
+      // (responsaveis_ids, parceiros×parceiro_id, texto do responsável ou criador
+      // — helper usuarioTemVinculoTarefa, mesma régua do sino e do e-mail).
       // Atenção ao inverso: aqui NÃO se usa "sem responsável = visível" — tarefa
       // sem vínculo aparece apenas para quem a criou (senão vazaria para todos).
-      const meuId = String((user as any)?.id || '')
-      const meuEmail = String((user as any)?.email || '').toLowerCase()
       const isAdmin = grupoUsuario === 'Admin'
       const visiveis = isAdmin
         ? (r as any[])
-        : (r as any[]).filter((t) => {
-            const ids = Array.isArray(t.responsaveis_ids) ? t.responsaveis_ids : []
-            if (meuId && ids.includes(meuId)) return true
-            const criador = String(t.criado_por || '').toLowerCase()
-            if (meuEmail && criador === meuEmail) return true
-            return false
-          })
+        : (r as any[]).filter((t) =>
+            usuarioTemVinculoTarefa(t, {
+              id: String((user as any)?.id || ''),
+              email: String((user as any)?.email || ''),
+              name: String((user as any)?.name || ''),
+              parceiro_id: String((user as any)?.parceiro_id || ''),
+            }),
+          )
       setItens(visiveis)
       setErro('')
     } catch (e) {
@@ -558,9 +560,15 @@ export default function TarefasKanbanPage() {
       } else if (filtroRapido === 'atrasadas') {
         if (!prazoStr || prazoStr >= hoje || t.status_kanban === 'concluido') return false
       } else if (filtroRapido === 'minhas') {
-        const uNome = (user?.name || '').trim().toLowerCase()
-        const resp = (t.responsavel || '').trim().toLowerCase()
-        if (!uNome || !resp || !resp.includes(uNome.split(' ')[0])) return false
+        if (
+          !usuarioTemVinculoTarefa(t, {
+            id: String(user?.id || ''),
+            email: String(user?.email || ''),
+            name: String(user?.name || ''),
+            parceiro_id: String((user as any)?.parceiro_id || ''),
+          })
+        )
+          return false
       }
 
       return true

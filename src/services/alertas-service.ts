@@ -6,12 +6,11 @@
 import pb from '@/lib/pocketbase/client'
 import { CriticalAlert, Commitment } from '@/data/mockData'
 import {
-  alertaDoUsuario,
   chavesUsuario,
   ehAdmin,
-  tarefaDoUsuario,
   textoMencionaUsuario,
-  UsuarioRef,
+  usuarioTemVinculoTarefa,
+  UsuarioParaVinculo,
 } from '@/lib/alertas-usuario'
 
 const MES_CURTO = [
@@ -47,15 +46,15 @@ const hojeISO = () => new Date().toISOString().slice(0, 10)
  *    (Admin vê tudo; API rules do banco já restringem a leitura).
  */
 export async function carregarDadosDoUsuario(
-  user: UsuarioRef | null | undefined,
+  user: UsuarioParaVinculo | null | undefined,
 ): Promise<DadosAlertasUsuario> {
   const alertas: CriticalAlert[] = []
   const compromissos: Commitment[] = []
   if (!user || !user.id) return { alertas, compromissos }
 
-  const u: UsuarioRef = { ...user, grupoNome: (user as any).grupoNome }
+  const u = user as UsuarioParaVinculo
   const admin = ehAdmin(u)
-  const chaves = chavesUsuario(u)
+  const chaves = chavesUsuario(u.name)
   const hoje = hojeISO()
 
   // ---- Tarefas (base de compromissos e alertas de atraso) ----
@@ -70,7 +69,16 @@ export async function carregarDadosDoUsuario(
   } catch (_) {
     tarefas = []
   }
-  const minhasTarefas = admin ? tarefas : tarefas.filter((t) => tarefaDoUsuario(t, u))
+  const minhasTarefas = admin
+    ? tarefas
+    : tarefas.filter((t) =>
+        usuarioTemVinculoTarefa(t, {
+          id: u.id,
+          email: u.email || '',
+          name: u.name || '',
+          parceiro_id: u.parceiro_id || '',
+        }),
+      )
 
   // ---- Compromissos: prazos de hoje em diante ----
   minhasTarefas
@@ -112,7 +120,10 @@ export async function carregarDadosDoUsuario(
       // vínculo: participantes (texto) OU criador OU menção no título/resumo
       const participou =
         admin ||
-        textoMencionaUsuario([r.participantes, r.resumo, r.titulo].join(' · '), chaves) ||
+        textoMencionaUsuario([r.participantes, r.resumo, r.titulo].join(' · '), {
+          name: u.name || '',
+          email: u.email || '',
+        }) ||
         (chaves.length > 0 && chaves.includes(String(r.criado_por || '').toLowerCase()))
       if (!participou) continue
       const d = dia(r.data).split('-')
@@ -162,15 +173,10 @@ export async function carregarDadosDoUsuario(
       if (dias > 90) break
       const vinculado =
         admin ||
-        alertaDoUsuario(
-          {
-            title: c.titulo || '',
-            description: c.parte || '',
-            detail: c.responsavel || c.observacao || '',
-            empresa: c.empresa || '',
-          },
-          u,
-        )
+        textoMencionaUsuario([c.titulo, c.parte, c.responsavel, c.observacao].join(' · '), {
+          name: u.name || '',
+          email: u.email || '',
+        })
       if (!vinculado) continue
       alertas.push({
         id: 'alt-contr-' + c.id,
