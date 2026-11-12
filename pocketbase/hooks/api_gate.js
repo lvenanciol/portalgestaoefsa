@@ -24,6 +24,100 @@
 // grupo Admin; os demais grupos precisam da entrada ESPECÍFICA do módulo
 // (fail-closed). As migrações 0071/0072 removem o curinga dos grupos no banco.
 //
+// 12/11/2026 (bug "Projetos 403 no Suprimentos"): a MATRIZ do Controle de
+// Acessos nunca grava permissoes[modulo].ver — grava só revogações
+// crud_<tela>_<acao>:off em permissoes.botoes. Grupos não-Admin ficavam sem
+// nenhuma entrada explícita e o gate negava TUDO (Projetos 403, tela liberada
+// na sidebar). Regra única com o frontend (permissoes-service.ts): módulo com
+// linha na matriz (MODULOS_COM_MATRIZ — mesmas chaves de BUTTON_GATES) está
+// concedido salvo revogação crud_<tela>_<acao>:off; módulo FORA da matriz
+// (configuracoes, logomarcas, integracoes...) só para Admin. Grupo sem
+// "botoes" no JSON = nunca configurado = fail-closed (nada liberado).
+const MODULOS_COM_MATRIZ = {
+  dashboard: 1,
+  financeiro: 1,
+  desempenho: 1,
+  indicadores: 1,
+  documentos: 1,
+  tarefas: 1,
+  projetos: 1,
+  atas: 1,
+  emails: 1,
+  contratos: 1,
+  'power-bi': 1,
+  ia: 1,
+  menus: 1,
+  acessos: 1,
+}
+// tela da matriz → módulo do mapa M/W acima (telas da matriz cujo módulo
+// difere da chave; chaves iguais ficam implícitas)
+const TELA_MODULO_EXTRA = { dashboard: 'dashboard-executivo', financeiro: 'financeiro-contabil' }
+
+// leitura: módulo concedido? (matriz configurada + não revogado + Admin bypass)
+function moduloVerConcedido(mods, perm, nome) {
+  if (!perm || (nome !== 'Admin' && !perm['botoes'])) return false
+  if (nome === 'Admin') return true
+  for (var i = 0; i < mods.length; i++) {
+    const modulo = mods[i]
+    const tela =
+      modulo === 'dashboard-executivo'
+        ? 'dashboard'
+        : modulo === 'financeiro-contabil'
+          ? 'financeiro'
+          : modulo
+    if (TelaModulo(modulo) === null) continue
+    const b = perm['botoes']
+    if (
+      b &&
+      Array.isArray(b[tela]) &&
+      (b[tela].indexOf('crud_' + tela + '_ver:off') >= 0 ||
+        b[tela].indexOf('crud_' + tela + '_todas:off') >= 0)
+    )
+      continue
+    return true
+  }
+  return false
+}
+// módulo → tela da matriz (ou null se o módulo NÃO tem linha na matriz —
+// nesse caso a concessão não pode ser inferida: falha fechada)
+function TelaModulo(modulo) {
+  if (MODULOS_COM_MATRIZ[modulo]) return modulo
+  if (modulo === 'dashboard-executivo') return 'dashboard'
+  if (modulo === 'financeiro-contabil') return 'financeiro'
+  return null
+}
+// escrita: módulo concedido + não revogado na ação (criar/editar/excluir)
+function moduloAcaoConcedido(modulo, acao, perm, nome) {
+  if (!perm) return false
+  if (nome === 'Admin') return true
+  if (!perm['botoes']) return false // matriz nunca configurada → fail-closed
+  const tela = TelaModulo(modulo)
+  if (!tela) return false
+  const b = perm['botoes']
+  if (
+    b &&
+    Array.isArray(b[tela]) &&
+    (b[tela].indexOf('crud_' + tela + '_' + acao + ':off') >= 0 ||
+      b[tela].indexOf('crud_' + tela + '_todas:off') >= 0)
+  )
+    return false
+  return true
+}
+// revogação da matriz para a ação (chamado DEPOIS de moduloAcaoConcedido)
+function crudRevogado(modulo, acao, perm) {
+  const tela = TelaModulo(modulo)
+  if (!tela) return false
+  const b = perm ? perm['botoes'] : null
+  if (
+    b &&
+    Array.isArray(b[tela]) &&
+    (b[tela].indexOf('crud_' + tela + '_' + acao + ':off') >= 0 ||
+      b[tela].indexOf('crud_' + tela + '_todas:off') >= 0)
+  )
+    return true
+  return false
+}
+//
 // RUNTIME (JSVM): callbacks não enxergam função/const de topo — a tabela vai
 // LITERAL dentro de cada callback. Registrar sem coleção fixa (um handler por
 // operação) evita 18×5 registros repetidos; toda saída é `return e.next()` ou
@@ -78,10 +172,8 @@ onRecordsListRequest((e) => {
   if (nome === 'Admin') return e.next()
   let ok = false
   for (let i = 0; i < mods.length; i++) {
-    const m = perm ? perm[mods[i]] : null
-    if (m && m.ver === true) ok = true
+    if (moduloVerConcedido(mods, perm, nome)) ok = true
   }
-  if (!ok && perm && perm['*'] && perm['*'].ver === true && nome === 'Admin') ok = true
   if (!ok) throw new ForbiddenError('Seu grupo nao tem acesso a este modulo do portal.')
   return e.next()
 })
@@ -135,10 +227,8 @@ onRecordViewRequest((e) => {
   if (nome === 'Admin') return e.next()
   let ok = false
   for (let i = 0; i < mods.length; i++) {
-    const m = perm ? perm[mods[i]] : null
-    if (m && m.ver === true) ok = true
+    if (moduloVerConcedido(mods, perm, nome)) ok = true
   }
-  if (!ok && perm && perm['*'] && perm['*'].ver === true && nome === 'Admin') ok = true
   if (!ok) throw new ForbiddenError('Seu grupo nao tem acesso a este modulo do portal.')
   return e.next()
 })
@@ -182,10 +272,7 @@ onRecordCreateRequest((e) => {
     }
   } catch (_) {}
   if (nome === 'Admin') return e.next()
-  let ok = false
-  const m = perm ? perm[cfg[0]] : null
-  if (m && m.criar === true) ok = true
-  if (!ok && perm && perm['*'] && perm['*'].criar === true && nome === 'Admin') ok = true
+  const ok = moduloAcaoConcedido(cfg[0], 'criar', perm, nome)
   try {
     const b = perm && perm['botoes'] ? perm['botoes'][cfg[1]] : null
     if (Array.isArray(b)) {

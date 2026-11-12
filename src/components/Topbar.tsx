@@ -45,6 +45,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from '@/hooks/use-toast'
 import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
+import { carregarPermissoes, menuVisivel, type Permissoes } from '@/services/permissoes-service'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { cn } from '@/lib/utils'
 
@@ -223,6 +224,19 @@ export function Topbar() {
   const { toggleSidebar, sidebarCollapsed, toggleSidebarCollapsed, criticalAlerts } = useApp()
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  // 12/11/2026: permissões do grupo para a paleta de comandos (mesma fonte da
+  // sidebar — carregarPermissoes/permissoes-service; null enquanto carrega,
+  // e menuVisivel(null) devolve false → nada aparece antes de chegar).
+  const [permissoes, setPermissoes] = useState<Permissoes | null>(null)
+  useEffect(() => {
+    let vivo = true
+    carregarPermissoes().then((p) => {
+      if (vivo) setPermissoes(p)
+    })
+    return () => {
+      vivo = false
+    }
+  }, [user])
 
   // Notificações reais da collection 'notificacoes'
   const [notificacoes, setNotificacoes] = useState<any[]>([])
@@ -358,11 +372,15 @@ export function Topbar() {
     return [perfil, ...telas, ...BUSCA_ACOES]
   })()
 
+  // 12/11/2026: a paleta de comandos agora respeita as permissões do grupo —
+  // antes listava TODAS as telas (ex.: "PLATAFORMA → Configurações" aparecia
+  // para o grupo Suprimentos mesmo sem o módulo liberado no /acessos).
   const resultados = (() => {
     const q = buscaDeb.trim().toLowerCase()
     if (!q) return []
     return indiceBusca
       .filter((i) => (i.label + ' ' + i.chaves).toLowerCase().includes(q))
+      .filter((i) => i.tipo !== 'tela' || menuVisivel(permissoes, i.rota))
       .slice(0, 10)
   })()
 

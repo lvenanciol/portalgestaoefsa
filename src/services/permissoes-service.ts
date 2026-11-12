@@ -86,17 +86,45 @@ export function can(p: Permissoes | null, modulo: string, acao: string): boolean
   // matriz configurada (permissoes.botoes não vazio) tem ver/criar/editar/
   // excluir em todo módulo cuja coluna NÃO esteja revogada na matriz (o que a
   // tela mostra marcado = concedido); grupo nunca configurado continua
-  // fail-closed (nada visível). O hook botoes_salvar e a migração 0074 gravam
-  // as concessões explícitas no banco para o gate de API.
+  // fail-closed (nada visível).
+  // 12/11/2026 (bug Configurações × Projetos): o fallback vale SÓ para módulos
+  // com linha na matriz (MODULOS_COM_MATRIZ) — "configuracoes" não tem linha,
+  // não foi revogado em lugar nenhum e por isso vazava para qualquer grupo com
+  // matriz configurada. O gate de API (api_gate.js) aplica a MESMA regra.
   if (
     p.grupoNome !== 'Admin' &&
     tela &&
+    MODULOS_COM_MATRIZ[tela] &&
     matrizConfigurada(p) &&
     (acao === 'ver' || acao === 'criar' || acao === 'editar' || acao === 'excluir')
   ) {
     return true
   }
   return false
+}
+
+// 12/11/2026 — telas que TÊM linha na matriz do Controle de Acessos (mesmas
+// chaves de BUTTON_GATES em botoes-service.ts — manter em sincronia). O
+// fallback da matriz SÓ vale para estas: módulo fora da matriz (ex.:
+// "configuracoes") nunca foi configurável por linha e não pode ser inferido
+// como concedido — era o vazamento da tela Configurações/seção PLATAFORMA
+// para grupos sem o módulo (Suprimentos).
+const MODULOS_COM_MATRIZ: Record<string, boolean> = {
+  dashboard: true,
+  financeiro: true,
+  financeiro_real: true,
+  desempenho: true,
+  indicadores: true,
+  documentos: true,
+  tarefas: true,
+  projetos: true,
+  atas: true,
+  emails: true,
+  contratos: true,
+  'power-bi': true,
+  ia: true,
+  menus: true,
+  acessos: true,
 }
 
 // A matriz do grupo já foi configurada pelo admin? A chave "botoes" existe no
