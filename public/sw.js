@@ -77,7 +77,7 @@
 // "Preencher Espaço" que cortava laterais); exibição (login, EmpresaIcon,
 // logos públicas) prioriza a LOGOMARCA completa; emblema cortado limpo do
 // registro via migração 0074.
-const CACHE_NAME = 'pge-pwa-v53'
+const CACHE_NAME = 'pge-pwa-v54'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import InicioPage from './pages/InicioPage'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
@@ -36,6 +37,11 @@ import Layout from './components/Layout'
 
 const AppRoutes = () => {
   const { isAuthenticated } = useAuth()
+  // 12/11/2026 (TAREFA ALERTAS): o destino real de "/" e /login depende das
+  // permissões do grupo (com dashboard → "/", sem → /inicio ou primeira tela
+  // concedida — caso do Suprimentos → Tarefas & Agenda). Como as permissões
+  // chegam de forma assíncrona, pós-login cai em "/" e o RotaProtegida da rota
+  // inicial resolve o destino certo quando o load terminar.
   return (
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
@@ -58,6 +64,17 @@ const AppRoutes = () => {
           element={
             <RotaProtegida>
               <Index />
+            </RotaProtegida>
+          }
+        />
+        {/* TELA DEFAULT (/inicio): dashboard reduzido p/ grupos SEM permissão
+            de Dashboard Executivo — Próximos Compromissos + Alertas Críticos
+            filtrados pela participação do usuário (alertas-service). */}
+        <Route
+          path="/inicio"
+          element={
+            <RotaProtegida>
+              <InicioPage />
             </RotaProtegida>
           }
         />

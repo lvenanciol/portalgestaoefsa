@@ -3,6 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { Leaf, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
+import {
+  rotaPosLogin,
+  carregarPermissoes,
+  limparCachePermissoes,
+} from '@/services/permissoes-service'
 import pb from '@/lib/pocketbase/client'
 
 // LOGIN (22/10): logomarca(s) reais da coleção logomarcas no topo do card.
@@ -118,7 +123,13 @@ export default function Login() {
       setErro(getErrorMessage(error) || 'Credenciais inválidas.')
       return
     }
-    navigate('/', { replace: true })
+    // TAREFA ALERTAS (12/11/2026): destino pós-login dependente de permissão —
+    // com dashboard → "/", sem → /inicio (ou primeira tela concedida, caso do
+    // Suprimentos → Tarefas & Agenda). O cache é forçado a recarregar porque
+    // acabou de trocar de usuário (o usePermissoes também invalida pelo id).
+    limparCachePermissoes()
+    const perm = await carregarPermissoes(true)
+    navigate(rotaPosLogin(perm), { replace: true })
   }
 
   const handleRecuperar = async () => {

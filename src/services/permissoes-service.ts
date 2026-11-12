@@ -245,3 +245,19 @@ export function primeiraRotaPermitida(p: Permissoes | null): string | null {
   }
   return null
 }
+
+// 12/11/2026 — TAREFA ALERTAS: rota pós-login ("/" e /login).
+// Regra: com permissão de dashboard → "/" (Dashboard Executivo, como sempre);
+// SEM permissão → /inicio (tela default com Próximos Compromissos e Alertas
+// Críticos filtrados pela participação do usuário — InicioPage), EXCETO quando
+// o grupo já tem uma tela concedida ANTES do dashboard na ordem da sidebar
+// (caso do Suprimentos: Tarefas & Agenda é o default daquele grupo e essa
+// regra, estabelecida em 11/11/2026, continua valendo). Admin sempre vê o
+// dashboard (grupoNome === 'Admin' passa em menuVisivel).
+export function rotaPosLogin(p: Permissoes | null): string {
+  if (!p) return '/inicio'
+  if (menuVisivel(p, '/')) return '/'
+  const primeira = primeiraRotaPermitida(p)
+  if (primeira && primeira !== '/') return primeira
+  return '/inicio'
+}

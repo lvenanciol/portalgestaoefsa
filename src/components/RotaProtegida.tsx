@@ -1,7 +1,7 @@
 import { ReactNode, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { usePermissoes } from '@/hooks/use-permissoes'
-import { menuVisivel, primeiraRotaPermitida, MENU_MODULOS } from '@/services/permissoes-service'
+import { menuVisivel, rotaPosLogin, MENU_MODULOS } from '@/services/permissoes-service'
 
 /**
  * Tela de bloqueio amigável para rota sem permissão "ver".
@@ -75,16 +75,23 @@ export function RotaProtegida({ children }: { children: ReactNode }) {
 
   const caminho = location.pathname
 
-  // 11/11/2026 (v2, bug "Suprimentos cai no bloqueio ao abrir o portal"):
-  // quando o módulo da rota inicial (dashboard) não é concedido ao grupo,
-  // redireciona para a PRIMEIRA tela permitida em vez de mostrar o bloqueio
-  // — para o Suprimentos, Tarefas & Agenda. O bloqueio "Acesso não liberado"
-  // fica só para acesso direto por URL a tela não permitida (ou grupo sem
-  // NENHUM módulo concedido).
+  // TAREFA ALERTAS (12/11/2026): /inicio é a tela default de qualquer usuário
+  // autenticado (Próximos Compromissos + Alertas Críticos do próprio usuário).
+  // Liberada fora do mapa MENU_MODULOS — quem digitar /inicio direto não recebe
+  // bloqueio; o conteúdo já é filtrado por usuário no alertas-service.
+  if (caminho === '/inicio') return <>{children}</>
+
+  // 11/11/2026 (v2, bug "Suprimentos cai no bloqueio ao abrir o portal"),
+  // integrado com a tela default /inicio (12/11/2026): sem permissão de
+  // dashboard, o destino de "/" vem de rotaPosLogin() — a PRIMEIRA tela
+  // concedida ANTES do dashboard na ordem da sidebar (Suprimentos → Tarefas &
+  // Agenda) continua valendo; grupos sem nenhuma concessão anterior e também
+  // sem dashboard caem em /inicio (não mais no bloqueio). Bloqueio "Acesso não
+  // liberado" fica só para acesso direto por URL a tela não permitida (ou
+  // grupo sem NENHUM módulo concedido).
   if (caminho === '/') {
-    const destino = primeiraRotaPermitida(permissoes)
-    if (destino && destino !== '/') return <RedirectPara to={destino} />
-    if (!destino) return <AcessoNegado />
+    const destino = rotaPosLogin(permissoes)
+    if (destino !== '/') return <RedirectPara to={destino} />
     return <>{children}</>
   }
 
