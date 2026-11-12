@@ -1,7 +1,7 @@
-import { ReactNode } from 'react'
-import { useLocation } from 'react-router-dom'
+import { ReactNode, useEffect } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { usePermissoes } from '@/hooks/use-permissoes'
-import { menuVisivel, MENU_MODULOS } from '@/services/permissoes-service'
+import { menuVisivel, primeiraRotaPermitida, MENU_MODULOS } from '@/services/permissoes-service'
 
 /**
  * Tela de bloqueio amigável para rota sem permissão "ver".
@@ -56,6 +56,12 @@ function AcessoNegado() {
  * qualquer grupo. Agora é FAIL-CLOSED: sem módulo declarado, sem acesso.
  * Tela nova precisa ser registrada em MENU_MODULOS para valer a alguém que não
  * seja Admin — é o preço consciente de não vazar tela por esquecimento.
+ *
+ * MUDANÇA 11/11/2026 (v2, grupo Suprimentos): quando a rota inicial "/" não é
+ * permitida ao grupo, redireciona (replace) para a primeira tela concedida —
+ * p/ Suprimentos, Tarefas & Agenda. O bloqueio "Acesso não liberado" passa a
+ * aparecer só em acesso direto por URL a tela não permitida, ou quando o grupo
+ * não tem nenhum módulo concedido.
  */
 export function RotaProtegida({ children }: { children: ReactNode }) {
   const { carregando, permissoes } = usePermissoes()
@@ -69,6 +75,19 @@ export function RotaProtegida({ children }: { children: ReactNode }) {
 
   const caminho = location.pathname
 
+  // 11/11/2026 (v2, bug "Suprimentos cai no bloqueio ao abrir o portal"):
+  // quando o módulo da rota inicial (dashboard) não é concedido ao grupo,
+  // redireciona para a PRIMEIRA tela permitida em vez de mostrar o bloqueio
+  // — para o Suprimentos, Tarefas & Agenda. O bloqueio "Acesso não liberado"
+  // fica só para acesso direto por URL a tela não permitida (ou grupo sem
+  // NENHUM módulo concedido).
+  if (caminho === '/') {
+    const destino = primeiraRotaPermitida(permissoes)
+    if (destino && destino !== '/') return <RedirectPara to={destino} />
+    if (!destino) return <AcessoNegado />
+    return <>{children}</>
+  }
+
   if (Object.prototype.hasOwnProperty.call(MENU_MODULOS, caminho)) {
     return menuVisivel(permissoes, caminho) ? <>{children}</> : <AcessoNegado />
   }
@@ -79,4 +98,14 @@ export function RotaProtegida({ children }: { children: ReactNode }) {
   }
 
   return <AcessoNegado />
+}
+
+// Redirect com navegação REPLACE: substitui "/" no histórico para que
+// "voltar" no browser não reabra o dashboard bloqueado.
+function RedirectPara({ to }: { to: string }) {
+  const navigate = useNavigate()
+  useEffect(() => {
+    navigate(to, { replace: true })
+  }, [navigate, to])
+  return null
 }
