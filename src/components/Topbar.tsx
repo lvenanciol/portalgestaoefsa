@@ -22,6 +22,8 @@ import {
 } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
+import { carregarDadosDoUsuario } from '@/services/alertas-service'
+import type { CriticalAlert } from '@/data/mockData'
 import { aplicarIdiomaNoDOM, type Idioma } from '@/lib/i18n'
 import {
   DropdownMenu,
@@ -221,7 +223,7 @@ const BUSCA_ACOES: BuscaItem[] = [
 ]
 
 export function Topbar() {
-  const { toggleSidebar, sidebarCollapsed, toggleSidebarCollapsed, criticalAlerts } = useApp()
+  const { toggleSidebar, sidebarCollapsed, toggleSidebarCollapsed } = useApp()
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   // 12/11/2026: permissões do grupo para a paleta de comandos (mesma fonte da
@@ -306,7 +308,34 @@ export function Topbar() {
       /* localStorage indisponível — oculto só nesta sessão */
     }
   }
-  const alertasVisiveis = criticalAlerts.filter((a) => !ocultados.includes(a.id))
+  // 12/11/2026 (sino por usuário): a aba "Alertas" deixou de usar o mock global
+  // (MOCK_DATA.criticalAlerts via AppContext) — agora busca dados REAIS das
+  // coleções (tarefas atrasadas, reuniões futuras, contratos vencendo) já
+  // filtrados pela participação do usuário logado (helper alertas-usuario).
+  // Fail-closed: sem vínculo, o alerta não aparece (Admin vê tudo).
+  const [alertasUsuario, setAlertasUsuario] = useState<CriticalAlert[]>([])
+  useEffect(() => {
+    let vivo = true
+    carregarDadosDoUsuario(user)
+      .then((d) => {
+        if (vivo) setAlertasUsuario(d.alertas)
+      })
+      .catch(() => {
+        if (vivo) setAlertasUsuario([])
+      })
+    return () => {
+      vivo = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
+
+  useRealtime('tarefas', () => {
+    carregarDadosDoUsuario(user)
+      .then((d) => setAlertasUsuario(d.alertas))
+      .catch(() => {})
+  })
+
+  const alertasVisiveis = alertasUsuario.filter((a) => !ocultados.includes(a.id))
   const [avatarOpen, setAvatarOpen] = useState(false)
   const [perfilOpen, setPerfilOpen] = useState(false)
   const [idioma, setIdioma] = useState(() => {
