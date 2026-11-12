@@ -30,6 +30,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import pb from '@/lib/pocketbase/client'
 import { toast } from '@/hooks/use-toast'
+import { parseNumeroBR } from './documentos-moeda-utils'
 
 export type TipoCampoEditor =
   | 'texto'
@@ -93,6 +94,13 @@ export function CampoEditorInline({
         if (c.tipo === 'boolean') iniciais[chave] = Boolean(bruto)
         else if (c.tipo === 'numero' || c.tipo === 'moeda') iniciais[chave] = bruto ?? ''
         else iniciais[chave] = bruto ?? ''
+        // Valor monetário exibido no padrão de digitação BR (ex.: 15988,77)
+        if (c.tipo === 'moeda' && iniciais[chave] !== '' && iniciais[chave] != null) {
+          const n = parseNumeroBR(iniciais[chave])
+          if (n !== null) {
+            iniciais[chave] = n.toFixed(2).replace('.', ',')
+          }
+        }
       })
       setValores(iniciais)
     }
@@ -107,7 +115,10 @@ export function CampoEditorInline({
         const chave = c.campo || c.chave || ''
         if (!chave) return
         let v = valores[chave]
-        if (c.tipo === 'numero' || c.tipo === 'moeda') {
+        if (c.tipo === 'moeda') {
+          // Parse tolerante BR: aceita "1.234,56", "1234.56", "R$ 1.234,56"
+          v = v === '' || v === null || v === undefined ? null : parseNumeroBR(v)
+        } else if (c.tipo === 'numero') {
           v = v === '' || v === null || v === undefined ? null : Number(v)
           if (Number.isNaN(v)) v = null
         } else if (c.tipo === 'data') {
@@ -197,8 +208,7 @@ export function CampoEditorInline({
                       R$
                     </span>
                     <Input
-                      type="number"
-                      step="0.01"
+                      inputMode="decimal"
                       value={valores[chave] ?? ''}
                       onChange={(e) => setValores((p) => ({ ...p, [chave]: e.target.value }))}
                       placeholder={c.placeholder || '0,00'}

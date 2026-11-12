@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { formatarBRL } from '@/components/documentos/documentos-moeda-utils'
 
 // Fase 6 (prompt-mestre) — Documentos & Importações:
 // upload xlsx/csv/pdf/docx → extração no cliente → classificação sugerida →
@@ -56,8 +57,7 @@ const TIPOS = [
 
 const EMPRESAS = ['Extrafruti', 'Casafruti', 'FoldBox', 'Grupo consolidado']
 
-const fmtBRL = (v: number) =>
-  (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+const fmtBRL = (v: number) => formatarBRL(v)
 
 const fmtData = (s?: string) => {
   if (!s) return '—'

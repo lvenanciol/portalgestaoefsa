@@ -46,6 +46,11 @@ import {
   extrairEntradasDeObservacoes,
   separarResumoEvento,
 } from '@/components/documentos/ProcessoObservacoesTimeline'
+import {
+  formatarBRL,
+  formatarMoedaOuTraco,
+  parseNumeroBR,
+} from '@/components/documentos/documentos-moeda-utils'
 
 export interface DetalheJuridicoProps {
   documentoId: string
@@ -184,10 +189,7 @@ export function DetalheJuridicoView({
 
   const proximoPrazoDataFormatada = formatarDataBR(dataPrazoRaw)
 
-  const formatarMoedaTabela = (val: any) => {
-    const num = Number(val) || 0
-    return `R$ ${num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  }
+  const formatarMoedaTabela = (val: any) => formatarBRL(val)
 
   // Risco em escala de 3 níveis
   const riscoCanonico = String(doc.risco || doc.probabilidade || 'Médio').toLowerCase()
@@ -365,8 +367,8 @@ export function DetalheJuridicoView({
   const salvarEdicaoDados = async () => {
     try {
       setSalvando(true)
-      const vCausa = Number(formValorCausa) || 0
-      const vProv = Number(formValorProvisao) || 0
+      const vCausa = parseNumeroBR(formValorCausa) ?? 0
+      const vProv = parseNumeroBR(formValorProvisao) ?? 0
       const pct = vCausa > 0 ? Math.round((vProv / vCausa) * 100) : 40
 
       await pb.collection('processos_juridicos').update(documentoId, {
@@ -520,7 +522,7 @@ export function DetalheJuridicoView({
                   VALOR DA CAUSA
                 </div>
                 <div className="text-lg sm:text-xl font-bold font-mono text-slate-900 mt-1">
-                  R$ {valorCausaNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  {formatarBRL(valorCausaNum) || '—'}
                 </div>
                 <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
                   provisão {percentualProvisao}%
@@ -1202,16 +1204,11 @@ export function DetalheJuridicoView({
               <div className="flex items-center gap-4 text-xs font-medium text-slate-700 flex-wrap">
                 <div className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-slate-900 inline-block" />
-                  <span>
-                    Pago R$ {valorPagoNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </span>
+                  <span>Pago {formatarMoedaOuTraco(valorPagoNum)}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full bg-slate-300 inline-block" />
-                  <span>
-                    Provisão R${' '}
-                    {valorProvisaoNum.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </span>
+                  <span>Provisão {formatarMoedaOuTraco(valorProvisaoNum)}</span>
                 </div>
               </div>
 
@@ -1336,9 +1333,9 @@ export function DetalheJuridicoView({
               { value: 'Remoto', label: 'Remoto' },
             ],
           },
-          { campo: 'valor_causa', rotulo: 'Valor da Causa (R$)', tipo: 'numero' },
-          { campo: 'provisao', rotulo: 'Valor da Provisão (R$)', tipo: 'numero' },
-          { campo: 'valor_pago', rotulo: 'Valor Pago (R$)', tipo: 'numero' },
+          { campo: 'valor_causa', rotulo: 'Valor da Causa (R$)', tipo: 'moeda' },
+          { campo: 'provisao', rotulo: 'Valor da Provisão (R$)', tipo: 'moeda' },
+          { campo: 'valor_pago', rotulo: 'Valor Pago (R$)', tipo: 'moeda' },
           { campo: 'observacoes', rotulo: 'Observações / Andamentos', tipo: 'textarea' },
         ]}
         onSalvo={(atualizado) => {
@@ -1499,7 +1496,7 @@ export function DetalheJuridicoView({
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-slate-700">Valor da causa (R$)</Label>
                 <Input
-                  type="number"
+                  inputMode="decimal"
                   value={formValorCausa}
                   onChange={(e) => setFormValorCausa(e.target.value)}
                   className="rounded-[10px] text-xs font-mono"
@@ -1509,7 +1506,7 @@ export function DetalheJuridicoView({
               <div className="space-y-1.5">
                 <Label className="text-xs font-bold text-slate-700">Provisão (R$)</Label>
                 <Input
-                  type="number"
+                  inputMode="decimal"
                   value={formValorProvisao}
                   onChange={(e) => setFormValorProvisao(e.target.value)}
                   className="rounded-[10px] text-xs font-mono"

@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/select'
 import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import pb from '@/lib/pocketbase/client'
+import { parseNumeroBR } from './documentos-moeda-utils'
 
 interface NovoDocumentoModalProps {
   aberto: boolean
@@ -547,19 +548,9 @@ export function NovoDocumentoModal({
       } else if (tipoAba === 'contratos' || tipoAba === 'locacoes') {
         if (!form.titulo) throw new Error('Título do contrato é obrigatório.')
         colecaoDestino = 'contratos'
-        const valorNum = form.valor_mensal
-          ? parseFloat(
-              String(form.valor_mensal)
-                .replace(/[R$\s.]/g, '')
-                .replace(',', '.'),
-            )
-          : 0
+        const valorNum = form.valor_mensal ? (parseNumeroBR(form.valor_mensal) ?? 0) : 0
         const valorAssinaturaNum = form.valor_assinatura
-          ? parseFloat(
-              String(form.valor_assinatura)
-                .replace(/[R$\s.]/g, '')
-                .replace(',', '.'),
-            )
+          ? (parseNumeroBR(form.valor_assinatura) ?? 0)
           : 0
 
         const modeloContratoEscolhido =
@@ -569,11 +560,7 @@ export function NovoDocumentoModal({
         const ehUnico = modeloContratoEscolhido === 'unico_aquisicao'
 
         const valorTotalNum = form.valor_total
-          ? parseFloat(
-              String(form.valor_total)
-                .replace(/[R$\s.]/g, '')
-                .replace(',', '.'),
-            )
+          ? (parseNumeroBR(form.valor_total) ?? valorAssinaturaNum)
           : valorAssinaturaNum
 
         const rec = await pb.collection('contratos').create({
@@ -695,13 +682,7 @@ export function NovoDocumentoModal({
       } else if (tipoAba === 'juridicos') {
         if (!form.numero_processo) throw new Error('Número do processo é obrigatório.')
         colecaoDestino = 'processos_juridicos'
-        const valCausa = form.valor_causa
-          ? parseFloat(
-              String(form.valor_causa)
-                .replace(/[R$\s.]/g, '')
-                .replace(',', '.'),
-            )
-          : 0
+        const valCausa = form.valor_causa ? (parseNumeroBR(form.valor_causa) ?? 0) : 0
 
         const rec = await pb.collection('processos_juridicos').create({
           numero_processo: form.numero_processo,

@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { EmpresaIcon } from '@/components/common/EmpresaIcon'
 import pb from '@/lib/pocketbase/client'
+import { formatarBRL } from './documentos-moeda-utils'
 
 interface DocumentoDetalheCamposProps {
   documento: any
@@ -1004,13 +1005,8 @@ export function DocumentoDetalheCampos({
                   />
                 ) : (
                   <p className="font-semibold text-gray-800 mt-0.5">
-                    {(form.valor_base ?? form.valor_causa) ? (
-                      new Intl.NumberFormat('pt-BR', {
-                        style: 'currency',
-                        currency: 'BRL',
-                      }).format(form.valor_base ?? form.valor_causa)
-                    ) : (
-                      <span className="text-[11px] font-normal text-gray-400">R$ 0,00</span>
+                    {formatarBRL(form.valor_base ?? form.valor_causa) || (
+                      <span className="text-[11px] font-normal text-gray-400">—</span>
                     )}
                   </p>
                 )}
@@ -1027,13 +1023,8 @@ export function DocumentoDetalheCampos({
                   />
                 ) : (
                   <p className="font-semibold text-gray-800 mt-0.5">
-                    {form.valor_corrigido ? (
-                      new Intl.NumberFormat('pt-BR', {
-                        style: 'currency',
-                        currency: 'BRL',
-                      }).format(form.valor_corrigido)
-                    ) : (
-                      <span className="text-[11px] font-normal text-gray-400">R$ 0,00</span>
+                    {formatarBRL(form.valor_corrigido) || (
+                      <span className="text-[11px] font-normal text-gray-400">—</span>
                     )}
                   </p>
                 )}
@@ -1050,13 +1041,8 @@ export function DocumentoDetalheCampos({
                   />
                 ) : (
                   <p className="font-semibold text-gray-800 mt-0.5">
-                    {form.juros ? (
-                      new Intl.NumberFormat('pt-BR', {
-                        style: 'currency',
-                        currency: 'BRL',
-                      }).format(form.juros)
-                    ) : (
-                      <span className="text-[11px] font-normal text-gray-400">R$ 0,00</span>
+                    {formatarBRL(form.juros) || (
+                      <span className="text-[11px] font-normal text-gray-400">—</span>
                     )}
                   </p>
                 )}
@@ -1073,13 +1059,8 @@ export function DocumentoDetalheCampos({
                   />
                 ) : (
                   <p className="font-semibold text-gray-800 mt-0.5">
-                    {form.honorarios ? (
-                      new Intl.NumberFormat('pt-BR', {
-                        style: 'currency',
-                        currency: 'BRL',
-                      }).format(form.honorarios)
-                    ) : (
-                      <span className="text-[11px] font-normal text-gray-400">R$ 0,00</span>
+                    {formatarBRL(form.honorarios) || (
+                      <span className="text-[11px] font-normal text-gray-400">—</span>
                     )}
                   </p>
                 )}
@@ -1096,13 +1077,8 @@ export function DocumentoDetalheCampos({
                   />
                 ) : (
                   <p className="font-semibold text-gray-800 mt-0.5">
-                    {form.deposito_recursal ? (
-                      new Intl.NumberFormat('pt-BR', {
-                        style: 'currency',
-                        currency: 'BRL',
-                      }).format(form.deposito_recursal)
-                    ) : (
-                      <span className="text-[11px] font-normal text-gray-400">R$ 0,00</span>
+                    {formatarBRL(form.deposito_recursal) || (
+                      <span className="text-[11px] font-normal text-gray-400">—</span>
                     )}
                   </p>
                 )}

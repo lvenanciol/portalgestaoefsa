@@ -224,6 +224,7 @@ export function extrairClienteEPolo(val: any): { cliente: string; polo?: string 
 }
 
 import { removerRodapesDePagina } from './juridicos-texto-utils'
+import { formatarBRL } from './documentos-moeda-utils'
 
 /**
  * Extrai o bloco completo de Observações e Andamento Processual preservando toda a cronologia.
@@ -1302,10 +1303,7 @@ export function JuridicosImportModal({
                           </span>
                         </td>
                         <td className="py-1.5 px-2 text-right font-medium text-emerald-700">
-                          {(p.valor_atualizado || 0).toLocaleString('pt-BR', {
-                            style: 'currency',
-                            currency: 'BRL',
-                          })}
+                          {formatarBRL(p.valor_atualizado) || '—'}
                         </td>
                       </tr>
                     ))}

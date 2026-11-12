@@ -54,6 +54,7 @@ import { CampoEditorInline, DefinicaoCampo } from './CampoEditorInline'
 import { AnexoVisualizadorInline } from './AnexoVisualizadorInline'
 import { ResponsaveisEditorDialog } from './ResponsaveisEditorDialog'
 import { DocumentoParecerButton } from './DocumentoParecerButton'
+import { formatarBRL, parseNumeroBR } from './documentos-moeda-utils'
 
 export interface DetalheLocacaoProps {
   documento: any
@@ -143,9 +144,9 @@ export function DetalheLocacaoView({
         .trim()
     : parteTexto
 
-  // KPIs
-  const aluguelMensal = Number(docAtual.valor_mensal) || 16000
-  const valorCaucao = Number(docAtual.valor_caucao) || 32000
+  // KPIs (parse tolerante: valor pode vir como string numérica do PocketBase)
+  const aluguelMensal = parseNumeroBR(docAtual.valor_mensal) ?? 0
+  const valorCaucao = parseNumeroBR(docAtual.valor_caucao) ?? 0
   const qtdCaucoes = Number(docAtual.qtd_caucoes) || 2
   const prazoMeses = Number(docAtual.prazo_meses) || 36
 
@@ -177,14 +178,7 @@ export function DetalheLocacaoView({
     return `${meses[d.getMonth()]}/${d.getFullYear()}`
   }
 
-  const formatarMoeda = (val: number) => {
-    if (typeof val !== 'number' || isNaN(val)) return 'R$ 0,00'
-    const formatado = val.toLocaleString('pt-BR', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-    return `R$ ${formatado}`
-  }
+  const formatarMoeda = (val: number) => formatarBRL(val) || '—'
 
   // Próximo reajuste
   const dataProximoReajuste = useMemo(() => {

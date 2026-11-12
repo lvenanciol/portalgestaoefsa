@@ -46,10 +46,10 @@ export function parseNumeroMoeda(val: unknown): number | null {
   return Number.isFinite(num) ? num : null
 }
 
-/** Formata somente valores numéricos; vazio/inválido => '' (nunca "R$ NaN"). */
+/** Formata somente valores numéricos; vazio/inválido/0 => '' (nunca "R$ 0,00" nem "R$ NaN"). */
 export function formatarMoedaBRL(val: unknown): string {
   const num = parseNumeroMoeda(val)
-  if (num === null) return ''
+  if (num === null || num === 0) return ''
   return fmtBRL.format(num)
 }
 
@@ -65,3 +65,9 @@ export function formatarValorBRL(val: unknown): string {
 export function formatarMoedaOuTraco(val: unknown): string {
   return formatarMoedaBRL(val) || '—'
 }
+
+/** Alias curto exigido pelo plano de padronização BRL. */
+export const formatarBRL = formatarMoedaBRL
+
+/** Parse tolerante para inputs: "R$ 1.234,56", "1.234,56", "1234.56". */
+export const parseNumeroBR = parseNumeroMoeda

@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Calculator, TrendingUp, CheckCircle2 } from 'lucide-react'
+import { formatarBRL } from './documentos-moeda-utils'
 
 export interface SimularReajusteModalProps {
   aberto: boolean
@@ -45,8 +46,7 @@ export function SimularReajusteModal({
   const novoValorMensal = valorBase + acrescimo
   const novoValorAnual = novoValorMensal * 12
 
-  const formatarMoeda = (val: number) =>
-    val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  const formatarMoeda = (val: number) => formatarBRL(val)
 
   const handleConfirmar = () => {
     if (onAplicarSimulacao) {

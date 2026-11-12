@@ -3,6 +3,7 @@ import { History, Calendar, User, ArrowRight, Clock, AlertCircle } from 'lucide-
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import pb from '@/lib/pocketbase/client'
+import { formatarBRL } from './documentos-moeda-utils'
 
 interface ProcessoHistoricoModalProps {
   aberto: boolean
@@ -62,12 +63,7 @@ export function ProcessoHistoricoModal({
     }
   }, [aberto, processoId, numeroProcesso])
 
-  const fmtMoeda = (val: any) => {
-    if (val === undefined || val === null || isNaN(Number(val))) return 'R$ 0,00'
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(
-      Number(val),
-    )
-  }
+  const fmtMoeda = (val: any) => formatarBRL(val) || '—'
 
   const fmtData = (val: any) => {
     if (!val) return '—'

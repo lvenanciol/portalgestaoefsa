@@ -36,6 +36,7 @@ import { Badge } from '@/components/ui/badge'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { calcularPrazoValidade, obterStatusInfo, CampoFormatado } from './documentos-design-tokens'
 import { extrairAnexos } from '@/components/documentos/documentos-anexos-utils'
+import { formatarBRL, parseNumeroBR } from './documentos-moeda-utils'
 
 export interface ColunaTipoConfig<T = any> {
   id: string
@@ -50,13 +51,8 @@ export interface ColunaTipoConfig<T = any> {
   isFixed?: boolean
 }
 
-// Formatador de moeda BRL
-const fmtMoeda = (val: any): string => {
-  if (val === undefined || val === null || val === '') return ''
-  const num = Number(val)
-  if (isNaN(num)) return ''
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num)
-}
+// Formatador de moeda BRL (util central com parse tolerante — string numérica do PocketBase ok)
+const fmtMoeda = (val: any): string => formatarBRL(val)
 
 // Formatador de data PT-BR
 const fmtData = (val: any): string => {
@@ -333,8 +329,8 @@ export const COLUNAS_CONTRATOS: ColunaTipoConfig[] = [
     sortable: true,
     sortValue: (item) => {
       const ehUnico = item.modelo_contrato === 'unico_aquisicao'
-      return Number(
-        ehUnico ? item.valor_total || item.valor_assinatura || 0 : item.valor_mensal || 0,
+      return (
+        parseNumeroBR(ehUnico ? item.valor_total || item.valor_assinatura : item.valor_mensal) ?? 0
       )
     },
     render: (item) => {
@@ -438,7 +434,7 @@ export const COLUNAS_LOCACOES: ColunaTipoConfig[] = [
     width: '130px',
     align: 'right',
     sortable: true,
-    sortValue: (item) => Number(item.valor_mensal || 0),
+    sortValue: (item) => parseNumeroBR(item.valor_mensal) ?? 0,
     render: (item) => {
       const v = fmtMoeda(item.valor_mensal)
       return v ? (
@@ -801,17 +797,13 @@ export const COLUNAS_SEGUROS: ColunaTipoConfig[] = [
     width: '130px',
     align: 'right',
     sortable: true,
-    sortValue: (item) => Number(item.premio_total ?? 0),
+    sortValue: (item) => parseNumeroBR(item.premio_total) ?? 0,
     render: (item) => {
-      const v = Number(item.premio_total)
-      if (!Number.isFinite(v) || item.premio_total == null) {
+      const v = fmtMoeda(item.premio_total)
+      if (!v) {
         return <CampoFormatado estado="nao_aplicavel" />
       }
-      return (
-        <span className="font-mono text-xs tabular-nums text-slate-800">
-          {v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-        </span>
-      )
+      return <span className="font-mono text-xs tabular-nums text-slate-800">{v}</span>
     },
   },
   criarColunaStatus('seguros'),
