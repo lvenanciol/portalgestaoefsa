@@ -68,7 +68,11 @@
 // vazia) e já devolve a URL pública da logomarca de cada empresa; a tela usa
 // essa URL como fonte primária (a leitura direta da coleção logomarcas exige
 // sessão e resolvia vazia sem erro). Rebuild para purgar cache do PWA.
-const CACHE_NAME = 'pge-pwa-v51'
+// v52 (12/11/2026): gate de API (api_gate.js) reaplicado com toda a lógica
+// DENTRO dos callbacks (Hook scoping error da rodada anterior); rodada
+// Suprimentos concluída — sidebar sem PLATAFORMA/Configurações e backend
+// bloqueando módulos sem permissão.
+const CACHE_NAME = 'pge-pwa-v52'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
