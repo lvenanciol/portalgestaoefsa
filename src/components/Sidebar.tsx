@@ -27,8 +27,22 @@ import {
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
 import { carregarPermissoes, menuVisivel, Permissoes } from '@/services/permissoes-service'
-// Versão real do app — atualizada a cada apply_changes (mesma do package.json)
-const pkgVersion = '0.0.188'
+// Versão real do app — item j (13/11/2026).
+//
+// ANTES: este valor era um literal fixo ('0.0.188'). O Skip incrementa a
+// versão a cada apply_changes, então a sidebar ficava congelada num número
+// antigo (mostrava 0.0.188 enquanto o app estava na 0.0.387).
+//
+// AGORA: lido do ambiente de build (VITE_APP_VERSION). O projeto não tem
+// resolveJsonModule, então o import de package.json não compila — a injeção
+// pelo ambiente é a via segura e mantém uma fonte só (o package.json, que o
+// Skip incrementa). Sem valor disponível, mostramos '—' em vez de um número
+// desatualizado: nunca exibir versão errada.
+const pkgVersion = String(
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ||
+    (import.meta.env.VITE_PKG_VERSION as string | undefined) ||
+    '',
+)
 import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
 import { idiomaSalvo, traduzir } from '@/lib/i18n'
@@ -347,10 +361,13 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
           </div>
         )}
 
-        {/* Versão REAL do app (package.json — o Skip bumpa a cada apply) */}
+        {/* Versão do build — lida do ambiente, nunca hardcoded */}
         <div className="mt-3 flex items-center justify-between pt-2 border-t border-white/10">
-          <span className="text-[10px] font-semibold tracking-wider text-emerald-100/60 uppercase">
-            v{pkgVersion}
+          <span
+            className="text-[10px] font-semibold tracking-wider text-emerald-100/60 uppercase"
+            title={pkgVersion ? `Build ${pkgVersion}` : 'Versão não informada pelo build'}
+          >
+            {pkgVersion ? 'v' + pkgVersion : '—'}
           </span>
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-300" />
         </div>

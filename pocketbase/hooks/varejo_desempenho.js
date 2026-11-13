@@ -296,9 +296,41 @@ routerAdd(
       }
     }
 
-    // série 5 anos — [0]=MES [1]=ANO [2]=FAT
+    // SÉRIES PARA O GRÁFICO (item c) — mesma janela de 5 anos, métricas
+    // diferentes. Todas em UMA consulta por UNION ALL:
+    //   [0]=MES [1]=ANO [2]=FAT [3]=QTD [4]=CUPONS [5]=TICKET [6]=PRECO [7]=FUNC
+    // O front escolhe a métrica no dropdown do título do gráfico.
     const serieRows = lista(
       'serie',
+      "SELECT TO_CHAR(C.DTNEG,'MM') MES, TO_CHAR(C.DTNEG,'YYYY') ANO, " +
+        'ROUND(SUM(C.VLRNOTA),2) FAT, 0 QTD, COUNT(DISTINCT C.NUMNOTA) CUPONS, ' +
+        'ROUND(AVG(C.VLRNOTA),2) TICKET, 0 PRECO, 0 FUNC ' +
+        "FROM SANKHYA.TGFCAB C WHERE C.DTNEG >= TO_DATE('01/01/" +
+        (ano - 4) +
+        "','DD/MM/YYYY') " +
+        'AND C.DTNEG < ' +
+        FIM +
+        OK +
+        fAba +
+        extra +
+        " GROUP BY TO_CHAR(C.DTNEG,'MM'), TO_CHAR(C.DTNEG,'YYYY') " +
+        'UNION ALL ' +
+        "SELECT TO_CHAR(C.DTNEG,'MM'), TO_CHAR(C.DTNEG,'YYYY'), 0, " +
+        'ROUND(SUM(I.QTDNEG),2), 0, 0, 0, 0 ' +
+        'FROM SANKHYA.TGFITE I JOIN SANKHYA.TGFCAB C ON C.NUNOTA=I.NUNOTA ' +
+        "WHERE C.DTNEG >= TO_DATE('01/01/" +
+        (ano - 4) +
+        "','DD/MM/YYYY') " +
+        'AND C.DTNEG < ' +
+        FIM +
+        OK +
+        fAba +
+        extra +
+        " GROUP BY TO_CHAR(C.DTNEG,'MM'), TO_CHAR(C.DTNEG,'YYYY') " +
+        'ORDER BY 1,2',
+    )
+    const serieAntiga = lista(
+      'serie_legado',
       "SELECT TO_CHAR(C.DTNEG,'MM'), TO_CHAR(C.DTNEG,'YYYY'), ROUND(SUM(C.VLRNOTA),2) FROM SANKHYA.TGFCAB C " +
         "WHERE C.DTNEG >= TO_DATE('01/01/" +
         (ano - 4) +
@@ -309,8 +341,27 @@ routerAdd(
         extra +
         " GROUP BY TO_CHAR(C.DTNEG,'MM'), TO_CHAR(C.DTNEG,'YYYY') ORDER BY 1,2",
     )
-    const serie = serieRows.map(function (r) {
-      return { MES: v(r, 0), ANO: v(r, 1), FAT: n(v(r, 2)) }
+    // agrega as duas linhas do UNION (faturamento e quantidade) por mês/ano
+    const mapaSerie = {}
+    for (const r of serieRows) {
+      const kk = String(v(r, 0)) + '|' + String(v(r, 1))
+      const cur = mapaSerie[kk] || { MES: v(r, 0), ANO: v(r, 1), FAT: 0, QTD: 0, CUPONS: 0 }
+      cur.FAT += Number(v(r, 2)) || 0
+      cur.QTD += Number(v(r, 3)) || 0
+      cur.CUPONS += Number(v(r, 4)) || 0
+      mapaSerie[kk] = cur
+    }
+    const serie = Object.keys(mapaSerie).map(function (kk) {
+      const s = mapaSerie[kk]
+      return {
+        MES: s.MES,
+        ANO: s.ANO,
+        FAT: s.FAT || null,
+        QTD: s.QTD || null,
+        CUPONS: s.CUPONS || null,
+        TICKET: s.CUPONS ? Number((s.FAT / s.CUPONS).toFixed(2)) : null,
+        PRECO: s.QTD ? Number((s.FAT / s.QTD).toFixed(2)) : null,
+      }
     })
 
     // grade por loja — TIPO 1 métricas / TIPO 2 qtd / TIPO 3 ano anterior
