@@ -1190,27 +1190,6 @@ export default function DesempenhoPage() {
       })
   }, [dados, busca])
 
-  // item f: subtotais por grupo (Rede e Loja Nova/SSS), como no print do BI
-  const somaGrupo = (ls: Loja[]) => {
-    const fat = ls.reduce((a, l) => a + (Number(l.faturamento) || 0), 0)
-    const meta = ls.reduce((a, l) => a + (Number(l.meta) || 0), 0)
-    const qtd = ls.reduce((a, l) => a + (Number(l.quantidade) || 0), 0)
-    const cup = ls.reduce((a, l) => a + (Number(l.cupons) || 0), 0)
-    const part = ls.reduce((a, l) => a + (Number(l.participacao) || 0), 0)
-    const comC = ls.filter((l) => l.cresc_aa !== null && l.cresc_aa !== undefined)
-    return {
-      participacao: part || null,
-      meta: meta || null,
-      faturamento: fat || null,
-      ating_venda: meta ? Number(((fat / meta) * 100).toFixed(1)) : null,
-      cresc_aa: comC.length ? comC.reduce((a, l) => a + Number(l.cresc_aa), 0) / comC.length : null,
-      quantidade: qtd || null,
-      preco_medio: fat && qtd ? Number((fat / qtd).toFixed(2)) : null,
-      cupons: cup || null,
-      ticket_medio: fat && cup ? Number((fat / cup).toFixed(2)) : null,
-    }
-  }
-
   const grupos = useMemo(() => {
     let base = [...(dados?.lojas || [])]
     if (busca.trim()) {
