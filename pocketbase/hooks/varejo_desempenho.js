@@ -408,14 +408,33 @@ routerAdd(
     })
 
     // grade por loja — TIPO 1 métricas / TIPO 2 qtd / TIPO 3 ano anterior
-    // [0]=TIPO [1]=CODPARC [2]=LOJA [3]=REDE [4]=CUPONS [5]=FAT [6]=SUP [7]=TP [8]=NOVA [9]=LIMITE [10]=QTD
+    // [0]=TIPO [1]=CODPARC [2]=LOJA [3]=REDE [4]=CUPONS [5]=FAT [6]=SUP
+    // [7]=TP [8]=NOVA [9]=LIMITE [10]=QTD [11]=BANDEIRA
+    //
+    // HIERARQUIA DO PRINT (item i):
+    //   Rede ....... Carone | Coutinho (Extrabom no ERP)
+    //   Bandeira ... Carone | Sempre Tem | Extrabom | Atacado Vem
+    // Derivada do NOMEPARC: "NN-CR" Carone · "NN-ST" Sempre Tem ·
+    // "NN-EB" Extrabom · "NN-ATV" Atacado Vem.
+    const CASE_REDE =
+      "CASE WHEN P.NOMEPARC LIKE '%-EB -%' OR P.NOMEPARC LIKE '%-ATV -%' " +
+      "THEN 'Coutinho' ELSE 'Carone' END"
+    const CASE_BAND =
+      "CASE WHEN P.NOMEPARC LIKE '%-CR -%' THEN 'Carone' " +
+      "WHEN P.NOMEPARC LIKE '%-ST -%' THEN 'Sempre Tem' " +
+      "WHEN P.NOMEPARC LIKE '%-EB -%' THEN 'Extrabom' " +
+      "WHEN P.NOMEPARC LIKE '%-ATV -%' THEN 'Atacado Vem' " +
+      "ELSE 'Outros' END"
     const grRows = lista(
       'grade',
       'SELECT * FROM (' +
         'SELECT 1 T, P.CODPARC, P.NOMEPARC, ' +
-        "CASE WHEN P.AD_CODCENCUS < 10106000 THEN 'ExtraBOM' ELSE 'Carone' END, " +
+        CASE_REDE +
+        ', ' +
         'COUNT(DISTINCT C.NUMNOTA), ROUND(SUM(C.VLRNOTA),2), P.AD_SUPERVISORLOJA, ' +
-        "P.AD_TIPOLOJA, NVL(P.AD_LOJANOVA,'N'), P.AD_PERCTETOQUEBRA, 0 " +
+        "P.AD_TIPOLOJA, NVL(P.AD_LOJANOVA,'N'), P.AD_PERCTETOQUEBRA, 0, " +
+        CASE_BAND +
+        ' ' +
         'FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
         'WHERE C.DTNEG >= ' +
         INI +
@@ -425,7 +444,7 @@ routerAdd(
         ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 ' +
         extra +
         'GROUP BY P.CODPARC, P.NOMEPARC, P.AD_CODCENCUS, P.AD_SUPERVISORLOJA, P.AD_TIPOLOJA, P.AD_LOJANOVA, P.AD_PERCTETOQUEBRA ' +
-        'UNION ALL SELECT 2 T, P.CODPARC, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, ROUND(SUM(I.QTDNEG),2) ' +
+        'UNION ALL SELECT 2 T, P.CODPARC, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, ROUND(SUM(I.QTDNEG),2), NULL ' +
         'FROM SANKHYA.TGFITE I JOIN SANKHYA.TGFCAB C ON C.NUNOTA=I.NUNOTA JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
         'WHERE C.DTNEG >= ' +
         INI +
@@ -435,7 +454,7 @@ routerAdd(
         ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 ' +
         extra +
         'GROUP BY P.CODPARC ' +
-        'UNION ALL SELECT 3 T, P.CODPARC, NULL, NULL, COUNT(DISTINCT C.NUMNOTA), ROUND(SUM(C.VLRNOTA),2), NULL, NULL, NULL, NULL, 0 ' +
+        'UNION ALL SELECT 3 T, P.CODPARC, NULL, NULL, COUNT(DISTINCT C.NUMNOTA), ROUND(SUM(C.VLRNOTA),2), NULL, NULL, NULL, NULL, 0, NULL ' +
         'FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
         'WHERE C.DTNEG >= ' +
         INI_AA +
@@ -642,6 +661,7 @@ routerAdd(
         codparc: cp,
         loja: v(r, 2),
         rede: v(r, 3),
+        bandeira: v(r, 11),
         cupons: cupL,
         faturamento: fatL,
         quantidade: qL,
