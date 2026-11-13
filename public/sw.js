@@ -96,7 +96,12 @@
 // por coluna, cards com ícone/ cor próprios e rodapé centralizado de variações
 // (% meta e % A.A. em Faturamento/CMV/Quebra; % M.A. e % A.A. nos demais),
 // controles de exibir/ocultar/mover no próprio card e quebra por loja.
-const CACHE_NAME = 'pge-pwa-v61'
+// v62 (13/11/2026 13:20): Desempenho por Unidade v8 — blocos (cards/grade/
+// gráfico) reposicionáveis entre as áreas, filtros com largura pelo conteúdo,
+// grade redimensionável por arrasto na borda da coluna, nomes dos cards
+// legíveis, seleção de linhas refletindo nos cards, funcionários no card
+// "Lojas" (EF_VIEW_FUNCIONARIOS_LOJAS) e "Canal" no lugar de "Segmento".
+const CACHE_NAME = 'pge-pwa-v62'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
