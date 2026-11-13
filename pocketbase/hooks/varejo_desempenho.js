@@ -1,17 +1,24 @@
 // TAREFA VAREJO (13/11/2026) — Desempenho Unidades: KPIs por bandeira.
-// GET /backend/v1/varejo/desempenho?aba=distribuicao|atacado|carone|extrabom|varejo
+// GET /backend/v1/varejo/desempenho?aba=...&debug=1
 //
-// FONTE DA VERDADE: Sankhya (TGFCAB/TGFITE/TGFPAR), via edge proxy — o mesmo
-// caminho do financeiro_real. Nada é inventado: métrica sem fonte volta null e
-// a tela mostra "—" com a origem no tooltip.
+// ARQUITETURA (v2 — 13/11 10:30):
+//  1. CACHE-FIRST na coleção `sankhya_cache` (chave `varejo_desempenho_<aba>`).
+//     A tela fazia 7 consultas em série no Sankhya e levava 11-15 s por aba.
+//     Agora a leitura vem do PocketBase (ms) e o cálculo roda no máximo a cada
+//     CACHE_TTL_MS. Com `?forcar=1` o cache é ignorado (botão Atualizar).
+//  2. ISOLAMENTO POR BLOCO: cada consulta tem try/catch próprio. Uma falha não
+//     zera as outras — antes, um erro em qualquer SQL deixava a aba inteira
+//     vazia sem explicação.
+//  3. DIAGNÓSTICO visível: o retorno traz `debug` com o estado de cada bloco e
+//     `console.log` alimenta o log de hooks do Skip Cloud. Foi assim que se
+//     descobriu que as requisições levavam 11-15 s.
 //
 // MAPA DAS BANDEIRAS — por CENTRO DE CUSTO (TSICUS), não por nome de loja:
 //   10105000 LOJAS EXTRABOM → 55 lojas (inclui as "EXTRABOM ATACADO VEM")
 //   10106000 LOJAS CARONE   → 22 lojas (Carone + bandeira "Sempre Tem")
 //   Ligação: TGFPAR.AD_CODCENCUS
-// A tentativa anterior de classificar por NOMEPARC estava errada: as lojas
-// Carone seguem "NN-CR - XXX" (começam com número) e escapavam do padrão
-// "CR - %", jogando R$ 13,8M de Carone dentro da Extrabom.
+
+const CACHE_TTL_MS = 15 * 60 * 1000 // 15 min
 
 routerAdd(
   'GET',
@@ -20,15 +27,45 @@ routerAdd(
     const auth = e.auth
     if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
 
+    const q = e.requestInfo().query || {}
+    const aba = String(q.aba || 'varejo').toLowerCase()
+    const debug = String(q.debug || '') === '1'
+    const forcar = String(q.forcar || '') === '1'
+
+    // ---------- 1) CACHE ----------
+    const chaveCache = 'varejo_desempenho_' + aba
+    if (!forcar) {
+      try {
+        const rec = $app.findFirstRecordByFilter('sankhya_cache', 'chave = {:c}', { c: chaveCache })
+        const geradoEm = rec.getString('gerado_em') || ''
+        const idade = geradoEm ? new Date().getTime() - new Date(geradoEm).getTime() : 1e12
+        if (idade >= 0 && idade < CACHE_TTL_MS) {
+          let payload = {}
+          try {
+            payload = JSON.parse(rec.getString('payload') || '{}')
+          } catch (_) {
+            payload = {}
+          }
+          return e.json(
+            200,
+            Object.assign({}, payload, {
+              do_cache: true,
+              cache_idade_min: Math.round(idade / 60000),
+            }),
+          )
+        }
+      } catch (_) {
+        // sem cache ainda — segue para o cálculo
+      }
+    }
+
+    // ---------- 2) CÁLCULO ----------
     const edgeUrl = $secrets.get('PGE_EDGE_URL') || ''
     const edgeSecret = $secrets.get('PGE_PROXY_SECRET') || ''
     if (!edgeUrl || !edgeSecret) {
       return e.json(502, { ok: false, erro: 'Proxy Sankhya não configurado.' })
     }
 
-    const aba = String(e.requestInfo().query.aba || 'varejo').toLowerCase()
-
-    // Predicados SQL por bandeira (sempre com espaço nas pontas)
     const CC_EB = '(P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10106000)'
     const CC_CR = '(P.AD_CODCENCUS >= 10106000 AND P.AD_CODCENCUS < 10107000)'
     const FILTRO = {
@@ -58,178 +95,226 @@ routerAdd(
       " AND C.STATUSNOTA='L' " +
       filtro
 
+    // Nunca deixa o handler cair por exceção de rede: devolve o erro no bloco.
     const rodar = function (sql) {
-      const res = $http.send({
-        url: edgeUrl,
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-PGE-Secret': edgeSecret },
-        body: JSON.stringify({
-          op: 'dbExplorer',
-          payload: {
-            requestBody: { serviceName: 'DbExplorerSP.executeQuery', requestBody: { sql: sql } },
-          },
-        }),
-        timeout: 45,
-      })
-      if (res.statusCode !== 200) return { erro: 'edge ' + res.statusCode }
-      const d = res.json || {}
-      const rb = (d.data && d.data.responseBody) || {}
-      if (!rb.rows) return { erro: (d.data && d.data.statusMessage) || 'sem rows' }
-      return { rows: rb.rows }
+      try {
+        const res = $http.send({
+          url: edgeUrl,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-PGE-Secret': edgeSecret },
+          body: JSON.stringify({
+            op: 'dbExplorer',
+            payload: {
+              requestBody: { serviceName: 'DbExplorerSP.executeQuery', requestBody: { sql: sql } },
+            },
+          }),
+          timeout: 60,
+        })
+        if (res.statusCode !== 200) return { erro: 'edge HTTP ' + res.statusCode }
+        const d = res.json || {}
+        const rb = (d.data && d.data.responseBody) || {}
+        const rows = rb.rows || []
+        if (!rows.length) {
+          return { erro: (d.data && d.data.statusMessage) || 'sem linhas', rows: [] }
+        }
+        return { rows: rows }
+      } catch (err) {
+        return { erro: 'exceção: ' + String(err).slice(0, 160) }
+      }
     }
 
-    const falhas = []
+    const falhas = {}
+    const diag = {}
 
-    // --- KPIs do mês corrente ---
-    const sqlKpi =
-      'SELECT COUNT(DISTINCT C.NUMNOTA) CUPONS, COUNT(*) NOTAS, ' +
-      'ROUND(SUM(C.VLRNOTA),2) FATURAMENTO, ROUND(AVG(C.VLRNOTA),2) TICKET ' +
-      BASE
-    const rKpi = rodar(sqlKpi)
-    const k = (rKpi.rows && rKpi.rows[0]) || {}
-    if (rKpi.erro) falhas.push('kpi: ' + rKpi.erro)
+    const bloco = function (nome, sqlFn) {
+      const sql = sqlFn()
+      const r = rodar(sql)
+      if (r.erro) {
+        falhas[nome] = r.erro
+        diag[nome] = 'ERRO'
+        return {}
+      }
+      diag[nome] = 'ok ' + r.rows.length + ' linha(s)'
+      return r.rows[0] || {}
+    }
 
-    // Quantidade/KG vem dos itens
-    const sqlQtd =
-      'SELECT ROUND(SUM(I.QTDNEG),2) QTD, ROUND(SUM(I.VLRTOT),2) VENDA_ITENS ' +
-      ' FROM SANKHYA.TGFITE I JOIN SANKHYA.TGFCAB C ON C.NUNOTA=I.NUNOTA ' +
-      ' JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
-      "WHERE C.DTNEG >= TRUNC(SYSDATE,'MM') AND NVL(C.PENDENTE,'N')='N' " +
-      " AND C.STATUSNOTA='L' " +
-      filtro
-    const rQtd = rodar(sqlQtd)
-    const q = (rQtd.rows && rQtd.rows[0]) || {}
-    if (rQtd.erro) falhas.push('qtd: ' + rQtd.erro)
+    const k = bloco(
+      'kpi',
+      () =>
+        'SELECT COUNT(DISTINCT C.NUMNOTA) CUPONS, COUNT(*) NOTAS, ' +
+        'ROUND(SUM(C.VLRNOTA),2) FATURAMENTO, ROUND(AVG(C.VLRNOTA),2) TICKET ' +
+        BASE,
+    )
 
-    // --- Série mensal (12m) ---
-    const sqlSerie =
-      "SELECT TO_CHAR(C.DTNEG,'YYYY-MM') MES, ROUND(SUM(C.VLRNOTA),2) FAT, " +
-      'COUNT(DISTINCT C.NUMNOTA) CUPONS ' +
-      ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
-      "WHERE C.DTNEG >= ADD_MONTHS(TRUNC(SYSDATE,'MM'),-12) " +
-      " AND NVL(C.PENDENTE,'N')='N' AND C.STATUSNOTA='L' " +
-      filtro +
-      " GROUP BY TO_CHAR(C.DTNEG,'YYYY-MM') ORDER BY 1"
-    const rSerie = rodar(sqlSerie)
-    const serie = rSerie.rows || []
-    if (rSerie.erro) falhas.push('serie: ' + rSerie.erro)
+    const qd = bloco(
+      'qtd',
+      () =>
+        'SELECT ROUND(SUM(I.QTDNEG),2) QTD, ROUND(SUM(I.VLRTOT),2) VENDA_ITENS ' +
+        ' FROM SANKHYA.TGFITE I JOIN SANKHYA.TGFCAB C ON C.NUNOTA=I.NUNOTA ' +
+        ' JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
+        "WHERE C.DTNEG >= TRUNC(SYSDATE,'MM') AND NVL(C.PENDENTE,'N')='N' " +
+        " AND C.STATUSNOTA='L' " +
+        filtro,
+    )
 
-    // --- Ranking de lojas ---
-    const sqlLojas =
-      'SELECT * FROM (SELECT P.NOMEPARC LOJA, COUNT(DISTINCT C.NUMNOTA) CUPONS, ' +
-      'ROUND(SUM(C.VLRNOTA),2) FAT ' +
-      ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
-      "WHERE C.DTNEG >= TRUNC(SYSDATE,'MM') AND NVL(C.PENDENTE,'N')='N' " +
-      " AND C.STATUSNOTA='L' " +
-      filtro +
-      ' GROUP BY P.NOMEPARC ORDER BY SUM(C.VLRNOTA) DESC) WHERE ROWNUM <= 30'
-    const rLojas = rodar(sqlLojas)
-    const lojas = rLojas.rows || []
-    if (rLojas.erro) falhas.push('lojas: ' + rLojas.erro)
+    // Série 12m — array, não primeira linha
+    let serie = []
+    try {
+      const r = rodar(
+        "SELECT TO_CHAR(C.DTNEG,'YYYY-MM') MES, ROUND(SUM(C.VLRNOTA),2) FAT, " +
+          'COUNT(DISTINCT C.NUMNOTA) CUPONS ' +
+          ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
+          "WHERE C.DTNEG >= ADD_MONTHS(TRUNC(SYSDATE,'MM'),-12) " +
+          " AND NVL(C.PENDENTE,'N')='N' AND C.STATUSNOTA='L' " +
+          filtro +
+          " GROUP BY TO_CHAR(C.DTNEG,'YYYY-MM') ORDER BY 1",
+      )
+      if (r.erro) {
+        falhas.serie = r.erro
+        diag.serie = 'ERRO'
+      } else {
+        serie = r.rows
+        diag.serie = 'ok ' + r.rows.length + ' mes(es)'
+      }
+    } catch (err) {
+      falhas.serie = String(err).slice(0, 120)
+    }
 
-    // --- Faturamento por cidade ---
-    const sqlCidade =
-      'SELECT * FROM (SELECT CI.NOMECID CIDADE, ROUND(SUM(C.VLRNOTA),2) FAT ' +
-      ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
-      ' LEFT JOIN SANKHYA.TSICID CI ON CI.CODCID=P.CODCID ' +
-      "WHERE C.DTNEG >= TRUNC(SYSDATE,'MM') AND NVL(C.PENDENTE,'N')='N' " +
-      " AND C.STATUSNOTA='L' " +
-      filtro +
-      ' GROUP BY CI.NOMECID ORDER BY SUM(C.VLRNOTA) DESC) WHERE ROWNUM <= 15'
-    const rCidade = rodar(sqlCidade)
-    const cidades = rCidade.rows || []
-    if (rCidade.erro) falhas.push('cidade: ' + rCidade.erro)
+    let lojas = []
+    try {
+      const r = rodar(
+        'SELECT * FROM (SELECT P.NOMEPARC LOJA, COUNT(DISTINCT C.NUMNOTA) CUPONS, ' +
+          'ROUND(SUM(C.VLRNOTA),2) FAT ' +
+          ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
+          "WHERE C.DTNEG >= TRUNC(SYSDATE,'MM') AND NVL(C.PENDENTE,'N')='N' " +
+          " AND C.STATUSNOTA='L' " +
+          filtro +
+          ' GROUP BY P.NOMEPARC ORDER BY SUM(C.VLRNOTA) DESC) WHERE ROWNUM <= 30',
+      )
+      if (r.erro) {
+        falhas.lojas = r.erro
+        diag.lojas = 'ERRO'
+      } else {
+        lojas = r.rows
+        diag.lojas = 'ok ' + r.rows.length + ' loja(s)'
+      }
+    } catch (err) {
+      falhas.lojas = String(err).slice(0, 120)
+    }
 
-    // --- Participação por bandeira (abas consolidadas) ---
+    let cidades = []
+    try {
+      const r = rodar(
+        'SELECT * FROM (SELECT CI.NOMECID CIDADE, ROUND(SUM(C.VLRNOTA),2) FAT ' +
+          ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
+          ' LEFT JOIN SANKHYA.TSICID CI ON CI.CODCID=P.CODCID ' +
+          "WHERE C.DTNEG >= TRUNC(SYSDATE,'MM') AND NVL(C.PENDENTE,'N')='N' " +
+          " AND C.STATUSNOTA='L' " +
+          filtro +
+          ' GROUP BY CI.NOMECID ORDER BY SUM(C.VLRNOTA) DESC) WHERE ROWNUM <= 15',
+      )
+      if (r.erro) {
+        falhas.cidades = r.erro
+        diag.cidades = 'ERRO'
+      } else {
+        cidades = r.rows
+        diag.cidades = 'ok ' + r.rows.length + ' cidade(s)'
+      }
+    } catch (err) {
+      falhas.cidades = String(err).slice(0, 120)
+    }
+
     let participacao = []
     if (aba === 'varejo' || aba === 'distribuicao') {
-      const sqlPart =
-        "SELECT CASE WHEN P.AD_CODCENCUS < 10106000 THEN 'EXTRABOM' ELSE 'CARONE' END BANDEIRA, " +
-        ' ROUND(SUM(C.VLRNOTA),2) FAT ' +
-        ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
-        "WHERE C.DTNEG >= TRUNC(SYSDATE,'MM') AND NVL(C.PENDENTE,'N')='N' " +
-        " AND C.STATUSNOTA='L' AND (" +
-        CC_EB +
-        ' OR ' +
-        CC_CR +
-        ') GROUP BY CASE WHEN P.AD_CODCENCUS < 10106000 THEN ' +
-        "'EXTRABOM' ELSE 'CARONE' END ORDER BY 2 DESC"
-      const rPart = rodar(sqlPart)
-      participacao = rPart.rows || []
-      if (rPart.erro) falhas.push('participacao: ' + rPart.erro)
+      try {
+        const r = rodar(
+          "SELECT CASE WHEN P.AD_CODCENCUS < 10106000 THEN 'EXTRABOM' ELSE 'CARONE' END BANDEIRA, " +
+            ' ROUND(SUM(C.VLRNOTA),2) FAT ' +
+            ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
+            "WHERE C.DTNEG >= TRUNC(SYSDATE,'MM') AND NVL(C.PENDENTE,'N')='N' " +
+            " AND C.STATUSNOTA='L' AND (" +
+            CC_EB +
+            ' OR ' +
+            CC_CR +
+            ') ' +
+            ' GROUP BY CASE WHEN P.AD_CODCENCUS < 10106000 THEN ' +
+            "'EXTRABOM' ELSE 'CARONE' END ORDER BY 2 DESC",
+        )
+        if (r.erro) {
+          falhas.participacao = r.erro
+          diag.participacao = 'ERRO'
+        } else {
+          participacao = r.rows
+          diag.participacao = 'ok ' + r.rows.length + ' banda(s)'
+        }
+      } catch (err) {
+        falhas.participacao = String(err).slice(0, 120)
+      }
     }
 
-    // --- CMV Parcial: tela "Resumo Lojas" (AD_RESUMOLOJAS) ---
-    // CMVACUM / VLRVENDABRUTA, chave CODCENCUS — permite abrir por bandeira.
-    // Cobertura medida em 13/11: 100% das linhas de loja em 2026.
-    // Conferido: ago 51,85% · set 52,80% · out 53,33% (rede).
-    const CC_CMV_EB = '(CODCENCUS >= 10105000 AND CODCENCUS < 10106000)'
-    const CC_CMV_CR = '(CODCENCUS >= 10106000 AND CODCENCUS < 10107000)'
+    // CMV — tela "Resumo Lojas" (AD_RESUMOLOJAS), filtrado pela bandeira
     const CC_CMV =
       aba === 'extrabom'
-        ? ' AND ' + CC_CMV_EB + ' '
+        ? ' AND (CODCENCUS >= 10105000 AND CODCENCUS < 10106000) '
         : aba === 'carone'
-          ? ' AND ' + CC_CMV_CR + ' '
-          : ' AND (' + CC_CMV_EB + ' OR ' + CC_CMV_CR + ') '
-    const sqlCmv =
-      'SELECT * FROM (SELECT MES, ANO, ROUND(SUM(VLRVENDABRUTA),2) VENDA, ' +
-      'ROUND(SUM(CMVACUM),2) CMV, ' +
-      'ROUND(100*SUM(CMVACUM)/NULLIF(SUM(VLRVENDABRUTA),0),2) CMV_PCT ' +
-      ' FROM SANKHYA.AD_RESUMOLOJAS WHERE ANO >= 2026 ' +
-      CC_CMV +
-      'GROUP BY MES, ANO ORDER BY ANO DESC, MES DESC) WHERE ROWNUM <= 1'
-    const rCmv = rodar(sqlCmv)
-    const cmvRow = (rCmv.rows && rCmv.rows[0]) || {}
-    if (rCmv.erro) falhas.push('cmv: ' + rCmv.erro)
+          ? ' AND (CODCENCUS >= 10106000 AND CODCENCUS < 10107000) '
+          : ' AND ((CODCENCUS >= 10105000 AND CODCENCUS < 10106000) OR ' +
+            '(CODCENCUS >= 10106000 AND CODCENCUS < 10107000)) '
+    const cmvRow = bloco(
+      'cmv',
+      () =>
+        'SELECT * FROM (SELECT MES, ANO, ROUND(SUM(VLRVENDABRUTA),2) VENDA, ' +
+        'ROUND(SUM(CMVACUM),2) CMV, ' +
+        'ROUND(100*SUM(CMVACUM)/NULLIF(SUM(VLRVENDABRUTA),0),2) CMV_PCT ' +
+        ' FROM SANKHYA.AD_RESUMOLOJAS WHERE ANO >= 2026 ' +
+        CC_CMV +
+        'GROUP BY MES, ANO ORDER BY ANO DESC, MES DESC) WHERE ROWNUM <= 1',
+    )
 
-    // --- QUEBRA GERAL DA EMPRESA → TGFCAB, TOPs de perda ---
-    // 1111 = NF PERDA/DESCARTE · 1014 = PEDIDO DE PERDA/DESCARTE
-    // (confirmados em TGFTOP.DESCROPER). É a quebra LANÇADA em nota.
-    // Subquery escalar no SELECT faz o descritor devolver 0 linhas, então o
-    // denominador vem de uma segunda consulta.
-    const sqlQuebraGeral =
-      'SELECT ' +
-      " ROUND(SUM(CASE WHEN C.DTNEG >= TRUNC(SYSDATE,'MM') THEN C.VLRNOTA ELSE 0 END),2) VLR_MES," +
-      ' ROUND(SUM(C.VLRNOTA),2) VLR_12M, COUNT(*) NOTAS_12M ' +
-      ' FROM SANKHYA.TGFCAB C WHERE C.CODTIPOPER IN (1111,1014) ' +
-      " AND C.DTNEG >= ADD_MONTHS(TRUNC(SYSDATE,'MM'),-12) AND C.STATUSNOTA='L'"
-    const rQgeral = rodar(sqlQuebraGeral)
-    const qGeral = (rQgeral.rows && rQgeral.rows[0]) || {}
-    if (rQgeral.erro) falhas.push('quebra_geral: ' + rQgeral.erro)
+    // Quebra geral — TGFCAB TOPs 1111/1014
+    const qGeral = bloco(
+      'quebra_geral',
+      () =>
+        'SELECT ' +
+        " ROUND(SUM(CASE WHEN C.DTNEG >= TRUNC(SYSDATE,'MM') THEN C.VLRNOTA ELSE 0 END),2) VLR_MES," +
+        ' ROUND(SUM(C.VLRNOTA),2) VLR_12M, COUNT(*) NOTAS_12M ' +
+        ' FROM SANKHYA.TGFCAB C WHERE C.CODTIPOPER IN (1111,1014) ' +
+        " AND C.DTNEG >= ADD_MONTHS(TRUNC(SYSDATE,'MM'),-12) AND C.STATUSNOTA='L'",
+    )
 
-    const sqlVendaTotal =
-      'SELECT ROUND(SUM(VLRNOTA),2) VENDA_MES FROM SANKHYA.TGFCAB ' +
-      "WHERE DTNEG >= TRUNC(SYSDATE,'MM') AND STATUSNOTA='L' AND NVL(PENDENTE,'N')='N'"
-    const rVendaTotal = rodar(sqlVendaTotal)
-    const vtRow = (rVendaTotal.rows && rVendaTotal.rows[0]) || {}
-    const vendaTotalMes = Number(vtRow.VENDA_MES || 0)
-    if (rVendaTotal.erro) falhas.push('venda_total: ' + rVendaTotal.erro)
+    const vtRow = bloco(
+      'venda_total',
+      () =>
+        'SELECT ROUND(SUM(VLRNOTA),2) VENDA_MES FROM SANKHYA.TGFCAB ' +
+        "WHERE DTNEG >= TRUNC(SYSDATE,'MM') AND STATUSNOTA='L' AND NVL(PENDENTE,'N')='N'",
+    )
 
-    // --- QUEBRA DO VAREJO → tela "Resumo Lojas" (AD_BIDRCQUEBRA) ---
-    // Série viva até out/2026. A tabela só tem REFERENCIA + QUEBRA: NÃO abre
-    // por bandeira. O valor absoluto está na irmã AD_BIDRCQUEBRACUM.
-    // NÃO somar com a quebra geral: a diferença é o que não passa por nota de
-    // perda (apurado em inventário).
-    const sqlQuebraVar =
-      "SELECT * FROM (SELECT TO_CHAR(Q.REFERENCIA,'YYYY-MM') REF, " +
-      'ROUND(Q.QUEBRA,2) QUEBRA, A.QUEBRAACUM ' +
-      ' FROM SANKHYA.AD_BIDRCQUEBRA Q ' +
-      ' LEFT JOIN SANKHYA.AD_BIDRCQUEBRACUM A ON A.REFERENCIA=Q.REFERENCIA ' +
-      'ORDER BY Q.REFERENCIA DESC) WHERE ROWNUM <= 1'
-    const rQuebraVar = rodar(sqlQuebraVar)
-    const quebraRow = (rQuebraVar.rows && rQuebraVar.rows[0]) || {}
-    if (rQuebraVar.erro) falhas.push('quebra_varejo: ' + rQuebraVar.erro)
+    // Quebra varejo — tela "Resumo Lojas" (AD_BIDRCQUEBRA)
+    const quebraRow = bloco(
+      'quebra_varejo',
+      () =>
+        "SELECT * FROM (SELECT TO_CHAR(Q.REFERENCIA,'YYYY-MM') REF, " +
+        'ROUND(Q.QUEBRA,2) QUEBRA, A.QUEBRAACUM ' +
+        ' FROM SANKHYA.AD_BIDRCQUEBRA Q ' +
+        ' LEFT JOIN SANKHYA.AD_BIDRCQUEBRACUM A ON A.REFERENCIA=Q.REFERENCIA ' +
+        'ORDER BY Q.REFERENCIA DESC) WHERE ROWNUM <= 1',
+    )
 
-    const num = (v) => (v === null || v === undefined ? null : Number(v))
+    const num = (v) => {
+      if (v === null || v === undefined || v === '') return null
+      const n = Number(v)
+      return isNaN(n) ? null : n
+    }
     const fat = num(k.FATURAMENTO)
-    const qtd = num(q.QTD)
-    const cmvPct = num(cmvRow.CMV_PCT)
-    const quebraVarPct = num(quebraRow.QUEBRA)
+    const qtd = num(qd.QTD)
+    const vendaTotalMes = Number(vtRow.VENDA_MES || 0)
     const quebraGeralValorMes = num(qGeral.VLR_MES)
     const quebraGeralPct =
       quebraGeralValorMes !== null && vendaTotalMes > 0
         ? Number(((quebraGeralValorMes / vendaTotalMes) * 100).toFixed(2))
         : null
+    const cmvPct = num(cmvRow.CMV_PCT)
+    const quebraVarPct = num(quebraRow.QUEBRA)
 
     const out = {
       ok: true,
@@ -265,24 +350,71 @@ routerAdd(
             ? 'sem dado na tela Resumo Lojas'
             : 'Tela Resumo Lojas (AD_BIDRCQUEBRA) · referência ' +
               (quebraRow.REF || '?') +
-              ' · valor acumulado R$ ' +
+              ' · acumulado R$ ' +
               (Number(quebraRow.QUEBRAACUM || 0) / 1000000).toFixed(1) +
-              'M · a fonte só publica o total da rede, não abre por bandeira',
+              'M · a fonte só publica o total da rede',
         quebra_geral_pct:
           quebraGeralPct === null
             ? 'sem nota de perda no mês'
-            : 'TGFCAB · TOPs 1111 (NF PERDA/DESCARTE) e 1014 · quebra lançada em nota · R$ ' +
+            : 'TGFCAB · TOPs 1111 e 1014 · quebra lançada em nota · R$ ' +
               (Number(qGeral.VLR_MES || 0) / 1000).toFixed(0) +
               ' mil no mês · ' +
               (qGeral.NOTAS_12M || 0) +
-              ' notas em 12 meses. Não somar com a do Resumo Lojas — a diferença é apurada em inventário.',
+              ' notas em 12 meses',
       },
       serie: serie,
       lojas: lojas,
       cidades: cidades,
       participacao: participacao,
     }
-    if (falhas.length) out.falhas = falhas
+
+    const chavesFalha = Object.keys(falhas)
+    if (chavesFalha.length) out.falhas = chavesFalha.map((c) => c + ': ' + falhas[c])
+    if (debug) out.debug = diag
+
+    // Diagnóstico no log de hooks do Skip Cloud (visível em list_logs source=hooks)
+    try {
+      console.log(
+        '[varejo/desempenho] aba=' +
+          aba +
+          ' kpi.fat=' +
+          (fat === null ? 'NULL' : fat) +
+          ' kpi.cupons=' +
+          (k.CUPONS === undefined ? 'undef' : k.CUPONS) +
+          ' qtd=' +
+          (qtd === null ? 'NULL' : qtd) +
+          ' lojas=' +
+          lojas.length +
+          ' serie=' +
+          serie.length +
+          ' falhas=' +
+          (chavesFalha.join('|') || 'nenhuma') +
+          ' diag=' +
+          JSON.stringify(diag),
+      )
+    } catch (_) {}
+
+    // ---------- 3) GRAVA CACHE ----------
+    try {
+      const col = $app.findCollectionByNameOrId('sankhya_cache')
+      let rec = null
+      try {
+        rec = $app.findFirstRecordByFilter('sankhya_cache', 'chave = {:c}', { c: chaveCache })
+      } catch (_) {
+        rec = new Record(col)
+        rec.set('chave', chaveCache)
+      }
+      rec.set('payload', JSON.stringify(out))
+      rec.set('gerado_em', new DateTime().string())
+      rec.set('status', chavesFalha.length ? 'parcial' : 'ok')
+      rec.set('falhas', chavesFalha)
+      $app.save(rec)
+    } catch (errCache) {
+      try {
+        console.log('[varejo/desempenho] falha ao gravar cache: ' + String(errCache).slice(0, 200))
+      } catch (_) {}
+    }
+
     return e.json(200, out)
   },
   $apis.requireAuth(),
