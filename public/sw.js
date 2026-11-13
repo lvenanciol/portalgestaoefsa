@@ -77,7 +77,12 @@
 // "Preencher Espaço" que cortava laterais); exibição (login, EmpresaIcon,
 // logos públicas) prioriza a LOGOMARCA completa; emblema cortado limpo do
 // registro via migração 0074.
-const CACHE_NAME = 'pge-pwa-v57'
+// v58 (13/11/2026): TAREFA VAREJO — Desempenho Unidades com 5 abas
+// (Distribuição, Atacado, Carone, Extrabom, Varejo), cards do painel de
+// referência na paleta do PGE, gráficos de evolução/participação/cidade e
+// botão Parecer (Gemini Flash, persona de varejo, prompt editável) por aba
+// e por loja. Bump garante que o preview exiba o bundle novo imediatamente.
+const CACHE_NAME = 'pge-pwa-v58'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
