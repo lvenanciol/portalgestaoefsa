@@ -502,8 +502,6 @@ routerAdd(
       return Number(((Number(atual) / Number(meta)) * 100).toFixed(1))
     }
 
-    const qtdMA = Q['1']
-    const qtdAA = Q['2']
     const precoMA = kMA.FAT && qtdMA ? kMA.FAT / qtdMA : null
     const precoAA = kAA.FAT && qtdAA ? kAA.FAT / qtdAA : null
 
