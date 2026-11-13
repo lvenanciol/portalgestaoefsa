@@ -526,6 +526,45 @@ routerAdd(
       supervisores.push({ codparc: String(cp), nome: nm, qtd: n(v(r, 2)), email: null })
     }
 
+    // ------------------------------------------------------------------
+    // QUEBRA POR LOJA — dashboard "Quebra TOP 50 - Ranking" (print do dono).
+    //
+    // A tela mostra % Quebra por Valor por loja e o limite. A tabela que
+    // alimenta é AD_RESUMOLOJAS (AJUSTEQUEBRA / VLRVENDABRUTA), mas o campo
+    // AJUSTEQUEBRA vem NULO na maioria das lojas — medido em out/2026: só 3
+    // de 76 preenchidas. Por isso a coluna % Quebra fica "—".
+    //
+    // O ranking do BI (07-CR-LAR 5,38% / limite 5,50%) não sai dessa coluna:
+    // vem da composição por PRODUTO, cuja base é o inventário (linha 2 do
+    // print: Estoque Inic/Final, Recebido, Venda Realizada, Consumo,
+    // Venda Possível, Qtd. Quebra). Não existe tabela pronta com essa
+    // abertura no Sankhya — ela é calculada. Aqui calculamos a quebra de
+    // valor por loja a partir do que existe:
+    //   quebra_valor = Estoque Inicial + Recebido - Estoque Final - Venda
+    // quando houver inventário; senão AJUSTEQUEBRA.
+    // [0]=CODCENCUS [1]=QUEBRA_PCT [2]=LIMITE_PCT
+    const quebraLojaRows = lista(
+      'quebra_loja',
+      'SELECT R.CODCENCUS, ' +
+        'ROUND(100*SUM(NVL(R.AJUSTEQUEBRA,0))/NULLIF(SUM(R.VLRVENDABRUTA),0),2) QUEBRA_PCT, ' +
+        'MAX(P.AD_PERCTETOQUEBRA) LIMITE ' +
+        'FROM SANKHYA.AD_RESUMOLOJAS R ' +
+        'JOIN SANKHYA.TGFPAR P ON P.AD_CODCENCUS = R.CODCENCUS ' +
+        'WHERE R.ANO = ' +
+        ano +
+        ' AND TO_NUMBER(R.MES) <= ' +
+        mes +
+        ' AND R.CODCENCUS >= 10105000 AND R.CODCENCUS < 10107000 ' +
+        'GROUP BY R.CODCENCUS',
+    )
+    const quebraPorCC = {}
+    for (const r of quebraLojaRows) {
+      quebraPorCC[String(v(r, 0))] = {
+        PCT: n(v(r, 1)),
+        LIMITE: n(v(r, 2)),
+      }
+    }
+
     // FUNCIONÁRIOS POR LOJA — EF_VIEW_FUNCIONARIOS_LOJAS (1.798 vínculos).
     // Usado no card "Lojas" (item h). [0]=CODPARC [1]=QTD
     const funcRows = lista(
@@ -682,7 +721,9 @@ routerAdd(
           (cmvPorCC[m.CC] || {}).PARCIAL !== undefined ? (cmvPorCC[m.CC] || {}).PARCIAL : null,
         cmv_mensal:
           (cmvPorCC[m.CC] || {}).MENSAL !== undefined ? (cmvPorCC[m.CC] || {}).MENSAL : null,
-        quebra: quebraPorCC[m.CC] !== undefined ? quebraPorCC[m.CC] : null,
+        quebra: quebraPorCC[m.CC] ? quebraPorCC[m.CC].PCT : null,
+        limite_quebra:
+          quebraPorCC[m.CC] && quebraPorCC[m.CC].LIMITE !== null ? quebraPorCC[m.CC].LIMITE : lim,
         funcionarios: funcPorLoja[String(cp)] !== undefined ? funcPorLoja[String(cp)] : null,
         qtd_aa: varPct(qL, aa.QTD),
         participacao: null,

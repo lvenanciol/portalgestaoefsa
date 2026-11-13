@@ -692,6 +692,9 @@ export default function DesempenhoPage() {
       return vs.length ? vs.reduce((a, b) => a + Number(b), 0) / vs.length : null
     }
     return {
+      // a coluna chama-se 'ating' na definição; o subtotal precisa expor
+      // 'ating' TAMBÉM para o mapeamento genérico da linha funcionar.
+      ating: meta ? (fat / meta) * 100 : null,
       participacao: part || null,
       meta: meta || null,
       faturamento: fat || null,
@@ -776,6 +779,15 @@ export default function DesempenhoPage() {
   }, [dados, ordem, busca])
 
   const colVisiveis = useMemo(() => COLUNAS.filter((c) => !colOcultas.includes(c.id)), [colOcultas])
+
+  // Mapeia o id da COLUNA para o campo REAL da loja.
+  // O bug do print: a coluna '% Atg' tem id 'ating' mas o dado vem em
+  // 'ating_venda' — sem este mapa a célula lia undefined e mostrava "—".
+  const valorDaLoja = (c: Col, l: Loja): any => {
+    if (c.id === 'ating') return l.ating_venda
+    if (c.id === 'meta') return l.meta
+    return (l as any)[c.id]
+  }
 
   const celula = (c: Col, valor: any) => {
     if (c.id === 'ating') {
@@ -1605,7 +1617,7 @@ export default function DesempenhoPage() {
                                           c.al === 'right' ? 'text-right' : 'text-left',
                                         )}
                                       >
-                                        {celula(c, (l as any)[c.id])}
+                                        {celula(c, valorDaLoja(c, l))}
                                       </td>
                                     )
                                   })}
