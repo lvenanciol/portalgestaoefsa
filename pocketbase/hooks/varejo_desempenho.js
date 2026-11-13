@@ -1,22 +1,17 @@
 // TAREFA VAREJO (13/11/2026) — Desempenho Unidades: KPIs por bandeira.
 // GET /backend/v1/varejo/desempenho?aba=distribuicao|atacado|carone|extrabom|varejo
 //
-// FONTE DA VERDADE: Sankhya (TGFCAB/TGFITE/TGFPAR), via edge proxy — o MESMO
-// caminho do financeiro_real. Nada é inventado: quando a métrica não existe na
-// base, o campo volta null e a tela mostra "—" com a origem esperada.
+// FONTE DA VERDADE: Sankhya (TGFCAB/TGFITE/TGFPAR), via edge proxy — o mesmo
+// caminho do financeiro_real. Nada é inventado: métrica sem fonte volta null e
+// a tela mostra "—" com a origem no tooltip.
 //
-// MAPA DAS BANDEIRAS (descoberto no ERP em 13/11):
-//   - Extrabom .... parceiros com NOMEPARC no padrão "NN-EB - XXX" (54 lojas)
-//   - Carone ...... parceiros "CR - ..." (Central Padaria)
-//   - Varejo ...... Extrabom + Carone consolidado
-//   - Atacado ..... Extrafruti (CODEMP 1,2,3,4,5,6,10,11,12,13,14) — parceiros
-//                   que NÃO são loja de varejo
-//   - Distribuição  Casafruti + demais empresas do grupo
-//
-// Os KPIs seguem o print de referência: Faturamento, Quantidade/KG, Preço Médio,
-// Cupons, Ticket Médio, CMV Parcial e Quebra. Os que o Sankhya não fornece
-// (CMV por lote, quebra de estoque) voltam null com aviso explícito — melhor
-// "sem dado" do que número inventado (regra do dono).
+// MAPA DAS BANDEIRAS — por CENTRO DE CUSTO (TSICUS), não por nome de loja:
+//   10105000 LOJAS EXTRABOM → 55 lojas (inclui as "EXTRABOM ATACADO VEM")
+//   10106000 LOJAS CARONE   → 22 lojas (Carone + bandeira "Sempre Tem")
+//   Ligação: TGFPAR.AD_CODCENCUS
+// A tentativa anterior de classificar por NOMEPARC estava errada: as lojas
+// Carone seguem "NN-CR - XXX" (começam com número) e escapavam do padrão
+// "CR - %", jogando R$ 13,8M de Carone dentro da Extrabom.
 
 routerAdd(
   'GET',
@@ -33,31 +28,13 @@ routerAdd(
 
     const aba = String(e.requestInfo().query.aba || 'varejo').toLowerCase()
 
-    // Predicado SQL por bandeira. Sempre com espaço nas pontas para concatenação.
-    //
-    // ---------------------------------------------------------------
-    // REGRA OFICIAL (13/11/2026) — CENTRO DE CUSTO, não nome de loja.
-    //
-    // A v0.0.358 saiu com classificação por NOMEPARC ("NN-EB"/"CR -") e isso
-    // estava ERRADO: as lojas Carone seguem o padrão "NN-CR - XXX" (começam
-    // com número), então só "CR - CENTRAL PADARIA" casava e R$ 13,8M da rede
-    // Carone apareciam como Extrabom.
-    //
-    // A fonte correta é o plano de contas do ERP (TSICUS), hierarquia real:
-    //   10105000 LOJAS EXTRABOM  → 55 lojas (inclui as "EXTRABOM ATACADO VEM")
-    //   10106000 LOJAS CARONE    → 22 lojas (Carone + bandeira "Sempre Tem")
-    // Ligação: TGFPAR.AD_CODCENCUS (campo corretivo por parceiro).
-    //
-    // PROVA (out/2026 fechado): Extrabom 51.083.804,96 (55,5%) e Carone
-    // 40.934.653,01 (44,5%) — contra 54,1%/45,9% no print de referência.
-    // A diferença é de janela de apuração, não de classificação.
+    // Predicados SQL por bandeira (sempre com espaço nas pontas)
     const CC_EB = '(P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10106000)'
     const CC_CR = '(P.AD_CODCENCUS >= 10106000 AND P.AD_CODCENCUS < 10107000)'
     const FILTRO = {
       extrabom: ' AND ' + CC_EB + ' ',
       carone: ' AND ' + CC_CR + ' ',
       varejo: ' AND (' + CC_EB + ' OR ' + CC_CR + ') ',
-      // atacado/distribuicao: o complemento do varejo, separado por empresa
       atacado:
         ' AND NOT (' +
         CC_EB +
@@ -102,9 +79,6 @@ routerAdd(
     }
 
     const falhas = []
-    // Helper declarado ANTES de qualquer uso (TDZ: const usada antes da
-    // declaração derruba o handler com ReferenceError).
-    const num0 = (row) => Number((row && row.VENDA_MES) || 0)
 
     // --- KPIs do mês corrente ---
     const sqlKpi =
@@ -127,7 +101,7 @@ routerAdd(
     const q = (rQtd.rows && rQtd.rows[0]) || {}
     if (rQtd.erro) falhas.push('qtd: ' + rQtd.erro)
 
-    // --- Série mensal (12m) para os gráficos de evolução ---
+    // --- Série mensal (12m) ---
     const sqlSerie =
       "SELECT TO_CHAR(C.DTNEG,'YYYY-MM') MES, ROUND(SUM(C.VLRNOTA),2) FAT, " +
       'COUNT(DISTINCT C.NUMNOTA) CUPONS ' +
@@ -140,7 +114,7 @@ routerAdd(
     const serie = rSerie.rows || []
     if (rSerie.erro) falhas.push('serie: ' + rSerie.erro)
 
-    // --- Ranking de lojas / parceiros ---
+    // --- Ranking de lojas ---
     const sqlLojas =
       'SELECT * FROM (SELECT P.NOMEPARC LOJA, COUNT(DISTINCT C.NUMNOTA) CUPONS, ' +
       'ROUND(SUM(C.VLRNOTA),2) FAT ' +
@@ -153,7 +127,7 @@ routerAdd(
     const lojas = rLojas.rows || []
     if (rLojas.erro) falhas.push('lojas: ' + rLojas.erro)
 
-    // --- Faturamento por cidade (o print mostra exatamente isto) ---
+    // --- Faturamento por cidade ---
     const sqlCidade =
       'SELECT * FROM (SELECT CI.NOMECID CIDADE, ROUND(SUM(C.VLRNOTA),2) FAT ' +
       ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
@@ -166,7 +140,7 @@ routerAdd(
     const cidades = rCidade.rows || []
     if (rCidade.erro) falhas.push('cidade: ' + rCidade.erro)
 
-    // --- Participação por bandeira (só nas abas consolidadas) ---
+    // --- Participação por bandeira (abas consolidadas) ---
     let participacao = []
     if (aba === 'varejo' || aba === 'distribuicao') {
       const sqlPart =
@@ -185,15 +159,10 @@ routerAdd(
       if (rPart.erro) falhas.push('participacao: ' + rPart.erro)
     }
 
-    // --- CMV Parcial: AD_RESUMOLOJAS.CMVACUM / VLRVENDABRUTA ---
-    // Fonte usada pela controladoria (mesma do painel de referência).
-    // Cobertura medida em 13/11: 100% das linhas de loja em todos os meses de
-    // 2026 (70 a 76 linhas/mês). Valores conferidos: ago 51,85% · set 52,80%
-    // · out 53,33% — faixa coerente para varejo de alimentos.
-    // ATENÇÃO: se o mês corrente ainda não tiver fechamento na tabela, o valor
-    // vem do último mês fechado e o campo `cmv_referencia` diz qual é.
-    // O CMV tem a MESMA chave de bandeira (CODCENCUS), então dá para separar
-    // Extrabom × Carone em vez de mostrar a rede consolidada.
+    // --- CMV Parcial: tela "Resumo Lojas" (AD_RESUMOLOJAS) ---
+    // CMVACUM / VLRVENDABRUTA, chave CODCENCUS — permite abrir por bandeira.
+    // Cobertura medida em 13/11: 100% das linhas de loja em 2026.
+    // Conferido: ago 51,85% · set 52,80% · out 53,33% (rede).
     const CC_CMV_EB = '(CODCENCUS >= 10105000 AND CODCENCUS < 10106000)'
     const CC_CMV_CR = '(CODCENCUS >= 10106000 AND CODCENCUS < 10107000)'
     const CC_CMV =
@@ -201,9 +170,7 @@ routerAdd(
         ? ' AND ' + CC_CMV_EB + ' '
         : aba === 'carone'
           ? ' AND ' + CC_CMV_CR + ' '
-          : aba === 'varejo' || aba === 'distribuicao'
-            ? ' AND (' + CC_CMV_EB + ' OR ' + CC_CMV_CR + ') '
-            : ''
+          : ' AND (' + CC_CMV_EB + ' OR ' + CC_CMV_CR + ') '
     const sqlCmv =
       'SELECT * FROM (SELECT MES, ANO, ROUND(SUM(VLRVENDABRUTA),2) VENDA, ' +
       'ROUND(SUM(CMVACUM),2) CMV, ' +
@@ -215,49 +182,34 @@ routerAdd(
     const cmvRow = (rCmv.rows && rCmv.rows[0]) || {}
     if (rCmv.erro) falhas.push('cmv: ' + rCmv.erro)
 
-    // --- QUEBRA (duas fontes, conforme decisão do dono em 13/11) ---
-    //
-    // (1) QUEBRA GERAL DA EMPRESA → TGFCAB, tipos de operação de perda.
-    //     1111 = NF PERDA/DESCARTE · 1014 = PEDIDO DE PERDA/DESCARTE
-    //     (confirmados em TGFTOP.DESCROPER). É a quebra LANÇADA em nota.
-    //     Medido: 1535 notas / R$ 7.729.091,78 nos últimos 12 meses.
-    //
-    // (2) QUEBRA DO VAREJO (o 7,89% do painel de referência) → tela
-    //     "Resumo Lojas", cuja tabela é AD_BIDRCQUEBRA (série viva até
-    //     out/2026). NÃO é decomponível por bandeira: a tabela só tem
-    //     REFERENCIA + QUEBRA. O valor absoluto está na irmã
-    //     AD_BIDRCQUEBRACUM.QUEBRAACUM.
-    //
-    //     ATENÇÃO — as duas NÃO são a mesma coisa e não devem ser somadas:
-    //     a geral (nota) dá algo como R$ 64 mil/mês; a do Resumo Lojas dá
-    //     R$ 4,8 milhões acumulados. A diferença é o que não passa por nota
-    //     de perda (apurado em inventário). Por isso aparecem em cards
-    //     separados, cada um com a origem no tooltip.
-    // Subquery escalar no SELECT faz o descritor do Sankhya devolver 0 linhas —
-    // por isso o percentual é calculado aqui, com uma segunda consulta simples.
-    const TOP_PERDA = '(1111,1014)'
+    // --- QUEBRA GERAL DA EMPRESA → TGFCAB, TOPs de perda ---
+    // 1111 = NF PERDA/DESCARTE · 1014 = PEDIDO DE PERDA/DESCARTE
+    // (confirmados em TGFTOP.DESCROPER). É a quebra LANÇADA em nota.
+    // Subquery escalar no SELECT faz o descritor devolver 0 linhas, então o
+    // denominador vem de uma segunda consulta.
     const sqlQuebraGeral =
       'SELECT ' +
       " ROUND(SUM(CASE WHEN C.DTNEG >= TRUNC(SYSDATE,'MM') THEN C.VLRNOTA ELSE 0 END),2) VLR_MES," +
-      ' ROUND(SUM(C.VLRNOTA),2) VLR_12M,' +
-      ' COUNT(*) NOTAS_12M ' +
-      ' FROM SANKHYA.TGFCAB C ' +
-      'WHERE C.CODTIPOPER IN ' +
-      TOP_PERDA +
+      ' ROUND(SUM(C.VLRNOTA),2) VLR_12M, COUNT(*) NOTAS_12M ' +
+      ' FROM SANKHYA.TGFCAB C WHERE C.CODTIPOPER IN (1111,1014) ' +
       " AND C.DTNEG >= ADD_MONTHS(TRUNC(SYSDATE,'MM'),-12) AND C.STATUSNOTA='L'"
     const rQgeral = rodar(sqlQuebraGeral)
     const qGeral = (rQgeral.rows && rQgeral.rows[0]) || {}
     if (rQgeral.erro) falhas.push('quebra_geral: ' + rQgeral.erro)
 
-    // Denominador: faturamento total do grupo no mês corrente
     const sqlVendaTotal =
       'SELECT ROUND(SUM(VLRNOTA),2) VENDA_MES FROM SANKHYA.TGFCAB ' +
       "WHERE DTNEG >= TRUNC(SYSDATE,'MM') AND STATUSNOTA='L' AND NVL(PENDENTE,'N')='N'"
     const rVendaTotal = rodar(sqlVendaTotal)
-    const vendaTotalMes = num0((rVendaTotal.rows && rVendaTotal.rows[0]) || {})
+    const vtRow = (rVendaTotal.rows && rVendaTotal.rows[0]) || {}
+    const vendaTotalMes = Number(vtRow.VENDA_MES || 0)
     if (rVendaTotal.erro) falhas.push('venda_total: ' + rVendaTotal.erro)
 
-    // (2) Resumo Lojas
+    // --- QUEBRA DO VAREJO → tela "Resumo Lojas" (AD_BIDRCQUEBRA) ---
+    // Série viva até out/2026. A tabela só tem REFERENCIA + QUEBRA: NÃO abre
+    // por bandeira. O valor absoluto está na irmã AD_BIDRCQUEBRACUM.
+    // NÃO somar com a quebra geral: a diferença é o que não passa por nota de
+    // perda (apurado em inventário).
     const sqlQuebraVar =
       "SELECT * FROM (SELECT TO_CHAR(Q.REFERENCIA,'YYYY-MM') REF, " +
       'ROUND(Q.QUEBRA,2) QUEBRA, A.QUEBRAACUM ' +
@@ -267,10 +219,10 @@ routerAdd(
     const rQuebraVar = rodar(sqlQuebraVar)
     const quebraRow = (rQuebraVar.rows && rQuebraVar.rows[0]) || {}
     if (rQuebraVar.erro) falhas.push('quebra_varejo: ' + rQuebraVar.erro)
+
     const num = (v) => (v === null || v === undefined ? null : Number(v))
     const fat = num(k.FATURAMENTO)
     const qtd = num(q.QTD)
-    const cupons = num(k.CUPONS)
     const cmvPct = num(cmvRow.CMV_PCT)
     const quebraVarPct = num(quebraRow.QUEBRA)
     const quebraGeralValorMes = num(qGeral.VLR_MES)
@@ -286,27 +238,22 @@ routerAdd(
       periodo: 'Mês corrente',
       kpis: {
         faturamento: fat,
-        // kg e unidades somados: o ERP mistura UN e KG no QTDNEG
         quantidade_kg: qtd,
         preco_medio: fat && qtd ? Number((fat / qtd).toFixed(2)) : null,
-        cupons: cupons,
+        cupons: num(k.CUPONS),
         ticket_medio: num(k.TICKET),
         cmv_pct: cmvPct,
-        // Quebra do VAREJO — tela "Resumo Lojas" (AD_BIDRCQUEBRA)
         quebra_pct: quebraVarPct,
-        // Quebra GERAL da empresa — TGFCAB, TOPs 1111/1014
         quebra_geral_pct: quebraGeralPct,
-        quebra_geral_valor_mes: num(qGeral.VLR_MES),
+        quebra_geral_valor_mes: quebraGeralValorMes,
         quebra_geral_valor_12m: num(qGeral.VLR_12M),
         quebra_geral_notas_12m: num(qGeral.NOTAS_12M),
       },
-      // De onde veio cada número que NÃO é do mês corrente ou não é específico
-      // da bandeira — a tela mostra isso no tooltip do card.
       origem: {
         cmv_pct:
           cmvPct === null
             ? 'sem fechamento na AD_RESUMOLOJAS para esta bandeira'
-            : 'AD_RESUMOLOJAS · referência ' +
+            : 'Tela Resumo Lojas (AD_RESUMOLOJAS) · referência ' +
               (cmvRow.MES || '?') +
               '/' +
               (cmvRow.ANO || '?') +
@@ -324,13 +271,11 @@ routerAdd(
         quebra_geral_pct:
           quebraGeralPct === null
             ? 'sem nota de perda no mês'
-            : 'TGFCAB · TOPs 1111 (NF PERDA/DESCARTE) e 1014 · quebra LANÇADA em nota · ' +
-              'R$ ' +
+            : 'TGFCAB · TOPs 1111 (NF PERDA/DESCARTE) e 1014 · quebra lançada em nota · R$ ' +
               (Number(qGeral.VLR_MES || 0) / 1000).toFixed(0) +
               ' mil no mês · ' +
               (qGeral.NOTAS_12M || 0) +
-              ' notas em 12 meses. Não deve ser somada à do Resumo Lojas — ' +
-              'a diferença é a quebra apurada em inventário.',
+              ' notas em 12 meses. Não somar com a do Resumo Lojas — a diferença é apurada em inventário.',
       },
       serie: serie,
       lojas: lojas,
