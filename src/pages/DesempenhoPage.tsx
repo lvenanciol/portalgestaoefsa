@@ -798,6 +798,12 @@ type CardId = (typeof CARDS_IDS)[number]
 const BLOCOS = ['cards', 'grade', 'grafico'] as const
 type BlocoId = (typeof BLOCOS)[number]
 
+// chaves de preferências globais (filtros abertos, colunas, cards, layout)
+const K_FILTROS = NS + ':filtros_abertos'
+const K_COLUNAS = NS + ':colunas'
+const K_CARDS = NS + ':cards'
+const K_LAYOUT = NS + ':layout'
+
 function lsGet<T>(k: string, padrao: T): T {
   try {
     const raw = localStorage.getItem(k)
@@ -1325,6 +1331,18 @@ export default function DesempenhoPage() {
   const nomeSup =
     (dados.supervisores || []).find((s) => String(s.codparc) === f.supervisor)?.nome || 'Todos'
   const nLojas = Number(K.nLojas || 0)
+
+  // valor absoluto do período comparado (item d):
+  //  - compMeta: a meta em R$ direto do KPI;
+  //  - compAA: faturamento do mês equivalente do ano anterior, reconstruído
+  //    do % de A.A. sobre o faturamento atual (base = fat / (1 + aa/100)).
+  const compMeta = (v: number | null | undefined) =>
+    v === null || v === undefined ? null : fmtBRL(v)
+  const compAA = (pct: number | null | undefined) => {
+    if (pct === null || pct === undefined || K.faturamento === null) return null
+    const base = Number(K.faturamento) / (1 + pct / 100)
+    return Number.isFinite(base) ? fmtBRL(base) : null
+  }
 
   const defs: Record<
     CardId,
