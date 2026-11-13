@@ -197,7 +197,10 @@ export default function DesempenhoPage() {
   const gravarCacheLocal = (a: Aba, d: Resposta) => {
     try {
       localStorage.setItem(chaveLocal(a), JSON.stringify({ em: Date.now(), dados: d }))
-    } catch (_) {}
+    } catch (_e) {
+      // localStorage cheio ou bloqueado (modo privado): segue sem cache local,
+      // o cache do servidor continua valendo.
+    }
   }
 
   const carregar = useCallback(async (a: Aba, forcar = false) => {
