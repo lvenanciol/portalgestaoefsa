@@ -101,7 +101,11 @@
 // grade redimensionável por arrasto na borda da coluna, nomes dos cards
 // legíveis, seleção de linhas refletindo nos cards, funcionários no card
 // "Lojas" (EF_VIEW_FUNCIONARIOS_LOJAS) e "Canal" no lugar de "Segmento".
-const CACHE_NAME = 'pge-pwa-v62'
+// v63 (13/11/2026 13:50): colunas da grade todas visíveis por padrão,
+// preferências por usuário, título do gráfico como dropdown de métricas,
+// valor comparado sob cada % de variação, botão "Atualizando" e versão da
+// sidebar lida do build (antes era um literal congelado em 0.0.188).
+const CACHE_NAME = 'pge-pwa-v63'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
