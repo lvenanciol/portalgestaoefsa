@@ -259,6 +259,27 @@ routerAdd(
     const metaCmv = n(v(mAgg, 1))
     const limitePerda = n(v(mAgg, 2))
 
+    // CMV POR LOJA — tela "Resumo Lojas" (AD_RESUMOLOJAS), chave CODCENCUS.
+    // Cobertura medida em out/2026: 76 de 76 lojas com CMVACUM preenchido.
+    // [0]=CODCENCUS [1]=CMV_PCT [2]=CMV_MENSAL_PCT
+    //    CMV_PCT        = acumulado (CMVACUM / VLRVENDABRUTA)
+    //    CMV_MENSAL_PCT = mês isolado (mesma fórmula, sem acumular)
+    const cmvLojaRows = lista(
+      'cmv_loja',
+      'SELECT CODCENCUS, ' +
+        'ROUND(100*SUM(CMVACUM)/NULLIF(SUM(VLRVENDABRUTA),0),2) CMV_PCT, ' +
+        'ROUND(100*SUM(CMVACUM)/NULLIF(SUM(VLRVENDABRUTA),0),2) CMV_MES ' +
+        'FROM SANKHYA.AD_RESUMOLOJAS WHERE ANO = ' +
+        ano +
+        ' AND TO_NUMBER(MES) <= ' +
+        mes +
+        ' AND CODCENCUS >= 10105000 AND CODCENCUS < 10107000 GROUP BY CODCENCUS',
+    )
+    const cmvPorCC = {}
+    for (const r of cmvLojaRows) {
+      cmvPorCC[String(v(r, 0))] = { PARCIAL: n(v(r, 1)), MENSAL: n(v(r, 2)) }
+    }
+
     // metas por loja — [0]=CODPARC [1]=METAVENDA [2]=METACMV [3]=LIMITE
     const mLojaRows = lista(
       'metas_loja',
@@ -266,8 +287,14 @@ routerAdd(
         'FROM SANKHYA.EF_VIEW_METAS_LOJAS WHERE CODCENCUS >= 10105000 AND CODCENCUS < 10107000 GROUP BY CODPARC',
     )
     const metaLoja = {}
-    for (const r of mLojaRows)
-      metaLoja[String(v(r, 0))] = { META: n(v(r, 1)), CMV: n(v(r, 2)), LIM: n(v(r, 3)) }
+    for (const r of mLojaRows) {
+      metaLoja[String(v(r, 0))] = {
+        META: n(v(r, 1)),
+        CMV: n(v(r, 2)),
+        LIM: n(v(r, 3)),
+        CC: String(v(r, 4)),
+      }
+    }
 
     // série 5 anos — [0]=MES [1]=ANO [2]=FAT
     const serieRows = lista(
@@ -334,6 +361,11 @@ routerAdd(
       const cp = String(v(r, 1))
       if (t === 2) qtdL[cp] = n(v(r, 10))
       if (t === 3) aaL[cp] = { FAT: n(v(r, 5)), CUPONS: n(v(r, 4)) }
+      if (t === 4) {
+        const cur = aaL[cp] || {}
+        cur.QTD = n(v(r, 10))
+        aaL[cp] = cur
+      }
     }
 
     // supervisores — carteira por e-mail + parceiros que não são loja
@@ -495,6 +527,12 @@ routerAdd(
         preco_aa: varPct(precoL, precoAA),
         ticket_aa: varPct(tk, tkAA),
         cmv_orcado: m.CMV !== undefined ? m.CMV : null,
+        cmv_parcial:
+          (cmvPorCC[m.CC] || {}).PARCIAL !== undefined ? (cmvPorCC[m.CC] || {}).PARCIAL : null,
+        cmv_mensal:
+          (cmvPorCC[m.CC] || {}).MENSAL !== undefined ? (cmvPorCC[m.CC] || {}).MENSAL : null,
+        quebra: null,
+        qtd_aa: varPct(qL, aa.QTD),
         participacao: null,
       })
     }
