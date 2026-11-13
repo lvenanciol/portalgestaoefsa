@@ -104,7 +104,12 @@
 // v64 (13/11/2026): correção do ReferenceError "K_FILTROS is not defined" que
 // quebrava a montagem da página /desempenho (constante de chave do localStorage
 // não definida — restauradas K_FILTROS, K_COLUNAS, K_CARDS e K_LAYOUT).
-const CACHE_NAME = 'pge-pwa-v64'
+// v65 (13/11/2026 14:30): Desempenho por Unidade r11 — todas as colunas da
+// grade visíveis por padrão, personalização por usuário, título do gráfico
+// como dropdown de indicadores, valor comparado sob cada %, grupos
+// expandíveis Rede → Loja Nova/Existente, botão "Atualizando" em âmbar e
+// versão da sidebar lida de src/lib/app-version.ts.
+const CACHE_NAME = 'pge-pwa-v65'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

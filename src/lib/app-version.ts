@@ -18,5 +18,5 @@
 //
 // ÚLTIMA SINCRONIA: v0.0.394 (commit 1f54043)
 
-export const APP_VERSION = '0.0.394'
-export const APP_BUILD = '1f54043'
+export const APP_VERSION = '0.0.397'
+export const APP_BUILD = 'sw-v65'
