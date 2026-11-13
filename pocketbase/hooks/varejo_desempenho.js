@@ -18,14 +18,17 @@
 //   10106000 LOJAS CARONE   → 22 lojas (Carone + bandeira "Sempre Tem")
 //   Ligação: TGFPAR.AD_CODCENCUS
 
-const CACHE_TTL_MS = 15 * 60 * 1000 // 15 min
-
 routerAdd(
   'GET',
   '/backend/v1/varejo/desempenho',
   (e) => {
     const auth = e.auth
     if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
+
+    // TTL do cache. Declarado DENTRO do callback: o JSVM do PocketBase executa
+    // cada callback em um VM separado e não enxerga declarações de topo
+    // (o pipeline reprova com "Hook scoping error").
+    const CACHE_TTL_MS = 15 * 60 * 1000
 
     const q = e.requestInfo().query || {}
     const aba = String(q.aba || 'varejo').toLowerCase()
