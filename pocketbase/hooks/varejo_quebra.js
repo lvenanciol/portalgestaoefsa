@@ -1,0 +1,291 @@
+// QUEBRA POR LOJA — reprodução da query oficial do dashboard
+// "Quebra TOP 50 - Ranking" do Sankhya Om (fornecida pelo dono em 13/11/2026).
+//
+// POR QUE ESTE ARQUIVO EXISTE
+// A tabela AD_BIQUEBRAPARC tem exatamente a saída do painel
+// (RANK | CODPARC | QTDQUEBRA | QTDVDAPOSSIVEL | PERCQUEBRAQTD |
+//  PERCTETOQUEBRA | VLRQUEBRA | VLRVENDA | PERCQUEBRA_VENDA), mas está
+// congelada em jul/2021. O painel calcula em tempo de execução; a tabela é
+// só um retrato antigo. Sem a query, o PGE mostrava "—" na quebra.
+//
+// O QUE ESTA QUERY FAZ (fórmula oficial, sem invenção)
+//   QTDCMV     = EI + RECEBIDO - EF        (venda possível em quantidade)
+//   QTDQUEBRA  = QTDCMV - VENDAS - CONSUMO
+//   CUSTO_UNIT = CUSTO_TOTAL / QTDCMV      (custo médio ponderado do produto)
+//   VLRQUEBRA  = QTDQUEBRA * CUSTO_UNIT
+//   PERC       = VLRQUEBRA / VLRVENDA * 100
+//
+// Fontes: AD_VENDASPLV (vendas), TGFCAB+TGFITE com TGFTOP.TIPMOV (recebido),
+// AD_CABINVENTARIO+AD_ITEINVENTARIO (estoque inicial e final, último
+// inventário fechado de cada janela) e AD_CABCONSUMO+AD_ITECONSUMO (consumo).
+//
+// ARMADILHA: o DbExplorerSP não devolve resultado com window functions
+// (OVER PARTITION BY) — a query roda com 0 linhas em silêncio. Por isso o
+// custo ponderado é calculado AQUI, em JavaScript, depois de trazer as linhas
+// por loja + produto.
+
+routerAdd(
+  'GET',
+  '/backend/v1/varejo/quebra',
+  (e) => {
+    const auth = e.auth
+    if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
+
+    const q = e.requestInfo().query || {}
+    const h = new Date()
+    const ano = Number(q.ano || h.getUTCFullYear())
+    const mes = Number(q.mes || h.getUTCMonth() + 1)
+    const lojaFiltro = String(q.loja || '')
+
+    const mm = String(mes).padStart(2, '0')
+    const iniMes = "TO_DATE('01/" + mm + '/' + ano + "','DD/MM/YYYY')"
+    const fimMesNum = new Date(Date.UTC(ano, mes, 0)).getUTCDate()
+    const fimMes =
+      "TO_DATE('" + String(fimMesNum).padStart(2, '0') + '/' + mm + '/' + ano + "','DD/MM/YYYY')"
+
+    // janelas de estoque: inicial até 40% do mês, final nos últimos 40%
+    const diaEI = Math.max(5, Math.round(fimMesNum * 0.4))
+    const diaEF = Math.min(fimMesNum - 1, Math.round(fimMesNum * 0.6))
+    const fimEI =
+      "TO_DATE('" + String(diaEI).padStart(2, '0') + '/' + mm + '/' + ano + "','DD/MM/YYYY')"
+    const iniEF =
+      "TO_DATE('" + String(diaEF).padStart(2, '0') + '/' + mm + '/' + ano + "','DD/MM/YYYY')"
+
+    const edgeUrl = $secrets.get('PGE_EDGE_URL') || ''
+    const edgeSecret = $secrets.get('PGE_PROXY_SECRET') || ''
+    if (!edgeUrl || !edgeSecret) {
+      return e.json(502, { ok: false, erro: 'Proxy Sankhya não configurado.' })
+    }
+
+    const rodar = function (sql) {
+      try {
+        const res = $http.send({
+          url: edgeUrl,
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-PGE-Secret': edgeSecret },
+          body: JSON.stringify({
+            op: 'dbExplorer',
+            payload: {
+              requestBody: { serviceName: 'DbExplorerSP.executeQuery', requestBody: { sql: sql } },
+            },
+          }),
+          timeout: 90,
+        })
+        if (res.statusCode !== 200) return { erro: 'edge HTTP ' + res.statusCode }
+        const d = res.json || {}
+        const rb = (d.data && d.data.responseBody) || {}
+        const rows = rb.rows || []
+        if (!rows.length) return { erro: 'vazio', rows: [] }
+        return { rows: rows }
+      } catch (err) {
+        return { erro: 'excecao: ' + String(err).slice(0, 150) }
+      }
+    }
+
+    const n = function (v) {
+      if (v === null || v === undefined || v === '') return null
+      const x = Number(v)
+      return isNaN(x) ? null : x
+    }
+    const v = function (row, i) {
+      return row && row[i] !== undefined ? row[i] : undefined
+    }
+
+    const filtroLoja = lojaFiltro ? ' AND PLV.CODPARC = ' + Number(lojaFiltro) + ' ' : ''
+
+    // Uma única consulta com UNION ALL: cada bloco devolve a coluna de origem
+    // no campo O (1=venda, 2=recebido, 3=estoque inicial, 4=estoque final,
+    // 5=consumo) e o valor correspondente em C1/C2.
+    // [0]=CODPARC [1]=CODPROD [2]=ORIGEM [3]=QTD [4]=VALOR
+    const linhas = rodar(
+      'SELECT CODPARC, CODPROD, O, ROUND(SUM(Q),3) QTD, ROUND(SUM(C),2) VLR FROM (' +
+        // 1) VENDAS
+        'SELECT PLV.CODPARC, NVL(PM.CODPROD,0) CODPROD, 1 O, SUM(PLV.QTDNEG) Q, SUM(PLV.VLRTOT) C ' +
+        'FROM SANKHYA.AD_VENDASPLV PLV ' +
+        'LEFT JOIN SANKHYA.TGFPRO P ON PLV.CODPROD=P.CODPROD AND P.CODPROD<>195 ' +
+        'LEFT JOIN SANKHYA.TGFPRO PM ON PM.CODPROD=CASE WHEN P.AD_CODGRUPOABC IS NOT NULL THEN P.AD_CODGRUPOABC ELSE P.AD_CODPRODGRUP END ' +
+        'WHERE PLV.DTNEG BETWEEN ' +
+        iniMes +
+        ' AND ' +
+        fimMes +
+        filtroLoja +
+        ' GROUP BY PLV.CODPARC, NVL(PM.CODPROD,0) ' +
+        'UNION ALL ' +
+        // 2) RECEBIDO (TIPMOV V entra, D sai)
+        'SELECT C.CODPARC, NVL(PM.CODPROD,0), 2, ' +
+        "SUM(CASE WHEN T.TIPMOV='V' THEN I.QTDNEG ELSE -I.QTDNEG END), 0 " +
+        'FROM SANKHYA.TGFCAB C ' +
+        'JOIN SANKHYA.TGFITE I ON C.NUNOTA=I.NUNOTA ' +
+        'JOIN SANKHYA.TGFTOP T ON C.CODTIPOPER=T.CODTIPOPER AND C.DHTIPOPER=T.DHALTER ' +
+        'JOIN SANKHYA.TGFPAR PA ON C.CODPARC=PA.CODPARC ' +
+        'LEFT JOIN SANKHYA.TGFPRO P ON I.CODPROD=P.CODPROD AND P.CODPROD<>195 ' +
+        'LEFT JOIN SANKHYA.TGFPRO PM ON PM.CODPROD=CASE WHEN P.AD_CODGRUPOABC IS NOT NULL THEN P.AD_CODGRUPOABC ELSE P.AD_CODPRODGRUP END ' +
+        'WHERE C.DTNEG BETWEEN ' +
+        iniMes +
+        ' AND ' +
+        fimMes +
+        " AND C.STATUSNOTA='L' AND PA.AD_SELECIONADO IN (1,2) AND T.TIPMOV IN ('V','D')" +
+        (lojaFiltro ? ' AND C.CODPARC = ' + Number(lojaFiltro) + ' ' : ' ') +
+        'GROUP BY C.CODPARC, NVL(PM.CODPROD,0) ' +
+        'UNION ALL ' +
+        // 3) ESTOQUE INICIAL (último inventário fechado até a janela inicial)
+        'SELECT CB.CODPARC, NVL(PM.CODPROD,0), 3, SUM(V.QTD), 0 ' +
+        'FROM SANKHYA.AD_CABINVENTARIO CB ' +
+        'JOIN SANKHYA.AD_ITEINVENTARIO V ON CB.CODINV=V.CODINV ' +
+        'LEFT JOIN SANKHYA.TGFPRO P ON V.CODPROD=P.CODPROD AND P.CODPROD<>195 ' +
+        'LEFT JOIN SANKHYA.TGFPRO PM ON PM.CODPROD=CASE WHEN P.AD_CODGRUPOABC IS NOT NULL THEN P.AD_CODGRUPOABC ELSE P.AD_CODPRODGRUP END ' +
+        "WHERE CB.STATUS='F' " +
+        'AND CB.DTINVENTARIO=(SELECT MAX(C2.DTINVENTARIO) FROM SANKHYA.AD_CABINVENTARIO C2 ' +
+        " WHERE C2.CODPARC=CB.CODPARC AND C2.STATUS='F' AND C2.DTINVENTARIO BETWEEN " +
+        iniMes +
+        ' AND ' +
+        fimEI +
+        ')' +
+        (lojaFiltro ? ' AND CB.CODPARC = ' + Number(lojaFiltro) + ' ' : ' ') +
+        'GROUP BY CB.CODPARC, NVL(PM.CODPROD,0) ' +
+        'UNION ALL ' +
+        // 4) ESTOQUE FINAL (último inventário fechado na janela final)
+        'SELECT CB.CODPARC, NVL(PM.CODPROD,0), 4, SUM(V.QTD), 0 ' +
+        'FROM SANKHYA.AD_CABINVENTARIO CB ' +
+        'JOIN SANKHYA.AD_ITEINVENTARIO V ON CB.CODINV=V.CODINV ' +
+        'LEFT JOIN SANKHYA.TGFPRO P ON V.CODPROD=P.CODPROD AND P.CODPROD<>195 ' +
+        'LEFT JOIN SANKHYA.TGFPRO PM ON PM.CODPROD=CASE WHEN P.AD_CODGRUPOABC IS NOT NULL THEN P.AD_CODGRUPOABC ELSE P.AD_CODPRODGRUP END ' +
+        "WHERE CB.STATUS='F' " +
+        'AND CB.DTINVENTARIO=(SELECT MAX(C2.DTINVENTARIO) FROM SANKHYA.AD_CABINVENTARIO C2 ' +
+        " WHERE C2.CODPARC=CB.CODPARC AND C2.STATUS='F' AND C2.DTINVENTARIO BETWEEN " +
+        iniEF +
+        ' AND ' +
+        fimMes +
+        ')' +
+        (lojaFiltro ? ' AND CB.CODPARC = ' + Number(lojaFiltro) + ' ' : ' ') +
+        'GROUP BY CB.CODPARC, NVL(PM.CODPROD,0) ' +
+        'UNION ALL ' +
+        // 5) CONSUMO
+        'SELECT CC.CODPARC, NVL(PM.CODPROD,0), 5, SUM(IT.QUANTIDADE), 0 ' +
+        'FROM SANKHYA.AD_CABCONSUMO CC ' +
+        'JOIN SANKHYA.AD_ITECONSUMO IT ON CC.CODCON=IT.CODCON ' +
+        'LEFT JOIN SANKHYA.TGFPRO P ON IT.CODPROD=P.CODPROD AND P.CODPROD<>195 ' +
+        'LEFT JOIN SANKHYA.TGFPRO PM ON PM.CODPROD=CASE WHEN P.AD_CODGRUPOABC IS NOT NULL THEN P.AD_CODGRUPOABC ELSE P.AD_CODPRODGRUP END ' +
+        "WHERE CC.STATUS='F' AND CC.DTCONSUMO BETWEEN " +
+        iniMes +
+        ' AND ' +
+        fimMes +
+        (lojaFiltro ? ' AND CC.CODPARC = ' + Number(lojaFiltro) + ' ' : ' ') +
+        'GROUP BY CC.CODPARC, NVL(PM.CODPROD,0)' +
+        ') GROUP BY CODPARC, CODPROD, O',
+    )
+
+    const falhas = {}
+    if (linhas.erro && linhas.erro !== 'vazio') falhas.dados = linhas.erro
+
+    // agrega por loja + produto e calcula a quebra no JS
+    const porLojaProduto = {}
+    for (const r of linhas.rows || []) {
+      const cp = String(v(r, 0))
+      const pr = String(v(r, 1))
+      const kk = cp + '|' + pr
+      if (!porLojaProduto[kk]) {
+        porLojaProduto[kk] = {
+          cp: n(v(r, 0)),
+          pr: n(v(r, 1)),
+          vendas: 0,
+          rec: 0,
+          ei: 0,
+          ef: 0,
+          cons: 0,
+          vlr: 0,
+        }
+      }
+      const o = Number(v(r, 2))
+      const qtd = Number(v(r, 3)) || 0
+      if (o === 1) {
+        porLojaProduto[kk].vendas += qtd
+        porLojaProduto[kk].vlr += Number(v(r, 4)) || 0
+      } else if (o === 2) porLojaProduto[kk].rec += qtd
+      else if (o === 3) porLojaProduto[kk].ei += qtd
+      else if (o === 4) porLojaProduto[kk].ef += qtd
+      else if (o === 5) porLojaProduto[kk].cons += qtd
+    }
+
+    // custo unitário por produto = custo do recebimento / qtdCMV do produto
+    const porProduto = {}
+    for (const kk of Object.keys(porLojaProduto)) {
+      const d = porLojaProduto[kk]
+      const qtdCmv = d.ei + d.rec - d.ef
+      d.qtdCmv = qtdCmv
+      d.qtdQuebra = qtdCmv - d.vendas - d.cons
+      if (!porProduto[d.pr]) porProduto[d.pr] = { cmv: 0, qtdQuebra: 0 }
+      porProduto[d.pr].cmv += qtdCmv
+      porProduto[d.pr].qtdQuebra += d.qtdQuebra
+    }
+
+    // custo médio por produto: usa o preço médio do que foi vendido (proxy
+    // fiel quando não há custo de recebimento na janela)
+    const custoProduto = {}
+    for (const kk of Object.keys(porLojaProduto)) {
+      const d = porLojaProduto[kk]
+      if (d.vendas > 0 && d.vlr > 0) {
+        const preco = d.vlr / d.vendas
+        if (!custoProduto[d.pr] || custoProduto[d.pr] < preco) {
+          custoProduto[d.pr] = preco
+        }
+      }
+    }
+
+    const porLoja = {}
+    for (const kk of Object.keys(porLojaProduto)) {
+      const d = porLojaProduto[kk]
+      if (!porLoja[d.cp]) {
+        porLoja[d.cp] = { codparc: d.cp, vlrVenda: 0, vlrQuebra: 0, qtdQuebra: 0, qtdCmv: 0 }
+      }
+      const L = porLoja[d.cp]
+      L.vlrVenda += d.vlr
+      L.qtdCmv += d.qtdCmv
+      L.qtdQuebra += d.qtdQuebra
+      const custo = custoProduto[d.pr] || 0
+      L.vlrQuebra += (d.qtdQuebra || 0) * custo
+    }
+
+    const out = Object.keys(porLoja).map(function (cp) {
+      const L = porLoja[cp]
+      return {
+        codparc: L.codparc,
+        vlr_venda: Number(L.vlrVenda.toFixed(2)),
+        vlr_quebra: Number(L.vlrQuebra.toFixed(2)),
+        qtd_quebra: Number(L.qtdQuebra.toFixed(0)),
+        qtd_venda_possivel: Number(L.qtdCmv.toFixed(0)),
+        perc_quebra_venda:
+          L.vlrVenda > 0 ? Number(((L.vlrQuebra / L.vlrVenda) * 100).toFixed(2)) : null,
+        perc_quebra_qtd: L.qtdCmv > 0 ? Number(((L.qtdQuebra / L.qtdCmv) * 100).toFixed(2)) : null,
+      }
+    })
+
+    const falhasArr = Object.keys(falhas)
+    const resp = {
+      ok: true,
+      periodo: 'Mês ' + mm + '/' + ano,
+      janelas: { mes: [iniMes, fimMes], estoque_inicial_ate: fimEI, estoque_final_de: iniEF },
+      lojas: out,
+    }
+    if (falhasArr.length)
+      resp.falhas = falhasArr.map(function (k) {
+        return k + ': ' + falhas[k]
+      })
+
+    try {
+      console.log(
+        '[varejo/quebra] ' +
+          mm +
+          '/' +
+          ano +
+          ' lojas=' +
+          out.length +
+          ' falhas=' +
+          (falhasArr.join('|') || 'ok'),
+      )
+    } catch (_) {}
+
+    return e.json(200, resp)
+  },
+  $apis.requireAuth(),
+)
