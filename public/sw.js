@@ -113,7 +113,11 @@
 // (reading 'find')" que quebrava a montagem de /desempenho — o subtotal de
 // subrede da grade lia `g.subs` (campo inexistente; o correto é `subgrupos`)
 // com guarda defensiva `g?.subgrupos?.find(...) ?? null`.
-const CACHE_NAME = 'pge-pwa-v66'
+// v67 (13/11/2026): CORREÇÃO do "preview mostra build antigo". O SW era
+// network-first, mas o HTML (navegação) caía no fallback de cache e continuava
+// apontando para o bundle anterior — o deploy estava certo e o navegador
+// carregava o app velho. Agora navegação NUNCA usa cache.
+const CACHE_NAME = 'pge-pwa-v67'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
@@ -136,6 +140,18 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   // Ignora chamadas de API, websockets, realtime e uploads para nunca interferir no backend
   const url = new URL(event.request.url)
+
+  // CAUSA RAIZ do "preview mostra versão antiga" (13/11, v67):
+  // Navegações (o index.html) NÃO estavam na lista de exclusão. O HTML era
+  // servido pelo cache do service worker e continuava apontando para o bundle
+  // ANTIGO (nome com hash antigo, que segue existindo no servidor). Resultado:
+  // o deploy era correto, mas o navegador carregava o app velho.
+  // Agora HTML/navegação sempre vai à rede — o app nunca fica preso num build
+  // anterior. Os assets com hash seguem network-first com fallback de cache.
+  if (event.request.mode === 'navigate') {
+    return
+  }
+
   if (
     event.request.method !== 'GET' ||
     url.pathname.startsWith('/api') ||

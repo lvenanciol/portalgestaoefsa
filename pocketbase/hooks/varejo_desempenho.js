@@ -177,10 +177,20 @@ routerAdd(
     else if (tipoLoja === 'existente')
       extra +=
         " AND C.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE NVL(AD_LOJANOVA,'N')='N') "
-    if (tipoGrupo === 'varejo')
-      extra += " AND C.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE AD_TIPOLOJA='1') "
-    else if (tipoGrupo === 'atacado')
-      extra += " AND C.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE AD_TIPOLOJA='2') "
+    // REGRA DE REDE/GRUPO (dono, 13/11 — espelha o Power BI):
+    //   REDE Carone   -> Carone (11 lojas, "NN-CR") e Sempre Tem (11, "NN-ST")
+    //   REDE Coutinho -> Coutinho/Extrabom (47, "NN-EB") e Atacado Vem (9, "NN-ATV")
+    // "Coutinho" é o nome de negócio do que o ERP chama Extrabom.
+    const gsub = (cond) =>
+      ' AND C.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR P2 WHERE ' + cond + ') '
+    if (tipoGrupo === 'carone') extra += gsub("P2.NOMEPARC LIKE '%-CR -%'")
+    else if (tipoGrupo === 'sempre_tem') extra += gsub("P2.NOMEPARC LIKE '%-ST -%'")
+    else if (tipoGrupo === 'extrabom') extra += gsub("P2.NOMEPARC LIKE '%-EB -%'")
+    else if (tipoGrupo === 'atacado') extra += gsub("P2.NOMEPARC LIKE '%-ATV -%'")
+    else if (tipoGrupo === 'varejo')
+      extra += gsub(
+        "P2.NOMEPARC LIKE '%-CR -%' OR P2.NOMEPARC LIKE '%-ST -%' OR P2.NOMEPARC LIKE '%-EB -%'",
+      )
     if (tipoVenda === 'ecommerce') extra += ' AND 1=0 '
     if (lojaFiltro) extra += ' AND C.CODPARC = ' + Number(lojaFiltro) + ' '
     if (supervisor) {
