@@ -253,11 +253,13 @@ function Card({
   onDrop,
   onMover,
   onOcultar,
+  onClick,
 }: any) {
   const c = TONE[tom as Tom]
   return (
     <div
       draggable
+      onClick={onClick}
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
@@ -495,6 +497,9 @@ export default function DesempenhoPage() {
   const [telaCheia, setTelaCheia] = useState<'grafico' | 'grade' | null>(null)
   const [drawerAberto, setDrawerAberto] = useState(false)
   const bellRef = useRef<HTMLDivElement | null>(null)
+  // item i2: drilldown da quebra (Rede -> Bandeira -> Loja -> Produto)
+  const [drillQuebra, setDrillQuebra] = useState(false)
+  const [drillAberto, setDrillAberto] = useState<string[]>(['rede:'])
   const [parecerAberto, setParecerAberto] = useState(false)
   const [parecerLoja, setParecerLoja] = useState<Loja | null>(null)
   const [busca, setBusca] = useState('')
@@ -1008,9 +1013,11 @@ export default function DesempenhoPage() {
       ],
     },
     quebra: {
+      // item i2: clique abre a composição da quebra
+      onClick: () => setDrillQuebra(true),
       label: 'Quebra',
       valor: pct(K.quebra_pct, 2),
-      contexto: 'limite ' + pct(K.limite_perda),
+      contexto: 'limite ' + pct(K.limite_perda) + ' · ver composição',
       Icone: AlertTriangle,
       tom: (K.quebra_ating ?? 0) <= 100 ? 'green' : 'red',
       vars: [
@@ -1668,6 +1675,227 @@ export default function DesempenhoPage() {
     </div>
   )
 
+  // ---- item i2: composição da quebra (Rede -> Bandeira -> Loja -> Item) ----
+  const itensQuebra: any[] = (dados as any)?.quebra_itens || []
+  const itensPorLoja: Record<string, any[]> = {}
+  for (const it of itensQuebra) {
+    const kk = String(it.codparc)
+    if (!itensPorLoja[kk]) itensPorLoja[kk] = []
+    itensPorLoja[kk].push(it)
+  }
+  const alternarDrill = (ch: string) =>
+    setDrillAberto((p: string[]) => (p.includes(ch) ? p.filter((x) => x !== ch) : p.concat([ch])))
+
+  const modalQuebra = drillQuebra ? (
+    <div
+      className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4"
+      onClick={() => setDrillQuebra(false)}
+    >
+      <div
+        className="bg-white w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl"
+        style={{ borderRadius: 8 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="flex items-center justify-between px-4 py-3 border-b"
+          style={{ borderColor: T.border }}
+        >
+          <div>
+            <h3 className="text-[15px] font-bold" style={{ color: T.text }}>
+              Composição da Quebra
+            </h3>
+            <p className="text-[11px]" style={{ color: T.muted }}>
+              {nomeCanal} · {MESES[f.mes - 1]}/{f.ano} · Rede → Bandeira → Loja → Produto
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDrillQuebra(false)}
+            className="p-1"
+            style={{ color: T.muted }}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto p-3">
+          {itensQuebra.length === 0 && (
+            <div className="px-3 py-6 text-center text-[12px]" style={{ color: T.muted }}>
+              Sem inventário lançado para o período e filtros selecionados. A composição por produto
+              depende da contagem de inventário (AD_ITEINVENTARIO) — nada é estimado.
+            </div>
+          )}
+          {grupos.map((g) => {
+            const chR = 'qr:' + g.rede
+            const abR = drillAberto.includes(chR)
+            const itensRede = g.bandeiras.flatMap((b) =>
+              b.lojas.flatMap((l) => itensPorLoja[String(l.codparc)] || []),
+            )
+            const totRede = itensRede.reduce((a, x) => a + (Number(x.valor) || 0), 0)
+            return (
+              <div key={chR} className="mb-1">
+                <button
+                  type="button"
+                  onClick={() => alternarDrill(chR)}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left"
+                  style={{ background: '#eef2f5' }}
+                >
+                  <span
+                    className="inline-flex items-center justify-center h-4 w-4 rounded border text-[11px] font-bold"
+                    style={{ borderColor: T.border, color: T.muted }}
+                  >
+                    {abR ? '−' : '+'}
+                  </span>
+                  <span className="text-[12px] font-bold" style={{ color: T.text }}>
+                    {g.rede}
+                  </span>
+                  <span className="text-[11px] ml-auto tabular-nums" style={{ color: T.muted }}>
+                    {itensRede.length} itens · {brl(totRede)}
+                  </span>
+                </button>
+                {abR &&
+                  g.bandeiras.map((b) => {
+                    const chB = chR + '|' + b.chave
+                    const abB = drillAberto.includes(chB)
+                    const itensB = b.lojas.flatMap((l) => itensPorLoja[String(l.codparc)] || [])
+                    const totB = itensB.reduce((a, x) => a + (Number(x.valor) || 0), 0)
+                    return (
+                      <div key={chB} className="ml-3">
+                        <button
+                          type="button"
+                          onClick={() => alternarDrill(chB)}
+                          className="w-full flex items-center gap-2 px-2 py-1 rounded text-left"
+                          style={{ background: T.input }}
+                        >
+                          <span
+                            className="inline-flex items-center justify-center h-3.5 w-3.5 rounded border text-[9px] font-bold"
+                            style={{ borderColor: T.border, color: T.muted }}
+                          >
+                            {abB ? '−' : '+'}
+                          </span>
+                          <span className="text-[11px] font-semibold" style={{ color: T.text }}>
+                            {b.label}
+                          </span>
+                          <span
+                            className="text-[10px] ml-auto tabular-nums"
+                            style={{ color: T.muted }}
+                          >
+                            {itensB.length} itens · {brl(totB)}
+                          </span>
+                        </button>
+                        {abB &&
+                          b.lojas.map((l) => {
+                            const chL = chB + '|' + l.codparc
+                            const abL = drillAberto.includes(chL)
+                            const itens = itensPorLoja[String(l.codparc)] || []
+                            const tot = itens.reduce((a, x) => a + (Number(x.valor) || 0), 0)
+                            return (
+                              <div key={chL} className="ml-3">
+                                <button
+                                  type="button"
+                                  onClick={() => alternarDrill(chL)}
+                                  className="w-full flex items-center gap-2 px-2 py-1 rounded text-left hover:bg-gray-50"
+                                >
+                                  <span
+                                    className="inline-flex items-center justify-center h-3 w-3 rounded border text-[8px] font-bold"
+                                    style={{ borderColor: T.border, color: T.muted }}
+                                  >
+                                    {abL ? '−' : '+'}
+                                  </span>
+                                  <span className="text-[11px]" style={{ color: T.text }}>
+                                    {l.loja}
+                                  </span>
+                                  <span
+                                    className="text-[10px] ml-auto tabular-nums"
+                                    style={{ color: T.muted }}
+                                  >
+                                    quebra {pct(l.quebra)} · {itens.length} itens · {brl(tot)}
+                                  </span>
+                                </button>
+                                {abL && itens.length === 0 && (
+                                  <div
+                                    className="ml-6 px-2 py-1 text-[10px]"
+                                    style={{ color: T.muted }}
+                                  >
+                                    sem inventário lançado nesse mês
+                                  </div>
+                                )}
+                                {abL && itens.length > 0 && (
+                                  <table className="ml-6 my-1 w-[calc(100%-1.5rem)] text-[11px]">
+                                    <thead>
+                                      <tr style={{ color: T.muted }}>
+                                        <th className="text-left font-semibold py-0.5">Produto</th>
+                                        <th className="text-right font-semibold">Qtd</th>
+                                        <th className="text-right font-semibold">Custo</th>
+                                        <th className="text-right font-semibold">Valor</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {itens
+                                        .slice()
+                                        .sort(
+                                          (a: any, b: any) =>
+                                            (Number(b.valor) || 0) - (Number(a.valor) || 0),
+                                        )
+                                        .slice(0, 40)
+                                        .map((it: any) => (
+                                          <tr
+                                            key={it.codprod}
+                                            className="border-t"
+                                            style={{ borderColor: T.border }}
+                                          >
+                                            <td
+                                              className="py-0.5 truncate max-w-[280px]"
+                                              style={{ color: T.text }}
+                                              title={it.produto}
+                                            >
+                                              {it.produto}
+                                            </td>
+                                            <td
+                                              className="text-right tabular-nums"
+                                              style={{ color: T.muted }}
+                                            >
+                                              {n(it.qtd, 2)}
+                                            </td>
+                                            <td
+                                              className="text-right tabular-nums"
+                                              style={{ color: T.muted }}
+                                            >
+                                              {brl(it.custo, 2)}
+                                            </td>
+                                            <td
+                                              className="text-right tabular-nums font-semibold"
+                                              style={{ color: T.text }}
+                                            >
+                                              {brl(it.valor)}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                    </tbody>
+                                  </table>
+                                )}
+                              </div>
+                            )
+                          })}
+                      </div>
+                    )
+                  })}
+              </div>
+            )
+          })}
+        </div>
+        <div
+          className="px-4 py-2 border-t text-[10px] flex items-center justify-between"
+          style={{ borderColor: T.border, color: T.muted }}
+        >
+          <span>Fonte: AD_CABINVENTARIO + AD_ITEINVENTARIO · custo médio por produto</span>
+          <button type="button" onClick={() => setDrillQuebra(false)} className="underline">
+            fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
   const mapBlocos: Record<Bloco, any> = {
     cards: blocoCards,
     grade: blocoGrade,
@@ -1919,6 +2147,8 @@ export default function DesempenhoPage() {
           {!blocosOcultos.includes(b) && <div>{mapBlocos[b]}</div>}
         </div>
       ))}
+
+      {modalQuebra}
 
       <ParceiroParecerDialog
         aberto={parecerAberto}
