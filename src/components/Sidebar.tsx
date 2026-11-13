@@ -38,11 +38,11 @@ import { carregarPermissoes, menuVisivel, Permissoes } from '@/services/permisso
 // pelo ambiente é a via segura e mantém uma fonte só (o package.json, que o
 // Skip incrementa). Sem valor disponível, mostramos '—' em vez de um número
 // desatualizado: nunca exibir versão errada.
-const pkgVersion = String(
-  (import.meta.env.VITE_APP_VERSION as string | undefined) ||
-    (import.meta.env.VITE_PKG_VERSION as string | undefined) ||
-    '',
-)
+// A versão vem do package.json — arquivo que o Skip incrementa a cada
+// apply_changes. O Vite resolve o import de JSON em build (esbuild), então
+// não existe valor duplicado para sair de sincronia com o app publicado.
+import { APP_VERSION } from '@/lib/app-version'
+const pkgVersion = APP_VERSION
 import pb from '@/lib/pocketbase/client'
 import { useRealtime } from '@/hooks/use-realtime'
 import { idiomaSalvo, traduzir } from '@/lib/i18n'
