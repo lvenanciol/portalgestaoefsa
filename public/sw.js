@@ -88,7 +88,10 @@
 // tipo venda, loja, supervisor), layout configurável e grade de 20 colunas
 // ordenável/redimensionável. Bump garante que o preview purgue o bundle
 // anterior e mostre o build atual sem publicar versão.
-const CACHE_NAME = 'pge-pwa-v59'
+// v60 (13/11/2026): Desempenho Unidades v5 — tela cheia em gráficos e grade,
+// controles de exibir/ocultar/mover no próprio item, cards 25% mais estreitos,
+// gráfico de evolução com 5 anos (2022-2026) e colunas por loja com meta e A.A.
+const CACHE_NAME = 'pge-pwa-v60'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
