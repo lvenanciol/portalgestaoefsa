@@ -102,6 +102,9 @@ routerAdd(
     }
 
     const falhas = []
+    // Helper declarado ANTES de qualquer uso (TDZ: const usada antes da
+    // declaração derruba o handler com ReferenceError).
+    const num0 = (row) => Number((row && row.VENDA_MES) || 0)
 
     // --- KPIs do mês corrente ---
     const sqlKpi =
@@ -212,23 +215,69 @@ routerAdd(
     const cmvRow = (rCmv.rows && rCmv.rows[0]) || {}
     if (rCmv.erro) falhas.push('cmv: ' + rCmv.erro)
 
-    // --- Quebra: AD_BIDRCQUEBRA.QUEBRA (série mensal do BI de lojas) ---
-    // AD_BIQUEBRAPARC e AD_ITECTRLPDLOJAS estão PARADAS (2021 e vazia) — não
-    // servem. A série viva é a AD_BIDRCQUEBRA, com valor até out/2026.
-    const sqlQuebra =
-      "SELECT * FROM (SELECT TO_CHAR(REFERENCIA,'YYYY-MM') REF, " +
-      'ROUND(QUEBRA,2) QUEBRA FROM SANKHYA.AD_BIDRCQUEBRA ' +
-      'ORDER BY REFERENCIA DESC) WHERE ROWNUM <= 1'
-    const rQuebra = rodar(sqlQuebra)
-    const quebraRow = (rQuebra.rows && rQuebra.rows[0]) || {}
-    if (rQuebra.erro) falhas.push('quebra: ' + rQuebra.erro)
+    // --- QUEBRA (duas fontes, conforme decisão do dono em 13/11) ---
+    //
+    // (1) QUEBRA GERAL DA EMPRESA → TGFCAB, tipos de operação de perda.
+    //     1111 = NF PERDA/DESCARTE · 1014 = PEDIDO DE PERDA/DESCARTE
+    //     (confirmados em TGFTOP.DESCROPER). É a quebra LANÇADA em nota.
+    //     Medido: 1535 notas / R$ 7.729.091,78 nos últimos 12 meses.
+    //
+    // (2) QUEBRA DO VAREJO (o 7,89% do painel de referência) → tela
+    //     "Resumo Lojas", cuja tabela é AD_BIDRCQUEBRA (série viva até
+    //     out/2026). NÃO é decomponível por bandeira: a tabela só tem
+    //     REFERENCIA + QUEBRA. O valor absoluto está na irmã
+    //     AD_BIDRCQUEBRACUM.QUEBRAACUM.
+    //
+    //     ATENÇÃO — as duas NÃO são a mesma coisa e não devem ser somadas:
+    //     a geral (nota) dá algo como R$ 64 mil/mês; a do Resumo Lojas dá
+    //     R$ 4,8 milhões acumulados. A diferença é o que não passa por nota
+    //     de perda (apurado em inventário). Por isso aparecem em cards
+    //     separados, cada um com a origem no tooltip.
+    // Subquery escalar no SELECT faz o descritor do Sankhya devolver 0 linhas —
+    // por isso o percentual é calculado aqui, com uma segunda consulta simples.
+    const TOP_PERDA = '(1111,1014)'
+    const sqlQuebraGeral =
+      'SELECT ' +
+      " ROUND(SUM(CASE WHEN C.DTNEG >= TRUNC(SYSDATE,'MM') THEN C.VLRNOTA ELSE 0 END),2) VLR_MES," +
+      ' ROUND(SUM(C.VLRNOTA),2) VLR_12M,' +
+      ' COUNT(*) NOTAS_12M ' +
+      ' FROM SANKHYA.TGFCAB C ' +
+      'WHERE C.CODTIPOPER IN ' +
+      TOP_PERDA +
+      " AND C.DTNEG >= ADD_MONTHS(TRUNC(SYSDATE,'MM'),-12) AND C.STATUSNOTA='L'"
+    const rQgeral = rodar(sqlQuebraGeral)
+    const qGeral = (rQgeral.rows && rQgeral.rows[0]) || {}
+    if (rQgeral.erro) falhas.push('quebra_geral: ' + rQgeral.erro)
 
+    // Denominador: faturamento total do grupo no mês corrente
+    const sqlVendaTotal =
+      'SELECT ROUND(SUM(VLRNOTA),2) VENDA_MES FROM SANKHYA.TGFCAB ' +
+      "WHERE DTNEG >= TRUNC(SYSDATE,'MM') AND STATUSNOTA='L' AND NVL(PENDENTE,'N')='N'"
+    const rVendaTotal = rodar(sqlVendaTotal)
+    const vendaTotalMes = num0((rVendaTotal.rows && rVendaTotal.rows[0]) || {})
+    if (rVendaTotal.erro) falhas.push('venda_total: ' + rVendaTotal.erro)
+
+    // (2) Resumo Lojas
+    const sqlQuebraVar =
+      "SELECT * FROM (SELECT TO_CHAR(Q.REFERENCIA,'YYYY-MM') REF, " +
+      'ROUND(Q.QUEBRA,2) QUEBRA, A.QUEBRAACUM ' +
+      ' FROM SANKHYA.AD_BIDRCQUEBRA Q ' +
+      ' LEFT JOIN SANKHYA.AD_BIDRCQUEBRACUM A ON A.REFERENCIA=Q.REFERENCIA ' +
+      'ORDER BY Q.REFERENCIA DESC) WHERE ROWNUM <= 1'
+    const rQuebraVar = rodar(sqlQuebraVar)
+    const quebraRow = (rQuebraVar.rows && rQuebraVar.rows[0]) || {}
+    if (rQuebraVar.erro) falhas.push('quebra_varejo: ' + rQuebraVar.erro)
     const num = (v) => (v === null || v === undefined ? null : Number(v))
     const fat = num(k.FATURAMENTO)
     const qtd = num(q.QTD)
     const cupons = num(k.CUPONS)
     const cmvPct = num(cmvRow.CMV_PCT)
-    const quebraPct = num(quebraRow.QUEBRA)
+    const quebraVarPct = num(quebraRow.QUEBRA)
+    const quebraGeralValorMes = num(qGeral.VLR_MES)
+    const quebraGeralPct =
+      quebraGeralValorMes !== null && vendaTotalMes > 0
+        ? Number(((quebraGeralValorMes / vendaTotalMes) * 100).toFixed(2))
+        : null
 
     const out = {
       ok: true,
@@ -243,7 +292,13 @@ routerAdd(
         cupons: cupons,
         ticket_medio: num(k.TICKET),
         cmv_pct: cmvPct,
-        quebra_pct: quebraPct,
+        // Quebra do VAREJO — tela "Resumo Lojas" (AD_BIDRCQUEBRA)
+        quebra_pct: quebraVarPct,
+        // Quebra GERAL da empresa — TGFCAB, TOPs 1111/1014
+        quebra_geral_pct: quebraGeralPct,
+        quebra_geral_valor_mes: num(qGeral.VLR_MES),
+        quebra_geral_valor_12m: num(qGeral.VLR_12M),
+        quebra_geral_notas_12m: num(qGeral.NOTAS_12M),
       },
       // De onde veio cada número que NÃO é do mês corrente ou não é específico
       // da bandeira — a tela mostra isso no tooltip do card.
@@ -259,11 +314,23 @@ routerAdd(
                 ? ' · filtrado pela bandeira'
                 : ' · Extrabom + Carone'),
         quebra_pct:
-          quebraPct === null
-            ? 'sem dado na AD_BIDRCQUEBRA'
-            : 'AD_BIDRCQUEBRA · referência ' +
+          quebraVarPct === null
+            ? 'sem dado na tela Resumo Lojas'
+            : 'Tela Resumo Lojas (AD_BIDRCQUEBRA) · referência ' +
               (quebraRow.REF || '?') +
-              ' · rede consolidada (a fonte não abre por bandeira)',
+              ' · valor acumulado R$ ' +
+              (Number(quebraRow.QUEBRAACUM || 0) / 1000000).toFixed(1) +
+              'M · a fonte só publica o total da rede, não abre por bandeira',
+        quebra_geral_pct:
+          quebraGeralPct === null
+            ? 'sem nota de perda no mês'
+            : 'TGFCAB · TOPs 1111 (NF PERDA/DESCARTE) e 1014 · quebra LANÇADA em nota · ' +
+              'R$ ' +
+              (Number(qGeral.VLR_MES || 0) / 1000).toFixed(0) +
+              ' mil no mês · ' +
+              (qGeral.NOTAS_12M || 0) +
+              ' notas em 12 meses. Não deve ser somada à do Resumo Lojas — ' +
+              'a diferença é a quebra apurada em inventário.',
       },
       serie: serie,
       lojas: lojas,

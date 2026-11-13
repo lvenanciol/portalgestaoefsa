@@ -65,6 +65,10 @@ interface Resposta {
     ticket_medio: number | null
     cmv_pct: number | null
     quebra_pct: number | null
+    quebra_geral_pct: number | null
+    quebra_geral_valor_mes: number | null
+    quebra_geral_valor_12m: number | null
+    quebra_geral_notas_12m: number | null
   }
   origem?: Record<string, string>
   serie: any[]
@@ -212,8 +216,11 @@ export default function DesempenhoPage() {
       `Ticket médio: ${fmtBRL(kpis.ticket_medio)}. ` +
       `CMV parcial: ${kpis.cmv_pct === null ? 'sem dado' : fmtNum(kpis.cmv_pct, 2) + '%'} ` +
       `(${dados.origem?.cmv_pct}). ` +
-      `Quebra: ${kpis.quebra_pct === null ? 'sem dado' : fmtNum(kpis.quebra_pct, 2) + '%'} ` +
+      `Quebra varejo (Resumo Lojas): ${kpis.quebra_pct === null ? 'sem dado' : fmtNum(kpis.quebra_pct, 2) + '%'} ` +
       `(${dados.origem?.quebra_pct}). ` +
+      `Quebra geral da empresa (nota de perda TGFCAB): ` +
+      `${kpis.quebra_geral_pct === null ? 'sem dado' : fmtNum(kpis.quebra_geral_pct, 2) + '%'} ` +
+      `— ${fmtBRL(kpis.quebra_geral_valor_mes)} no mês. ` +
       (partTxt ? `Participação por bandeira: ${partTxt}. ` : '') +
       (lojasTxt ? `Ranking de lojas: ${lojasTxt}. ` : '') +
       (cidTxt ? `Faturamento por cidade: ${cidTxt}. ` : '')
@@ -336,11 +343,19 @@ export default function DesempenhoPage() {
           tooltip={dados.origem?.cmv_pct}
         />
         <KpiCard
-          titulo="Quebra"
+          titulo="Quebra Varejo"
           valor={kpis.quebra_pct === null ? '—' : fmtNum(kpis.quebra_pct, 2) + '%'}
           cor="cinza"
           semDado={kpis.quebra_pct === null}
           tooltip={dados.origem?.quebra_pct}
+        />
+        <KpiCard
+          titulo="Quebra Geral"
+          valor={kpis.quebra_geral_pct === null ? '—' : fmtNum(kpis.quebra_geral_pct, 2) + '%'}
+          sub={fmtBRL(kpis.quebra_geral_valor_mes) + ' em nota · mês'}
+          cor="cinza"
+          semDado={kpis.quebra_geral_pct === null}
+          tooltip={dados.origem?.quebra_geral_pct}
         />
         <KpiCard
           titulo="Lojas / Parceiros"
