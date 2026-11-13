@@ -543,8 +543,8 @@ routerAdd(
     //   quebra_valor = Estoque Inicial + Recebido - Estoque Final - Venda
     // quando houver inventário; senão AJUSTEQUEBRA.
     // [0]=CODCENCUS [1]=QUEBRA_PCT [2]=LIMITE_PCT
-    const quebraLojaRows = lista(
-      'quebra_loja',
+    const quebraRankRows = lista(
+      'quebra_rank',
       'SELECT R.CODCENCUS, ' +
         'ROUND(100*SUM(NVL(R.AJUSTEQUEBRA,0))/NULLIF(SUM(R.VLRVENDABRUTA),0),2) QUEBRA_PCT, ' +
         'MAX(P.AD_PERCTETOQUEBRA) LIMITE ' +
@@ -557,12 +557,9 @@ routerAdd(
         ' AND R.CODCENCUS >= 10105000 AND R.CODCENCUS < 10107000 ' +
         'GROUP BY R.CODCENCUS',
     )
-    const quebraPorCC = {}
-    for (const r of quebraLojaRows) {
-      quebraPorCC[String(v(r, 0))] = {
-        PCT: n(v(r, 1)),
-        LIMITE: n(v(r, 2)),
-      }
+    const quebraRank = {}
+    for (const r of quebraRankRows) {
+      quebraRank[String(v(r, 0))] = { PCT: n(v(r, 1)), LIMITE: n(v(r, 2)) }
     }
 
     // FUNCIONÁRIOS POR LOJA — EF_VIEW_FUNCIONARIOS_LOJAS (1.798 vínculos).
@@ -721,9 +718,9 @@ routerAdd(
           (cmvPorCC[m.CC] || {}).PARCIAL !== undefined ? (cmvPorCC[m.CC] || {}).PARCIAL : null,
         cmv_mensal:
           (cmvPorCC[m.CC] || {}).MENSAL !== undefined ? (cmvPorCC[m.CC] || {}).MENSAL : null,
-        quebra: quebraPorCC[m.CC] ? quebraPorCC[m.CC].PCT : null,
+        quebra: quebraRank[m.CC] ? quebraRank[m.CC].PCT : null,
         limite_quebra:
-          quebraPorCC[m.CC] && quebraPorCC[m.CC].LIMITE !== null ? quebraPorCC[m.CC].LIMITE : lim,
+          quebraRank[m.CC] && quebraRank[m.CC].LIMITE !== null ? quebraRank[m.CC].LIMITE : lim,
         funcionarios: funcPorLoja[String(cp)] !== undefined ? funcPorLoja[String(cp)] : null,
         qtd_aa: varPct(qL, aa.QTD),
         participacao: null,
