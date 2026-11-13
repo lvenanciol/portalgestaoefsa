@@ -288,6 +288,34 @@ routerAdd(
     // igual, senão o painel nunca fecha com a referência.
     // [0]=MES [1]=VLRVENDABRUTA [2]=CMVACUM
     // ------------------------------------------------------------------
+    // BUG CORRIGIDO 13/11: esta consulta NÃO aplicava o filtro de rede.
+    // Com "Rede = Carone" na tela, ela somava Carone + Sempre Tem + Extrabom
+    // + Atacado Vem e devolvia R$ 59,58M — enquanto o BI mostrava R$ 27,0M
+    // (só Carone). Era metade do motivo dos cards não fecharem.
+    const CC_FILTRO =
+      aba === 'extrabom' || rede === 'extrabom'
+        ? ' AND CODCENCUS >= 10105000 AND CODCENCUS < 10106000 '
+        : aba === 'carone' || rede === 'carone'
+          ? ' AND CODCENCUS >= 10106000 AND CODCENCUS < 10107000 '
+          : ' AND CODCENCUS >= 10105000 AND CODCENCUS < 10107000 '
+    // FONTE OFICIAL DO VAREJO (definida pelo dono em 13/11):
+    //   1º a tela "RESUMO LOJAS" (AD_RESUMOLOJAS)
+    //   2º as tabelas que o Power BI "Acompanhamento Varejo" usa.
+    //
+    // Medido em out/2026, filtro Rede=Carone:
+    //   AD_VENDASPLV    = R$ 27.007.758  e  2.584.054 un  ← BI: 27.008.635 / 2.583.762
+    //   AD_RESUMOLOJAS  = R$ 29.393.605                     ← não bate
+    //   TGFCAB          = R$ 40,9M                          ← muito acima
+    // AD_VENDASPLV é a base transacional do BI — é ela que manda na
+    // quantidade, no valor e nos cupons do varejo.
+    const SEM_ATACADO = ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 '
+    const FILTRO_REDE_PLV =
+      aba === 'extrabom' || rede === 'extrabom'
+        ? ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10106000 '
+        : aba === 'carone' || rede === 'carone'
+          ? ' AND P.AD_CODCENCUS >= 10106000 AND P.AD_CODCENCUS < 10107000 '
+          : SEM_ATACADO
+
     const resumoRows = lista(
       'resumo_lojas',
       'SELECT MES, ROUND(SUM(VLRVENDABRUTA),2), ROUND(SUM(CMVACUM),2) ' +
@@ -295,9 +323,34 @@ routerAdd(
         ano +
         ' AND TO_NUMBER(MES) <= ' +
         mes +
-        ' AND CODCENCUS >= 10105000 AND CODCENCUS < 10107000 ' +
+        CC_FILTRO +
         'GROUP BY MES ORDER BY TO_NUMBER(MES) DESC',
     )
+
+    // VENDAS REAIS POR LOJA (AD_VENDASPLV) — valor e quantidade do BI
+    // [0]=MES [1]=VLR [2]=QTD [3]=LINHAS(cupons)
+    const vendaPlvRows = lista(
+      'venda_plv',
+      'SELECT TO_CHAR(PLV.DTNEG,' +
+        "'MM'" +
+        '), ' +
+        'ROUND(SUM(PLV.VLRTOT),2) VLR, ROUND(SUM(PLV.QTDNEG),2) QTD, ' +
+        'COUNT(DISTINCT PLV.NUNOTA) CUPONS ' +
+        'FROM SANKHYA.AD_VENDASPLV PLV ' +
+        'JOIN SANKHYA.TGFPAR P ON P.CODPARC=PLV.CODPARC ' +
+        'WHERE PLV.DTNEG >= ' +
+        INI +
+        ' AND PLV.DTNEG < ' +
+        FIM +
+        FILTRO_REDE_PLV +
+        'GROUP BY TO_CHAR(PLV.DTNEG,' +
+        "'MM'" +
+        ')',
+    )
+    const plvAtual = vendaPlvRows[0] || null
+    const plvVenda = n(v(plvAtual, 1))
+    const plvQtd = n(v(plvAtual, 2))
+    const plvCupons = n(v(plvAtual, 3))
     const resumoAtual = resumoRows[0] || null
     const resumoAnt = resumoRows[1] || null
     const resumoVenda = n(v(resumoAtual, 1))
