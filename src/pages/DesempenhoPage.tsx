@@ -161,6 +161,9 @@ interface Loja {
   cmv_mensal?: number | null
   quebra?: number | null
   funcionarios?: number | null
+  // quebra vinda da query oficial do dashboard "Quebra TOP 50"
+  quebra_qtd_pct?: number | null
+  quebra_valor?: number | null
 }
 
 interface Resposta {
@@ -580,6 +583,36 @@ export default function DesempenhoPage() {
         const r = (await pb.send('/backend/v1/varejo/desempenho?' + qs(forcar), {
           method: 'GET',
         })) as Resposta
+
+        // QUEBRA OFICIAL (query do dashboard "Quebra TOP 50" do Sankhya Om).
+        // Roda em paralelo e, se falhar, não derruba a tela: a grade volta ao
+        // % de quebra antigo (AJUSTEQUEBRA) em vez de ficar sem nada.
+        let quebraLojas: any[] = []
+        try {
+          const qb = (await pb.send('/backend/v1/varejo/quebra?ano=' + f.ano + '&mes=' + f.mes, {
+            method: 'GET',
+          })) as { ok: boolean; lojas: any[] }
+          quebraLojas = qb?.lojas || []
+        } catch (_e) {
+          quebraLojas = []
+        }
+
+        if (quebraLojas.length) {
+          const mapa: Record<string, any> = {}
+          for (const q of quebraLojas) mapa[String(q.codparc)] = q
+          r.lojas = (r.lojas || []).map((l: Loja) => {
+            const q = mapa[String(l.codparc)]
+            return q
+              ? {
+                  ...l,
+                  quebra: q.perc_quebra_venda,
+                  quebra_qtd_pct: q.perc_quebra_qtd,
+                  quebra_valor: q.vlr_quebra,
+                }
+              : l
+          })
+        }
+
         setDados(r)
         mem.current[k] = r
         setSelecionadas([])
