@@ -25,9 +25,25 @@
 //   AD_LOJANOVA   'S' = Loja Nova (13) · 'N' = loja existente
 //   AD_TIPOLOJA   '1' = loja de rua (58) · '2' = ATACADO VEM (19, "NN-ATV")
 //   AD_GRUPOPRECO A..G = grupo de preço (RGM), NÃO é "Tipo Grupo"
-//   AD_SUPERVISORLOJA -> Olando (1298) 22 lojas · Jacir (218) 20 ·
-//                        Maquinho (474) 18 · CODPARC 61 é uma LOJA ("07-CR - LAR")
-//                        que estava poluindo a lista de supervisores.
+//   AD_SUPERVISORLOJA aponta para PARCEIRO e 18 lojas apontam para o CODPARC
+//   61, que é a própria loja "07-CR - LAR" — por isso a lista de supervisores
+//   saía com loja no meio. A carteira real está em AD_EMAILSUPERVISOR; o filtro
+//   de supervisor aceita tanto o e-mail (carteira) quanto o CODPARC.
+//
+// COLUNAS DA GRADE (item g): meta por loja vem de EF_VIEW_METAS_LOJAS CODPARC
+//   (METAVENDA / METACMV / PERCLIMITEPERDA); o A.A. por loja vem de uma terceira
+
+routerAdd(
+=======
+
+routerAdd(
+=======
+//   agregação em UNION ALL (TIPO 3), nunca por join.
+
+routerAdd(
+
+routerAdd(
+=======
 
 routerAdd(
   'GET',
@@ -250,10 +266,21 @@ routerAdd(
     }
 
     if (supervisor) {
-      extra +=
-        ' AND C.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE AD_SUPERVISORLOJA = ' +
-        Number(supervisor).toString() +
-        ') '
+      // O supervisor vem como E-MAIL (carteira real, AD_EMAILSUPERVISOR) ou
+      // como CODPARC. A ligação por CODPARC mistura loja com supervisor:
+      // 18 lojas apontam para o CODPARC 61, que é a própria "07-CR - LAR".
+      if (String(supervisor).indexOf('@') > 0) {
+        const em = String(supervisor).replace(/'/g, "''")
+        extra +=
+          " AND C.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE AD_EMAILSUPERVISOR LIKE '%" +
+          em +
+          "%') "
+      } else {
+        extra +=
+          ' AND C.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE AD_SUPERVISORLOJA = ' +
+          Number(supervisor).toString() +
+          ') '
+      }
     }
 
     const INI = "TO_DATE('01/" + String(mes).padStart(2, '0') + '/' + ano + "','DD/MM/YYYY')"
@@ -376,7 +403,7 @@ routerAdd(
         'ROUND(SUM(C.VLRNOTA),2) FAT ' +
         ' FROM SANKHYA.TGFCAB C ' +
         " WHERE C.DTNEG >= TO_DATE('01/01/" +
-        (ano - 2) +
+        (ano - 4) +
         "','DD/MM/YYYY') " +
         ' AND C.DTNEG < ' +
         FIM +
@@ -428,38 +455,96 @@ routerAdd(
         ') ORDER BY TIPO, FAT DESC',
     )
     const qtdPorLoja = {}
+    const aaPorLoja = {}
     for (const r of lojaRows) {
-      if (Number(val(r, 0, 'TIPO')) === 2) {
-        qtdPorLoja[String(val(r, 1, 'CODPARC'))] = num(val(r, 10, 'QTD'))
+      const tipo = Number(val(r, 0, 'TIPO'))
+      const chave = String(val(r, 1, 'CODPARC'))
+      if (tipo === 2) {
+        qtdPorLoja[chave] = num(val(r, 10, 'QTD'))
+      } else if (tipo === 3) {
+        // TIPO 3 = mesmo mês do ano anterior, para as colunas A.A por loja
+        aaPorLoja[chave] = { FAT: num(val(r, 5, 'FAT')), CUPONS: num(val(r, 4, 'CUPONS')) }
       }
     }
 
-    // SUPERVISORES REAIS — só quem não é loja; e-mail define o rótulo
+    // SUPERVISORES REAIS
+    //
+    // TGFPAR.AD_SUPERVISORLOJA aponta para PARCEIRO, e 18 lojas apontam para o
+    // CODPARC 61 — que é a própria loja "07-CR - LAR". Por isso a lista saía
+    // com loja no meio. A carteira real está em AD_EMAILSUPERVISOR.
+    const emailRows = lista(
+      'emails_supervisor',
+      'SELECT AD_EMAILSUPERVISOR EMAIL, COUNT(*) QTD ' +
+        ' FROM SANKHYA.TGFPAR ' +
+        ' WHERE AD_CODCENCUS >= 10105000 AND AD_CODCENCUS < 10107000 ' +
+        ' AND AD_EMAILSUPERVISOR IS NOT NULL ' +
+        ' GROUP BY AD_EMAILSUPERVISOR ORDER BY 2 DESC',
+    )
     const supRows = lista(
       'supervisores',
-      'SELECT S.CODPARC, S.NOMEPARC, S.AD_EMAILSUPERVISOR, COUNT(*) QTD ' +
+      'SELECT S.CODPARC, S.NOMEPARC, COUNT(*) QTD ' +
         ' FROM SANKHYA.TGFPAR P JOIN SANKHYA.TGFPAR S ON S.CODPARC=P.AD_SUPERVISORLOJA ' +
         ' WHERE P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 ' +
         ' AND P.AD_SUPERVISORLOJA IS NOT NULL ' +
-        ' GROUP BY S.CODPARC, S.NOMEPARC, S.AD_EMAILSUPERVISOR ORDER BY 4 DESC',
+        ' GROUP BY S.CODPARC, S.NOMEPARC ORDER BY 3 DESC',
     )
+    const bonito = function (email) {
+      const parte = String(email).split(',')[0].split('@')[0]
+      return parte
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map(function (x) {
+          return x.charAt(0).toUpperCase() + x.slice(1)
+        })
+        .join(' ')
+    }
     const supervisores = []
+    // 1) carteira real: quem tem e-mail de supervisor
+    for (const r of emailRows) {
+      const email = val(r, 0, 'EMAIL')
+      if (!email) continue
+      const primeiro = String(email).split(',')[0]
+      supervisores.push({
+        codparc: primeiro,
+        nome: bonito(primeiro),
+        qtd: num(val(r, 1, 'QTD')),
+        email: String(email),
+        origem: 'email',
+      })
+    }
+    // 2) parceiros que realmente são supervisores (nunca uma loja)
     for (const r of supRows) {
       const codp = num(val(r, 0, 'CODPARC'))
-      const nome = val(r, 1, 'NOMEPARC')
-      const email = val(r, 2, 'AD_EMAILSUPERVISOR')
-      const qtd = num(val(r, 3, 'QTD'))
-      let rotulo = nome
-      if (email) {
-        const parte = String(email).split(',')[0].split('@')[0]
-        rotulo = parte
-          .split('.')
-          .map(function (p) {
-            return p.charAt(0).toUpperCase() + p.slice(1)
-          })
-          .join(' ')
+      const nome = String(val(r, 1, 'NOMEPARC') || '')
+      if (/^\d+\s*-/.test(nome)) continue // padrão de loja "NN-XX - ABC"
+      if (supervisores.some((x) => x.codparc === String(codp))) continue
+      supervisores.push({
+        codparc: String(codp),
+        nome: nome,
+        qtd: num(val(r, 2, 'QTD')),
+        email: null,
+        origem: 'parceiro',
+      })
+    }
+
+    // METAS POR LOJA — [0]=CODPARC [1]=METAVENDA [2]=METACMV [3]=LIMITE
+    // Consulta separada: a meta agregada por bandeira serve aos cards; esta
+    // serve às colunas por loja da grade (item g).
+    const metaLojaRows = lista(
+      'metas_loja',
+      'SELECT CODPARC, ROUND(SUM(METAVENDA),2) METAVENDA, ' +
+        'ROUND(AVG(METACMV),2) METACMV, ROUND(AVG(PERCLIMITEPERDA),2) LIMITE ' +
+        ' FROM SANKHYA.EF_VIEW_METAS_LOJAS WHERE 1=1 ' +
+        ' AND CODCENCUS >= 10105000 AND CODCENCUS < 10107000 ' +
+        ' GROUP BY CODPARC',
+    )
+    const metaPorLoja = {}
+    for (const r of metaLojaRows) {
+      metaPorLoja[String(val(r, 0, 'CODPARC'))] = {
+        METAVENDA: num(val(r, 1, 'METAVENDA')),
+        METACMV: num(val(r, 2, 'METACMV')),
+        LIMITE: num(val(r, 3, 'LIMITE')),
       }
-      supervisores.push({ codparc: codp, nome: rotulo, qtd: qtd, email: email || null })
     }
 
     // CMV por bandeira — [0]=MES [1]=ANO [2]=CMV_PCT
@@ -560,6 +645,14 @@ routerAdd(
       const cupL = num(val(r, 4, 'CUPONS'))
       const codp = num(val(r, 1, 'CODPARC'))
       const qtdL = qtdPorLoja[String(codp)] || null
+      const m = metaPorLoja[String(codp)] || {}
+      const aa = aaPorLoja[String(codp)] || {}
+      const precoL = fatL && qtdL ? Number((fatL / qtdL).toFixed(2)) : null
+      const precoAA = aa.FAT && qtdL ? Number((aa.FAT / qtdL).toFixed(2)) : null
+      const ticketL = fatL && cupL ? Number((fatL / cupL).toFixed(2)) : null
+      const ticketAA = aa.FAT && aa.CUPONS ? Number((aa.FAT / aa.CUPONS).toFixed(2)) : null
+      const limL =
+        num(val(r, 9, 'LIMITE')) !== null ? num(val(r, 9, 'LIMITE')) : m.LIMITE || null
       lojas.push({
         codparc: codp,
         loja: val(r, 2, 'LOJA'),
@@ -567,13 +660,26 @@ routerAdd(
         cupons: cupL,
         faturamento: fatL,
         quantidade: qtdL,
-        preco_medio: fatL && qtdL ? Number((fatL / qtdL).toFixed(2)) : null,
-        ticket_medio: fatL && cupL ? Number((fatL / cupL).toFixed(2)) : null,
+        preco_medio: precoL,
+        ticket_medio: ticketL,
         supervisor_id: num(val(r, 6, 'SUP')),
         tipoloja: val(r, 7, 'TP'),
         loja_nova: val(r, 8, 'NOVA') === 'S',
-        limite_quebra: num(val(r, 9, 'LIMITE')),
+        limite_quebra: limL,
         participacao: null,
+        // colunas do print que estavam vazias (item g)
+        meta: m.METAVENDA !== undefined ? m.METAVENDA : null,
+        ating_venda:
+          m.METAVENDA && fatL !== null ? Number(((fatL / m.METAVENDA) * 100).toFixed(1)) : null,
+        cresc_aa: varPct(fatL, aa.FAT),
+        cupons_aa: varPct(cupL, aa.CUPONS),
+        qtd_aa: null,
+        preco_aa: varPct(precoL, precoAA),
+        ticket_aa: varPct(ticketL, ticketAA),
+        cmv_orcado: m.METACMV !== undefined ? m.METACMV : null,
+        cmv_mensal: null,
+        cmv_parcial: null,
+        quebra: null,
       })
     }
     const fatTotalLojas = lojas.reduce(function (a, l) {
