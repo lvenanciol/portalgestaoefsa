@@ -659,6 +659,18 @@ routerAdd(
         quebra_geral_valor_mes: qgValor,
         quebra_geral_valor_12m: n(v(qgR, 1)),
         quebra_geral_notas_12m: n(v(qgR, 2)),
+        // Valores ABSOLUTOS dos períodos comparados (item d): o card mostra
+        // o valor real embaixo do %, não uma reconstrução a partir do percentual.
+        faturamento_ma_valor: km.FAT ?? null,
+        faturamento_aa_valor: ky.FAT ?? null,
+        quantidade_ma_valor: qm ?? null,
+        quantidade_aa_valor: qy ?? null,
+        preco_ma_valor: precoM ?? null,
+        preco_aa_valor: precoY ?? null,
+        cupons_ma_valor: km.CUPONS ?? null,
+        cupons_aa_valor: ky.CUPONS ?? null,
+        ticket_ma_valor: km.TICKET ?? null,
+        ticket_aa_valor: ky.TICKET ?? null,
         faturamento_ma: varPct(fat, km.FAT),
         faturamento_aa: varPct(fat, ky.FAT),
         quantidade_ma: varPct(qtd, qm),

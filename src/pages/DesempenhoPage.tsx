@@ -159,7 +159,7 @@ interface Resposta {
   ok: boolean
   aba: Aba
   periodo: string
-  kpis: Record<string, number | null>
+  kpis: Record<string, number | null | undefined>
   origem: Record<string, string>
   serie: { MES: string; ANO: string; FAT: number | null }[]
   lojas: Loja[]
@@ -782,17 +782,9 @@ function gravarPref(userId: string, campo: string, valor: unknown) {
   }
 }
 
-const CARDS_IDS = [
-  'fat',
-  'meta',
-  'qtd',
-  'preco',
-  'cupons',
-  'ticket',
-  'cmv',
-  'quebra',
-  'lojas',
-] as const
+// item e: "meta" (Venda Orçada) removido — o card Faturamento já exibe o
+// atingimento da meta no rodapé, então o card era redundante.
+const CARDS_IDS = ['fat', 'qtd', 'preco', 'cupons', 'ticket', 'cmv', 'quebra', 'lojas'] as const
 type CardId = (typeof CARDS_IDS)[number]
 
 const BLOCOS = ['cards', 'grade', 'grafico'] as const
@@ -1150,6 +1142,8 @@ export default function DesempenhoPage() {
         (l) => String(l.loja).toLowerCase().includes(t) || String(l.rede).toLowerCase().includes(t),
       )
     }
+    // item f: ordem padrão = agrupa por "Loja Nova" e "Existente", depois por
+    // Rede e depois por Loja. Um clique no cabeçalho sobrescreve essa ordem.
     if (ordem) {
       const { id, dir } = ordem
       arr.sort((a, b) => {
@@ -1163,7 +1157,20 @@ export default function DesempenhoPage() {
           ? String(va).localeCompare(String(vb))
           : String(vb).localeCompare(String(va))
       })
+      return arr
     }
+    arr.sort((a, b) => {
+      // 1) Loja Nova primeiro (novas antes das existentes)
+      const na = a.loja_nova ? 0 : 1
+      const nb = b.loja_nova ? 0 : 1
+      if (na !== nb) return na - nb
+      // 2) depois por rede
+      const ra = String(a.rede || '')
+      const rb = String(b.rede || '')
+      if (ra !== rb) return ra.localeCompare(rb)
+      // 3) depois por loja
+      return String(a.loja || '').localeCompare(String(b.loja || ''))
+    })
     return arr
   }, [dados, ordem, busca])
 
@@ -1333,16 +1340,20 @@ export default function DesempenhoPage() {
   const nLojas = Number(K.nLojas || 0)
 
   // valor absoluto do período comparado (item d):
-  //  - compMeta: a meta em R$ direto do KPI;
-  //  - compAA: faturamento do mês equivalente do ano anterior, reconstruído
-  //    do % de A.A. sobre o faturamento atual (base = fat / (1 + aa/100)).
-  const compMeta = (v: number | null | undefined) =>
-    v === null || v === undefined ? null : fmtBRL(v)
-  const compAA = (pct: number | null | undefined) => {
-    if (pct === null || pct === undefined || K.faturamento === null) return null
-    const base = Number(K.faturamento) / (1 + pct / 100)
-    return Number.isFinite(base) ? fmtBRL(base) : null
-  }
+  // item d — VALORES REAIS do período comparado, vindos do hook.
+  // A versão anterior reconstruía do percentual e, em Cupons, imprimia um
+  // percentual onde deveria haver uma contagem ("meta -63,5%"). O print pegou.
+  const cBRL = (v: number | null | undefined) => (v === null || v === undefined ? null : fmtBRL(v))
+  const cBRL2 = (v: number | null | undefined) =>
+    v === null || v === undefined ? null : fmtBRL(v, 2)
+  const cNum = (v: number | null | undefined) => (v === null || v === undefined ? null : fmtNum(v))
+  const cComp = (v: number | null | undefined) =>
+    v === null || v === undefined ? null : fmtCompacto(v)
+  const cMeta = (v: number | null | undefined) =>
+    v === null || v === undefined ? null : fmtCompacto(v)
+  // meta absoluta do CMV/Quebra é percentual, não valor
+  const cMetaPct = (v: number | null | undefined) =>
+    v === null || v === undefined ? null : fmtPct(v, 1)
 
   const defs: Record<
     CardId,
@@ -1355,26 +1366,15 @@ export default function DesempenhoPage() {
       Icone: TrendingUp,
       tom: (K.faturamento_aa ?? 0) >= 0 ? 'green' : 'red',
       vars: [
-        { label: 'Meta', valor: K.faturamento_ating ?? null, comparado: compMeta(K.meta_venda) },
-        { label: 'A.A.', valor: K.faturamento_aa ?? null, comparado: compAA(K.faturamento_aa) },
+        { label: 'Meta', valor: K.faturamento_ating ?? null, comparado: cMeta(K.meta_venda) },
+        {
+          label: 'A.A.',
+          valor: K.faturamento_aa ?? null,
+          comparado: cComp(K.faturamento_aa_valor),
+        },
       ],
     },
-    meta: {
-      label: 'Venda Orçada',
-      valor: fmtCompacto(K.meta_venda),
-      contexto: 'atingido ' + fmtPct(K.faturamento_ating ?? null),
-      Icone: Percent,
-      tom:
-        (K.faturamento_ating ?? 0) >= 100
-          ? 'green'
-          : (K.faturamento_ating ?? 0) >= 95
-            ? 'amber'
-            : 'red',
-      vars: [
-        { label: 'Meta', valor: K.faturamento_ating ?? null },
-        { label: 'A.A.', valor: K.faturamento_aa ?? null },
-      ],
-    },
+
     qtd: {
       label: 'Qtde / Kg',
       valor: fmtCompacto(K.quantidade_kg),
