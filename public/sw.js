@@ -82,7 +82,13 @@
 // referência na paleta do PGE, gráficos de evolução/participação/cidade e
 // botão Parecer (Gemini Flash, persona de varejo, prompt editável) por aba
 // e por loja. Bump garante que o preview exiba o bundle novo imediatamente.
-const CACHE_NAME = 'pge-pwa-v58'
+// v59 (13/11/2026 11:10): TAREFA VAREJO v2 — cards com variação M.A/A.A e
+// atingimento de meta, cards 25% mais estreitos, gráfico de evolução com
+// 2024/2025/2026, filtros completos (ano, mês, tipo loja, tipo grupo, rede,
+// tipo venda, loja, supervisor), layout configurável e grade de 20 colunas
+// ordenável/redimensionável. Bump garante que o preview purgue o bundle
+// anterior e mostre o build atual sem publicar versão.
+const CACHE_NAME = 'pge-pwa-v59'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
