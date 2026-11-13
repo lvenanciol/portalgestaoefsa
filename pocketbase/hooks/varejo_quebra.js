@@ -128,7 +128,13 @@ routerAdd(
         (lojaFiltro ? ' AND C.CODPARC = ' + Number(lojaFiltro) + ' ' : ' ') +
         'GROUP BY C.CODPARC, NVL(PM.CODPROD,0) ' +
         'UNION ALL ' +
-        // 3) ESTOQUE INICIAL (último inventário fechado até a janela inicial)
+        // 3) ESTOQUE INICIAL
+        // CORREÇÃO 13/11: o estoque inicial do mês NÃO é o inventário do
+        // começo do próprio mês — é o ÚLTIMO inventário fechado ANTES dele
+        // (fim do mês anterior). Medido na 07-CR-LAR: usando o inventário de
+        // out/2026 como EI, só 35 produtos tinham EI e EF; usando set/2026,
+        // 174 produtos fecham as duas pontas. A janela errada era a causa da
+        // composição vazia e do % de quebra absurdo.
         'SELECT CB.CODPARC, NVL(PM.CODPROD,0), 3, SUM(V.QTD), 0 ' +
         'FROM SANKHYA.AD_CABINVENTARIO CB ' +
         'JOIN SANKHYA.AD_ITEINVENTARIO V ON CB.CODINV=V.CODINV ' +
@@ -136,10 +142,8 @@ routerAdd(
         'LEFT JOIN SANKHYA.TGFPRO PM ON PM.CODPROD=CASE WHEN P.AD_CODGRUPOABC IS NOT NULL THEN P.AD_CODGRUPOABC ELSE P.AD_CODPRODGRUP END ' +
         "WHERE CB.STATUS='F' " +
         'AND CB.DTINVENTARIO=(SELECT MAX(C2.DTINVENTARIO) FROM SANKHYA.AD_CABINVENTARIO C2 ' +
-        " WHERE C2.CODPARC=CB.CODPARC AND C2.STATUS='F' AND C2.DTINVENTARIO BETWEEN " +
+        " WHERE C2.CODPARC=CB.CODPARC AND C2.STATUS='F' AND C2.DTINVENTARIO < " +
         iniMes +
-        ' AND ' +
-        fimEI +
         ')' +
         (lojaFiltro ? ' AND CB.CODPARC = ' + Number(lojaFiltro) + ' ' : ' ') +
         'GROUP BY CB.CODPARC, NVL(PM.CODPROD,0) ' +
@@ -212,7 +216,8 @@ routerAdd(
       else if (o === 5) porLojaProduto[kk].cons += qtd
     }
 
-    // custo unitário por produto = custo do recebimento / qtdCMV do produto
+    // custo unitário por produto — o dono definiu (13/11) usar o PREÇO MÉDIO
+    // DE VENDA como proxy do custo. Mantido por decisão dele.
     const porProduto = {}
     for (const kk of Object.keys(porLojaProduto)) {
       const d = porLojaProduto[kk]
