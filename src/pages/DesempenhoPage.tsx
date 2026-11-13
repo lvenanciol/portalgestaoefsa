@@ -76,6 +76,8 @@ interface Resposta {
   cidades: any[]
   participacao: any[]
   falhas?: string[]
+  do_cache?: boolean
+  cache_idade_min?: number
 }
 
 const fmtNum = (v: number | null, dec = 0) =>
@@ -173,12 +175,49 @@ export default function DesempenhoPage() {
   const [parecerAberto, setParecerAberto] = useState(false)
   const [parecerLoja, setParecerLoja] = useState<any | null>(null)
 
-  const carregar = useCallback(async (a: Aba) => {
+  // Cache local por aba (localStorage): abrir a tela de novo mostra o último
+  // resultado na hora, sem esperar o backend. O backend também tem cache de
+  // 15 min; aqui é só para não piscar "carregando" a cada navegação.
+  const chaveLocal = (a: Aba) => 'pge_varejo_cache_' + a
+
+  const lerCacheLocal = (a: Aba): Resposta | null => {
+    try {
+      const raw = localStorage.getItem(chaveLocal(a))
+      if (!raw) return null
+      const obj = JSON.parse(raw) as { em: number; dados: Resposta }
+      if (!obj || !obj.dados) return null
+      // considera válido por 15 min, igual ao backend
+      if (Date.now() - obj.em > 15 * 60 * 1000) return null
+      return obj.dados
+    } catch (_) {
+      return null
+    }
+  }
+
+  const gravarCacheLocal = (a: Aba, d: Resposta) => {
+    try {
+      localStorage.setItem(chaveLocal(a), JSON.stringify({ em: Date.now(), dados: d }))
+    } catch (_) {}
+  }
+
+  const carregar = useCallback(async (a: Aba, forcar = false) => {
+    // 1) pinta na hora com o que já está no navegador
+    if (!forcar) {
+      const local = lerCacheLocal(a)
+      if (local) {
+        setDados(local)
+        setLoading(false)
+        return
+      }
+    }
     setLoading(true)
     setErro('')
     try {
-      const r = await pb.send('/backend/v1/varejo/desempenho?aba=' + a, { method: 'GET' })
-      setDados(r as Resposta)
+      const url = '/backend/v1/varejo/desempenho?aba=' + a + (forcar ? '&forcar=1' : '')
+      const r = await pb.send(url, { method: 'GET' })
+      const resp = r as Resposta
+      setDados(resp)
+      gravarCacheLocal(a, resp)
     } catch (e) {
       setErro(String(e))
       setDados(null)
@@ -240,7 +279,7 @@ export default function DesempenhoPage() {
     return (
       <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-[13px] text-red-700 font-medium flex items-center gap-2">
         <AlertTriangle className="h-4 w-4" /> Erro ao carregar o desempenho: {erro || 'sem dados'}
-        <Button variant="outline" size="sm" className="ml-auto" onClick={() => carregar(aba)}>
+        <Button variant="outline" size="sm" className="ml-auto" onClick={() => carregar(aba, true)}>
           <RefreshCw className="h-3.5 w-3.5" /> Tentar de novo
         </Button>
       </div>
@@ -288,8 +327,15 @@ export default function DesempenhoPage() {
             <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Parecer
           </Button>
           {pode('desempenho', 'atualizar') && (
-            <Button variant="outline" size="sm" onClick={() => carregar(aba)} className="h-9">
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Atualizar
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => carregar(aba, true)}
+              className="h-9"
+              title="Ignora o cache e consulta o Sankhya novamente"
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5 mr-1.5', loading && 'animate-spin')} />
+              Atualizar
             </Button>
           )}
         </div>
@@ -316,7 +362,27 @@ export default function DesempenhoPage() {
 
       {dados.falhas && dados.falhas.length > 0 && (
         <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-[12px] text-amber-800">
-          Consultas com falha: {dados.falhas.join(' · ')}
+          <div className="font-bold mb-1">
+            {dados.falhas.length} consulta(s) com falha — os cards abaixo podem estar incompletos
+          </div>
+          <ul className="list-disc pl-4 space-y-0.5">
+            {dados.falhas.map((f, i) => (
+              <li key={i} className="font-mono text-[11px] break-all">
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {dados.do_cache && (
+        <div className="text-[11px] text-gray-400 flex items-center gap-1.5">
+          <Info className="h-3 w-3" />
+          Resultado em cache do servidor
+          {typeof dados.cache_idade_min === 'number' && dados.cache_idade_min > 0
+            ? ` (gerado há ${dados.cache_idade_min} min)`
+            : ''}
+          . Use <b className="font-semibold">Atualizar</b> para consultar o Sankhya agora.
         </div>
       )}
 
