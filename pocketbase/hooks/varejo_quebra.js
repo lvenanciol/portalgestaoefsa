@@ -144,7 +144,12 @@ routerAdd(
         (lojaFiltro ? ' AND CB.CODPARC = ' + Number(lojaFiltro) + ' ' : ' ') +
         'GROUP BY CB.CODPARC, NVL(PM.CODPROD,0) ' +
         'UNION ALL ' +
-        // 4) ESTOQUE FINAL (último inventário fechado na janela final)
+        // 4) ESTOQUE FINAL
+        // ATENÇÃO (bug de 13/11): se a janela final do mês ainda não tem
+        // inventário (mês em curso), EF ficava ZERO e o cálculo explodia —
+        // QTDCMV = EI + RECEBIDO - 0, gerando % de 64%, 229%, -66%.
+        // Agora usa o último inventário fechado ATÉ O FIM DO MÊS, mesmo que
+        // fora da janela; só devolve vazio se não houver nenhum no mês.
         'SELECT CB.CODPARC, NVL(PM.CODPROD,0), 4, SUM(V.QTD), 0 ' +
         'FROM SANKHYA.AD_CABINVENTARIO CB ' +
         'JOIN SANKHYA.AD_ITEINVENTARIO V ON CB.CODINV=V.CODINV ' +
@@ -153,7 +158,7 @@ routerAdd(
         "WHERE CB.STATUS='F' " +
         'AND CB.DTINVENTARIO=(SELECT MAX(C2.DTINVENTARIO) FROM SANKHYA.AD_CABINVENTARIO C2 ' +
         " WHERE C2.CODPARC=CB.CODPARC AND C2.STATUS='F' AND C2.DTINVENTARIO BETWEEN " +
-        iniEF +
+        iniMes +
         ' AND ' +
         fimMes +
         ')' +
@@ -232,18 +237,63 @@ routerAdd(
       }
     }
 
+    // GUARDA: sem inventário inicial E sem final, não há como calcular quebra
+    // daquele produto. Antes isso virava % absurdo (229%, -66%). Agora o
+    // produto é descartado e a loja só entra no cálculo com base válida.
     const porLoja = {}
     for (const kk of Object.keys(porLojaProduto)) {
       const d = porLojaProduto[kk]
+      const temInventario = d.ei > 0 || d.ef > 0
+      if (!temInventario) continue
       if (!porLoja[d.cp]) {
-        porLoja[d.cp] = { codparc: d.cp, vlrVenda: 0, vlrQuebra: 0, qtdQuebra: 0, qtdCmv: 0 }
+        porLoja[d.cp] = {
+          codparc: d.cp,
+          vlrVenda: 0,
+          vlrQuebra: 0,
+          qtdQuebra: 0,
+          qtdCmv: 0,
+          produtos: [],
+        }
       }
       const L = porLoja[d.cp]
       L.vlrVenda += d.vlr
       L.qtdCmv += d.qtdCmv
       L.qtdQuebra += d.qtdQuebra
+      // custo unitário = preço médio de VENDA do produto (proxy definido
+      // pelo dono em 13/11). Só entra na composição quem teve venda.
       const custo = custoProduto[d.pr] || 0
-      L.vlrQuebra += (d.qtdQuebra || 0) * custo
+      const vlrQb = (d.qtdQuebra || 0) * custo
+      L.vlrQuebra += vlrQb
+      if (d.qtdQuebra) {
+        L.produtos.push({
+          codprod: d.pr,
+          qtd_quebra: Number(d.qtdQuebra.toFixed(3)),
+          qtd_cmv: Number(d.qtdCmv.toFixed(3)),
+          vendas: Number(d.vendas.toFixed(3)),
+          ei: Number(d.ei.toFixed(3)),
+          recebido: Number(d.rec.toFixed(3)),
+          ef: Number(d.ef.toFixed(3)),
+          consumo: Number(d.cons.toFixed(3)),
+          custo_unit: Number(custo.toFixed(4)),
+          vlr_quebra: Number(vlrQb.toFixed(2)),
+          perc_quebra_qtd:
+            d.qtdCmv > 0 ? Number(((d.qtdQuebra / d.qtdCmv) * 100).toFixed(2)) : null,
+        })
+      }
+    }
+
+    // nomes dos produtos (consulta separada — o nome não vem no agregado)
+    const ids = Object.keys(porProduto).filter((k) => k && k !== '0')
+    const nomeProd = {}
+    if (ids.length) {
+      const rn = rodar(
+        'SELECT CODPROD, DESCRPROD FROM SANKHYA.TGFPRO WHERE CODPROD IN (' +
+          ids.slice(0, 900).join(',') +
+          ')',
+      )
+      for (const r of rn.rows || []) {
+        nomeProd[String(v(r, 0))] = v(r, 1)
+      }
     }
 
     const out = Object.keys(porLoja).map(function (cp) {
@@ -257,6 +307,17 @@ routerAdd(
         perc_quebra_venda:
           L.vlrVenda > 0 ? Number(((L.vlrQuebra / L.vlrVenda) * 100).toFixed(2)) : null,
         perc_quebra_qtd: L.qtdCmv > 0 ? Number(((L.qtdQuebra / L.qtdCmv) * 100).toFixed(2)) : null,
+        // composição por produto (item i2): top 40 por valor de quebra
+        produtos: L.produtos
+          .sort(function (a, b) {
+            return b.vlr_quebra - a.vlr_quebra
+          })
+          .slice(0, 40)
+          .map(function (p) {
+            return Object.assign({}, p, {
+              produto: nomeProd[String(p.codprod)] || 'Produto ' + p.codprod,
+            })
+          }),
       }
     })
 
