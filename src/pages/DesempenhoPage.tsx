@@ -1190,7 +1190,9 @@ export default function DesempenhoPage() {
       })
   }, [dados, busca])
 
-  const grupos = useMemo(() => {
+  const _gruposLegadoNaoUsado = null
+  void _gruposLegadoNaoUsado
+  const gruposDummy = useMemo(() => {
     let base = [...(dados?.lojas || [])]
     if (busca.trim()) {
       const t = busca.trim().toLowerCase()
