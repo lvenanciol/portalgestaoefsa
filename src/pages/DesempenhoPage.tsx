@@ -2477,7 +2477,6 @@ export default function DesempenhoPage() {
                 onChange={(v) => setCampo('mes', Number(v))}
                 options={MESES.map((m, i) => ({ v: String(i + 1), l: m.slice(0, 3) }))}
               />
-              <CampoSelect
               {/* (c) Rede só habilita no canal Varejo (Redes) */}
               <CampoSelect
                 label="Rede"
