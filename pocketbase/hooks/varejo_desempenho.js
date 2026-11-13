@@ -189,11 +189,24 @@ routerAdd(
     // · out 53,33% — faixa coerente para varejo de alimentos.
     // ATENÇÃO: se o mês corrente ainda não tiver fechamento na tabela, o valor
     // vem do último mês fechado e o campo `cmv_referencia` diz qual é.
+    // O CMV tem a MESMA chave de bandeira (CODCENCUS), então dá para separar
+    // Extrabom × Carone em vez de mostrar a rede consolidada.
+    const CC_CMV_EB = '(CODCENCUS >= 10105000 AND CODCENCUS < 10106000)'
+    const CC_CMV_CR = '(CODCENCUS >= 10106000 AND CODCENCUS < 10107000)'
+    const CC_CMV =
+      aba === 'extrabom'
+        ? ' AND ' + CC_CMV_EB + ' '
+        : aba === 'carone'
+          ? ' AND ' + CC_CMV_CR + ' '
+          : aba === 'varejo' || aba === 'distribuicao'
+            ? ' AND (' + CC_CMV_EB + ' OR ' + CC_CMV_CR + ') '
+            : ''
     const sqlCmv =
       'SELECT * FROM (SELECT MES, ANO, ROUND(SUM(VLRVENDABRUTA),2) VENDA, ' +
       'ROUND(SUM(CMVACUM),2) CMV, ' +
       'ROUND(100*SUM(CMVACUM)/NULLIF(SUM(VLRVENDABRUTA),0),2) CMV_PCT ' +
       ' FROM SANKHYA.AD_RESUMOLOJAS WHERE ANO >= 2026 ' +
+      CC_CMV +
       'GROUP BY MES, ANO ORDER BY ANO DESC, MES DESC) WHERE ROWNUM <= 1'
     const rCmv = rodar(sqlCmv)
     const cmvRow = (rCmv.rows && rCmv.rows[0]) || {}
@@ -237,18 +250,20 @@ routerAdd(
       origem: {
         cmv_pct:
           cmvPct === null
-            ? 'sem fechamento na AD_RESUMOLOJAS'
+            ? 'sem fechamento na AD_RESUMOLOJAS para esta bandeira'
             : 'AD_RESUMOLOJAS · referência ' +
               (cmvRow.MES || '?') +
               '/' +
               (cmvRow.ANO || '?') +
-              ' · rede consolidada (todas as lojas), não filtrada por bandeira',
+              (aba === 'extrabom' || aba === 'carone'
+                ? ' · filtrado pela bandeira'
+                : ' · Extrabom + Carone'),
         quebra_pct:
           quebraPct === null
             ? 'sem dado na AD_BIDRCQUEBRA'
             : 'AD_BIDRCQUEBRA · referência ' +
               (quebraRow.REF || '?') +
-              ' · rede consolidada (todas as lojas), não filtrada por bandeira',
+              ' · rede consolidada (a fonte não abre por bandeira)',
       },
       serie: serie,
       lojas: lojas,
