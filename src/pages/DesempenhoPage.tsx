@@ -1872,136 +1872,155 @@ export default function DesempenhoPage() {
             </tr>
           </thead>
           <tbody>
-            {linhas.map((l) => {
+            {/* item f: faixa separadora por grupo (Loja Nova / Existente) */}
+            {linhas.map((l, idx) => {
               const sel = selecionadas.includes(l.codparc)
+              const anterior = idx > 0 ? linhas[idx - 1] : null
+              const mudaGrupo = !anterior || anterior.loja_nova !== l.loja_nova
               return (
-                <tr
-                  key={l.codparc}
-                  onClick={() => alternarLinha(l.codparc)}
-                  className="border-b hover:bg-[#f9fafb] cursor-pointer"
-                  style={{
-                    borderColor: T.border,
-                    height: 38,
-                    background: sel ? T.tintGreen : undefined,
-                  }}
-                >
-                  {colunasVisiveis.map((c) => {
-                    const valor = valorColuna(l, c)
-                    const al = c.alinhamento === 'right' ? 'text-right' : 'text-left'
-                    if (c.id === 'ating') {
-                      if (valor === null || valor === undefined)
-                        return (
-                          <td
-                            key={c.id as string}
-                            className={cn('px-2 tabular-nums', al)}
-                            style={{ color: T.muted }}
-                          >
-                            —
-                          </td>
-                        )
-                      const vv = Number(valor)
-                      const acima = vv >= LIMIAR_ATG.meta
-                      const at = vv >= LIMIAR_ATG.atencao && vv < LIMIAR_ATG.meta
-                      return (
-                        <td
-                          key={c.id as string}
-                          className={cn('px-2 tabular-nums', al)}
-                          style={{ background: acima ? T.tintGreen : at ? T.tintAmber : T.tintRed }}
-                        >
-                          <span
-                            className="inline-flex items-center gap-1 justify-end w-full font-bold"
-                            style={{ color: acima ? T.pos : at ? T.warn : T.neg }}
-                          >
-                            {acima ? '▲' : at ? '▬' : '▼'} {fmtPct(vv)}
-                          </span>
-                        </td>
-                      )
-                    }
-                    if (c.tipo === 'delta') {
-                      if (valor === null || valor === undefined)
-                        return (
-                          <td
-                            key={c.id as string}
-                            className={cn('px-2 tabular-nums', al)}
-                            style={{ color: T.muted }}
-                          >
-                            —
-                          </td>
-                        )
-                      const vv = Number(valor)
-                      const cor = vv > 0.05 ? T.pos : vv < -0.05 ? T.neg : T.muted
-                      return (
-                        <td
-                          key={c.id as string}
-                          className={cn('px-2 tabular-nums font-semibold', al)}
-                          style={{ color: cor }}
-                        >
-                          {vv > 0.05 ? '▲ ' : vv < -0.05 ? '▼ ' : ''}
-                          {fmtPct(vv)}
-                        </td>
-                      )
-                    }
-                    if (c.id === 'loja')
-                      return (
-                        <td
-                          key={c.id as string}
-                          className="px-2 font-semibold truncate"
-                          style={{ color: T.text }}
-                          title={l.loja}
-                        >
-                          <span className="inline-flex items-center gap-1 max-w-full">
-                            <span className="truncate">{l.loja}</span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setParecerLoja(l)
-                                setParecerAberto(true)
-                              }}
-                              title="Parecer"
-                              className="shrink-0 opacity-60 hover:opacity-100"
-                              style={{ color: T.nav }}
-                            >
-                              <Sparkles className="h-3 w-3" />
-                            </button>
-                          </span>
-                        </td>
-                      )
-                    if (c.id === 'rede')
-                      return (
-                        <td
-                          key={c.id as string}
-                          className="px-2 truncate"
-                          style={{ color: T.muted }}
-                        >
-                          {l.rede}
-                        </td>
-                      )
-                    const txt =
-                      valor === null || valor === undefined
-                        ? '—'
-                        : c.tipo === 'brl'
-                          ? fmtBRL(Number(valor))
-                          : c.tipo === 'pct'
-                            ? fmtPct(Number(valor))
-                            : c.tipo === 'num'
-                              ? fmtNum(Number(valor))
-                              : String(valor)
-                    return (
+                <>
+                  {mudaGrupo && (
+                    <tr key={'grp-' + l.codparc} style={{ background: T.input }}>
                       <td
-                        key={c.id as string}
-                        className={cn('px-2 tabular-nums truncate', al)}
-                        style={{
-                          color: c.id === 'faturamento' ? T.text : T.muted,
-                          fontWeight: c.id === 'faturamento' ? 700 : 400,
-                        }}
-                        title={txt}
+                        colSpan={colunasVisiveis.length}
+                        className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
+                        style={{ color: T.muted, borderTop: '1px solid ' + T.border }}
                       >
-                        {txt}
+                        {l.loja_nova ? 'Loja Nova' : 'Existente'} ·{' '}
+                        {linhas.filter((x) => x.loja_nova === l.loja_nova).length} unidades
                       </td>
-                    )
-                  })}
-                </tr>
+                    </tr>
+                  )}
+                  <tr
+                    key={l.codparc}
+                    onClick={() => alternarLinha(l.codparc)}
+                    className="border-b hover:bg-[#f9fafb] cursor-pointer"
+                    style={{
+                      borderColor: T.border,
+                      height: 38,
+                      background: sel ? T.tintGreen : undefined,
+                    }}
+                  >
+                    {colunasVisiveis.map((c) => {
+                      const valor = valorColuna(l, c)
+                      const al = c.alinhamento === 'right' ? 'text-right' : 'text-left'
+                      if (c.id === 'ating') {
+                        if (valor === null || valor === undefined)
+                          return (
+                            <td
+                              key={c.id as string}
+                              className={cn('px-2 tabular-nums', al)}
+                              style={{ color: T.muted }}
+                            >
+                              —
+                            </td>
+                          )
+                        const vv = Number(valor)
+                        const acima = vv >= LIMIAR_ATG.meta
+                        const at = vv >= LIMIAR_ATG.atencao && vv < LIMIAR_ATG.meta
+                        return (
+                          <td
+                            key={c.id as string}
+                            className={cn('px-2 tabular-nums', al)}
+                            style={{
+                              background: acima ? T.tintGreen : at ? T.tintAmber : T.tintRed,
+                            }}
+                          >
+                            <span
+                              className="inline-flex items-center gap-1 justify-end w-full font-bold"
+                              style={{ color: acima ? T.pos : at ? T.warn : T.neg }}
+                            >
+                              {acima ? '▲' : at ? '▬' : '▼'} {fmtPct(vv)}
+                            </span>
+                          </td>
+                        )
+                      }
+                      if (c.tipo === 'delta') {
+                        if (valor === null || valor === undefined)
+                          return (
+                            <td
+                              key={c.id as string}
+                              className={cn('px-2 tabular-nums', al)}
+                              style={{ color: T.muted }}
+                            >
+                              —
+                            </td>
+                          )
+                        const vv = Number(valor)
+                        const cor = vv > 0.05 ? T.pos : vv < -0.05 ? T.neg : T.muted
+                        return (
+                          <td
+                            key={c.id as string}
+                            className={cn('px-2 tabular-nums font-semibold', al)}
+                            style={{ color: cor }}
+                          >
+                            {vv > 0.05 ? '▲ ' : vv < -0.05 ? '▼ ' : ''}
+                            {fmtPct(vv)}
+                          </td>
+                        )
+                      }
+                      if (c.id === 'loja')
+                        return (
+                          <td
+                            key={c.id as string}
+                            className="px-2 font-semibold truncate"
+                            style={{ color: T.text }}
+                            title={l.loja}
+                          >
+                            <span className="inline-flex items-center gap-1 max-w-full">
+                              <span className="truncate">{l.loja}</span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setParecerLoja(l)
+                                  setParecerAberto(true)
+                                }}
+                                title="Parecer"
+                                className="shrink-0 opacity-60 hover:opacity-100"
+                                style={{ color: T.nav }}
+                              >
+                                <Sparkles className="h-3 w-3" />
+                              </button>
+                            </span>
+                          </td>
+                        )
+                      if (c.id === 'rede')
+                        return (
+                          <td
+                            key={c.id as string}
+                            className="px-2 truncate"
+                            style={{ color: T.muted }}
+                          >
+                            {l.rede}
+                          </td>
+                        )
+                      const txt =
+                        valor === null || valor === undefined
+                          ? '—'
+                          : c.tipo === 'brl'
+                            ? fmtBRL(Number(valor))
+                            : c.tipo === 'pct'
+                              ? fmtPct(Number(valor))
+                              : c.tipo === 'num'
+                                ? fmtNum(Number(valor))
+                                : String(valor)
+                      return (
+                        <td
+                          key={c.id as string}
+                          className={cn('px-2 tabular-nums truncate', al)}
+                          style={{
+                            color: c.id === 'faturamento' ? T.text : T.muted,
+                            fontWeight: c.id === 'faturamento' ? 700 : 400,
+                          }}
+                          title={txt}
+                        >
+                          {txt}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                </>
               )
             })}
             {linhas.length === 0 && (
