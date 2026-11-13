@@ -413,6 +413,28 @@ routerAdd(
       supervisores.push({ codparc: String(cp), nome: nm, qtd: n(v(r, 2)), email: null })
     }
 
+    // QUEBRA POR LOJA — tela "Resumo Lojas".
+    // A AD_BIDRCQUEBRA só tem o total da rede, mas a AD_RESUMOLOJAS tem
+    // AJUSTEQUEBRA por CODCENCUS. Cobertura real: ~3 lojas/mês com valor
+    // lançado. Onde não há lançamento, devolvemos null (a tela mostra "—")
+    // em vez de inventar número.
+    // [0]=CODCENCUS [1]=QUEBRA_PCT
+    const quebraLojaRows = lista(
+      'quebra_loja',
+      'SELECT CODCENCUS, ' +
+        'ROUND(100*SUM(NVL(AJUSTEQUEBRA,0))/NULLIF(SUM(VLRVENDABRUTA),0),2) QUEBRA_PCT ' +
+        'FROM SANKHYA.AD_RESUMOLOJAS WHERE ANO = ' +
+        ano +
+        ' AND TO_NUMBER(MES) <= ' +
+        mes +
+        ' AND CODCENCUS >= 10105000 AND CODCENCUS < 10107000 ' +
+        ' AND NVL(AJUSTEQUEBRA,0) <> 0 GROUP BY CODCENCUS',
+    )
+    const quebraPorCC = {}
+    for (const r of quebraLojaRows) {
+      quebraPorCC[String(v(r, 0))] = n(v(r, 1))
+    }
+
     // CMV — [0]=MES [1]=ANO [2]=CMV_PCT
     const ccCmv =
       aba === 'extrabom'
@@ -531,7 +553,7 @@ routerAdd(
           (cmvPorCC[m.CC] || {}).PARCIAL !== undefined ? (cmvPorCC[m.CC] || {}).PARCIAL : null,
         cmv_mensal:
           (cmvPorCC[m.CC] || {}).MENSAL !== undefined ? (cmvPorCC[m.CC] || {}).MENSAL : null,
-        quebra: null,
+        quebra: quebraPorCC[m.CC] !== undefined ? quebraPorCC[m.CC] : null,
         qtd_aa: varPct(qL, aa.QTD),
         participacao: null,
       })
