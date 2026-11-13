@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -42,29 +42,24 @@ import {
   Receipt,
   Ticket,
   Store,
-  Users,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { Button } from '@/components/ui/button'
 import { ParceiroParecerDialog } from '@/components/varejo/ParceiroParecerDialog'
 import { useBotoes } from '@/services/botoes-service'
+import { useAuth } from '@/hooks/use-auth'
 import { cn } from '@/lib/utils'
 
 // ============================================================================
-// DESEMPENHO POR UNIDADE — apresentação (13/11/2026, v7)
-//
-// ESCOPO: só HTML/CSS/JS. Nenhuma query, endpoint, KPI ou rota alterada.
-//
-// ITENS DESTA RODADA:
-//  a) arrastar blocos (gráfico/grade) entre as áreas da tela
-//  b) largura dos filtros = largura do conteúdo (auto-fit no grid)
-//  c) grade com largura default pelo conteúdo + redimensionável por arrasto
-//  d) nomes dos cards legíveis (não truncados)
-//  e) clicar na(s) linha(s) filtra os cards para a(s) loja(s) selecionada(s)
-//  f) exibir/ocultar/mover cards e gráficos no próprio item
-//  g) colunas por loja vindas do Sankhya
-//  h) funcionários no card "Lojas"
-//  i) "Segmento" -> "Canal"; "Varejo (Carone + Extrabom)" -> "Varejo (Redes)"
+// DESEMPENHO POR UNIDADE — apresentação (13/11/2026, r11)
+// Escopo: só HTML/CSS/JS. Nenhuma query, endpoint, KPI ou rota alterada.
+// a) padrão da grade = TODAS as colunas visíveis
+// b) preferências POR USUÁRIO
+// c) título do gráfico = dropdown com todos os indicadores
+// d) valor do período comparado sob cada %
+// e) card "Venda Orçada" removido
+// f) grupos expandíveis: Rede -> Loja Nova / Existente -> Loja
+// i) botão "Atualizando" piscando em âmbar
 // ============================================================================
 
 const T = {
@@ -88,7 +83,6 @@ const LIMIAR_ATG = { meta: 100, atencao: 95 }
 
 type Aba = 'distribuicao' | 'atacado' | 'carone' | 'extrabom' | 'varejo'
 
-// item i) Canal em vez de Segmento; rótulo Varejo (Redes)
 const CANAIS: { id: Aba; label: string }[] = [
   { id: 'varejo', label: 'Varejo (Redes)' },
   { id: 'extrabom', label: 'Extrabom' },
@@ -161,7 +155,15 @@ interface Resposta {
   periodo: string
   kpis: Record<string, number | null | undefined>
   origem: Record<string, string>
-  serie: { MES: string; ANO: string; FAT: number | null }[]
+  serie: {
+    MES: string
+    ANO: string
+    FAT: number | null
+    QTD?: number | null
+    CUPONS?: number | null
+    TICKET?: number | null
+    PRECO?: number | null
+  }[]
   lojas: Loja[]
   supervisores: { codparc: string | number; nome: string; qtd?: number }[]
   total_funcionarios?: number
@@ -196,9 +198,30 @@ const fmtCompacto = (v: number | null | undefined) => {
 const fmtPct = (v: number | null | undefined, d = 1) =>
   v === null || v === undefined ? '—' : Number(v).toFixed(d).replace('.', ',') + '%'
 
-// ============================================================================
-// CARD — nome legível (item d), ícone/cor, rodapé de variações
-// ============================================================================
+// ---------------- preferências POR USUÁRIO (item b) ----------------
+const NS = 'pge_des'
+function chavePrefs(userId: string) {
+  return NS + ':' + (userId || 'anon')
+}
+function lerPrefs(userId: string): Record<string, unknown> {
+  try {
+    const raw = localStorage.getItem(chavePrefs(userId))
+    return raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
+  } catch (_e) {
+    return {}
+  }
+}
+function gravarPref(userId: string, campo: string, valor: unknown) {
+  try {
+    const atual = lerPrefs(userId)
+    atual[campo] = valor
+    localStorage.setItem(chavePrefs(userId), JSON.stringify(atual))
+  } catch (_e) {
+    /* bloqueado */
+  }
+}
+
+// ---------------- CARD ----------------
 type CardTone = 'green' | 'amber' | 'red' | 'gray' | 'blue' | 'violet'
 const TONE: Record<CardTone, { icon: string; bg: string }> = {
   green: { icon: T.pos, bg: T.tintGreen },
@@ -213,7 +236,6 @@ interface VarItem {
   label: string
   valor: number | null
   inverso?: boolean
-  // item d: valor absoluto do período comparado (M.A., A.A. ou meta)
   comparado?: string | null
 }
 
@@ -260,8 +282,7 @@ function ScoreCard({
       )}
       style={{ borderColor: T.border, borderRadius: 6, cursor: 'grab' }}
     >
-      {/* item f: controles no próprio card */}
-      <div className="absolute top-1 right-1 z-20 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white border rounded shadow-sm px-0.5">
+      <div className="absolute top-1 right-1 z-20 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white border rounded shadow-sm px-0.5 print:hidden">
         <button
           type="button"
           onClick={() => onMover?.(-1)}
@@ -291,7 +312,6 @@ function ScoreCard({
         </button>
       </div>
 
-      {/* label SEM truncate: quebra em até 2 linhas e cabe (item d) */}
       <div className="flex items-start gap-1.5 pr-12">
         <span
           className="shrink-0 inline-flex items-center justify-center h-5 w-5 rounded mt-0.5"
@@ -325,15 +345,20 @@ function ScoreCard({
         </div>
       )}
 
-      <div className="mt-auto pt-2 flex items-center justify-center gap-2 flex-wrap text-[10px] leading-none">
+      <div className="mt-auto pt-2 flex items-start justify-center gap-3 flex-wrap text-[10px] leading-none">
         {variacoes.length === 0 && <span style={{ color: T.muted }}>—</span>}
         {variacoes.map((v, i) => {
           const n = v.valor
           if (n === null || n === undefined) {
             return (
-              <span key={i} className="inline-flex items-center gap-0.5" style={{ color: T.muted }}>
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: T.muted }} />
-                {v.label} —
+              <span key={i} className="inline-flex flex-col items-center">
+                <span className="inline-flex items-center gap-0.5" style={{ color: T.muted }}>
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: T.muted }} />
+                  {v.label} —
+                </span>
+                <span className="text-[9px]" style={{ color: T.muted }}>
+                  {v.comparado || '—'}
+                </span>
               </span>
             )
           }
@@ -342,7 +367,6 @@ function ScoreCard({
           const cor = neutro ? T.muted : ok ? T.pos : T.neg
           const Ico = neutro ? Minus : n > 0 ? ArrowUpRight : ArrowDownRight
           return (
-            // item d: % de variação com o VALOR DO PERÍODO COMPARADO embaixo
             <span key={i} className="inline-flex flex-col items-center leading-tight">
               <span
                 className="inline-flex items-center gap-0.5 font-semibold tabular-nums"
@@ -363,9 +387,7 @@ function ScoreCard({
   )
 }
 
-// ============================================================================
-// FILTROS
-// ============================================================================
+// ---------------- FILTROS ----------------
 function Chip({
   rotulo,
   valor,
@@ -408,9 +430,8 @@ function CampoSelect({
   options: { v: string; l: string }[]
   largura: number
 }) {
-  // item b: largura baseada no conteúdo (+ espaço para o chevron)
-  const maiorRotulo = options.reduce((m, o) => Math.max(m, o.l.length), label.length)
-  const w = Math.min(largura, Math.max(96, maiorRotulo * 6.6 + 42))
+  const maior = options.reduce((m, o) => Math.max(m, o.l.length), label.length)
+  const w = Math.min(largura, Math.max(96, maior * 6.6 + 42))
   return (
     <div style={{ width: w }} className="min-w-0 shrink-0">
       <label
@@ -441,9 +462,7 @@ function CampoSelect({
   )
 }
 
-// ============================================================================
-// DRAWER ATENÇÃO
-// ============================================================================
+// ---------------- DRAWER ----------------
 interface Alerta {
   id: string
   loja: string
@@ -571,9 +590,7 @@ function DrawerAtencao({
   )
 }
 
-// ============================================================================
-// COLUNAS
-// ============================================================================
+// ---------------- COLUNAS ----------------
 interface ColDef {
   id: keyof Loja | 'ating' | 'meta'
   label: string
@@ -754,70 +771,24 @@ const COLUNAS: ColDef[] = [
   },
 ]
 
-// ---------------------------------------------------------------------------
-// PERSISTÊNCIA POR USUÁRIO (item b)
-// Todas as preferências: filtros, colunas, cards e layout. A chave carrega o
-// id do usuário logado, então cada pessoa tem a sua configuração — antes era
-// global no navegador e um usuário via a personalização do outro.
-// ---------------------------------------------------------------------------
-const NS = 'pge_des'
-function chavePrefs(userId: string) {
-  return NS + ':' + (userId || 'anon')
-}
-function lerPrefs(userId: string): Record<string, unknown> {
-  try {
-    const raw = localStorage.getItem(chavePrefs(userId))
-    return raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
-  } catch (_e) {
-    return {}
-  }
-}
-function gravarPref(userId: string, campo: string, valor: unknown) {
-  try {
-    const atual = lerPrefs(userId)
-    atual[campo] = valor
-    localStorage.setItem(chavePrefs(userId), JSON.stringify(atual))
-  } catch (_e) {
-    /* localStorage bloqueado */
-  }
-}
-
-// item e: "meta" (Venda Orçada) removido — o card Faturamento já exibe o
-// atingimento da meta no rodapé, então o card era redundante.
 const CARDS_IDS = ['fat', 'qtd', 'preco', 'cupons', 'ticket', 'cmv', 'quebra', 'lojas'] as const
 type CardId = (typeof CARDS_IDS)[number]
-
 const BLOCOS = ['cards', 'grade', 'grafico'] as const
 type BlocoId = (typeof BLOCOS)[number]
 
-// chaves de preferências globais (filtros abertos, colunas, cards, layout)
-const K_FILTROS = NS + ':filtros_abertos'
-const K_COLUNAS = NS + ':colunas'
-const K_CARDS = NS + ':cards'
-const K_LAYOUT = NS + ':layout'
+// chaves de preferências (todas prefixadas pelo id do usuário)
+const K_FILTROS = 'filtros'
+const K_COLUNAS = 'colunas'
+const K_CARDS = 'cards'
+const K_LAYOUT = 'layout'
 
-function lsGet<T>(k: string, padrao: T): T {
-  try {
-    const raw = localStorage.getItem(k)
-    if (!raw) return padrao
-    return JSON.parse(raw) as T
-  } catch (_e) {
-    return padrao
-  }
-}
-function lsSet(k: string, v: unknown) {
-  try {
-    localStorage.setItem(k, JSON.stringify(v))
-  } catch (_e) {
-    /* bloqueado */
-  }
-}
-
-// ============================================================================
-// PÁGINA
-// ============================================================================
 export default function DesempenhoPage() {
   const { pode } = useBotoes()
+  // item b: personalização POR USUÁRIO
+  const { user } = useAuth() as { user?: { id?: string } }
+  const userId = String((user as any)?.id || 'anon')
+  const prefsIniciais = useMemo(() => lerPrefs(userId), [userId])
+
   const hoje = new Date()
   const anoCorrente = hoje.getFullYear()
   const mesCorrente = hoje.getMonth() + 1
@@ -836,39 +807,63 @@ export default function DesempenhoPage() {
   const [dados, setDados] = useState<Resposta | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
-  const [filtrosAbertos, setFiltrosAbertos] = useState<boolean>(() => lsGet(K_FILTROS, false))
-  useEffect(() => {
-    lsSet(K_FILTROS, filtrosAbertos)
-  }, [filtrosAbertos])
 
-  // colunas: larguras redimensionáveis (item c)
+  const [filtrosAbertos, setFiltrosAbertos] = useState<boolean>(() =>
+    Boolean(prefsIniciais.filtrosAbertos),
+  )
+  useEffect(() => {
+    gravarPref(userId, K_FILTROS, filtrosAbertos)
+  }, [filtrosAbertos, userId])
+
+  // item a: padrão = TODAS as colunas visíveis
   const [colCfg, setColCfg] = useState<{
     ordem: string[]
     ocultas: string[]
     larguras: Record<string, number>
-  }>(() =>
-    lsGet(K_COLUNAS, {
-      ordem: COLUNAS.map((c) => c.id as string),
-      ocultas: COLUNAS.filter((c) => !c.visivelPadrao).map((c) => c.id as string),
-      larguras: {},
-    }),
-  )
+  }>(() => {
+    const p = prefsIniciais[K_COLUNAS] as
+      | { ordem?: string[]; ocultas?: string[]; larguras?: Record<string, number> }
+      | undefined
+    const base = COLUNAS.map((c) => c.id as string)
+    if (!p || !Array.isArray(p.ordem)) return { ordem: base, ocultas: [], larguras: {} }
+    const ordem = p.ordem.filter((id) => base.includes(id))
+    return {
+      ordem: ordem.concat(base.filter((id) => !ordem.includes(id))),
+      ocultas: (p.ocultas || []).filter((id) => base.includes(id)),
+      larguras: p.larguras || {},
+    }
+  })
   const [menuColunas, setMenuColunas] = useState(false)
   const [ordem, setOrdem] = useState<{ id: string; dir: 'asc' | 'desc' } | null>(null)
   const arrastandoCol = useRef<string | null>(null)
   const redimensionando = useRef<{ id: string; ini: number; largura: number } | null>(null)
 
-  // cards (item f)
-  const [cards, setCards] = useState<{ ordem: CardId[]; ocultos: CardId[] }>(() =>
-    lsGet(K_CARDS, { ordem: [...CARDS_IDS], ocultos: [] }),
-  )
+  const [cards, setCards] = useState<{ ordem: CardId[]; ocultos: CardId[] }>(() => {
+    const p = prefsIniciais[K_CARDS] as { ordem?: string[]; ocultos?: string[] } | undefined
+    const base = CARDS_IDS as unknown as string[]
+    if (!p || !Array.isArray(p.ordem)) return { ordem: [...CARDS_IDS] as CardId[], ocultos: [] }
+    const ord = p.ordem.filter((id) => base.includes(id)) as CardId[]
+    return {
+      ordem: ord.concat(base.filter((id) => !ord.includes(id)) as CardId[]),
+      ocultos: (p.ocultos || []).filter((id) => base.includes(id)) as CardId[],
+    }
+  })
   const [cardArrastando, setCardArrastando] = useState<CardId | null>(null)
 
-  // layout: onde cada bloco está (item a)
-  const [layout, setLayout] = useState<{ cards: number; grade: number; grafico: number }>(() =>
-    lsGet(K_LAYOUT, { cards: 0, grade: 1, grafico: 2 }),
-  )
+  const [layout, setLayout] = useState<{ cards: number; grade: number; grafico: number }>(() => {
+    const p = prefsIniciais[K_LAYOUT] as
+      | { cards?: number; grade?: number; grafico?: number }
+      | undefined
+    return p && typeof p.cards === 'number'
+      ? { cards: p.cards, grade: p.grade ?? 1, grafico: p.grafico ?? 2 }
+      : { cards: 0, grade: 1, grafico: 2 }
+  })
   const [blocoArrastando, setBlocoArrastando] = useState<BlocoId | null>(null)
+
+  // item f: grupos recolhidos
+  const [gruposFechados, setGruposFechados] = useState<string[]>([])
+  const alternarGrupo = (chave: string) =>
+    setGruposFechados((p) => (p.includes(chave) ? p.filter((x) => x !== chave) : p.concat([chave])))
 
   const [drawerAberto, setDrawerAberto] = useState(false)
   const bellRef = useRef<HTMLDivElement | null>(null)
@@ -886,7 +881,20 @@ export default function DesempenhoPage() {
   const [busca, setBusca] = useState('')
   const [selecionadas, setSelecionadas] = useState<number[]>([])
 
-  // URL -> estado inicial
+  // item c: dropdown de métricas do gráfico
+  const METRICAS: { id: string; label: string; campo: string; tipo: 'brl' | 'num' }[] = [
+    { id: 'FAT', label: 'Faturamento', campo: 'FAT', tipo: 'brl' },
+    { id: 'QTD', label: 'Quantidade / Kg', campo: 'QTD', tipo: 'num' },
+    { id: 'CUPONS', label: 'Cupons', campo: 'CUPONS', tipo: 'num' },
+    { id: 'TICKET', label: 'Ticket Médio', campo: 'TICKET', tipo: 'brl' },
+    { id: 'PRECO', label: 'Preço Médio', campo: 'PRECO', tipo: 'brl' },
+  ]
+  const [metrica, setMetrica] = useState<string>(() => String(prefsIniciais.metrica || 'FAT'))
+  useEffect(() => {
+    gravarPref(userId, 'metrica', metrica)
+  }, [metrica, userId])
+  const defM = METRICAS.find((mm) => mm.id === metrica) || METRICAS[0]
+
   useEffect(() => {
     const q = new URLSearchParams(window.location.search)
     const raw = (q.get('aba') || 'varejo') as Aba
@@ -904,7 +912,7 @@ export default function DesempenhoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const setCampo = (c: keyof typeof f, v: string | number) => setF((p) => ({ ...p, [c]: v }))
+  const setCampo = (c: string, v: string | number) => setF((p) => ({ ...p, [c]: v }))
 
   useEffect(() => {
     const q = new URLSearchParams()
@@ -971,37 +979,25 @@ export default function DesempenhoPage() {
 
   const k = dados?.kpis || {}
   const ultimoFechado = f.ano === anoCorrente ? Math.max(0, mesCorrente - 1) : f.mes
-
-  // ------------------------------------------------------------------
-  // item e) KPIs das linhas selecionadas (ou do total quando nada marcado)
-  // ------------------------------------------------------------------
-  const lojasParaKpi = useMemo(() => {
-    const todas = dados?.lojas || []
-    if (!selecionadas.length) return todas
-    return todas.filter((l) => selecionadas.includes(l.codparc))
-  }, [dados, selecionadas])
-
   const filtrado = selecionadas.length > 0
 
+  // item e/agregação: KPIs da seleção (ou do total)
+  const lojasKpi = useMemo(() => {
+    const todas = dados?.lojas || []
+    return filtrado ? todas.filter((l) => selecionadas.includes(l.codparc)) : todas
+  }, [dados, selecionadas, filtrado])
+
   const soma = (fn: (l: Loja) => number | null | undefined) =>
-    lojasParaKpi.reduce((a, l) => a + (Number(fn(l)) || 0), 0)
-  const bruto = (fn: (l: Loja) => number | null | undefined): number | null => {
-    const vs = lojasParaKpi.map(fn).filter((x): x is number => x !== null && x !== undefined)
-    if (!vs.length) return null
-    return vs.reduce((a, b) => a + Number(b), 0)
+    lojasKpi.reduce((a, l) => a + (Number(fn(l)) || 0), 0)
+  const media = (fn: (l: Loja) => number | null | undefined) => {
+    const vs = lojasKpi.map(fn).filter((x): x is number => x !== null && x !== undefined)
+    return vs.length ? vs.reduce((a, b) => a + Number(b), 0) / vs.length : null
   }
-  const media = (fn: (l: Loja) => number | null | undefined): number | null => {
-    const vs = lojasParaKpi.map(fn).filter((x): x is number => x !== null && x !== undefined)
-    if (!vs.length) return null
-    return vs.reduce((a, b) => a + Number(b), 0) / vs.length
-  }
-  const pct = (a: number | null, b: number | null) =>
-    a !== null && b !== null && b !== 0 ? Number((((a - b) / b) * 100).toFixed(1)) : null
 
   const K = useMemo(() => {
     if (!filtrado) {
       return {
-        ...(k as Record<string, number | null>),
+        ...(k as any),
         funcionarios: dados?.total_funcionarios ?? null,
         nLojas: dados?.lojas.length || 0,
       }
@@ -1011,73 +1007,65 @@ export default function DesempenhoPage() {
     const cup = soma((l) => l.cupons)
     const meta = soma((l) => l.meta)
     const func = soma((l) => l.funcionarios)
-    // variações: média ponderada simples das lojas selecionadas
-    const mediaAting = media((l) => l.ating_venda)
-    const mediaCresc = media((l) => l.cresc_aa)
-    const mediaQtdAA = media((l) => l.qtd_aa)
-    const mediaPrecoAA = media((l) => l.preco_aa)
-    const mediaCupAA = media((l) => l.cupons_aa)
-    const mediaTickAA = media((l) => l.ticket_aa)
-    const mediaCmv = media((l) => l.cmv_parcial)
-    const mediaCmvOrc = media((l) => l.cmv_orcado)
-    const mediaQuebra = media((l) => l.quebra)
-    const mediaLim = media((l) => l.limite_quebra)
+    const mCmv = media((l) => l.cmv_parcial)
+    const mCmvOrc = media((l) => l.cmv_orcado)
+    const mQ = media((l) => l.quebra)
+    const mLim = media((l) => l.limite_quebra)
     return {
       faturamento: fat || null,
       meta_venda: meta || null,
-      faturamento_ating: mediaAting,
-      faturamento_aa: mediaCresc,
+      faturamento_ating: media((l) => l.ating_venda),
+      faturamento_aa: media((l) => l.cresc_aa),
       quantidade_kg: qtd || null,
-      quantidade_aa: mediaQtdAA,
+      quantidade_aa: media((l) => l.qtd_aa),
       quantidade_ma: null,
       preco_medio: fat && qtd ? Number((fat / qtd).toFixed(2)) : null,
-      preco_aa: mediaPrecoAA,
+      preco_aa: media((l) => l.preco_aa),
       preco_ma: null,
       cupons: cup || null,
-      cupons_aa: mediaCupAA,
+      cupons_aa: media((l) => l.cupons_aa),
       cupons_ma: null,
       ticket_medio: fat && cup ? Number((fat / cup).toFixed(2)) : null,
-      ticket_aa: mediaTickAA,
+      ticket_aa: media((l) => l.ticket_aa),
       ticket_ma: null,
-      cmv_pct: mediaCmv,
-      meta_cmv: mediaCmvOrc,
-      cmv_ating:
-        mediaCmv && mediaCmvOrc ? Number(((mediaCmvOrc / mediaCmv) * 100).toFixed(1)) : null,
+      cmv_pct: mCmv,
+      meta_cmv: mCmvOrc,
+      cmv_ating: mCmv && mCmvOrc ? Number(((mCmvOrc / mCmv) * 100).toFixed(1)) : null,
       cmv_aa: null,
-      quebra_pct: mediaQuebra,
-      limite_perda: mediaLim,
-      quebra_ating:
-        mediaQuebra && mediaLim ? Number(((mediaQuebra / mediaLim) * 100).toFixed(1)) : null,
+      quebra_pct: mQ,
+      limite_perda: mLim,
+      quebra_ating: mQ && mLim ? Number(((mQ / mLim) * 100).toFixed(1)) : null,
       quebra_ma: null,
       funcionarios: func || null,
-      nLojas: lojasParaKpi.length,
-    } as Record<string, number | null>
-  }, [filtrado, k, lojasParaKpi, dados])
+      nLojas: lojasKpi.length,
+    } as any
+  }, [filtrado, k, lojasKpi, dados])
 
   const seriePivot = useMemo(() => {
     const mapa: Record<string, Record<string, number>> = {}
     for (const s of dados?.serie || []) {
       const m = String(s.MES || '').padStart(2, '0')
       if (!mapa[m]) mapa[m] = {}
-      mapa[m][String(s.ANO)] = Number(s.FAT) || 0
+      const anyS = s as any
+      mapa[m][String(s.ANO)] = Number(anyS[defM.campo] ?? anyS.FAT) || 0
     }
     const anos = Array.from(
       new Set((dados?.serie || []).map((s) => String(s.ANO || '')).filter(Boolean)),
     ).sort()
-    const ultimoAno = anos[anos.length - 1]
+    const ult = anos[anos.length - 1]
     return Object.keys(mapa)
       .sort()
       .map((m) => {
         const linha: Record<string, any> = { mes: MESES_CURTOS[Number(m) - 1] || m }
         for (const a of anos) linha[a] = mapa[m][a] ?? null
-        if (ultimoAno) {
-          const valor = mapa[m][ultimoAno] ?? null
-          linha[ultimoAno] = Number(m) <= ultimoFechado ? valor : null
-          linha[ultimoAno + ' parcial'] = Number(m) >= ultimoFechado ? valor : null
+        if (ult) {
+          const v = mapa[m][ult] ?? null
+          linha[ult] = Number(m) <= ultimoFechado ? v : null
+          linha[ult + ' parcial'] = Number(m) >= ultimoFechado ? v : null
         }
         return linha
       })
-  }, [dados, ultimoFechado])
+  }, [dados, ultimoFechado, defM])
 
   const anos = useMemo(
     () =>
@@ -1109,7 +1097,7 @@ export default function DesempenhoPage() {
         out.push({
           id: 'q' + l.codparc,
           loja: l.loja,
-          descricao: `Quebra ${fmtPct(l.quebra - l.limite_quebra)} acima da meta`,
+          descricao: `Quebra ${fmtPct(l.quebra - l.limite_quebra)} acima`,
           tom: 'amber',
           codparc: l.codparc,
         })
@@ -1142,8 +1130,6 @@ export default function DesempenhoPage() {
         (l) => String(l.loja).toLowerCase().includes(t) || String(l.rede).toLowerCase().includes(t),
       )
     }
-    // item f: ordem padrão = agrupa por "Loja Nova" e "Existente", depois por
-    // Rede e depois por Loja. Um clique no cabeçalho sobrescreve essa ordem.
     if (ordem) {
       const { id, dir } = ordem
       arr.sort((a, b) => {
@@ -1159,22 +1145,20 @@ export default function DesempenhoPage() {
       })
       return arr
     }
+    // item f: REDE -> Loja Nova -> Existente -> Loja
     arr.sort((a, b) => {
-      // 1) Loja Nova primeiro (novas antes das existentes)
-      const na = a.loja_nova ? 0 : 1
-      const nb = b.loja_nova ? 0 : 1
-      if (na !== nb) return na - nb
-      // 2) depois por rede
-      const ra = String(a.rede || '')
-      const rb = String(b.rede || '')
+      const ra = String(a.rede || ''),
+        rb = String(b.rede || '')
       if (ra !== rb) return ra.localeCompare(rb)
-      // 3) depois por loja
+      const na = a.loja_nova ? 0 : 1,
+        nb = b.loja_nova ? 0 : 1
+      if (na !== nb) return na - nb
       return String(a.loja || '').localeCompare(String(b.loja || ''))
     })
     return arr
   }, [dados, ordem, busca])
 
-  const valorColuna = (l: Loja, c: ColDef) =>
+  const valorCol = (l: Loja, c: ColDef) =>
     c.id === 'ating'
       ? (l.ating_venda ?? null)
       : c.id === 'meta'
@@ -1193,25 +1177,20 @@ export default function DesempenhoPage() {
     arr.splice(j, 0, de)
     const novo = { ...colCfg, ordem: arr }
     setColCfg(novo)
-    lsSet(K_COLUNAS, novo)
+    gravarPref(userId, K_COLUNAS, novo)
   }
 
-  // item c: redimensionar por arrasto
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       const r = redimensionando.current
       if (!r) return
-      const delta = e.clientX - r.ini
-      const nova = Math.max(64, r.largura + delta)
-      setColCfg((prev) => {
-        const novo = { ...prev, larguras: { ...prev.larguras, [r.id]: nova } }
-        return novo
-      })
+      const nova = Math.max(64, r.largura + (e.clientX - r.ini))
+      setColCfg((prev) => ({ ...prev, larguras: { ...prev.larguras, [r.id]: nova } }))
     }
     const onUp = () => {
       if (redimensionando.current) {
         setColCfg((prev) => {
-          lsSet(K_COLUNAS, prev)
+          gravarPref(userId, K_COLUNAS, prev)
           return prev
         })
         redimensionando.current = null
@@ -1224,7 +1203,7 @@ export default function DesempenhoPage() {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
-  }, [])
+  }, [userId])
 
   const moverCard = (id: CardId, dir: -1 | 1) => {
     const arr = [...cards.ordem]
@@ -1235,7 +1214,7 @@ export default function DesempenhoPage() {
     arr.splice(j, 0, id)
     const novo = { ...cards, ordem: arr }
     setCards(novo)
-    lsSet(K_CARDS, novo)
+    gravarPref(userId, K_CARDS, novo)
   }
   const soltarCard = (destino: CardId) => {
     if (!cardArrastando || cardArrastando === destino) {
@@ -1253,11 +1232,10 @@ export default function DesempenhoPage() {
     arr.splice(j, 0, cardArrastando)
     const novo = { ...cards, ordem: arr }
     setCards(novo)
-    lsSet(K_CARDS, novo)
+    gravarPref(userId, K_CARDS, novo)
     setCardArrastando(null)
   }
 
-  // item a: mover blocos entre áreas
   const soltarBloco = (destino: number) => {
     if (!blocoArrastando) return
     const atual = layout[blocoArrastando]
@@ -1271,7 +1249,7 @@ export default function DesempenhoPage() {
     const novo = { ...layout, [blocoArrastando]: destino } as typeof layout
     if (outro) (novo as any)[outro] = atual
     setLayout(novo)
-    lsSet(K_LAYOUT, novo)
+    gravarPref(userId, K_LAYOUT, novo)
     setBlocoArrastando(null)
   }
 
@@ -1279,7 +1257,7 @@ export default function DesempenhoPage() {
     const cab = colunasVisiveis.map((c) => c.label)
     const body = linhas.map((l) =>
       colunasVisiveis.map((c) => {
-        const v = valorColuna(l, c)
+        const v = valorCol(l, c)
         return v === null || v === undefined ? '' : String(v).replace(/;/g, ',')
       }),
     )
@@ -1302,6 +1280,13 @@ export default function DesempenhoPage() {
 
   const alternarLinha = (c: number) =>
     setSelecionadas((p) => (p.includes(c) ? p.filter((x) => x !== c) : p.concat([c])))
+
+  // item d: valores reais do período comparado
+  const cBRL = (v: any) => (v === null || v === undefined ? null : fmtBRL(v))
+  const cBRL2 = (v: any) => (v === null || v === undefined ? null : fmtBRL(v, 2))
+  const cNum = (v: any) => (v === null || v === undefined ? null : fmtNum(v))
+  const cComp = (v: any) => (v === null || v === undefined ? null : fmtCompacto(v))
+  const cPct = (v: any) => (v === null || v === undefined ? null : fmtPct(v, 2))
 
   if (loading && !dados) {
     return (
@@ -1338,22 +1323,7 @@ export default function DesempenhoPage() {
   const nomeSup =
     (dados.supervisores || []).find((s) => String(s.codparc) === f.supervisor)?.nome || 'Todos'
   const nLojas = Number(K.nLojas || 0)
-
-  // valor absoluto do período comparado (item d):
-  // item d — VALORES REAIS do período comparado, vindos do hook.
-  // A versão anterior reconstruía do percentual e, em Cupons, imprimia um
-  // percentual onde deveria haver uma contagem ("meta -63,5%"). O print pegou.
-  const cBRL = (v: number | null | undefined) => (v === null || v === undefined ? null : fmtBRL(v))
-  const cBRL2 = (v: number | null | undefined) =>
-    v === null || v === undefined ? null : fmtBRL(v, 2)
-  const cNum = (v: number | null | undefined) => (v === null || v === undefined ? null : fmtNum(v))
-  const cComp = (v: number | null | undefined) =>
-    v === null || v === undefined ? null : fmtCompacto(v)
-  const cMeta = (v: number | null | undefined) =>
-    v === null || v === undefined ? null : fmtCompacto(v)
-  // meta absoluta do CMV/Quebra é percentual, não valor
-  const cMetaPct = (v: number | null | undefined) =>
-    v === null || v === undefined ? null : fmtPct(v, 1)
+  const emCheio = (t: 'grafico' | 'grade') => telaCheia === t
 
   const defs: Record<
     CardId,
@@ -1366,7 +1336,7 @@ export default function DesempenhoPage() {
       Icone: TrendingUp,
       tom: (K.faturamento_aa ?? 0) >= 0 ? 'green' : 'red',
       vars: [
-        { label: 'Meta', valor: K.faturamento_ating ?? null, comparado: cMeta(K.meta_venda) },
+        { label: 'Meta', valor: K.faturamento_ating ?? null, comparado: cComp(K.meta_venda) },
         {
           label: 'A.A.',
           valor: K.faturamento_aa ?? null,
@@ -1374,7 +1344,6 @@ export default function DesempenhoPage() {
         },
       ],
     },
-
     qtd: {
       label: 'Qtde / Kg',
       valor: fmtCompacto(K.quantidade_kg),
@@ -1382,8 +1351,8 @@ export default function DesempenhoPage() {
       Icone: Package,
       tom: (K.quantidade_aa ?? 0) >= 0 ? 'green' : 'red',
       vars: [
-        { label: 'M.A.', valor: K.quantidade_ma ?? null },
-        { label: 'A.A.', valor: K.quantidade_aa ?? null },
+        { label: 'M.A.', valor: K.quantidade_ma ?? null, comparado: cComp(K.quantidade_ma_valor) },
+        { label: 'A.A.', valor: K.quantidade_aa ?? null, comparado: cComp(K.quantidade_aa_valor) },
       ],
     },
     preco: {
@@ -1392,8 +1361,8 @@ export default function DesempenhoPage() {
       Icone: Tag,
       tom: (K.preco_aa ?? 0) >= 0 ? 'green' : 'red',
       vars: [
-        { label: 'M.A.', valor: K.preco_ma ?? null },
-        { label: 'A.A.', valor: K.preco_aa ?? null },
+        { label: 'M.A.', valor: K.preco_ma ?? null, comparado: cBRL2(K.preco_ma_valor) },
+        { label: 'A.A.', valor: K.preco_aa ?? null, comparado: cBRL2(K.preco_aa_valor) },
       ],
     },
     cupons: {
@@ -1402,8 +1371,8 @@ export default function DesempenhoPage() {
       Icone: Receipt,
       tom: (K.cupons_aa ?? 0) >= 0 ? 'blue' : 'red',
       vars: [
-        { label: 'M.A.', valor: K.cupons_ma ?? null },
-        { label: 'A.A.', valor: K.cupons_aa ?? null },
+        { label: 'M.A.', valor: K.cupons_ma ?? null, comparado: cNum(K.cupons_ma_valor) },
+        { label: 'A.A.', valor: K.cupons_aa ?? null, comparado: cNum(K.cupons_aa_valor) },
       ],
     },
     ticket: {
@@ -1412,8 +1381,8 @@ export default function DesempenhoPage() {
       Icone: Ticket,
       tom: (K.ticket_aa ?? 0) >= 0 ? 'violet' : 'red',
       vars: [
-        { label: 'M.A.', valor: K.ticket_ma ?? null },
-        { label: 'A.A.', valor: K.ticket_aa ?? null },
+        { label: 'M.A.', valor: K.ticket_ma ?? null, comparado: cBRL(K.ticket_ma_valor) },
+        { label: 'A.A.', valor: K.ticket_aa ?? null, comparado: cBRL(K.ticket_aa_valor) },
       ],
     },
     cmv: {
@@ -1423,8 +1392,8 @@ export default function DesempenhoPage() {
       Icone: Percent,
       tom: (K.cmv_ating ?? 100) >= 100 ? 'green' : 'amber',
       vars: [
-        { label: 'Meta', valor: K.cmv_ating ?? null, inverso: true },
-        { label: 'A.A.', valor: K.cmv_aa ?? null, inverso: true },
+        { label: 'Meta', valor: K.cmv_ating ?? null, inverso: true, comparado: cPct(K.meta_cmv) },
+        { label: 'A.A.', valor: K.cmv_aa ?? null, inverso: true, comparado: null },
       ],
     },
     quebra: {
@@ -1434,14 +1403,19 @@ export default function DesempenhoPage() {
       Icone: AlertTriangle,
       tom: (K.quebra_ating ?? 0) <= 100 ? 'green' : 'red',
       vars: [
-        { label: 'Meta', valor: K.quebra_ating ?? null, inverso: true },
-        { label: 'A.A.', valor: K.quebra_ma ?? null, inverso: true },
+        {
+          label: 'Meta',
+          valor: K.quebra_ating ?? null,
+          inverso: true,
+          comparado: cPct(K.limite_perda),
+        },
+        { label: 'A.A.', valor: K.quebra_ma ?? null, inverso: true, comparado: null },
       ],
     },
     lojas: {
       label: 'Lojas',
       valor: fmtNum(nLojas),
-      contexto: dados.lojas.filter((l) => l.loja_nova).length + ' novas',
+      contexto: fmtNum(K.funcionarios ?? null) + ' funcionários',
       Icone: Store,
       tom: 'gray',
       vars: [],
@@ -1449,13 +1423,9 @@ export default function DesempenhoPage() {
   }
 
   const cardsVisiveis = cards.ordem.filter((id) => !cards.ocultos.includes(id))
-  const emCheio = (t: 'grafico' | 'grade') => telaCheia === t
 
-  // ---------------------------------------------------------------
-  // blocos ordenáveis (item a)
-  // ---------------------------------------------------------------
   const blocoCards = (
-    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2 items-stretch">
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2 items-stretch">
       {cardsVisiveis.map((id) => {
         const d = defs[id]
         return (
@@ -1476,11 +1446,25 @@ export default function DesempenhoPage() {
             onOcultar={() => {
               const n = { ...cards, ocultos: cards.ocultos.concat([id]) }
               setCards(n)
-              lsSet(K_CARDS, n)
+              gravarPref(userId, K_CARDS, n)
             }}
           />
         )
       })}
+      {cards.ocultos.length > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            const n = { ...cards, ocultos: [] }
+            setCards(n)
+            gravarPref(userId, K_CARDS, n)
+          }}
+          className="rounded-md border border-dashed text-[10px] font-semibold flex flex-col items-center justify-center gap-0.5 py-2"
+          style={{ borderColor: T.border, color: T.muted }}
+        >
+          <Eye className="h-3 w-3" /> reexibir {cards.ocultos.length}
+        </button>
+      )}
     </div>
   )
 
@@ -1495,9 +1479,25 @@ export default function DesempenhoPage() {
       <div className="flex items-center justify-between mb-2 gap-2">
         <div className="flex items-center gap-2">
           <GripVertical className="h-3.5 w-3.5 cursor-grab" style={{ color: T.muted }} />
-          <h2 className="text-[14px] font-semibold" style={{ color: T.text }}>
-            Evolução Faturamento
-          </h2>
+          <div className="relative">
+            <select
+              value={metrica}
+              onChange={(e) => setMetrica(e.target.value)}
+              title="Escolher o indicador do gráfico"
+              className="text-[14px] font-semibold bg-transparent border-none outline-none cursor-pointer pr-5 appearance-none"
+              style={{ color: T.text }}
+            >
+              {METRICAS.map((mm) => (
+                <option key={mm.id} value={mm.id}>
+                  Evolução {mm.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              className="h-3.5 w-3.5 absolute right-0 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ color: T.muted }}
+            />
+          </div>
           <span
             className="text-[10px] font-semibold rounded px-1.5 py-0.5 border"
             style={{ background: T.tintAmber, borderColor: '#fde68a', color: T.warn }}
@@ -1521,15 +1521,6 @@ export default function DesempenhoPage() {
               <Maximize2 className="h-3.5 w-3.5" />
             )}
           </button>
-          <button
-            type="button"
-            onClick={() => setCards((c) => c)}
-            title="Ocultar gráfico"
-            className="inline-flex items-center justify-center h-7 w-7 rounded border"
-            style={{ borderColor: T.border, color: T.muted, borderRadius: 6, background: T.card }}
-          >
-            <EyeOff className="h-3.5 w-3.5" />
-          </button>
         </div>
       </div>
       <div className={cn('w-full', emCheio('grafico') ? 'flex-1 min-h-0' : 'h-[250px]')}>
@@ -1546,10 +1537,12 @@ export default function DesempenhoPage() {
               tickLine={false}
               axisLine={false}
               tick={{ fill: T.muted, fontSize: 10 }}
-              tickFormatter={(v) => fmtCompacto(v)}
+              tickFormatter={(v) => (defM.tipo === 'num' ? fmtNum(Number(v)) : fmtCompacto(v))}
             />
             <Tooltip
-              formatter={(v: any) => fmtBRL(Number(v))}
+              formatter={(v: any) =>
+                defM.tipo === 'num' ? fmtNum(Number(v)) : fmtBRL(Number(v), 2)
+              }
               contentStyle={{ borderRadius: 8, border: '1px solid ' + T.border, fontSize: 11 }}
             />
             <Legend
@@ -1577,7 +1570,7 @@ export default function DesempenhoPage() {
             />
             {anos.map((a, i) => {
               const ult = anos[anos.length - 1]
-              if (a === ult)
+              if (a === ult) {
                 return (
                   <Line
                     key={a + 's'}
@@ -1591,6 +1584,7 @@ export default function DesempenhoPage() {
                     connectNulls={false}
                   />
                 )
+              }
               return (
                 <Line
                   key={a}
@@ -1653,7 +1647,7 @@ export default function DesempenhoPage() {
             <button
               type="button"
               onClick={() => setSelecionadas([])}
-              className="text-[10px] px-1.5 py-0.5 rounded border hover:bg-gray-50"
+              className="text-[10px] px-1.5 py-0.5 rounded border"
               style={{ borderColor: T.border, color: T.nav }}
             >
               {selecionadas.length} selecionada(s) · limpar
@@ -1741,7 +1735,7 @@ export default function DesempenhoPage() {
                             : colCfg.ocultas.concat([c.id as string])
                           const n = { ...colCfg, ocultas }
                           setColCfg(n)
-                          lsSet(K_COLUNAS, n)
+                          gravarPref(userId, K_COLUNAS, n)
                         }}
                         className="h-3 w-3 accent-[#14532d]"
                       />
@@ -1759,16 +1753,16 @@ export default function DesempenhoPage() {
                   onClick={() => {
                     const n = {
                       ordem: COLUNAS.map((c) => c.id as string),
-                      ocultas: COLUNAS.filter((c) => !c.visivelPadrao).map((c) => c.id as string),
+                      ocultas: [] as string[],
                       larguras: {},
                     }
                     setColCfg(n)
-                    lsSet(K_COLUNAS, n)
+                    gravarPref(userId, K_COLUNAS, n)
                   }}
                   className="mt-1 w-full inline-flex items-center justify-center gap-1 text-[10px] font-semibold py-1 rounded hover:bg-gray-50"
                   style={{ color: T.muted }}
                 >
-                  <RotateCcw className="h-3 w-3" /> Restaurar padrão
+                  <RotateCcw className="h-3 w-3" /> Mostrar todas
                 </button>
               </div>
             )}
@@ -1851,7 +1845,6 @@ export default function DesempenhoPage() {
                         <ArrowDown className="h-2.5 w-2.5" />
                       ))}
                   </span>
-                  {/* item c: alça de redimensionamento */}
                   <span
                     onMouseDown={(e) => {
                       e.stopPropagation()
@@ -1864,7 +1857,7 @@ export default function DesempenhoPage() {
                       document.body.style.cursor = 'col-resize'
                     }}
                     onClick={(e) => e.stopPropagation()}
-                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-[#14532d]/30"
+                    className="absolute top-0 right-0 h-full w-1.5 hover:bg-[#14532d]/30"
                     style={{ cursor: 'col-resize' }}
                   />
                 </th>
@@ -1872,27 +1865,63 @@ export default function DesempenhoPage() {
             </tr>
           </thead>
           <tbody>
-            {/* item f: faixa separadora por grupo (Loja Nova / Existente) */}
             {linhas.map((l, idx) => {
               const sel = selecionadas.includes(l.codparc)
               const anterior = idx > 0 ? linhas[idx - 1] : null
-              const mudaGrupo = !anterior || anterior.loja_nova !== l.loja_nova
+              const chaveRede = 'r:' + String(l.rede || '')
+              const chaveSub = chaveRede + '|' + (l.loja_nova ? 'nova' : 'exist')
+              const mudaRede = !anterior || String(anterior.rede || '') !== String(l.rede || '')
+              const mudaSub = mudaRede || anterior?.loja_nova !== l.loja_nova
+              if (gruposFechados.includes(chaveRede) || gruposFechados.includes(chaveSub))
+                return null
+              const qtdRede = linhas.filter(
+                (x) => String(x.rede || '') === String(l.rede || ''),
+              ).length
+              const qtdSub = linhas.filter(
+                (x) => String(x.rede || '') === String(l.rede || '') && x.loja_nova === l.loja_nova,
+              ).length
               return (
-                <>
-                  {mudaGrupo && (
-                    <tr key={'grp-' + l.codparc} style={{ background: T.input }}>
+                <Fragment key={l.codparc}>
+                  {mudaRede && (
+                    <tr style={{ background: T.tintGreen }}>
                       <td
                         colSpan={colunasVisiveis.length}
-                        className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider"
-                        style={{ color: T.muted, borderTop: '1px solid ' + T.border }}
+                        className="px-2 py-1.5"
+                        style={{ borderTop: '1px solid ' + T.border }}
                       >
-                        {l.loja_nova ? 'Loja Nova' : 'Existente'} ·{' '}
-                        {linhas.filter((x) => x.loja_nova === l.loja_nova).length} unidades
+                        <button
+                          type="button"
+                          onClick={() => alternarGrupo(chaveRede)}
+                          aria-expanded={!gruposFechados.includes(chaveRede)}
+                          className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider"
+                          style={{ color: T.nav }}
+                        >
+                          {gruposFechados.includes(chaveRede) ? '+' : '−'} {l.rede || 'Sem rede'} ·
+                          <span style={{ color: T.muted }} className="font-normal normal-case">
+                            {qtdRede} unidades
+                          </span>
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                  {!gruposFechados.includes(chaveRede) && mudaSub && (
+                    <tr style={{ background: T.input }}>
+                      <td colSpan={colunasVisiveis.length} className="px-2 py-1 pl-6">
+                        <button
+                          type="button"
+                          onClick={() => alternarGrupo(chaveSub)}
+                          aria-expanded={!gruposFechados.includes(chaveSub)}
+                          className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"
+                          style={{ color: T.muted }}
+                        >
+                          {gruposFechados.includes(chaveSub) ? '+' : '−'}{' '}
+                          {l.loja_nova ? 'Loja Nova' : 'Existente'} ·
+                          <span className="font-normal normal-case">{qtdSub} unidades</span>
+                        </button>
                       </td>
                     </tr>
                   )}
                   <tr
-                    key={l.codparc}
                     onClick={() => alternarLinha(l.codparc)}
                     className="border-b hover:bg-[#f9fafb] cursor-pointer"
                     style={{
@@ -1902,14 +1931,14 @@ export default function DesempenhoPage() {
                     }}
                   >
                     {colunasVisiveis.map((c) => {
-                      const valor = valorColuna(l, c)
+                      const valor = valorCol(l, c)
                       const al = c.alinhamento === 'right' ? 'text-right' : 'text-left'
                       if (c.id === 'ating') {
                         if (valor === null || valor === undefined)
                           return (
                             <td
                               key={c.id as string}
-                              className={cn('px-2 tabular-nums', al)}
+                              className={cn('px-2', al)}
                               style={{ color: T.muted }}
                             >
                               —
@@ -1940,7 +1969,7 @@ export default function DesempenhoPage() {
                           return (
                             <td
                               key={c.id as string}
-                              className={cn('px-2 tabular-nums', al)}
+                              className={cn('px-2', al)}
                               style={{ color: T.muted }}
                             >
                               —
@@ -2020,7 +2049,7 @@ export default function DesempenhoPage() {
                       )
                     })}
                   </tr>
-                </>
+                </Fragment>
               )
             })}
             {linhas.length === 0 && (
@@ -2041,10 +2070,7 @@ export default function DesempenhoPage() {
         className="px-3 py-1.5 text-[10px] border-t flex items-center justify-between"
         style={{ color: T.muted, borderColor: T.border }}
       >
-        <span>
-          Arraste as colunas pelo cabeçalho para reordenar · arraste a borda direita para
-          redimensionar
-        </span>
+        <span>Arraste as colunas pelo cabeçalho · arraste a borda direita para redimensionar</span>
         <span>Clique numa linha para filtrar os cards</span>
       </div>
     </div>
@@ -2075,21 +2101,6 @@ export default function DesempenhoPage() {
           </p>
         </div>
         <div className="flex items-center gap-1.5">
-          {cards.ocultos.length > 0 && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-[11px]"
-              style={{ borderRadius: 6 }}
-              onClick={() => {
-                const n = { ...cards, ocultos: [] }
-                setCards(n)
-                lsSet(K_CARDS, n)
-              }}
-            >
-              <Eye className="h-3 w-3 mr-1" /> Reexibir ({cards.ocultos.length})
-            </Button>
-          )}
           <Button
             onClick={() => {
               setParecerLoja(null)
@@ -2105,20 +2116,22 @@ export default function DesempenhoPage() {
               variant="outline"
               size="sm"
               onClick={() => carregar(true)}
-              className="h-8 text-[11px]"
-              style={{ borderRadius: 6 }}
+              disabled={loading}
+              className={cn('h-8 text-[11px] transition-colors', loading && 'animate-pulse')}
+              style={{
+                borderRadius: 6,
+                borderColor: loading ? T.warn : undefined,
+                color: loading ? T.warn : undefined,
+                background: loading ? T.tintAmber : undefined,
+              }}
             >
-              {/* item i: enquanto busca, o botão "pisca" suave e vira "Atualizando" */}
               <RefreshCw className={cn('h-3 w-3 mr-1', loading && 'animate-spin')} />
-              <span className={cn(loading && 'animate-pulse')}>
-                {loading ? 'Atualizando' : 'Atualizar'}
-              </span>
+              <span>{loading ? 'Atualizando' : 'Atualizar'}</span>
             </Button>
           )}
         </div>
       </div>
 
-      {/* PAINEL DE FILTROS */}
       <div className="bg-white border" style={{ borderColor: T.border, borderRadius: 8 }}>
         <div className="flex items-center gap-2 px-3 h-[50px] overflow-x-auto">
           <button
@@ -2149,17 +2162,6 @@ export default function DesempenhoPage() {
             />
             <Chip rotulo="Rede" valor={f.rede || 'Todas'} onRemover={() => setCampo('rede', '')} />
             <Chip
-              rotulo="Tipo Loja"
-              valor={
-                f.tipoLoja === 'nova'
-                  ? 'Loja Nova'
-                  : f.tipoLoja === 'existente'
-                    ? 'Existente'
-                    : 'Todas'
-              }
-              onRemover={() => setCampo('tipoLoja', '')}
-            />
-            <Chip
               rotulo="Supervisor"
               valor={nomeSup}
               onRemover={() => setCampo('supervisor', '')}
@@ -2173,11 +2175,6 @@ export default function DesempenhoPage() {
               style={{ borderColor: T.border, color: T.text, borderRadius: 6, background: T.card }}
             >
               Mais filtros{filtrosAtivos > 0 ? ` (${filtrosAtivos})` : ''}
-              {filtrosAbertos ? (
-                <ChevronUp className="h-3 w-3" />
-              ) : (
-                <ChevronDown className="h-3 w-3" />
-              )}
             </button>
             <button
               type="button"
@@ -2199,18 +2196,11 @@ export default function DesempenhoPage() {
             >
               Limpar
             </button>
-            {dados.do_cache && (
-              <span className="text-[10px]" style={{ color: T.muted }}>
-                cache {dados.cache_idade_min ?? 0} min
-              </span>
-            )}
           </div>
         </div>
-
         {filtrosAbertos && (
           <>
             <div className="border-t" style={{ borderColor: T.border }} />
-            {/* item b: larguras pelo conteúdo, flex-wrap sem espaço vazio */}
             <div className="px-3 py-2.5 flex flex-wrap gap-3 items-end">
               <CampoSelect
                 label="Canal"
@@ -2316,41 +2306,23 @@ export default function DesempenhoPage() {
           <div>{dados.aviso}</div>
         </div>
       )}
-      {dados.falhas && dados.falhas.length > 0 && (
-        <div
-          className="px-3 py-2 rounded-lg border text-[11px]"
-          style={{ background: T.tintAmber, borderColor: '#fde68a', color: T.warn }}
-        >
-          <b>{dados.falhas.length} consulta(s) com falha</b>
-          <ul className="list-disc pl-4 mt-0.5">
-            {dados.falhas.map((x, i) => (
-              <li key={i} className="font-mono text-[10px] break-all">
-                {x}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       {filtrado && (
         <div
           className="px-3 py-1.5 rounded border text-[11px] flex items-center gap-2"
           style={{ background: T.tintGreen, borderColor: '#bbf7d0', color: T.pos }}
         >
           <span className="font-semibold">{selecionadas.length} loja(s) selecionada(s)</span>
-          <span style={{ color: T.muted }}>— cards e gráfico refletem apenas a seleção</span>
           <button
             type="button"
             onClick={() => setSelecionadas([])}
             className="ml-auto text-[10px] underline"
             style={{ color: T.muted }}
           >
-            limpar seleção
+            limpar
           </button>
         </div>
       )}
 
-      {/* ÁREAS ORDENÁVEIS — item a */}
       {ordemBlocos.map((b, idx) => (
         <div
           key={b}
@@ -2363,7 +2335,6 @@ export default function DesempenhoPage() {
               soltarBloco(idx)
             }
           }}
-          className={cn(idx > 0 && 'relative')}
         >
           {idx > 0 && (
             <div className="flex items-center gap-1.5 mb-1 group/sep">
@@ -2376,29 +2347,11 @@ export default function DesempenhoPage() {
                 draggable
                 onDragStart={() => setBlocoArrastando(b)}
                 onDragEnd={() => setBlocoArrastando(null)}
-                title="Arraste para reposicionar este bloco"
-                className="opacity-0 group-hover/sep:opacity-100 transition-opacity px-1 rounded border text-[9px] inline-flex items-center gap-0.5 cursor-grab"
+                title="Arraste para reposicionar"
+                className="opacity-0 group-hover/sep:opacity-100 px-1 rounded border text-[9px] inline-flex items-center gap-0.5 cursor-grab"
                 style={{ borderColor: T.border, color: T.muted, background: T.card }}
               >
                 <GripVertical className="h-2.5 w-2.5" /> mover
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const n = { ...layout }
-                  const cur = n[b]
-                  const alvo = idx - 1
-                  const outro = (Object.keys(n) as BlocoId[]).find((x) => n[x] === alvo)
-                  n[b] = alvo
-                  if (outro) n[outro] = cur
-                  setLayout(n)
-                  lsSet(K_LAYOUT, n)
-                }}
-                title="Subir este bloco"
-                className="opacity-0 group-hover/sep:opacity-100 transition-opacity px-1 rounded border text-[9px]"
-                style={{ borderColor: T.border, color: T.muted, background: T.card }}
-              >
-                ↑
               </button>
             </div>
           )}
@@ -2444,11 +2397,11 @@ export default function DesempenhoPage() {
               parecerLoja.rede +
               '). Faturamento ' +
               fmtBRL(parecerLoja.faturamento) +
-              ', venda orçada ' +
+              ', orçado ' +
               fmtBRL(parecerLoja.meta ?? null) +
               ' (atingimento ' +
               fmtPct(parecerLoja.ating_venda ?? null) +
-              '), crescimento A.A. ' +
+              '), A.A. ' +
               fmtPct(parecerLoja.cresc_aa ?? null) +
               ', funcionários ' +
               fmtNum(parecerLoja.funcionarios ?? null) +
