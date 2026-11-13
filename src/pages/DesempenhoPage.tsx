@@ -61,10 +61,12 @@ import { cn } from '@/lib/utils'
 // Paleta de ALTO CONTRASTE para o gráfico de evolução (item d).
 // O cinza #9CA3AF anterior praticamente sumia no branco.
 const CORES_ANO: Record<string, string> = {
+  '2022': '#DC2626', // vermelho
+  '2023': '#0EA5E9', // azul
   '2024': '#7C3AED', // roxo
   '2025': '#EA580C', // laranja
   '2026': '#1B5E20', // verde institucional (ano corrente, linha sólida)
-  '2027': '#0EA5E9', // azul
+  '2027': '#0891B2', // ciano
 }
 
 const VERDE = '#1B5E20'
@@ -184,6 +186,60 @@ function Variacao({
       {label} {valor > 0 ? '+' : ''}
       {valor.toFixed(1).replace('.', ',')}%
     </span>
+  )
+}
+
+/** Controles de exibir/ocultar/mover exibidos no PRÓPRIO item (item f). */
+function ControlesItem({
+  onOcultar,
+  onEsquerda,
+  onDireita,
+  onTelaCheia,
+  telaCheia,
+}: {
+  onOcultar: () => void
+  onEsquerda: () => void
+  onDireita: () => void
+  onTelaCheia?: () => void
+  telaCheia?: boolean
+}) {
+  return (
+    <div className="absolute top-1 right-1 z-20 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-black/25 rounded px-1 py-0.5">
+      <button
+        type="button"
+        onClick={onEsquerda}
+        title="Mover para a esquerda"
+        className="text-white/90 hover:text-white px-0.5"
+      >
+        ‹
+      </button>
+      <button
+        type="button"
+        onClick={onDireita}
+        title="Mover para a direita"
+        className="text-white/90 hover:text-white px-0.5"
+      >
+        ›
+      </button>
+      {onTelaCheia && (
+        <button
+          type="button"
+          onClick={onTelaCheia}
+          title={telaCheia ? 'Sair da tela cheia' : 'Tela cheia'}
+          className="text-white/90 hover:text-white px-0.5"
+        >
+          ⛶
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={onOcultar}
+        title="Ocultar"
+        className="text-white/90 hover:text-white px-0.5"
+      >
+        ✕
+      </button>
+    </div>
   )
 }
 
@@ -384,6 +440,16 @@ export default function DesempenhoPage() {
 
   // ---- anos ocultos no gráfico (clique na legenda) ----
   const [anosOcultos, setAnosOcultos] = useState<string[]>([])
+
+  // ---- tela cheia (item a): qualquer gráfico ou a grade ----
+  const [emTelaCheia, setEmTelaCheia] = useState<string | null>(null)
+  useEffect(() => {
+    const onEsc = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setEmTelaCheia(null)
+    }
+    window.addEventListener('keydown', onEsc)
+    return () => window.removeEventListener('keydown', onEsc)
+  }, [])
 
   const [parecerAberto, setParecerAberto] = useState(false)
   const [parecerLoja, setParecerLoja] = useState<Loja | null>(null)
@@ -745,15 +811,18 @@ export default function DesempenhoPage() {
           >
             <Filter className="h-3 w-3 mr-1" /> Filtros
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setConfigAberta(true)}
-            className="h-8 text-[11px]"
-            title="Exibir, ocultar e reordenar cards e gráficos"
-          >
-            <SlidersHorizontal className="h-3 w-3 mr-1" /> Layout
-          </Button>
+          {(layout.cardsOcultos.length > 0 || layout.graficosOcultos.length > 0) && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => salvarLayout({ ...layout, cardsOcultos: [], graficosOcultos: [] })}
+              className="h-8 text-[11px] text-amber-700 border-amber-300"
+              title="Reexibir todos os cards e gráficos ocultos"
+            >
+              <Eye className="h-3 w-3 mr-1" /> Reexibir (
+              {layout.cardsOcultos.length + layout.graficosOcultos.length})
+            </Button>
+          )}
           <Button
             onClick={() => {
               setParecerLoja(null)
@@ -1015,37 +1084,102 @@ export default function DesempenhoPage() {
       )}
 
       {/* Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+      {/* Cards — 6 por linha (25% mais estreitos) e controles no próprio item */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         {cardsVisiveis.map((id) => {
           const card = cardRender(id)
           if (!card) return null
+          const idx = layout.cardsOrdem.indexOf(id)
           return (
             <div
               key={id}
+              className="relative group"
               onDragOver={(ev) => ev.preventDefault()}
               onDrop={() => {
                 if (arrastando.current) moverCard(arrastando.current, id)
                 arrastando.current = null
               }}
             >
+              <ControlesItem
+                onOcultar={() =>
+                  salvarLayout({ ...layout, cardsOcultos: layout.cardsOcultos.concat([id]) })
+                }
+                onEsquerda={() => {
+                  if (idx > 0) moverCard(id, layout.cardsOrdem[idx - 1])
+                }}
+                onDireita={() => {
+                  if (idx < layout.cardsOrdem.length - 1) moverCard(id, layout.cardsOrdem[idx + 1])
+                }}
+              />
               {card}
             </div>
           )
         })}
+        {layout.cardsOcultos.length > 0 && (
+          <button
+            onClick={() => salvarLayout({ ...layout, cardsOcultos: [] })}
+            className="col-span-1 rounded-lg border border-dashed border-gray-300 text-[9px] font-semibold text-gray-400 hover:text-gray-600 hover:border-gray-400 flex flex-col items-center justify-center gap-0.5 py-2"
+            title="Reexibir cards ocultos"
+          >
+            <Eye className="h-3 w-3" />
+            {layout.cardsOcultos.length} oculto{layout.cardsOcultos.length > 1 ? 's' : ''}
+          </button>
+        )}
       </div>
 
-      {/* Evolução 3 anos */}
+      {/* Evolução 5 anos — tela cheia e controles no próprio item */}
       {graficosVisiveis.includes('evolucao') && (
-        <div className="bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs">
+        <div
+          className={cn(
+            'bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs relative group',
+            emTelaCheia === 'evolucao' && 'fixed inset-3 z-50 overflow-auto',
+          )}
+        >
+          <ControlesItem
+            onOcultar={() =>
+              salvarLayout({
+                ...layout,
+                graficosOcultos: layout.graficosOcultos.concat(['evolucao']),
+              })
+            }
+            onEsquerda={() => {
+              const i = layout.graficosOrdem.indexOf('evolucao')
+              if (i > 0)
+                salvarLayout({
+                  ...layout,
+                  graficosOrdem: (() => {
+                    const a = [...layout.graficosOrdem]
+                    a.splice(i, 1)
+                    a.splice(i - 1, 0, 'evolucao')
+                    return a
+                  })(),
+                })
+            }}
+            onDireita={() => {
+              const i = layout.graficosOrdem.indexOf('evolucao')
+              if (i < layout.graficosOrdem.length - 1)
+                salvarLayout({
+                  ...layout,
+                  graficosOrdem: (() => {
+                    const a = [...layout.graficosOrdem]
+                    a.splice(i, 1)
+                    a.splice(i + 1, 0, 'evolucao')
+                    return a
+                  })(),
+                })
+            }}
+            onTelaCheia={() => setEmTelaCheia(emTelaCheia === 'evolucao' ? null : 'evolucao')}
+            telaCheia={emTelaCheia === 'evolucao'}
+          />
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-[12px] font-bold text-gray-900">
-              Evolução Faturamento — {anosGrafico.join(' · ') || '2024 · 2025 · 2026'}
+              Evolução Faturamento — {anosGrafico.join(' · ') || '2022 a 2026'}
             </h3>
             <span className="text-[10px] text-gray-400">
               Clique no ano da legenda para ocultar ou exibir a linha
             </span>
           </div>
-          <div className="h-[240px] w-full">
+          <div className={cn('w-full', emTelaCheia === 'evolucao' ? 'h-[70vh]' : 'h-[240px]')}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={seriePivot} margin={{ top: 5, right: 12, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
@@ -1197,8 +1331,20 @@ export default function DesempenhoPage() {
         )}
       </div>
 
-      {/* Grade */}
-      <div className="bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs">
+      {/* Grade — tela cheia (item a) e controles no próprio item (item f) */}
+      <div
+        className={cn(
+          'bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs relative group',
+          emTelaCheia === 'grade' && 'fixed inset-3 z-50 overflow-auto',
+        )}
+      >
+        <ControlesItem
+          onOcultar={() => setEmTelaCheia(null)}
+          onEsquerda={() => {}}
+          onDireita={() => {}}
+          onTelaCheia={() => setEmTelaCheia(emTelaCheia === 'grade' ? null : 'grade')}
+          telaCheia={emTelaCheia === 'grade'}
+        />
         <div className="flex items-center justify-between gap-2 mb-3">
           <h3 className="text-[12px] font-bold text-gray-900">Desempenho por Loja</h3>
           <div className="flex items-center gap-2">
