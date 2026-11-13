@@ -246,7 +246,7 @@ function Card({
   contexto,
   Icone,
   tom,
-  variacoes,
+  vars,
   arrastando,
   onDragStart,
   onDragOver,
@@ -319,8 +319,8 @@ function Card({
         </div>
       )}
       <div className="mt-auto pt-2 flex items-start justify-center gap-3 flex-wrap text-[10px] leading-none">
-        {(variacoes as VarItem[]).length === 0 && <span style={{ color: T.muted }}>—</span>}
-        {(variacoes as VarItem[]).map((v, i) => {
+        {((vars as VarItem[]) || []).length === 0 && <span style={{ color: T.muted }}>—</span>}
+        {((vars as VarItem[]) || []).map((v, i) => {
           const x = v.valor
           if (x === null || x === undefined)
             return (
@@ -359,7 +359,10 @@ function Card({
 }
 
 function Sel({ label, value, onChange, options, largura, disabled }: any) {
-  const maior = (options as any[]).reduce((m, o) => Math.max(m, String(o.l).length), label.length)
+  const maior = ((options as any[]) || []).reduce(
+    (m, o) => Math.max(m, String(o.l).length),
+    label.length,
+  )
   const w = Math.min(largura, Math.max(96, maior * 6.6 + 42))
   return (
     <div style={{ width: w }} className="min-w-0 shrink-0">
@@ -377,7 +380,7 @@ function Sel({ label, value, onChange, options, largura, disabled }: any) {
           className="w-full h-[34px] rounded border px-2 pr-7 text-[12px] appearance-none outline-none truncate disabled:opacity-50"
           style={{ background: T.input, borderColor: T.border, color: T.text, borderRadius: 6 }}
         >
-          {options.map((o: any) => (
+          {((options as any[]) || []).map((o: any) => (
             <option key={o.v} value={o.v}>
               {o.l}
             </option>
@@ -463,20 +466,28 @@ export default function DesempenhoPage() {
   const [erro, setErro] = useState('')
   const [filtrosAbertos, setFiltrosAbertos] = useState(false)
 
-  const [colOcultas, setColOcultas] = useState<string[]>(() => prefs.colunasOcultas || [])
-  const [colLarg, setColLarg] = useState<Record<string, number>>(() => prefs.colunasLarg || {})
+  const [colOcultas, setColOcultas] = useState<string[]>(() =>
+    Array.isArray(prefs.colunasOcultas) ? prefs.colunasOcultas : [],
+  )
+  const [colLarg, setColLarg] = useState<Record<string, number>>(() =>
+    prefs.colunasLarg && typeof prefs.colunasLarg === 'object' ? prefs.colunasLarg : {},
+  )
   const [menuColunas, setMenuColunas] = useState(false)
   const [ordem, setOrdem] = useState<{ id: string; dir: 'asc' | 'desc' } | null>(null)
   const redim = useRef<{ id: string; ini: number; w: number } | null>(null)
 
   const [cards, setCards] = useState<{ ordem: CardId[]; ocultos: CardId[] }>(() => ({
-    ordem: (prefs.cardsOrdem as CardId[]) || [...CARDS],
-    ocultos: (prefs.cardsOcultos as CardId[]) || [],
+    ordem: Array.isArray(prefs.cardsOrdem) ? (prefs.cardsOrdem as CardId[]) : [...CARDS],
+    ocultos: Array.isArray(prefs.cardsOcultos) ? (prefs.cardsOcultos as CardId[]) : [],
   }))
-  const [layout, setLayout] = useState<Record<Bloco, number>>(
-    () => prefs.layout || { cards: 0, grade: 1, grafico: 2 },
+  const [layout, setLayout] = useState<Record<Bloco, number>>(() =>
+    prefs.layout && typeof prefs.layout === 'object'
+      ? prefs.layout
+      : { cards: 0, grade: 1, grafico: 2 },
   )
-  const [blocosOcultos, setBlocosOcultos] = useState<Bloco[]>(() => prefs.blocosOcultos || [])
+  const [blocosOcultos, setBlocosOcultos] = useState<Bloco[]>(() =>
+    Array.isArray(prefs.blocosOcultos) ? prefs.blocosOcultos : [],
+  )
   const [arrastandoCard, setArrastandoCard] = useState<CardId | null>(null)
   const [arrastandoBloco, setArrastandoBloco] = useState<Bloco | null>(null)
 

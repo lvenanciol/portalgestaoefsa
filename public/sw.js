@@ -117,7 +117,10 @@
 // network-first, mas o HTML (navegação) caía no fallback de cache e continuava
 // apontando para o bundle anterior — o deploy estava certo e o navegador
 // carregava o app velho. Agora navegação NUNCA usa cache.
-const CACHE_NAME = 'pge-pwa-v67'
+// v68 (13/11/2026): correção do TypeError "Cannot read properties of undefined
+// (reading 'length')" que quebrava a montagem de /desempenho — o Card lia
+// `variacoes` mas os defs passam `vars`; leitura protegida com fallback [].
+const CACHE_NAME = 'pge-pwa-v68'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
