@@ -31,7 +31,11 @@
 //   de supervisor aceita tanto o e-mail (carteira) quanto o CODPARC.
 //
 // COLUNAS DA GRADE (item g): meta por loja vem de EF_VIEW_METAS_LOJAS CODPARC
+
+routerAdd(
+=======
 //   (METAVENDA / METACMV / PERCLIMITEPERDA); o A.A. por loja vem de uma terceira
+//   agregação em UNION ALL (TIPO 3), nunca por join.
 
 routerAdd(
 =======
