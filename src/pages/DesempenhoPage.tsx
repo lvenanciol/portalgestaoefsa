@@ -15,7 +15,6 @@ import {
   Legend,
 } from 'recharts'
 import {
-  BarChart3,
   Loader2,
   RefreshCw,
   AlertTriangle,
@@ -40,26 +39,36 @@ import { ParceiroParecerDialog } from '@/components/varejo/ParceiroParecerDialog
 import { useBotoes } from '@/services/botoes-service'
 import { cn } from '@/lib/utils'
 
-// TAREFA VAREJO v2 (13/11/2026) — 8 itens do pedido do dono.
+// TAREFA VAREJO v3 (13/11/2026)
 //
-// a) Cards com variação M.A / A.A; Faturamento, CMV e Quebra com % de
-//    atingimento de meta + A.A.
-// b) Cards 25% mais estreitos (grid lg:grid-cols-5, padding menor).
-// c) Gráfico de evolução com 3 linhas: 2024, 2025, 2026.
-// d) Todos os gráficos respondem ao filtro.
-// e) Filtro completo conforme print: Ano, Mês, Tipo Loja, Tipo Grupo, Rede,
-//    Tipo Venda, Loja, Supervisor.
-// f) Exibir/ocultar/mover cards e gráficos (persistido em localStorage).
-// g) Grade ordenável por clique, colunas arrastáveis e ícone para ocultar.
-// h) Todas as colunas por loja do print.
+// a) Corrige o erro do print: a combinação "Loja Nova + Atacarejo" devolvia
+//    0 lojas porque os VALORES dos filtros estavam trocados. O mapeamento
+//    correto é AD_LOJANOVA (Loja Nova) e AD_TIPOLOJA (Varejo x Atacado VEM).
+//    Agora a tela avisa quando a seleção fica vazia em vez de mostrar cards
+//    em branco sem explicação.
+// b) Supervisores reais: a lista vinha com o CODPARC 61, que é uma LOJA
+//    ("07-CR - LAR"). Filtramos e usamos o e-mail da carteira como rótulo.
+// c) Loja e Supervisor lado a lado.
+// d) Contraste do gráfico: paleta própria por ano (roxo/laranja/verde).
+// e) Clique na legenda oculta/exibe a linha do ano.
+// f) Alternar abas rápido: cache de 12h + zona stale de 7 dias que serve
+//    na hora, marcada com "cache antigo".
 //
-// DADOS: hook /backend/v1/varejo/desempenho (Sankhya real). Nenhum valor é
-// inventado: métrica sem fonte volta null e o card mostra "—".
+// Demais itens da rodada anterior seguem: variações M.A/A.A, % de meta,
+// cards estreitos, gráfico de 3 anos, layout configurável, grade de 20
+// colunas ordenável/arrastável.
+
+// Paleta de ALTO CONTRASTE para o gráfico de evolução (item d).
+// O cinza #9CA3AF anterior praticamente sumia no branco.
+const CORES_ANO: Record<string, string> = {
+  '2024': '#7C3AED', // roxo
+  '2025': '#EA580C', // laranja
+  '2026': '#1B5E20', // verde institucional (ano corrente, linha sólida)
+  '2027': '#0EA5E9', // azul
+}
 
 const VERDE = '#1B5E20'
 const VERDE_CLARO = '#4CAF50'
-const DOURADO = '#C8A951'
-const CINZA = '#9CA3AF'
 
 type Aba = 'distribuicao' | 'atacado' | 'carone' | 'extrabom' | 'varejo'
 
@@ -112,9 +121,11 @@ interface Resposta {
   origem: Record<string, string>
   serie: { MES: string; ANO: string; FAT: number | null }[]
   lojas: Loja[]
-  supervisores: { codparc: number; nome: string }[]
+  supervisores: { codparc: number; nome: string; qtd?: number; email?: string | null }[]
   falhas?: string[]
+  aviso?: string
   do_cache?: boolean
+  stale?: boolean
   cache_idade_min?: number
 }
 
@@ -176,7 +187,6 @@ function Variacao({
   )
 }
 
-/** Card compacto — 25% mais estreito que a versão anterior. */
 function KpiCard({
   id,
   titulo,
@@ -232,7 +242,7 @@ function KpiCard({
   )
 }
 
-// ---------------- Configuração de cards e gráficos (item f) ----------------
+// ---------------- Configuração de cards e gráficos ----------------
 
 const CARDS_DEF = [
   { id: 'fat', titulo: 'Faturamento' },
@@ -249,7 +259,7 @@ const CARDS_DEF = [
 const GRAFICOS_DEF = [
   { id: 'evolucao', titulo: 'Evolução Faturamento — 3 anos' },
   { id: 'participacao', titulo: 'Participação por Faturamento' },
-  { id: 'cidades', titulo: 'Faturamento por Cidade' },
+  { id: 'cidades', titulo: 'Faturamento por Loja — Top 12' },
 ]
 
 const CHAVE_LAYOUT = 'pge_varejo_layout_v2'
@@ -274,7 +284,6 @@ function lerLayout(): LayoutCfg {
     if (!raw) return layoutPadrao()
     const obj = JSON.parse(raw) as LayoutCfg
     const base = layoutPadrao()
-    // mantém só ids conhecidos (protege contra mudança de versão)
     const cardsOk = (obj.cardsOrdem || []).filter((id) => base.cardsOrdem.includes(id))
     const faltando = base.cardsOrdem.filter((id) => !cardsOk.includes(id))
     return {
@@ -288,17 +297,15 @@ function lerLayout(): LayoutCfg {
   }
 }
 
-// ---------------- Colunas da grade (itens g e h) ----------------
+// ---------------- Colunas da grade ----------------
 
 interface ColDef {
   id: string
   label: string
   align: 'left' | 'right'
   tipo: 'texto' | 'brl' | 'num' | 'pct'
-  traco?: boolean
 }
 
-// Todas as colunas do print do dono.
 const COLUNAS: ColDef[] = [
   { id: 'rede', label: 'Rede', align: 'left', tipo: 'texto' },
   { id: 'loja', label: 'Loja', align: 'left', tipo: 'texto' },
@@ -353,7 +360,7 @@ export default function DesempenhoPage() {
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
 
-  // ---- filtros (item e) ----
+  // ---- filtros ----
   const hoje = new Date()
   const [ano, setAno] = useState(hoje.getFullYear())
   const [mes, setMes] = useState(hoje.getMonth() + 1)
@@ -365,15 +372,18 @@ export default function DesempenhoPage() {
   const [supervisor, setSupervisor] = useState('')
   const [mostrarFiltros, setMostrarFiltros] = useState(true)
 
-  // ---- layout (item f) ----
+  // ---- layout ----
   const [layout, setLayout] = useState<LayoutCfg>(lerLayout)
   const [configAberta, setConfigAberta] = useState(false)
 
-  // ---- colunas (itens g e h) ----
+  // ---- colunas ----
   const [colCfg, setColCfg] = useState<ColCfg>(lerColunas)
   const [menuColunas, setMenuColunas] = useState(false)
   const [ordem, setOrdem] = useState<{ id: string; dir: 'asc' | 'desc' } | null>(null)
   const arrastando = useRef<string | null>(null)
+
+  // ---- anos ocultos no gráfico (clique na legenda) ----
+  const [anosOcultos, setAnosOcultos] = useState<string[]>([])
 
   const [parecerAberto, setParecerAberto] = useState(false)
   const [parecerLoja, setParecerLoja] = useState<Loja | null>(null)
@@ -395,6 +405,9 @@ export default function DesempenhoPage() {
     }
   }
 
+  // Cache em memória por chave de filtros: alternar aba volta na hora.
+  const memoria = useRef<Record<string, Resposta>>({})
+
   const qs = useCallback(
     (forcar: boolean) => {
       const p = new URLSearchParams()
@@ -415,11 +428,20 @@ export default function DesempenhoPage() {
 
   const carregar = useCallback(
     async (forcar = false) => {
+      const chave = qs(false)
+      // 1) memória: troca de aba instantânea
+      if (!forcar && memoria.current[chave]) {
+        setDados(memoria.current[chave])
+        setLoading(false)
+        return
+      }
       setLoading(true)
       setErro('')
       try {
         const r = await pb.send('/backend/v1/varejo/desempenho?' + qs(forcar), { method: 'GET' })
-        setDados(r as Resposta)
+        const resp = r as Resposta
+        setDados(resp)
+        memoria.current[chave] = resp
       } catch (e) {
         setErro(String(e))
         setDados(null)
@@ -436,7 +458,6 @@ export default function DesempenhoPage() {
 
   const k = dados?.kpis || {}
 
-  // Série pivotada: uma linha por mês, uma coluna por ano (item c)
   const seriePivot = useMemo(() => {
     const mapa: Record<string, Record<string, number>> = {}
     for (const s of dados?.serie || []) {
@@ -471,15 +492,12 @@ export default function DesempenhoPage() {
     return out
   }, [dados])
 
-  const cidadesGrafico = useMemo(() => {
-    // agrupa por prefixo do nome da loja não dá cidade; usamos o que o backend
-    // manda em `cidades` quando existir, senão deriva das lojas por rede.
-    return (dados?.lojas || [])
-      .slice(0, 12)
-      .map((l) => ({ nome: l.loja, valor: l.faturamento || 0 }))
-  }, [dados])
+  const lojasGrafico = useMemo(
+    () =>
+      (dados?.lojas || []).slice(0, 12).map((l) => ({ nome: l.loja, valor: l.faturamento || 0 })),
+    [dados],
+  )
 
-  // ---- grade: aplica ordem de colunas, ocultas e ordenação (item g) ----
   const colunasVisiveis = useMemo(() => {
     const mapa = new Map(COLUNAS.map((c) => [c.id, c]))
     return colCfg.ordem
@@ -538,7 +556,7 @@ export default function DesempenhoPage() {
     salvarLayout({ ...layout, cardsOrdem: arr })
   }
 
-  if (loading) {
+  if (loading && !dados) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2 className="h-6 w-6 animate-spin text-[#1B5E20]" />
@@ -566,7 +584,7 @@ export default function DesempenhoPage() {
             key="fat"
             id="fat"
             arrastavel
-            onDragStart={(e) => (arrastando.current = 'fat')}
+            onDragStart={() => (arrastando.current = 'fat')}
             titulo="Faturamento"
             valor={fmtCompacto(k.faturamento)}
             sub={fmtBRL(k.faturamento)}
@@ -666,7 +684,7 @@ export default function DesempenhoPage() {
             cor="cinza"
             variacoes={[
               { label: 'ATG', valor: k.quebra_ating, inverso: true },
-              { label: 'P.P/M.A', valor: k.quebra_ma, inverso: true },
+              { label: 'P/M.A', valor: k.quebra_ma, inverso: true },
             ]}
             tooltip={dados.origem.quebra_pct}
           />
@@ -759,7 +777,7 @@ export default function DesempenhoPage() {
         </div>
       </div>
 
-      {/* Filtros (item e) */}
+      {/* Filtros */}
       {mostrarFiltros && (
         <div className="bg-white rounded-xl border border-[#E5E7EB] p-3 shadow-xs space-y-2.5">
           <div className="flex items-center gap-2 text-[11px] font-bold text-gray-700">
@@ -769,13 +787,24 @@ export default function DesempenhoPage() {
               ({dados.lojas.length} loja{dados.lojas.length === 1 ? '' : 's'})
             </span>
             {dados.do_cache && (
-              <span className="ml-auto text-[10px] text-amber-600 font-semibold">
-                cache {dados.cache_idade_min ? `(${dados.cache_idade_min} min)` : ''}
+              <span
+                className={cn(
+                  'ml-auto text-[10px] font-semibold',
+                  dados.stale ? 'text-amber-600' : 'text-emerald-600',
+                )}
+                title={
+                  dados.stale
+                    ? 'Cache vencido servido na hora para não travar a navegação. Use Atualizar para consultar o Sankhya agora.'
+                    : 'Resultado servido do cache do servidor.'
+                }
+              >
+                {dados.stale ? 'cache antigo' : 'cache'}
+                {dados.cache_idade_min ? ` (${dados.cache_idade_min} min)` : ''}
               </span>
             )}
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-2.5">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
             {/* Ano */}
             <div>
               <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-1">
@@ -800,7 +829,7 @@ export default function DesempenhoPage() {
             </div>
 
             {/* Mês */}
-            <div className="lg:col-span-2">
+            <div>
               <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-1">
                 Mês
               </div>
@@ -822,8 +851,8 @@ export default function DesempenhoPage() {
               </div>
             </div>
 
-            {/* Loja e Supervisor */}
-            <div className="space-y-2">
+            {/* Loja e Supervisor LADO A LADO (item c) */}
+            <div className="grid grid-cols-2 gap-2.5">
               <div>
                 <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-1">
                   Loja
@@ -833,7 +862,7 @@ export default function DesempenhoPage() {
                   onChange={(e) => setLoja(e.target.value)}
                   className="w-full text-[11px] border border-gray-200 rounded px-2 py-1.5 bg-white"
                 >
-                  <option value="">Todos</option>
+                  <option value="">Todas</option>
                   {(dados.lojas || []).map((l) => (
                     <option key={l.codparc} value={l.codparc}>
                       {l.loja}
@@ -854,6 +883,7 @@ export default function DesempenhoPage() {
                   {(dados.supervisores || []).map((s) => (
                     <option key={s.codparc} value={s.codparc}>
                       {s.nome}
+                      {s.qtd ? ` (${s.qtd})` : ''}
                     </option>
                   ))}
                 </select>
@@ -868,9 +898,9 @@ export default function DesempenhoPage() {
                 valor: tipoLoja,
                 set: setTipoLoja,
                 opts: [
-                  ['', 'Todos'],
-                  ['1', 'Loja Nova'],
-                  ['2', 'SSS'],
+                  ['', 'Todas'],
+                  ['nova', 'Loja Nova'],
+                  ['existente', 'Existente'],
                 ],
               },
               {
@@ -880,7 +910,7 @@ export default function DesempenhoPage() {
                 opts: [
                   ['', 'Todos'],
                   ['varejo', 'Varejo'],
-                  ['atacarejo', 'Atacarejo'],
+                  ['atacado', 'Atacado VEM'],
                 ],
               },
               {
@@ -964,6 +994,13 @@ export default function DesempenhoPage() {
         ))}
       </div>
 
+      {dados.aviso && (
+        <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-[11px] text-blue-800 flex items-start gap-2">
+          <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <div>{dados.aviso}</div>
+        </div>
+      )}
+
       {dados.falhas && dados.falhas.length > 0 && (
         <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800">
           <div className="font-bold mb-1">{dados.falhas.length} consulta(s) com falha</div>
@@ -977,7 +1014,7 @@ export default function DesempenhoPage() {
         </div>
       )}
 
-      {/* Cards (itens a, b, f) — 5 por linha = 25% mais estreitos */}
+      {/* Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         {cardsVisiveis.map((id) => {
           const card = cardRender(id)
@@ -997,45 +1034,80 @@ export default function DesempenhoPage() {
         })}
       </div>
 
-      {/* Gráficos (itens c, d) */}
+      {/* Evolução 3 anos */}
       {graficosVisiveis.includes('evolucao') && (
         <div className="bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs">
-          <h3 className="text-[12px] font-bold text-gray-900 mb-3">
-            Evolução Faturamento — 2024 · 2025 · 2026
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-[12px] font-bold text-gray-900">
+              Evolução Faturamento — {anosGrafico.join(' · ') || '2024 · 2025 · 2026'}
+            </h3>
+            <span className="text-[10px] text-gray-400">
+              Clique no ano da legenda para ocultar ou exibir a linha
+            </span>
+          </div>
           <div className="h-[240px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={seriePivot} margin={{ top: 5, right: 12, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis
                   dataKey="mes"
                   tickLine={false}
-                  axisLine={{ stroke: '#E5E7EB' }}
-                  tick={{ fill: '#6B7280', fontSize: 10 }}
+                  axisLine={{ stroke: '#9CA3AF' }}
+                  tick={{ fill: '#374151', fontSize: 10 }}
                 />
                 <YAxis
                   tickLine={false}
                   axisLine={false}
-                  tick={{ fill: '#6B7280', fontSize: 10 }}
+                  tick={{ fill: '#374151', fontSize: 10 }}
                   tickFormatter={(v) => fmtCompacto(v)}
                 />
                 <Tooltip
                   formatter={(v: any) => fmtBRL(Number(v))}
                   contentStyle={{ borderRadius: 8, border: '1px solid #E5E7EB', fontSize: 11 }}
                 />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
-                {anosGrafico.map((a, i) => (
-                  <Line
-                    key={a}
-                    type="monotone"
-                    dataKey={a}
-                    name={a}
-                    stroke={i === anosGrafico.length - 1 ? VERDE : i === 0 ? CINZA : VERDE_CLARO}
-                    strokeWidth={i === anosGrafico.length - 1 ? 2.5 : 1.8}
-                    strokeDasharray={i === 0 ? '4 3' : undefined}
-                    dot={{ r: 2 }}
-                  />
-                ))}
+                <Legend
+                  wrapperStyle={{ fontSize: 10, cursor: 'pointer' }}
+                  onClick={(entry: any) => {
+                    const nome = String(entry?.dataKey ?? entry?.value ?? '')
+                    if (!nome) return
+                    setAnosOcultos((prev) =>
+                      prev.includes(nome) ? prev.filter((x) => x !== nome) : prev.concat([nome]),
+                    )
+                  }}
+                  formatter={(value: any, entry: any) => {
+                    const nome = String(entry?.dataKey ?? value)
+                    const oculto = anosOcultos.includes(nome)
+                    return (
+                      <span
+                        style={{
+                          color: oculto ? '#9CA3AF' : CORES_ANO[nome] || '#374151',
+                          fontWeight: oculto ? 400 : 700,
+                          textDecoration: oculto ? 'line-through' : 'none',
+                        }}
+                      >
+                        {nome}
+                      </span>
+                    )
+                  }}
+                />
+                {anosGrafico.map((a) => {
+                  const oculto = anosOcultos.includes(a)
+                  return (
+                    <Line
+                      key={a}
+                      type="monotone"
+                      dataKey={a}
+                      name={a}
+                      hide={oculto}
+                      stroke={CORES_ANO[a] || '#374151'}
+                      strokeWidth={a === String(ano) ? 3 : 2}
+                      strokeDasharray={a === String(ano) ? undefined : '6 4'}
+                      dot={{ r: 2.5, strokeWidth: 0, fill: CORES_ANO[a] }}
+                      activeDot={{ r: 4 }}
+                      connectNulls
+                    />
+                  )
+                })}
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -1083,7 +1155,7 @@ export default function DesempenhoPage() {
           </div>
         )}
 
-        {graficosVisiveis.includes('cidades') && cidadesGrafico.length > 0 && (
+        {graficosVisiveis.includes('cidades') && lojasGrafico.length > 0 && (
           <div className={cn(participacaoGrafico.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3')}>
             <div className="bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs">
               <h3 className="text-[12px] font-bold text-gray-900 mb-2">
@@ -1092,16 +1164,16 @@ export default function DesempenhoPage() {
               <div className="h-[210px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={cidadesGrafico}
+                    data={lojasGrafico}
                     layout="vertical"
                     margin={{ top: 0, right: 16, left: 4, bottom: 0 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F3F4F6" />
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#E5E7EB" />
                     <XAxis
                       type="number"
                       tickLine={false}
-                      axisLine={{ stroke: '#E5E7EB' }}
-                      tick={{ fill: '#6B7280', fontSize: 9 }}
+                      axisLine={{ stroke: '#9CA3AF' }}
+                      tick={{ fill: '#374151', fontSize: 9 }}
                       tickFormatter={(v) => fmtCompacto(v)}
                     />
                     <YAxis
@@ -1125,7 +1197,7 @@ export default function DesempenhoPage() {
         )}
       </div>
 
-      {/* Grade (itens g e h) */}
+      {/* Grade */}
       <div className="bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs">
         <div className="flex items-center justify-between gap-2 mb-3">
           <h3 className="text-[12px] font-bold text-gray-900">Desempenho por Loja</h3>
@@ -1283,7 +1355,7 @@ export default function DesempenhoPage() {
         </div>
       </div>
 
-      {/* Painel de configuração de layout (item f) */}
+      {/* Configuração de layout */}
       {configAberta && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
@@ -1418,29 +1490,21 @@ export default function DesempenhoPage() {
               parecerLoja.loja +
               ' (rede ' +
               parecerLoja.rede +
-              '). ' +
-              'Faturamento ' +
+              '). Faturamento ' +
               fmtBRL(parecerLoja.faturamento) +
-              ', ' +
-              'cupons ' +
+              ', cupons ' +
               fmtNum(parecerLoja.cupons) +
-              ', ' +
-              'quantidade ' +
+              ', quantidade ' +
               fmtNum(parecerLoja.quantidade) +
-              ', ' +
-              'preço médio ' +
+              ', preço médio ' +
               fmtBRL(parecerLoja.preco_medio, 2) +
-              ', ' +
-              'ticket médio ' +
+              ', ticket médio ' +
               fmtBRL(parecerLoja.ticket_medio, 2) +
-              ', ' +
-              'participação ' +
+              ', participação ' +
               fmtPct(parecerLoja.participacao, 2) +
-              ', ' +
-              'limite de quebra ' +
+              ', limite de quebra ' +
               fmtPct(parecerLoja.limite_quebra, 2) +
-              '. ' +
-              'Período ' +
+              '. Período ' +
               dados.periodo +
               '.'
             : ''
