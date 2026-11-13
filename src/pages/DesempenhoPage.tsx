@@ -66,7 +66,7 @@ interface Resposta {
     cmv_pct: number | null
     quebra_pct: number | null
   }
-  sem_dado?: Record<string, string>
+  origem?: Record<string, string>
   serie: any[]
   lojas: any[]
   cidades: any[]
@@ -210,10 +210,13 @@ export default function DesempenhoPage() {
       `Preço médio: ${fmtBRL(kpis.preco_medio)}. ` +
       `Cupons: ${fmtNum(kpis.cupons)}. ` +
       `Ticket médio: ${fmtBRL(kpis.ticket_medio)}. ` +
+      `CMV parcial: ${kpis.cmv_pct === null ? 'sem dado' : fmtNum(kpis.cmv_pct, 2) + '%'} ` +
+      `(${dados.origem?.cmv_pct}). ` +
+      `Quebra: ${kpis.quebra_pct === null ? 'sem dado' : fmtNum(kpis.quebra_pct, 2) + '%'} ` +
+      `(${dados.origem?.quebra_pct}). ` +
       (partTxt ? `Participação por bandeira: ${partTxt}. ` : '') +
       (lojasTxt ? `Ranking de lojas: ${lojasTxt}. ` : '') +
-      (cidTxt ? `Faturamento por cidade: ${cidTxt}. ` : '') +
-      'CMV e Quebra não estão disponíveis na fonte de dados atual.'
+      (cidTxt ? `Faturamento por cidade: ${cidTxt}. ` : '')
     )
   }, [dados, kpis, aba])
 
@@ -327,17 +330,17 @@ export default function DesempenhoPage() {
         <KpiCard titulo="Ticket Médio" valor={fmtBRL(kpis.ticket_medio)} />
         <KpiCard
           titulo="CMV Parcial"
-          valor="—"
+          valor={kpis.cmv_pct === null ? '—' : fmtNum(kpis.cmv_pct, 2) + '%'}
           cor="dourado"
-          semDado
-          tooltip={dados.sem_dado?.cmv_pct}
+          semDado={kpis.cmv_pct === null}
+          tooltip={dados.origem?.cmv_pct}
         />
         <KpiCard
           titulo="Quebra"
-          valor="—"
+          valor={kpis.quebra_pct === null ? '—' : fmtNum(kpis.quebra_pct, 2) + '%'}
           cor="cinza"
-          semDado
-          tooltip={dados.sem_dado?.quebra_pct}
+          semDado={kpis.quebra_pct === null}
+          tooltip={dados.origem?.quebra_pct}
         />
         <KpiCard
           titulo="Lojas / Parceiros"

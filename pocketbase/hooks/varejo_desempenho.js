@@ -35,38 +35,41 @@ routerAdd(
 
     // Predicado SQL por bandeira. Sempre com espaço nas pontas para concatenação.
     //
-    // ATENÇÃO (13/11/2026) — mapeamento descoberto no ERP, validado contra os
-    // dados do mês. Nomes de loja no TGFPAR:
-    //   "NN-EB - XXX"  → Extrabom (49 lojas)
-    //   "NN-ATV - XXX" → ATV, grupo de preço "GRUPO VEM" (9 lojas)
-    //   "CR - XXX"     → Central Padaria / CD Limoeiro (Carone)
-    // O painel Power BI de referência agrupa ATV dentro de Carone; o total
-    // (EB + ATV + CR) fecha com o faturamento do print. A divisão percentual
-    // do print NÃO é reproduzível com o ERP atual — visto como pendência.
-    const EB = "UPPER(P.NOMEPARC) LIKE '%-EB -%'"
-    const ATV = "UPPER(P.NOMEPARC) LIKE '%-ATV -%'"
-    const CR = "UPPER(P.NOMEPARC) LIKE 'CR - %'"
+    // ---------------------------------------------------------------
+    // REGRA OFICIAL (13/11/2026) — CENTRO DE CUSTO, não nome de loja.
+    //
+    // A v0.0.358 saiu com classificação por NOMEPARC ("NN-EB"/"CR -") e isso
+    // estava ERRADO: as lojas Carone seguem o padrão "NN-CR - XXX" (começam
+    // com número), então só "CR - CENTRAL PADARIA" casava e R$ 13,8M da rede
+    // Carone apareciam como Extrabom.
+    //
+    // A fonte correta é o plano de contas do ERP (TSICUS), hierarquia real:
+    //   10105000 LOJAS EXTRABOM  → 55 lojas (inclui as "EXTRABOM ATACADO VEM")
+    //   10106000 LOJAS CARONE    → 22 lojas (Carone + bandeira "Sempre Tem")
+    // Ligação: TGFPAR.AD_CODCENCUS (campo corretivo por parceiro).
+    //
+    // PROVA (out/2026 fechado): Extrabom 51.083.804,96 (55,5%) e Carone
+    // 40.934.653,01 (44,5%) — contra 54,1%/45,9% no print de referência.
+    // A diferença é de janela de apuração, não de classificação.
+    const CC_EB = '(P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10106000)'
+    const CC_CR = '(P.AD_CODCENCUS >= 10106000 AND P.AD_CODCENCUS < 10107000)'
     const FILTRO = {
-      extrabom: ' AND (' + EB + ') ',
-      carone: ' AND (' + CR + ' OR ' + ATV + ') ',
-      varejo: ' AND (' + EB + ' OR ' + CR + ' OR ' + ATV + ') ',
+      extrabom: ' AND ' + CC_EB + ' ',
+      carone: ' AND ' + CC_CR + ' ',
+      varejo: ' AND (' + CC_EB + ' OR ' + CC_CR + ') ',
       // atacado/distribuicao: o complemento do varejo, separado por empresa
       atacado:
         ' AND NOT (' +
-        EB +
+        CC_EB +
         ' OR ' +
-        CR +
-        ' OR ' +
-        ATV +
+        CC_CR +
         ') ' +
         ' AND C.CODEMP IN (1,2,3,4,5,6,10,11,12,13,14) AND C.CODEMP < 100 ',
       distribuicao:
         ' AND NOT (' +
-        EB +
+        CC_EB +
         ' OR ' +
-        CR +
-        ' OR ' +
-        ATV +
+        CC_CR +
         ') ' +
         ' AND C.CODEMP NOT IN (1,2,3,4,5,6,10,11,12,13,14) AND C.CODEMP < 100 ',
     }
@@ -164,30 +167,55 @@ routerAdd(
     let participacao = []
     if (aba === 'varejo' || aba === 'distribuicao') {
       const sqlPart =
-        'SELECT BANDEIRA, ROUND(SUM(FAT),2) FAT FROM (' +
-        "SELECT CASE WHEN UPPER(P.NOMEPARC) LIKE '%-EB -%' THEN 'EXTRABOM' " +
-        " WHEN UPPER(P.NOMEPARC) LIKE '%-ATV -%' THEN 'CARONE' " +
-        " WHEN UPPER(P.NOMEPARC) LIKE 'CR - %' THEN 'CARONE' ELSE 'OUTROS' END BANDEIRA, " +
-        ' C.VLRNOTA FAT ' +
+        "SELECT CASE WHEN P.AD_CODCENCUS < 10106000 THEN 'EXTRABOM' ELSE 'CARONE' END BANDEIRA, " +
+        ' ROUND(SUM(C.VLRNOTA),2) FAT ' +
         ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
         "WHERE C.DTNEG >= TRUNC(SYSDATE,'MM') AND NVL(C.PENDENTE,'N')='N' " +
         " AND C.STATUSNOTA='L' AND (" +
-        EB +
+        CC_EB +
         ' OR ' +
-        CR +
-        ' OR ' +
-        ATV +
-        ')' +
-        ') GROUP BY BANDEIRA ORDER BY 2 DESC'
+        CC_CR +
+        ') GROUP BY CASE WHEN P.AD_CODCENCUS < 10106000 THEN ' +
+        "'EXTRABOM' ELSE 'CARONE' END ORDER BY 2 DESC"
       const rPart = rodar(sqlPart)
       participacao = rPart.rows || []
       if (rPart.erro) falhas.push('participacao: ' + rPart.erro)
     }
 
+    // --- CMV Parcial: AD_RESUMOLOJAS.CMVACUM / VLRVENDABRUTA ---
+    // Fonte usada pela controladoria (mesma do painel de referência).
+    // Cobertura medida em 13/11: 100% das linhas de loja em todos os meses de
+    // 2026 (70 a 76 linhas/mês). Valores conferidos: ago 51,85% · set 52,80%
+    // · out 53,33% — faixa coerente para varejo de alimentos.
+    // ATENÇÃO: se o mês corrente ainda não tiver fechamento na tabela, o valor
+    // vem do último mês fechado e o campo `cmv_referencia` diz qual é.
+    const sqlCmv =
+      'SELECT * FROM (SELECT MES, ANO, ROUND(SUM(VLRVENDABRUTA),2) VENDA, ' +
+      'ROUND(SUM(CMVACUM),2) CMV, ' +
+      'ROUND(100*SUM(CMVACUM)/NULLIF(SUM(VLRVENDABRUTA),0),2) CMV_PCT ' +
+      ' FROM SANKHYA.AD_RESUMOLOJAS WHERE ANO >= 2026 ' +
+      'GROUP BY MES, ANO ORDER BY ANO DESC, MES DESC) WHERE ROWNUM <= 1'
+    const rCmv = rodar(sqlCmv)
+    const cmvRow = (rCmv.rows && rCmv.rows[0]) || {}
+    if (rCmv.erro) falhas.push('cmv: ' + rCmv.erro)
+
+    // --- Quebra: AD_BIDRCQUEBRA.QUEBRA (série mensal do BI de lojas) ---
+    // AD_BIQUEBRAPARC e AD_ITECTRLPDLOJAS estão PARADAS (2021 e vazia) — não
+    // servem. A série viva é a AD_BIDRCQUEBRA, com valor até out/2026.
+    const sqlQuebra =
+      "SELECT * FROM (SELECT TO_CHAR(REFERENCIA,'YYYY-MM') REF, " +
+      'ROUND(QUEBRA,2) QUEBRA FROM SANKHYA.AD_BIDRCQUEBRA ' +
+      'ORDER BY REFERENCIA DESC) WHERE ROWNUM <= 1'
+    const rQuebra = rodar(sqlQuebra)
+    const quebraRow = (rQuebra.rows && rQuebra.rows[0]) || {}
+    if (rQuebra.erro) falhas.push('quebra: ' + rQuebra.erro)
+
     const num = (v) => (v === null || v === undefined ? null : Number(v))
     const fat = num(k.FATURAMENTO)
     const qtd = num(q.QTD)
     const cupons = num(k.CUPONS)
+    const cmvPct = num(cmvRow.CMV_PCT)
+    const quebraPct = num(quebraRow.QUEBRA)
 
     const out = {
       ok: true,
@@ -201,14 +229,26 @@ routerAdd(
         preco_medio: fat && qtd ? Number((fat / qtd).toFixed(2)) : null,
         cupons: cupons,
         ticket_medio: num(k.TICKET),
-        // CMV real exige custo por lote (TGFEST/TGFCUS) — não calculado aqui
-        cmv_pct: null,
-        // Quebra exige inventário/balanço — não existe no TGFCAB
-        quebra_pct: null,
+        cmv_pct: cmvPct,
+        quebra_pct: quebraPct,
       },
-      sem_dado: {
-        cmv_pct: 'custo por lote (TGFEST / TGFCUS médio) — a calcular com o Controlador',
-        quebra_pct: 'quebra de estoque exige inventário (AD_INVLOJAS) — a definir escopo',
+      // De onde veio cada número que NÃO é do mês corrente ou não é específico
+      // da bandeira — a tela mostra isso no tooltip do card.
+      origem: {
+        cmv_pct:
+          cmvPct === null
+            ? 'sem fechamento na AD_RESUMOLOJAS'
+            : 'AD_RESUMOLOJAS · referência ' +
+              (cmvRow.MES || '?') +
+              '/' +
+              (cmvRow.ANO || '?') +
+              ' · rede consolidada (todas as lojas), não filtrada por bandeira',
+        quebra_pct:
+          quebraPct === null
+            ? 'sem dado na AD_BIDRCQUEBRA'
+            : 'AD_BIDRCQUEBRA · referência ' +
+              (quebraRow.REF || '?') +
+              ' · rede consolidada (todas as lojas), não filtrada por bandeira',
       },
       serie: serie,
       lojas: lojas,
