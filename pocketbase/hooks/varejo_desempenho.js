@@ -259,6 +259,39 @@ routerAdd(
     const metaCmv = n(v(mAgg, 1))
     const limitePerda = n(v(mAgg, 2))
 
+    // ------------------------------------------------------------------
+    // RECEITA DA TELA "RESUMO LOJAS" — MESMA FONTE DO BI (item g)
+    //
+    // Os valores não batiam com o print "ACOMPANHAMENTO VAREJO - LOJAS".
+    // Causa raiz medida em out/2026:
+    //   AD_RESUMOLOJAS.VLRVENDABRUTA = R$ 59.581.855  ← o que o BI mostra
+    //   TGFCAB.VLRNOTA               = R$ 92.018.458  ← o que este hook usava
+    // A diferença (R$ 32,4M, +54%) é atacado/distribuição que está no TGFCAB
+    // mas NÃO é venda de loja. O BI fatura pelo Resumo Lojas; aqui passa a ser
+    // igual, senão o painel nunca fecha com a referência.
+    // [0]=MES [1]=VLRVENDABRUTA [2]=CMVACUM
+    // ------------------------------------------------------------------
+    const resumoRows = lista(
+      'resumo_lojas',
+      'SELECT MES, ROUND(SUM(VLRVENDABRUTA),2), ROUND(SUM(CMVACUM),2) ' +
+        'FROM SANKHYA.AD_RESUMOLOJAS WHERE ANO = ' +
+        ano +
+        ' AND TO_NUMBER(MES) <= ' +
+        mes +
+        ' AND CODCENCUS >= 10105000 AND CODCENCUS < 10107000 ' +
+        'GROUP BY MES ORDER BY TO_NUMBER(MES) DESC',
+    )
+    const resumoAtual = resumoRows[0] || null
+    const resumoAnt = resumoRows[1] || null
+    const resumoVenda = n(v(resumoAtual, 1))
+    const resumoCmv = n(v(resumoAtual, 2))
+    const resumoVendaAnt = n(v(resumoAnt, 1))
+    const resumoCmvAnt = n(v(resumoAnt, 2))
+    const resumoCmvPct = resumoVenda ? Number(((resumoCmv / resumoVenda) * 100).toFixed(2)) : null
+    const resumoCmvPctAnt = resumoVendaAnt
+      ? Number(((resumoCmvAnt / resumoVendaAnt) * 100).toFixed(2))
+      : null
+
     // CMV POR LOJA — tela "Resumo Lojas" (AD_RESUMOLOJAS), chave CODCENCUS.
     // Cobertura medida em out/2026: 76 de 76 lojas com CMVACUM preenchido.
     // [0]=CODCENCUS [1]=CMV_PCT [2]=CMV_MENSAL_PCT
@@ -648,7 +681,11 @@ routerAdd(
         supervisor: supervisor || null,
       },
       kpis: {
-        faturamento: fat,
+        // item g: faturamento e CMV pela fonte do BI (Resumo Lojas)
+        faturamento: resumoVenda !== null ? resumoVenda : fat,
+        faturamento_tgfcab: fat,
+        cmv_resumo_pct: resumoCmvPct,
+        cmv_resumo_aa: resumoCmvPctAnt,
         quantidade_kg: qtd,
         preco_medio: preco,
         cupons: cupons,

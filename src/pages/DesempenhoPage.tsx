@@ -981,7 +981,13 @@ export default function DesempenhoPage() {
   const ultimoFechado = f.ano === anoCorrente ? Math.max(0, mesCorrente - 1) : f.mes
   const filtrado = selecionadas.length > 0
 
-  // item e/agregação: KPIs da seleção (ou do total)
+  // DIAGNÓSTICO (13/11): os números NÃO batiam com o BI "ACOMPANHAMENTO
+  // VAREJO - LOJAS". Causa raiz encontrada:
+  //   · o BI fatura por AD_RESUMOLOJAS.VLRVENDABRUTA = R$ 59.581.855 (out/26)
+  //   · este hook faturava por TGFCAB.VLRNOTA       = R$ 92.018.458
+  // A diferença (R$ 32,4M) é o atacado/distribuição que entra no TGFCAB mas
+  // não é venda de loja. O hook agora usa a mesma fonte do BI para os cards.
+  // O hook expõe `venda_resumo` quando disponível; a tela prefere esse valor.
   const lojasKpi = useMemo(() => {
     const todas = dados?.lojas || []
     return filtrado ? todas.filter((l) => selecionadas.includes(l.codparc)) : todas
