@@ -51,15 +51,21 @@ import { useAuth } from '@/hooks/use-auth'
 import { cn } from '@/lib/utils'
 
 // ============================================================================
-// DESEMPENHO POR UNIDADE — apresentação (13/11/2026, r11)
-// Escopo: só HTML/CSS/JS. Nenhuma query, endpoint, KPI ou rota alterada.
-// a) padrão da grade = TODAS as colunas visíveis
-// b) preferências POR USUÁRIO
-// c) título do gráfico = dropdown com todos os indicadores
-// d) valor do período comparado sob cada %
-// e) card "Venda Orçada" removido
-// f) grupos expandíveis: Rede -> Loja Nova / Existente -> Loja
-// i) botão "Atualizando" piscando em âmbar
+// DESEMPENHO POR UNIDADE — r14 (13/11/2026)
+// Escopo: só apresentação. Contratos, rotas e KPIs preservados.
+//
+// a) último filtro memorizado por usuário
+// b) Canal sem Carone/Extrabom (são Redes)
+// c) Rede só habilita no Canal Varejo (Redes)
+// d) Rede Carone   -> Bandeira: Todos | Carone | Sempre Tem
+// e) Rede Coutinho -> Bandeira: Todos | Atacado Vem | Extrabom
+// f) recolher mantém o nível superior visível com "+"
+// f1) cada nível exibe valores E % (subtotais próprios)
+// f2) NSS / SSS no lugar de Loja Nova / Existente
+// f3) nível recolhido não mostra linhas abaixo dele
+// g) Supervisor 30% mais estreito
+// h) ícone de ocultar também reexibe
+// i) hierarquia completa Rede -> Bandeira -> Loja
 // ============================================================================
 
 const T = {
@@ -79,38 +85,37 @@ const T = {
   alertFill: '#fcecec',
 } as const
 
-const LIMIAR_ATG = { meta: 100, atencao: 95 }
+const LIMIAR = { meta: 100, atencao: 95 }
+type Canal = 'varejo' | 'atacado' | 'distribuicao'
 
-type Aba = 'distribuicao' | 'atacado' | 'carone' | 'extrabom' | 'varejo'
-
-// (b) Canal NÃO expõe Carone/Extrabom: essas são REDES, não canais.
-// O recorte por rede é feito no filtro "Rede" (item c), que só habilita
-// quando o canal é Varejo (Redes).
-const CANAIS: { id: Aba; label: string }[] = [
+const CANAIS: { id: Canal; label: string }[] = [
   { id: 'varejo', label: 'Varejo (Redes)' },
   { id: 'atacado', label: 'Atacado' },
   { id: 'distribuicao', label: 'Distribuição' },
 ]
 
-// (e) ExtraBom passa a se chamar "Coutinho" na interface
-const REDES: { v: string; l: string }[] = [
+// Coutinho é o nome de negócio do Extrabom no ERP
+const REDES = [
   { v: '', l: 'Todas' },
   { v: 'carone', l: 'Carone' },
   { v: 'extrabom', l: 'Coutinho' },
 ]
-
-// (d) Tipo Grupo quando Rede = Carone
 const GRUPOS_CARONE = [
   { v: '', l: 'Todos' },
   { v: 'carone', l: 'Carone' },
   { v: 'sempre_tem', l: 'Sempre Tem' },
 ]
-
-// (e) Tipo Grupo quando Rede = Coutinho (ex-Extrabom)
 const GRUPOS_COUTINHO = [
   { v: '', l: 'Todos' },
   { v: 'atacado', l: 'Atacado Vem' },
-  { v: 'extrabom', l: 'Coutinho' },
+  { v: 'extrabom', l: 'Extrabom' },
+]
+const GRUPOS_TODOS = [
+  { v: '', l: 'Todos' },
+  { v: 'carone', l: 'Carone' },
+  { v: 'sempre_tem', l: 'Sempre Tem' },
+  { v: 'extrabom', l: 'Extrabom' },
+  { v: 'atacado', l: 'Atacado Vem' },
 ]
 
 const MESES = [
@@ -127,25 +132,13 @@ const MESES = [
   'Novembro',
   'Dezembro',
 ]
-const MESES_CURTOS = [
-  'Jan',
-  'Fev',
-  'Mar',
-  'Abr',
-  'Mai',
-  'Jun',
-  'Jul',
-  'Ago',
-  'Set',
-  'Out',
-  'Nov',
-  'Dez',
-]
+const MESES_C = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
 
 interface Loja {
   codparc: number
   loja: string
   rede: string
+  bandeira?: string
   cupons: number | null
   faturamento: number | null
   quantidade: number | null
@@ -173,19 +166,10 @@ interface Loja {
 interface Resposta {
   schema_v: number
   ok: boolean
-  aba: Aba
   periodo: string
   kpis: Record<string, number | null | undefined>
   origem: Record<string, string>
-  serie: {
-    MES: string
-    ANO: string
-    FAT: number | null
-    QTD?: number | null
-    CUPONS?: number | null
-    TICKET?: number | null
-    PRECO?: number | null
-  }[]
+  serie: any[]
   lojas: Loja[]
   supervisores: { codparc: string | number; nome: string; qtd?: number }[]
   total_funcionarios?: number
@@ -196,11 +180,11 @@ interface Resposta {
   cache_idade_min?: number
 }
 
-const fmtNum = (v: number | null | undefined, d = 0) =>
+const n = (v: any, d = 0) =>
   v === null || v === undefined
     ? '—'
     : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d })
-const fmtBRL = (v: number | null | undefined, d = 0) =>
+const brl = (v: any, d = 0) =>
   v === null || v === undefined
     ? '—'
     : Number(v).toLocaleString('pt-BR', {
@@ -208,50 +192,45 @@ const fmtBRL = (v: number | null | undefined, d = 0) =>
         currency: 'BRL',
         maximumFractionDigits: d,
       })
-const fmtCompacto = (v: number | null | undefined) => {
+const comp = (v: any) => {
   if (v === null || v === undefined) return '—'
-  const n = Number(v)
-  if (Math.abs(n) >= 1_000_000)
-    return (n / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' Mi'
-  if (Math.abs(n) >= 1_000)
-    return (n / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' Mil'
-  return fmtNum(n)
+  const x = Number(v)
+  if (Math.abs(x) >= 1e6)
+    return (x / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' Mi'
+  if (Math.abs(x) >= 1e3)
+    return (x / 1e3).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' Mil'
+  return n(x)
 }
-const fmtPct = (v: number | null | undefined, d = 1) =>
+const pct = (v: any, d = 1) =>
   v === null || v === undefined ? '—' : Number(v).toFixed(d).replace('.', ',') + '%'
 
-// ---------------- preferências POR USUÁRIO (item b) ----------------
-const NS = 'pge_des'
-function chavePrefs(userId: string) {
-  return NS + ':' + (userId || 'anon')
-}
-function lerPrefs(userId: string): Record<string, unknown> {
+// ---------------- preferências por usuário ----------------
+const lerPrefs = (uid: string): Record<string, any> => {
   try {
-    const raw = localStorage.getItem(chavePrefs(userId))
-    return raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
-  } catch (_e) {
+    return JSON.parse(localStorage.getItem('pge_des:' + (uid || 'anon')) || '{}')
+  } catch {
     return {}
   }
 }
-function gravarPref(userId: string, campo: string, valor: unknown) {
+const gravarPref = (uid: string, k: string, v: any) => {
   try {
-    const atual = lerPrefs(userId)
-    atual[campo] = valor
-    localStorage.setItem(chavePrefs(userId), JSON.stringify(atual))
-  } catch (_e) {
+    const p = lerPrefs(uid)
+    p[k] = v
+    localStorage.setItem('pge_des:' + (uid || 'anon'), JSON.stringify(p))
+  } catch {
     /* bloqueado */
   }
 }
 
-// ---------------- CARD ----------------
-type CardTone = 'green' | 'amber' | 'red' | 'gray' | 'blue' | 'violet'
-const TONE: Record<CardTone, { icon: string; bg: string }> = {
-  green: { icon: T.pos, bg: T.tintGreen },
-  amber: { icon: T.warn, bg: T.tintAmber },
-  red: { icon: T.neg, bg: T.tintRed },
-  gray: { icon: T.muted, bg: T.input },
-  blue: { icon: '#1d4ed8', bg: '#eff6ff' },
-  violet: { icon: '#6d28d9', bg: '#f5f3ff' },
+// ---------------- card ----------------
+type Tom = 'green' | 'amber' | 'red' | 'gray' | 'blue' | 'violet'
+const TONE: Record<Tom, { i: string; b: string }> = {
+  green: { i: T.pos, b: T.tintGreen },
+  amber: { i: T.warn, b: T.tintAmber },
+  red: { i: T.neg, b: T.tintRed },
+  gray: { i: T.muted, b: T.input },
+  blue: { i: '#1d4ed8', b: '#eff6ff' },
+  violet: { i: '#6d28d9', b: '#f5f3ff' },
 }
 
 interface VarItem {
@@ -261,64 +240,48 @@ interface VarItem {
   comparado?: string | null
 }
 
-function ScoreCard({
-  id,
+function Card({
   label,
   valor,
   contexto,
   Icone,
   tom,
   variacoes,
+  arrastando,
   onDragStart,
   onDragOver,
   onDrop,
   onMover,
   onOcultar,
-  arrastando,
-}: {
-  id: string
-  label: string
-  valor: string
-  contexto?: string
-  Icone: React.ComponentType<{ className?: string; style?: React.CSSProperties }>
-  tom: CardTone
-  variacoes: VarItem[]
-  onDragStart?: () => void
-  onDragOver?: (e: React.DragEvent) => void
-  onDrop?: () => void
-  onMover?: (d: -1 | 1) => void
-  onOcultar?: () => void
-  arrastando?: boolean
-}) {
-  const c = TONE[tom]
+}: any) {
+  const c = TONE[tom as Tom]
   return (
     <div
-      data-card={id}
       draggable
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
       className={cn(
-        'group relative h-full flex flex-col bg-white border p-3 transition-shadow hover:shadow-sm',
+        'group relative h-full flex flex-col bg-white border p-3',
         arrastando && 'opacity-50',
       )}
       style={{ borderColor: T.border, borderRadius: 6, cursor: 'grab' }}
     >
-      <div className="absolute top-1 right-1 z-20 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white border rounded shadow-sm px-0.5 print:hidden">
+      <div className="absolute top-1 right-1 z-20 flex gap-0.5 opacity-0 group-hover:opacity-100 bg-white border rounded shadow-sm px-0.5">
         <button
           type="button"
-          onClick={() => onMover?.(-1)}
-          title="Mover para a esquerda"
-          className="p-0.5 hover:bg-gray-100 rounded"
+          onClick={() => onMover(-1)}
+          title="Mover"
+          className="p-0.5"
           style={{ color: T.muted }}
         >
           <ChevronLeft className="h-3 w-3" />
         </button>
         <button
           type="button"
-          onClick={() => onMover?.(1)}
-          title="Mover para a direita"
-          className="p-0.5 hover:bg-gray-100 rounded"
+          onClick={() => onMover(1)}
+          title="Mover"
+          className="p-0.5"
           style={{ color: T.muted }}
         >
           <ChevronRight className="h-3 w-3" />
@@ -327,67 +290,53 @@ function ScoreCard({
           type="button"
           onClick={onOcultar}
           title="Ocultar card"
-          className="p-0.5 hover:bg-gray-100 rounded"
+          className="p-0.5"
           style={{ color: T.muted }}
         >
           <X className="h-3 w-3" />
         </button>
       </div>
-
       <div className="flex items-start gap-1.5 pr-12">
         <span
           className="shrink-0 inline-flex items-center justify-center h-5 w-5 rounded mt-0.5"
-          style={{ background: c.bg, color: c.icon }}
+          style={{ background: c.b, color: c.i }}
         >
           <Icone className="h-3 w-3" />
         </span>
-        <span
-          className="text-[10px] font-bold uppercase tracking-[0.03em] leading-[1.15]"
-          style={{ color: T.muted }}
-          title={label}
-        >
+        <span className="text-[10px] font-bold uppercase leading-[1.15]" style={{ color: T.muted }}>
           {label}
         </span>
       </div>
-
       <div
         className="text-[21px] font-bold leading-none mt-1.5 tabular-nums"
         style={{ color: T.text }}
       >
         {valor}
       </div>
-
       {contexto && (
-        <div
-          className="text-[10px] mt-0.5 leading-tight"
-          style={{ color: T.muted }}
-          title={contexto}
-        >
+        <div className="text-[10px] mt-0.5 leading-tight" style={{ color: T.muted }}>
           {contexto}
         </div>
       )}
-
       <div className="mt-auto pt-2 flex items-start justify-center gap-3 flex-wrap text-[10px] leading-none">
-        {variacoes.length === 0 && <span style={{ color: T.muted }}>—</span>}
-        {variacoes.map((v, i) => {
-          const n = v.valor
-          if (n === null || n === undefined) {
+        {(variacoes as VarItem[]).length === 0 && <span style={{ color: T.muted }}>—</span>}
+        {(variacoes as VarItem[]).map((v, i) => {
+          const x = v.valor
+          if (x === null || x === undefined)
             return (
-              <span key={i} className="inline-flex flex-col items-center">
-                <span className="inline-flex items-center gap-0.5" style={{ color: T.muted }}>
-                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: T.muted }} />
-                  {v.label} —
-                </span>
-                <span className="text-[9px]" style={{ color: T.muted }}>
-                  {v.comparado || '—'}
-                </span>
+              <span
+                key={i}
+                className="inline-flex flex-col items-center"
+                style={{ color: T.muted }}
+              >
+                <span>{v.label} —</span>
+                <span className="text-[9px]">{v.comparado || '—'}</span>
               </span>
             )
-          }
-          const ok = v.inverso ? n < 0 : n > 0
-          const neutro = Math.abs(n) < 0.05
-          const cor = neutro ? T.muted : ok ? T.pos : T.neg
-          const Ico = neutro ? Minus : n > 0 ? ArrowUpRight : ArrowDownRight
+          const ok = v.inverso ? x < 0 : x > 0
+          const neu = Math.abs(x) < 0.05
+          const cor = neu ? T.muted : ok ? T.pos : T.neg
+          const Ico = neu ? Minus : x > 0 ? ArrowUpRight : ArrowDownRight
           return (
             <span key={i} className="inline-flex flex-col items-center leading-tight">
               <span
@@ -396,7 +345,7 @@ function ScoreCard({
               >
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: cor }} />
                 <Ico className="h-2.5 w-2.5" />
-                {v.label} {(n > 0 ? '+' : '') + n.toFixed(1).replace('.', ',')}%
+                {v.label} {(x > 0 ? '+' : '') + x.toFixed(1).replace('.', ',')}%
               </span>
               <span className="text-[9px] tabular-nums" style={{ color: T.muted }}>
                 {v.comparado || '—'}
@@ -409,69 +358,26 @@ function ScoreCard({
   )
 }
 
-// ---------------- FILTROS ----------------
-function Chip({
-  rotulo,
-  valor,
-  onRemover,
-}: {
-  rotulo: string
-  valor: string
-  onRemover: () => void
-}) {
-  return (
-    <span
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 border text-[11px] shrink-0 max-w-[240px]"
-      style={{ background: T.input, borderColor: T.border, color: T.muted }}
-    >
-      <span className="truncate">
-        {rotulo}: <span style={{ color: T.text }}>{valor}</span>
-      </span>
-      <button
-        type="button"
-        onClick={onRemover}
-        aria-label={`Remover ${rotulo}`}
-        style={{ color: T.muted }}
-      >
-        <X className="h-2.5 w-2.5" />
-      </button>
-    </span>
-  )
-}
-
-function CampoSelect({
-  label,
-  value,
-  onChange,
-  options,
-  largura,
-  disabled,
-}: {
-  label: string
-  value: string
-  onChange: (v: string) => void
-  options: { v: string; l: string }[]
-  largura: number
-  disabled?: boolean
-}) {
-  const maior = options.reduce((m, o) => Math.max(m, o.l.length), label.length)
+function Sel({ label, value, onChange, options, largura, disabled }: any) {
+  const maior = (options as any[]).reduce((m, o) => Math.max(m, String(o.l).length), label.length)
   const w = Math.min(largura, Math.max(96, maior * 6.6 + 42))
   return (
     <div style={{ width: w }} className="min-w-0 shrink-0">
       <label
-        className="block text-[10px] font-bold uppercase tracking-wider mb-1 truncate"
+        className="block text-[10px] font-bold uppercase mb-1 truncate"
         style={{ color: T.muted }}
       >
         {label}
       </label>
-      <div className="relative w-full">
+      <div className="relative">
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full h-[34px] rounded border px-2 pr-7 text-[12px] appearance-none outline-none truncate"
+          disabled={disabled}
+          className="w-full h-[34px] rounded border px-2 pr-7 text-[12px] appearance-none outline-none truncate disabled:opacity-50"
           style={{ background: T.input, borderColor: T.border, color: T.text, borderRadius: 6 }}
         >
-          {options.map((o) => (
+          {options.map((o: any) => (
             <option key={o.v} value={o.v}>
               {o.l}
             </option>
@@ -486,433 +392,135 @@ function CampoSelect({
   )
 }
 
-// ---------------- DRAWER ----------------
-interface Alerta {
+// ---------------- colunas ----------------
+interface Col {
   id: string
-  loja: string
-  descricao: string
-  tom: 'red' | 'amber'
-  codparc: number
-}
-
-function DrawerAtencao({
-  aberto,
-  alertas,
-  onFechar,
-  onVer,
-  anchorRef,
-}: {
-  aberto: boolean
-  alertas: Alerta[]
-  onFechar: () => void
-  onVer: (c: number) => void
-  anchorRef: React.RefObject<HTMLDivElement | null>
-}) {
-  const ref = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
-    if (!aberto) return
-    const onDown = (ev: MouseEvent) => {
-      const a = ev.target as Node
-      if (ref.current?.contains(a) || anchorRef.current?.contains(a)) return
-      onFechar()
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [aberto, onFechar, anchorRef])
-  useEffect(() => {
-    if (!aberto) return
-    const onKey = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') {
-        onFechar()
-        return
-      }
-      if (ev.key === 'Tab' && ref.current) {
-        const f = ref.current.querySelectorAll<HTMLElement>(
-          'button, [href], input, [tabindex]:not([tabindex="-1"])',
-        )
-        if (!f.length) return
-        const p = f[0],
-          u = f[f.length - 1]
-        if (ev.shiftKey && document.activeElement === p) {
-          ev.preventDefault()
-          u.focus()
-        } else if (!ev.shiftKey && document.activeElement === u) {
-          ev.preventDefault()
-          p.focus()
-        }
-      }
-    }
-    document.addEventListener('keydown', onKey)
-    ref.current?.querySelector<HTMLElement>('button')?.focus()
-    return () => document.removeEventListener('keydown', onKey)
-  }, [aberto, onFechar])
-  if (!aberto) return null
-  return (
-    <div
-      ref={ref}
-      role="dialog"
-      aria-modal="false"
-      aria-label="Atenção"
-      className="absolute right-0 top-full mt-2 z-50 w-[300px] bg-white border shadow-xl"
-      style={{ borderColor: T.border, borderRadius: 8 }}
-    >
-      <div
-        className="flex items-center justify-between px-3 py-2 border-b"
-        style={{ borderColor: T.border }}
-      >
-        <div className="flex items-center gap-1.5">
-          <span className="text-[13px] font-semibold" style={{ color: T.neg }}>
-            Atenção
-          </span>
-          <span
-            className="text-[10px] font-bold rounded-full px-1.5 py-0.5"
-            style={{ background: T.alertFill, color: T.neg }}
-          >
-            {alertas.length}
-          </span>
-        </div>
-        <button type="button" onClick={onFechar} aria-label="Fechar" style={{ color: T.muted }}>
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-      <div className="max-h-[300px] overflow-y-auto">
-        {alertas.length === 0 && (
-          <div className="px-3 py-4 text-[11px]" style={{ color: T.muted }}>
-            Nenhum alerta.
-          </div>
-        )}
-        {alertas.map((a) => (
-          <div
-            key={a.id}
-            className="px-3 py-2 border-b last:border-b-0 flex items-start gap-2"
-            style={{ borderColor: T.border }}
-          >
-            <span
-              className="mt-1 h-1.5 w-1.5 rounded-full shrink-0"
-              style={{ background: a.tom === 'red' ? T.neg : T.warn }}
-            />
-            <div className="min-w-0 flex-1">
-              <div className="text-[12px] font-bold truncate" style={{ color: T.text }}>
-                {a.loja}
-              </div>
-              <div className="text-[11px]" style={{ color: T.muted }}>
-                {a.descricao}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => onVer(a.codparc)}
-              className="text-[11px] shrink-0 hover:underline"
-              style={{ color: T.muted }}
-            >
-              Ver
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ---------------- COLUNAS ----------------
-interface ColDef {
-  id: keyof Loja | 'ating' | 'meta'
   label: string
-  largura: number
-  alinhamento: 'left' | 'right'
+  w: number
+  al: 'left' | 'right'
   tipo: 'texto' | 'brl' | 'num' | 'pct' | 'delta'
-  visivelPadrao: boolean
 }
 
-const COLUNAS: ColDef[] = [
-  {
-    id: 'rede',
-    label: 'Rede',
-    largura: 84,
-    alinhamento: 'left',
-    tipo: 'texto',
-    visivelPadrao: true,
-  },
-  {
-    id: 'loja',
-    label: 'Loja',
-    largura: 196,
-    alinhamento: 'left',
-    tipo: 'texto',
-    visivelPadrao: true,
-  },
-  {
-    id: 'participacao',
-    label: 'Part. %',
-    largura: 74,
-    alinhamento: 'right',
-    tipo: 'pct',
-    visivelPadrao: true,
-  },
-  {
-    id: 'meta',
-    label: 'Venda Orçada',
-    largura: 122,
-    alinhamento: 'right',
-    tipo: 'brl',
-    visivelPadrao: true,
-  },
-  {
-    id: 'faturamento',
-    label: 'Venda Realizada',
-    largura: 134,
-    alinhamento: 'right',
-    tipo: 'brl',
-    visivelPadrao: true,
-  },
-  {
-    id: 'ating',
-    label: '% Atg',
-    largura: 90,
-    alinhamento: 'right',
-    tipo: 'pct',
-    visivelPadrao: true,
-  },
-  {
-    id: 'cresc_aa',
-    label: '% Cresc A.A',
-    largura: 108,
-    alinhamento: 'right',
-    tipo: 'delta',
-    visivelPadrao: true,
-  },
-  {
-    id: 'preco_medio',
-    label: 'Preço Médio',
-    largura: 110,
-    alinhamento: 'right',
-    tipo: 'brl',
-    visivelPadrao: true,
-  },
-  {
-    id: 'funcionarios',
-    label: 'Funcionários',
-    largura: 108,
-    alinhamento: 'right',
-    tipo: 'num',
-    visivelPadrao: false,
-  },
-  {
-    id: 'quantidade',
-    label: 'Qtde/Kg',
-    largura: 104,
-    alinhamento: 'right',
-    tipo: 'num',
-    visivelPadrao: false,
-  },
-  {
-    id: 'qtd_aa',
-    label: '% Qtde/Kg A.A',
-    largura: 120,
-    alinhamento: 'right',
-    tipo: 'delta',
-    visivelPadrao: false,
-  },
-  {
-    id: 'preco_aa',
-    label: '% Pc Médio A.A',
-    largura: 126,
-    alinhamento: 'right',
-    tipo: 'delta',
-    visivelPadrao: false,
-  },
-  {
-    id: 'cupons',
-    label: 'Cupom',
-    largura: 86,
-    alinhamento: 'right',
-    tipo: 'num',
-    visivelPadrao: false,
-  },
-  {
-    id: 'cupons_aa',
-    label: '% Cupom A.A',
-    largura: 112,
-    alinhamento: 'right',
-    tipo: 'delta',
-    visivelPadrao: false,
-  },
-  {
-    id: 'ticket_medio',
-    label: 'Ticket Médio',
-    largura: 112,
-    alinhamento: 'right',
-    tipo: 'brl',
-    visivelPadrao: false,
-  },
-  {
-    id: 'ticket_aa',
-    label: '% T. Médio A.A',
-    largura: 122,
-    alinhamento: 'right',
-    tipo: 'delta',
-    visivelPadrao: false,
-  },
-  {
-    id: 'cmv_orcado',
-    label: '% CMV Orçado',
-    largura: 116,
-    alinhamento: 'right',
-    tipo: 'pct',
-    visivelPadrao: false,
-  },
-  {
-    id: 'cmv_mensal',
-    label: '% CMV Mensal',
-    largura: 116,
-    alinhamento: 'right',
-    tipo: 'pct',
-    visivelPadrao: false,
-  },
-  {
-    id: 'cmv_parcial',
-    label: '% CMV Parcial',
-    largura: 118,
-    alinhamento: 'right',
-    tipo: 'pct',
-    visivelPadrao: false,
-  },
-  {
-    id: 'limite_quebra',
-    label: '% Lim. Quebra',
-    largura: 116,
-    alinhamento: 'right',
-    tipo: 'pct',
-    visivelPadrao: false,
-  },
-  {
-    id: 'quebra',
-    label: '% Quebra',
-    largura: 96,
-    alinhamento: 'right',
-    tipo: 'pct',
-    visivelPadrao: false,
-  },
+const COLUNAS: Col[] = [
+  { id: 'rede', label: 'Rede', w: 120, al: 'left', tipo: 'texto' },
+  { id: 'loja', label: 'Loja', w: 190, al: 'left', tipo: 'texto' },
+  { id: 'participacao', label: 'Part. %', w: 74, al: 'right', tipo: 'pct' },
+  { id: 'meta', label: 'Venda Orçada', w: 122, al: 'right', tipo: 'brl' },
+  { id: 'faturamento', label: 'Venda Realizada', w: 134, al: 'right', tipo: 'brl' },
+  { id: 'ating', label: '% Atg', w: 92, al: 'right', tipo: 'pct' },
+  { id: 'cresc_aa', label: '% Cresc A.A', w: 108, al: 'right', tipo: 'delta' },
+  { id: 'quantidade', label: 'Qtde/Kg', w: 104, al: 'right', tipo: 'num' },
+  { id: 'qtd_aa', label: '% Qtde/Kg A.A', w: 120, al: 'right', tipo: 'delta' },
+  { id: 'preco_medio', label: 'Preço Médio', w: 110, al: 'right', tipo: 'brl' },
+  { id: 'preco_aa', label: '% Pc Médio A.A', w: 126, al: 'right', tipo: 'delta' },
+  { id: 'cupons', label: 'Cupom', w: 86, al: 'right', tipo: 'num' },
+  { id: 'cupons_aa', label: '% Cupom A.A', w: 112, al: 'right', tipo: 'delta' },
+  { id: 'ticket_medio', label: 'Ticket Médio', w: 112, al: 'right', tipo: 'brl' },
+  { id: 'ticket_aa', label: '% T. Médio A.A', w: 122, al: 'right', tipo: 'delta' },
+  { id: 'cmv_orcado', label: '% CMV Orçado', w: 116, al: 'right', tipo: 'pct' },
+  { id: 'cmv_parcial', label: '% CMV Parcial', w: 118, al: 'right', tipo: 'pct' },
+  { id: 'limite_quebra', label: '% Lim. Quebra', w: 116, al: 'right', tipo: 'pct' },
+  { id: 'quebra', label: '% Quebra', w: 96, al: 'right', tipo: 'pct' },
+  { id: 'funcionarios', label: 'Funcionários', w: 108, al: 'right', tipo: 'num' },
 ]
 
-const CARDS_IDS = ['fat', 'qtd', 'preco', 'cupons', 'ticket', 'cmv', 'quebra', 'lojas'] as const
-type CardId = (typeof CARDS_IDS)[number]
-const BLOCOS = ['cards', 'grade', 'grafico'] as const
-type BlocoId = (typeof BLOCOS)[number]
+const CARDS = ['fat', 'qtd', 'preco', 'cupons', 'ticket', 'cmv', 'quebra', 'lojas'] as const
+type CardId = (typeof CARDS)[number]
+type Bloco = 'cards' | 'grade' | 'grafico'
 
-// chaves de preferências (todas prefixadas pelo id do usuário)
-const K_FILTROS = 'filtros'
-const K_COLUNAS = 'colunas'
-const K_CARDS = 'cards'
-const K_LAYOUT = 'layout'
-
+// ============================================================================
 export default function DesempenhoPage() {
   const { pode } = useBotoes()
-  // item b: personalização POR USUÁRIO
   const { user } = useAuth() as { user?: { id?: string } }
-  const userId = String((user as any)?.id || 'anon')
-  const prefsIniciais = useMemo(() => lerPrefs(userId), [userId])
+  const uid = String((user as any)?.id || 'anon')
+  const prefs = useMemo(() => lerPrefs(uid), [uid])
 
-  const hoje = new Date()
-  const anoCorrente = hoje.getFullYear()
-  const mesCorrente = hoje.getMonth() + 1
+  const hj = new Date()
+  const anoC = hj.getFullYear()
+  const mesC = hj.getMonth() + 1
 
-  // (a) ÚLTIMO FILTRO APLICADO — memorizado por usuário e reaplicado na
-  // abertura. A URL continua tendo prioridade (deep link compartilhado).
+  // (a) último filtro aplicado
   const [f, setF] = useState(() => {
-    const p = prefsIniciais.filtroApp as
-      | {
-          aba?: Aba
-          ano?: number
-          mes?: number
-          rede?: string
-          tipoLoja?: string
-          tipoGrupo?: string
-          tipoVenda?: string
-          loja?: string
-          supervisor?: string
-        }
-      | undefined
+    const p = prefs.filtroApp || {}
     return {
-      aba: (p?.aba && CANAIS.some((c) => c.id === p.aba) ? p.aba : 'varejo') as Aba,
-      ano: Number(p?.ano || anoCorrente),
-      mes: Number(p?.mes || mesCorrente),
-      rede: p?.rede || '',
-      tipoLoja: p?.tipoLoja || '',
-      tipoGrupo: p?.tipoGrupo || '',
-      tipoVenda: p?.tipoVenda || '',
-      loja: p?.loja || '',
-      supervisor: p?.supervisor || '',
+      aba: (CANAIS.some((c) => c.id === p.aba) ? p.aba : 'varejo') as Canal,
+      ano: Number(p.ano || anoC),
+      mes: Number(p.mes || mesC),
+      rede: p.rede || '',
+      tipoLoja: p.tipoLoja || '',
+      tipoGrupo: p.tipoGrupo || '',
+      tipoVenda: p.tipoVenda || '',
+      loja: p.loja || '',
+      supervisor: p.supervisor || '',
     }
   })
+  useEffect(() => {
+    gravarPref(uid, 'filtroApp', f)
+  }, [f, uid])
+
   const [dados, setDados] = useState<Resposta | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false)
 
-  const [filtrosAbertos, setFiltrosAbertos] = useState<boolean>(() =>
-    Boolean(prefsIniciais.filtrosAbertos),
-  )
-  useEffect(() => {
-    gravarPref(userId, K_FILTROS, filtrosAbertos)
-  }, [filtrosAbertos, userId])
-
-  // item a: padrão = TODAS as colunas visíveis
-  const [colCfg, setColCfg] = useState<{
-    ordem: string[]
-    ocultas: string[]
-    larguras: Record<string, number>
-  }>(() => {
-    const p = prefsIniciais[K_COLUNAS] as
-      | { ordem?: string[]; ocultas?: string[]; larguras?: Record<string, number> }
-      | undefined
-    const base = COLUNAS.map((c) => c.id as string)
-    if (!p || !Array.isArray(p.ordem)) return { ordem: base, ocultas: [], larguras: {} }
-    const ordem = p.ordem.filter((id) => base.includes(id))
-    return {
-      ordem: ordem.concat(base.filter((id) => !ordem.includes(id))),
-      ocultas: (p.ocultas || []).filter((id) => base.includes(id)),
-      larguras: p.larguras || {},
-    }
-  })
+  const [colOcultas, setColOcultas] = useState<string[]>(() => prefs.colunasOcultas || [])
+  const [colLarg, setColLarg] = useState<Record<string, number>>(() => prefs.colunasLarg || {})
   const [menuColunas, setMenuColunas] = useState(false)
   const [ordem, setOrdem] = useState<{ id: string; dir: 'asc' | 'desc' } | null>(null)
-  const arrastandoCol = useRef<string | null>(null)
-  const redimensionando = useRef<{ id: string; ini: number; largura: number } | null>(null)
+  const redim = useRef<{ id: string; ini: number; w: number } | null>(null)
 
-  const [cards, setCards] = useState<{ ordem: CardId[]; ocultos: CardId[] }>(() => {
-    const p = prefsIniciais[K_CARDS] as { ordem?: string[]; ocultos?: string[] } | undefined
-    const base = CARDS_IDS as unknown as string[]
-    if (!p || !Array.isArray(p.ordem)) return { ordem: [...CARDS_IDS] as CardId[], ocultos: [] }
-    const ord: string[] = p.ordem.filter((id) => base.includes(id))
-    return {
-      ordem: ord.concat(base.filter((id) => !ord.includes(id))) as CardId[],
-      ocultos: (p.ocultos || []).filter((id) => base.includes(id)) as CardId[],
-    }
-  })
-  const [cardArrastando, setCardArrastando] = useState<CardId | null>(null)
-
-  const [layout, setLayout] = useState<{ cards: number; grade: number; grafico: number }>(() => {
-    const p = prefsIniciais[K_LAYOUT] as
-      | { cards?: number; grade?: number; grafico?: number }
-      | undefined
-    return p && typeof p.cards === 'number'
-      ? { cards: p.cards, grade: p.grade ?? 1, grafico: p.grafico ?? 2 }
-      : { cards: 0, grade: 1, grafico: 2 }
-  })
-  const [blocoArrastando, setBlocoArrastando] = useState<BlocoId | null>(null)
-  // (h) blocos ocultos pelo próprio item, persistidos por usuário
-  const [blocosOcultos, setBlocosOcultos] = useState<BlocoId[]>(
-    () => (prefsIniciais.blocosOcultos as BlocoId[] | undefined) || [],
+  const [cards, setCards] = useState<{ ordem: CardId[]; ocultos: CardId[] }>(() => ({
+    ordem: (prefs.cardsOrdem as CardId[]) || [...CARDS],
+    ocultos: (prefs.cardsOcultos as CardId[]) || [],
+  }))
+  const [layout, setLayout] = useState<Record<Bloco, number>>(
+    () => prefs.layout || { cards: 0, grade: 1, grafico: 2 },
   )
+  const [blocosOcultos, setBlocosOcultos] = useState<Bloco[]>(() => prefs.blocosOcultos || [])
+  const [arrastandoCard, setArrastandoCard] = useState<CardId | null>(null)
+  const [arrastandoBloco, setArrastandoBloco] = useState<Bloco | null>(null)
 
-  // item f: grupos recolhidos
-  const [gruposFechados, setGruposFechados] = useState<string[]>([])
-  const alternarGrupo = (chave: string) =>
-    setGruposFechados((p) => (p.includes(chave) ? p.filter((x) => x !== chave) : p.concat([chave])))
-
+  const [fechados, setFechados] = useState<string[]>([])
+  const [telaCheia, setTelaCheia] = useState<'grafico' | 'grade' | null>(null)
   const [drawerAberto, setDrawerAberto] = useState(false)
   const bellRef = useRef<HTMLDivElement | null>(null)
-  const [telaCheia, setTelaCheia] = useState<'grafico' | 'grade' | null>(null)
+  const [parecerAberto, setParecerAberto] = useState(false)
+  const [parecerLoja, setParecerLoja] = useState<Loja | null>(null)
+  const [busca, setBusca] = useState('')
+  const [selecionadas, setSelecionadas] = useState<number[]>([])
+
+  const METRICAS = [
+    { id: 'FAT', label: 'Faturamento', campo: 'FAT', tipo: 'brl' },
+    { id: 'QTD', label: 'Quantidade / Kg', campo: 'QTD', tipo: 'num' },
+    { id: 'CUPONS', label: 'Cupons', campo: 'CUPONS', tipo: 'num' },
+    { id: 'TICKET', label: 'Ticket Médio', campo: 'TICKET', tipo: 'brl' },
+    { id: 'PRECO', label: 'Preço Médio', campo: 'PRECO', tipo: 'brl' },
+  ]
+  const [metrica, setMetrica] = useState<string>(() => prefs.metrica || 'FAT')
+  useEffect(() => {
+    gravarPref(uid, 'metrica', metrica)
+  }, [metrica, uid])
+  const defM = METRICAS.find((m) => m.id === metrica) || METRICAS[0]
+  const [anosOcultos, setAnosOcultos] = useState<string[]>([])
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    const raw = q.get('aba') as Canal
+    if (raw || q.get('ano')) {
+      setF((p) => ({
+        ...p,
+        aba: CANAIS.some((c) => c.id === raw) ? raw : p.aba,
+        ano: Number(q.get('ano') || p.ano),
+        mes: Number(q.get('mes') || p.mes),
+        rede: q.get('rede') || p.rede,
+        tipoLoja: q.get('tipoloja') || p.tipoLoja,
+        tipoGrupo: q.get('tipogrupo') || p.tipoGrupo,
+        tipoVenda: q.get('tipovenda') || p.tipoVenda,
+      }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setTelaCheia(null)
@@ -921,62 +529,7 @@ export default function DesempenhoPage() {
     return () => window.removeEventListener('keydown', onEsc)
   }, [])
 
-  const [parecerAberto, setParecerAberto] = useState(false)
-  const [parecerLoja, setParecerLoja] = useState<Loja | null>(null)
-  const [busca, setBusca] = useState('')
-  const [selecionadas, setSelecionadas] = useState<number[]>([])
-
-  // item c: dropdown de métricas do gráfico
-  const METRICAS: { id: string; label: string; campo: string; tipo: 'brl' | 'num' }[] = [
-    { id: 'FAT', label: 'Faturamento', campo: 'FAT', tipo: 'brl' },
-    { id: 'QTD', label: 'Quantidade / Kg', campo: 'QTD', tipo: 'num' },
-    { id: 'CUPONS', label: 'Cupons', campo: 'CUPONS', tipo: 'num' },
-    { id: 'TICKET', label: 'Ticket Médio', campo: 'TICKET', tipo: 'brl' },
-    { id: 'PRECO', label: 'Preço Médio', campo: 'PRECO', tipo: 'brl' },
-  ]
-  const [metrica, setMetrica] = useState<string>(() => String(prefsIniciais.metrica || 'FAT'))
-  useEffect(() => {
-    gravarPref(userId, 'metrica', metrica)
-  }, [metrica, userId])
-  const defM = METRICAS.find((mm) => mm.id === metrica) || METRICAS[0]
-
-  useEffect(() => {
-    const q = new URLSearchParams(window.location.search)
-    const raw = (q.get('aba') || 'varejo') as Aba
-    setF({
-      aba: CANAIS.some((c) => c.id === raw) ? raw : 'varejo',
-      ano: Number(q.get('ano') || anoCorrente),
-      mes: Number(q.get('mes') || mesCorrente),
-      rede: q.get('rede') || '',
-      tipoLoja: q.get('tipoloja') || '',
-      tipoGrupo: q.get('tipogrupo') || '',
-      tipoVenda: q.get('tipovenda') || '',
-      loja: q.get('loja') || '',
-      supervisor: q.get('supervisor') || '',
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const setCampo = (c: string, v: string | number) => setF((p) => ({ ...p, [c]: v }))
-
-  // (a) persiste o filtro aplicado a cada mudança, por usuário
-  useEffect(() => {
-    gravarPref(userId, 'filtroApp', f)
-  }, [f, userId])
-
-  useEffect(() => {
-    const q = new URLSearchParams()
-    q.set('aba', f.aba)
-    q.set('ano', String(f.ano))
-    q.set('mes', String(f.mes))
-    if (f.rede) q.set('rede', f.rede)
-    if (f.tipoLoja) q.set('tipoloja', f.tipoLoja)
-    if (f.tipoGrupo) q.set('tipogrupo', f.tipoGrupo)
-    if (f.tipoVenda) q.set('tipovenda', f.tipoVenda)
-    if (f.loja) q.set('loja', f.loja)
-    if (f.supervisor) q.set('supervisor', f.supervisor)
-    window.history.replaceState(null, '', window.location.pathname + '?' + q.toString())
-  }, [f])
+  const setCampo = (k: string, v: any) => setF((p) => ({ ...p, [k]: v }))
 
   const qs = useCallback(
     (forcar: boolean) => {
@@ -996,22 +549,23 @@ export default function DesempenhoPage() {
     [f],
   )
 
-  const memoria = useRef<Record<string, Resposta>>({})
+  const mem = useRef<Record<string, Resposta>>({})
   const carregar = useCallback(
     async (forcar = false) => {
-      const chave = qs(false)
-      if (!forcar && memoria.current[chave]) {
-        setDados(memoria.current[chave])
+      const k = qs(false)
+      if (!forcar && mem.current[k]) {
+        setDados(mem.current[k])
         setLoading(false)
         return
       }
       setLoading(true)
       setErro('')
       try {
-        const r = await pb.send('/backend/v1/varejo/desempenho?' + qs(forcar), { method: 'GET' })
-        const resp = r as Resposta
-        setDados(resp)
-        memoria.current[chave] = resp
+        const r = (await pb.send('/backend/v1/varejo/desempenho?' + qs(forcar), {
+          method: 'GET',
+        })) as Resposta
+        setDados(r)
+        mem.current[k] = r
         setSelecionadas([])
       } catch (e) {
         setErro(String(e))
@@ -1028,73 +582,58 @@ export default function DesempenhoPage() {
   }, [carregar])
 
   const k = dados?.kpis || {}
-  const ultimoFechado = f.ano === anoCorrente ? Math.max(0, mesCorrente - 1) : f.mes
+  const ultimoFechado = f.ano === anoC ? Math.max(0, mesC - 1) : f.mes
   const filtrado = selecionadas.length > 0
 
-  // DIAGNÓSTICO (13/11): os números NÃO batiam com o BI "ACOMPANHAMENTO
-  // VAREJO - LOJAS". Causa raiz encontrada:
-  //   · o BI fatura por AD_RESUMOLOJAS.VLRVENDABRUTA = R$ 59.581.855 (out/26)
-  //   · este hook faturava por TGFCAB.VLRNOTA       = R$ 92.018.458
-  // A diferença (R$ 32,4M) é o atacado/distribuição que entra no TGFCAB mas
-  // não é venda de loja. O hook agora usa a mesma fonte do BI para os cards.
-  // O hook expõe `venda_resumo` quando disponível; a tela prefere esse valor.
   const lojasKpi = useMemo(() => {
     const todas = dados?.lojas || []
     return filtrado ? todas.filter((l) => selecionadas.includes(l.codparc)) : todas
   }, [dados, selecionadas, filtrado])
 
-  const soma = (fn: (l: Loja) => number | null | undefined) =>
-    lojasKpi.reduce((a, l) => a + (Number(fn(l)) || 0), 0)
-  const media = (fn: (l: Loja) => number | null | undefined) => {
-    const vs = lojasKpi.map(fn).filter((x): x is number => x !== null && x !== undefined)
+  const soma = (fn: (l: Loja) => any) => lojasKpi.reduce((a, l) => a + (Number(fn(l)) || 0), 0)
+  const med = (fn: (l: Loja) => any) => {
+    const vs = lojasKpi.map(fn).filter((x) => x !== null && x !== undefined) as number[]
     return vs.length ? vs.reduce((a, b) => a + Number(b), 0) / vs.length : null
   }
 
-  const K = useMemo(() => {
-    if (!filtrado) {
+  const K: any = useMemo(() => {
+    if (!filtrado)
       return {
-        ...(k as any),
+        ...k,
         funcionarios: dados?.total_funcionarios ?? null,
         nLojas: dados?.lojas.length || 0,
       }
-    }
-    const fat = soma((l) => l.faturamento)
-    const qtd = soma((l) => l.quantidade)
-    const cup = soma((l) => l.cupons)
-    const meta = soma((l) => l.meta)
-    const func = soma((l) => l.funcionarios)
-    const mCmv = media((l) => l.cmv_parcial)
-    const mCmvOrc = media((l) => l.cmv_orcado)
-    const mQ = media((l) => l.quebra)
-    const mLim = media((l) => l.limite_quebra)
+    const fat = soma((l) => l.faturamento),
+      qtd = soma((l) => l.quantidade)
+    const cup = soma((l) => l.cupons),
+      meta = soma((l) => l.meta),
+      fun = soma((l) => l.funcionarios)
+    const mCmv = med((l) => l.cmv_parcial),
+      mOrc = med((l) => l.cmv_orcado)
+    const mQ = med((l) => l.quebra),
+      mLim = med((l) => l.limite_quebra)
     return {
       faturamento: fat || null,
       meta_venda: meta || null,
-      faturamento_ating: media((l) => l.ating_venda),
-      faturamento_aa: media((l) => l.cresc_aa),
+      faturamento_ating: med((l) => l.ating_venda),
+      faturamento_aa: med((l) => l.cresc_aa),
       quantidade_kg: qtd || null,
-      quantidade_aa: media((l) => l.qtd_aa),
-      quantidade_ma: null,
-      preco_medio: fat && qtd ? Number((fat / qtd).toFixed(2)) : null,
-      preco_aa: media((l) => l.preco_aa),
-      preco_ma: null,
+      quantidade_aa: med((l) => l.qtd_aa),
+      preco_medio: fat && qtd ? fat / qtd : null,
+      preco_aa: med((l) => l.preco_aa),
       cupons: cup || null,
-      cupons_aa: media((l) => l.cupons_aa),
-      cupons_ma: null,
-      ticket_medio: fat && cup ? Number((fat / cup).toFixed(2)) : null,
-      ticket_aa: media((l) => l.ticket_aa),
-      ticket_ma: null,
+      cupons_aa: med((l) => l.cupons_aa),
+      ticket_medio: fat && cup ? fat / cup : null,
+      ticket_aa: med((l) => l.ticket_aa),
       cmv_pct: mCmv,
-      meta_cmv: mCmvOrc,
-      cmv_ating: mCmv && mCmvOrc ? Number(((mCmvOrc / mCmv) * 100).toFixed(1)) : null,
-      cmv_aa: null,
+      meta_cmv: mOrc,
+      cmv_ating: mCmv && mOrc ? (mOrc / mCmv) * 100 : null,
       quebra_pct: mQ,
       limite_perda: mLim,
-      quebra_ating: mQ && mLim ? Number(((mQ / mLim) * 100).toFixed(1)) : null,
-      quebra_ma: null,
-      funcionarios: func || null,
+      quebra_ating: mQ && mLim ? (mQ / mLim) * 100 : null,
+      funcionarios: fun || null,
       nLojas: lojasKpi.length,
-    } as any
+    }
   }, [filtrado, k, lojasKpi, dados])
 
   const seriePivot = useMemo(() => {
@@ -1102,17 +641,16 @@ export default function DesempenhoPage() {
     for (const s of dados?.serie || []) {
       const m = String(s.MES || '').padStart(2, '0')
       if (!mapa[m]) mapa[m] = {}
-      const anyS = s as any
-      mapa[m][String(s.ANO)] = Number(anyS[defM.campo] ?? anyS.FAT) || 0
+      mapa[m][String(s.ANO)] = Number((s as any)[defM.campo] ?? (s as any).FAT) || 0
     }
     const anos = Array.from(
-      new Set((dados?.serie || []).map((s) => String(s.ANO || '')).filter(Boolean)),
+      new Set((dados?.serie || []).map((s: any) => String(s.ANO || '')).filter(Boolean)),
     ).sort()
     const ult = anos[anos.length - 1]
     return Object.keys(mapa)
       .sort()
       .map((m) => {
-        const linha: Record<string, any> = { mes: MESES_CURTOS[Number(m) - 1] || m }
+        const linha: any = { mes: MESES_C[Number(m) - 1] || m }
         for (const a of anos) linha[a] = mapa[m][a] ?? null
         if (ult) {
           const v = mapa[m][ult] ?? null
@@ -1126,88 +664,45 @@ export default function DesempenhoPage() {
   const anos = useMemo(
     () =>
       Array.from(
-        new Set((dados?.serie || []).map((s) => String(s.ANO || '')).filter(Boolean)),
+        new Set((dados?.serie || []).map((s: any) => String(s.ANO || '')).filter(Boolean)),
       ).sort(),
     [dados],
   )
-  const [anosOcultos, setAnosOcultos] = useState<string[]>([])
 
-  const alertas = useMemo<Alerta[]>(() => {
-    const out: Alerta[] = []
-    for (const l of dados?.lojas || []) {
-      const a = l.ating_venda
-      if (a !== null && a !== undefined && a < LIMIAR_ATG.atencao) {
-        out.push({
-          id: 'a' + l.codparc,
-          loja: l.loja,
-          descricao: `Atingimento ${fmtPct(a)}`,
-          tom: 'red',
-          codparc: l.codparc,
-        })
-      } else if (
-        l.quebra !== null &&
-        l.quebra !== undefined &&
-        l.limite_quebra &&
-        l.quebra > l.limite_quebra
-      ) {
-        out.push({
-          id: 'q' + l.codparc,
-          loja: l.loja,
-          descricao: `Quebra ${fmtPct(l.quebra - l.limite_quebra)} acima`,
-          tom: 'amber',
-          codparc: l.codparc,
-        })
-      } else if (l.meta === null || l.meta === undefined) {
-        out.push({
-          id: 'm' + l.codparc,
-          loja: l.loja,
-          descricao: 'Venda orçada não configurada',
-          tom: 'amber',
-          codparc: l.codparc,
-        })
-      }
-    }
-    return out
-  }, [dados])
-
-  const colunasVisiveis = useMemo(() => {
-    const mapa = new Map(COLUNAS.map((c) => [c.id as string, c]))
-    return colCfg.ordem
-      .filter((id) => !colCfg.ocultas.includes(id))
-      .map((id) => mapa.get(id))
-      .filter(Boolean) as ColDef[]
-  }, [colCfg])
-
-  // ------------------------------------------------------------------
-  // item f: AGRUPAMENTO HIERÁRQUICO com SUBTOTAIS (igual ao print do BI)
-  //   Nível 1: Rede (Carone / ExtraBom)  — clicável, recolhe tudo
-  //   Nível 2: Loja Nova / SSS (Existente) — clicável, recolhe o subgrupo
-  //   Nível 3: lojas, ordenadas por nome
-  // Cada nível soma os valores das lojas que contém.
-  // ------------------------------------------------------------------
+  // ---------------- subtotais por nível ----------------
   const somaGrupo = (ls: Loja[]) => {
     const fat = ls.reduce((a, l) => a + (Number(l.faturamento) || 0), 0)
     const meta = ls.reduce((a, l) => a + (Number(l.meta) || 0), 0)
     const qtd = ls.reduce((a, l) => a + (Number(l.quantidade) || 0), 0)
     const cup = ls.reduce((a, l) => a + (Number(l.cupons) || 0), 0)
     const part = ls.reduce((a, l) => a + (Number(l.participacao) || 0), 0)
-    const comCresc = ls.filter((l) => l.cresc_aa !== null && l.cresc_aa !== undefined)
-    const cresc = comCresc.length
-      ? comCresc.reduce((a, l) => a + Number(l.cresc_aa), 0) / comCresc.length
-      : null
+    const m = (fn: (l: Loja) => any) => {
+      const vs = ls.map(fn).filter((x) => x !== null && x !== undefined) as number[]
+      return vs.length ? vs.reduce((a, b) => a + Number(b), 0) / vs.length : null
+    }
     return {
       participacao: part || null,
       meta: meta || null,
       faturamento: fat || null,
-      ating_venda: meta ? Number(((fat / meta) * 100).toFixed(1)) : null,
-      cresc_aa: cresc,
+      ating_venda: meta ? (fat / meta) * 100 : null,
+      cresc_aa: m((l) => l.cresc_aa),
       quantidade: qtd || null,
-      preco_medio: fat && qtd ? Number((fat / qtd).toFixed(2)) : null,
+      qtd_aa: m((l) => l.qtd_aa),
+      preco_medio: fat && qtd ? fat / qtd : null,
+      preco_aa: m((l) => l.preco_aa),
       cupons: cup || null,
-      ticket_medio: fat && cup ? Number((fat / cup).toFixed(2)) : null,
+      cupons_aa: m((l) => l.cupons_aa),
+      ticket_medio: fat && cup ? fat / cup : null,
+      ticket_aa: m((l) => l.ticket_aa),
+      cmv_orcado: m((l) => l.cmv_orcado),
+      cmv_parcial: m((l) => l.cmv_parcial),
+      limite_quebra: m((l) => l.limite_quebra),
+      quebra: m((l) => l.quebra),
+      funcionarios: ls.reduce((a, l) => a + (Number(l.funcionarios) || 0), 0) || null,
     }
   }
 
+  // ---------------- hierarquia Rede -> Bandeira -> Loja ----------------
   const grupos = useMemo(() => {
     let base = [...(dados?.lojas || [])]
     if (busca.trim()) {
@@ -1216,102 +711,35 @@ export default function DesempenhoPage() {
         (l) => String(l.loja).toLowerCase().includes(t) || String(l.rede).toLowerCase().includes(t),
       )
     }
-    const redes: Record<string, Loja[]> = {}
+    const porRede: Record<string, Loja[]> = {}
     for (const l of base) {
-      const r = String(l.rede || 'Sem rede')
-      if (!redes[r]) redes[r] = []
-      redes[r].push(l)
+      const r = String(l.rede || 'Outros')
+      if (!porRede[r]) porRede[r] = []
+      porRede[r].push(l)
     }
-    return Object.keys(redes)
+    return Object.keys(porRede)
       .sort()
       .map((rede) => {
-        const ls = redes[rede].slice().sort((a, b) => String(a.loja).localeCompare(String(b.loja)))
-        const novas = ls.filter((x) => x.loja_nova)
-        const exist = ls.filter((x) => !x.loja_nova)
-        return {
-          rede,
-          total: somaGrupo(ls),
-          qtdLojas: ls.length,
-          subgrupos: [
-            { chave: 'nova', label: 'Loja Nova', lojas: novas, total: somaGrupo(novas) },
-            { chave: 'exist', label: 'SSS', lojas: exist, total: somaGrupo(exist) },
-          ].filter((sg) => sg.lojas.length > 0),
+        const ls = porRede[rede]
+        const porBand: Record<string, Loja[]> = {}
+        for (const l of ls) {
+          const b = String(l.bandeira || 'Outros')
+          if (!porBand[b]) porBand[b] = []
+          porBand[b].push(l)
         }
+        const bandeiras = Object.keys(porBand)
+          .sort()
+          .map((band) => {
+            const lb = porBand[band]
+              .slice()
+              .sort((a, b) => String(a.loja).localeCompare(String(b.loja)))
+            return { chave: band, label: band, lojas: lb, total: somaGrupo(lb) }
+          })
+        return { rede, total: somaGrupo(ls), nLojas: ls.length, bandeiras }
       })
   }, [dados, busca])
 
-  const _gruposLegadoNaoUsado = null
-  void _gruposLegadoNaoUsado
-  const gruposDummy = useMemo(() => {
-    let base = [...(dados?.lojas || [])]
-    if (busca.trim()) {
-      const t = busca.trim().toLowerCase()
-      base = base.filter(
-        (l) => String(l.loja).toLowerCase().includes(t) || String(l.rede).toLowerCase().includes(t),
-      )
-    }
-    const redes: Record<string, Loja[]> = {}
-    for (const l of base) {
-      const r = String(l.rede || 'Sem rede')
-      if (!redes[r]) redes[r] = []
-      redes[r].push(l)
-    }
-    return Object.keys(redes)
-      .sort()
-      .map((rede) => {
-        const ls = redes[rede].slice().sort((a, b) => String(a.loja).localeCompare(String(b.loja)))
-        const novas = ls.filter((x) => x.loja_nova)
-        const exist = ls.filter((x) => !x.loja_nova)
-        return {
-          rede,
-          total: somaGrupo(ls),
-          qtd: ls.length,
-          subs: [
-            { chave: 'nova', label: 'Loja Nova', lojas: novas, total: somaGrupo(novas) },
-            { chave: 'exist', label: 'SSS', lojas: exist, total: somaGrupo(exist) },
-          ].filter((sg) => sg.lojas.length > 0),
-        }
-      })
-  }, [dados, busca])
-
-  // formata uma célula (usado nas linhas de grupo/subtotal e de loja)
-  const celula = (c: ColDef, valor: any) => {
-    if (c.id === 'ating') {
-      if (valor === null || valor === undefined) return <span style={{ color: T.muted }}>—</span>
-      const vv = Number(valor)
-      const acima = vv >= LIMIAR_ATG.meta
-      const at = vv >= LIMIAR_ATG.atencao && vv < LIMIAR_ATG.meta
-      return (
-        <span
-          className="inline-flex items-center gap-1 justify-end w-full font-bold"
-          style={{
-            background: acima ? T.tintGreen : at ? T.tintAmber : T.tintRed,
-            color: acima ? T.pos : at ? T.warn : T.neg,
-          }}
-        >
-          {acima ? '▲' : at ? '▬' : '▼'} {fmtPct(vv)}
-        </span>
-      )
-    }
-    if (c.tipo === 'delta') {
-      if (valor === null || valor === undefined) return <span style={{ color: T.muted }}>—</span>
-      const vv = Number(valor)
-      const cor = vv > 0.05 ? T.pos : vv < -0.05 ? T.neg : T.muted
-      return (
-        <span className="font-semibold" style={{ color: cor }}>
-          {vv > 0.05 ? '▲ ' : vv < -0.05 ? '▼ ' : ''}
-          {fmtPct(vv)}
-        </span>
-      )
-    }
-    if (valor === null || valor === undefined) return <span style={{ color: T.muted }}>—</span>
-    if (c.tipo === 'brl') return fmtBRL(Number(valor))
-    if (c.tipo === 'pct') return fmtPct(Number(valor))
-    if (c.tipo === 'num') return fmtNum(Number(valor))
-    return String(valor)
-  }
-
-  const linhas = useMemo(() => {
+  const lojasFiltradas = useMemo(() => {
     let arr = [...(dados?.lojas || [])]
     if (busca.trim()) {
       const t = busca.trim().toLowerCase()
@@ -1322,8 +750,8 @@ export default function DesempenhoPage() {
     if (ordem) {
       const { id, dir } = ordem
       arr.sort((a, b) => {
-        const va = id === 'ating' ? a.ating_venda : id === 'meta' ? a.meta : (a as any)[id]
-        const vb = id === 'ating' ? b.ating_venda : id === 'meta' ? b.meta : (b as any)[id]
+        const va: any = id === 'ating' ? a.ating_venda : (a as any)[id]
+        const vb: any = id === 'ating' ? b.ating_venda : (b as any)[id]
         if (va === null || va === undefined) return 1
         if (vb === null || vb === undefined) return -1
         if (typeof va === 'number' && typeof vb === 'number')
@@ -1332,67 +760,75 @@ export default function DesempenhoPage() {
           ? String(va).localeCompare(String(vb))
           : String(vb).localeCompare(String(va))
       })
-      return arr
     }
-    // item f: REDE -> Loja Nova -> Existente -> Loja
-    arr.sort((a, b) => {
-      const ra = String(a.rede || ''),
-        rb = String(b.rede || '')
-      if (ra !== rb) return ra.localeCompare(rb)
-      const na = a.loja_nova ? 0 : 1,
-        nb = b.loja_nova ? 0 : 1
-      if (na !== nb) return na - nb
-      return String(a.loja || '').localeCompare(String(b.loja || ''))
-    })
     return arr
   }, [dados, ordem, busca])
 
-  const valorCol = (l: Loja, c: ColDef) =>
-    c.id === 'ating'
-      ? (l.ating_venda ?? null)
-      : c.id === 'meta'
-        ? (l.meta ?? null)
-        : ((l as any)[c.id] ?? null)
+  const colVisiveis = useMemo(() => COLUNAS.filter((c) => !colOcultas.includes(c.id)), [colOcultas])
 
-  const larguraDe = (c: ColDef) => colCfg.larguras[c.id as string] || c.largura
-
-  const moverColuna = (de: string, para: string) => {
-    if (de === para) return
-    const arr = [...colCfg.ordem]
-    const i = arr.indexOf(de),
-      j = arr.indexOf(para)
-    if (i < 0 || j < 0) return
-    arr.splice(i, 1)
-    arr.splice(j, 0, de)
-    const novo = { ...colCfg, ordem: arr }
-    setColCfg(novo)
-    gravarPref(userId, K_COLUNAS, novo)
+  const celula = (c: Col, valor: any) => {
+    if (c.id === 'ating') {
+      if (valor === null || valor === undefined) return <span style={{ color: T.muted }}>—</span>
+      const v = Number(valor)
+      const ok = v >= LIMIAR.meta,
+        at = v >= LIMIAR.atencao && v < LIMIAR.meta
+      return (
+        <span
+          className="inline-flex items-center gap-1 justify-end w-full font-bold px-1 rounded"
+          style={{
+            background: ok ? T.tintGreen : at ? T.tintAmber : T.tintRed,
+            color: ok ? T.pos : at ? T.warn : T.neg,
+          }}
+        >
+          {ok ? '▲' : at ? '▬' : '▼'} {pct(v)}
+        </span>
+      )
+    }
+    if (c.tipo === 'delta') {
+      if (valor === null || valor === undefined) return <span style={{ color: T.muted }}>—</span>
+      const v = Number(valor)
+      const cor = v > 0.05 ? T.pos : v < -0.05 ? T.neg : T.muted
+      return (
+        <span className="font-semibold" style={{ color: cor }}>
+          {v > 0.05 ? '▲ ' : v < -0.05 ? '▼ ' : ''}
+          {pct(v)}
+        </span>
+      )
+    }
+    if (valor === null || valor === undefined) return <span style={{ color: T.muted }}>—</span>
+    if (c.tipo === 'brl') return brl(valor)
+    if (c.tipo === 'pct') return pct(valor)
+    if (c.tipo === 'num') return n(valor)
+    return String(valor)
   }
 
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      const r = redimensionando.current
-      if (!r) return
-      const nova = Math.max(64, r.largura + (e.clientX - r.ini))
-      setColCfg((prev) => ({ ...prev, larguras: { ...prev.larguras, [r.id]: nova } }))
-    }
-    const onUp = () => {
-      if (redimensionando.current) {
-        setColCfg((prev) => {
-          gravarPref(userId, K_COLUNAS, prev)
-          return prev
+  const alertas = useMemo(() => {
+    const out: any[] = []
+    for (const l of dados?.lojas || []) {
+      if (l.ating_venda !== null && l.ating_venda !== undefined && l.ating_venda < LIMIAR.atencao)
+        out.push({
+          id: 'a' + l.codparc,
+          loja: l.loja,
+          d: 'Atingimento ' + pct(l.ating_venda),
+          tom: 'red',
+          codparc: l.codparc,
         })
-        redimensionando.current = null
-        document.body.style.cursor = ''
-      }
+      else if (l.meta === null || l.meta === undefined)
+        out.push({
+          id: 'm' + l.codparc,
+          loja: l.loja,
+          d: 'Venda orçada não configurada',
+          tom: 'amber',
+          codparc: l.codparc,
+        })
     }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-  }, [userId])
+    return out
+  }, [dados])
+
+  const alternar = (ch: string) =>
+    setFechados((p) => (p.includes(ch) ? p.filter((x) => x !== ch) : p.concat([ch])))
+  const altLinha = (c: number) =>
+    setSelecionadas((p) => (p.includes(c) ? p.filter((x) => x !== c) : p.concat([c])))
 
   const moverCard = (id: CardId, dir: -1 | 1) => {
     const arr = [...cards.ordem]
@@ -1401,95 +837,48 @@ export default function DesempenhoPage() {
     if (i < 0 || j < 0 || j >= arr.length) return
     arr.splice(i, 1)
     arr.splice(j, 0, id)
-    const novo = { ...cards, ordem: arr }
-    setCards(novo)
-    gravarPref(userId, K_CARDS, novo)
+    const nv = { ...cards, ordem: arr }
+    setCards(nv)
+    gravarPref(uid, 'cardsOrdem', nv.ordem)
   }
-  const soltarCard = (destino: CardId) => {
-    if (!cardArrastando || cardArrastando === destino) {
-      setCardArrastando(null)
-      return
-    }
-    const arr = [...cards.ordem]
-    const i = arr.indexOf(cardArrastando),
-      j = arr.indexOf(destino)
-    if (i < 0 || j < 0) {
-      setCardArrastando(null)
-      return
-    }
-    arr.splice(i, 1)
-    arr.splice(j, 0, cardArrastando)
-    const novo = { ...cards, ordem: arr }
-    setCards(novo)
-    gravarPref(userId, K_CARDS, novo)
-    setCardArrastando(null)
-  }
-
-  // (h) move um bloco uma posição para cima (-1) ou para baixo (+1)
-  const moverBloco = (b: BlocoId, dir: -1 | 1) => {
-    const ord = (Object.keys(layout) as BlocoId[]).sort((x, y) => layout[x] - layout[y])
-    const i = ord.indexOf(b)
-    const j = i + dir
+  const moverBloco = (b: Bloco, dir: -1 | 1) => {
+    const ord = (Object.keys(layout) as Bloco[]).sort((x, y) => layout[x] - layout[y])
+    const i = ord.indexOf(b),
+      j = i + dir
     if (i < 0 || j < 0 || j >= ord.length) return
-    const novo = { ...layout }
-    const posB = layout[b]
-    ;(novo as any)[b] = layout[ord[j]]
-    ;(novo as any)[ord[j]] = posB
-    setLayout(novo)
-    gravarPref(userId, K_LAYOUT, novo)
+    const nv = { ...layout }
+    const a = layout[b]
+    nv[b] = layout[ord[j]]
+    nv[ord[j]] = a
+    setLayout(nv)
+    gravarPref(uid, 'layout', nv)
   }
 
-  const soltarBloco = (destino: number) => {
-    if (!blocoArrastando) return
-    const atual = layout[blocoArrastando]
-    if (atual === destino) {
-      setBlocoArrastando(null)
-      return
+  useEffect(() => {
+    const mv = (e: MouseEvent) => {
+      const r = redim.current
+      if (!r) return
+      setColLarg((p) => ({ ...p, [r.id]: Math.max(64, r.w + (e.clientX - r.ini)) }))
     }
-    const outro = (Object.keys(layout) as BlocoId[]).find(
-      (b) => b !== blocoArrastando && layout[b] === destino,
-    )
-    const novo = { ...layout, [blocoArrastando]: destino } as typeof layout
-    if (outro) (novo as any)[outro] = atual
-    setLayout(novo)
-    gravarPref(userId, K_LAYOUT, novo)
-    setBlocoArrastando(null)
-  }
+    const up = () => {
+      if (redim.current) {
+        setColLarg((p) => {
+          gravarPref(uid, 'colunasLarg', p)
+          return p
+        })
+        redim.current = null
+        document.body.style.cursor = ''
+      }
+    }
+    window.addEventListener('mousemove', mv)
+    window.addEventListener('mouseup', up)
+    return () => {
+      window.removeEventListener('mousemove', mv)
+      window.removeEventListener('mouseup', up)
+    }
+  }, [uid])
 
-  const exportar = () => {
-    const cab = colunasVisiveis.map((c) => c.label)
-    const body = linhas.map((l) =>
-      colunasVisiveis.map((c) => {
-        const v = valorCol(l, c)
-        return v === null || v === undefined ? '' : String(v).replace(/;/g, ',')
-      }),
-    )
-    const csv = [cab, ...body].map((r) => r.join(';')).join('\n')
-    const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }))
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'desempenho-' + f.ano + '-' + String(f.mes).padStart(2, '0') + '.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const verLoja = (c: number) => {
-    const l = (dados?.lojas || []).find((x) => x.codparc === c)
-    if (!l) return
-    setParecerLoja(l)
-    setParecerAberto(true)
-    setDrawerAberto(false)
-  }
-
-  const alternarLinha = (c: number) =>
-    setSelecionadas((p) => (p.includes(c) ? p.filter((x) => x !== c) : p.concat([c])))
-
-  // item d: valores reais do período comparado
-  const cBRL = (v: any) => (v === null || v === undefined ? null : fmtBRL(v))
-  const cBRL2 = (v: any) => (v === null || v === undefined ? null : fmtBRL(v, 2))
-  const cNum = (v: any) => (v === null || v === undefined ? null : fmtNum(v))
-  const cComp = (v: any) => (v === null || v === undefined ? null : fmtCompacto(v))
-  const cPct = (v: any) => (v === null || v === undefined ? null : fmtPct(v, 2))
+  const largura = (c: Col) => colLarg[c.id] || c.w
 
   if (loading && !dados) {
     return (
@@ -1504,7 +893,7 @@ export default function DesempenhoPage() {
   if (erro || !dados) {
     return (
       <div
-        className="p-4 rounded-lg border text-[13px] font-medium flex items-center gap-2"
+        className="p-4 rounded-lg border flex items-center gap-2"
         style={{ background: T.tintRed, borderColor: '#fecaca', color: T.neg }}
       >
         <AlertTriangle className="h-4 w-4" /> Erro: {erro || 'sem dados'}
@@ -1515,6 +904,15 @@ export default function DesempenhoPage() {
     )
   }
 
+  const nomeCanal = CANAIS.find((c) => c.id === f.aba)?.label || 'Varejo (Redes)'
+  const nomeSup =
+    (dados.supervisores || []).find((s) => String(s.codparc) === f.supervisor)?.nome || 'Todos'
+  const carteiraBandeira =
+    f.aba === 'varejo' && f.rede === 'carone'
+      ? GRUPOS_CARONE
+      : f.aba === 'varejo' && f.rede === 'extrabom'
+        ? GRUPOS_COUTINHO
+        : GRUPOS_TODOS
   const filtrosAtivos =
     (f.rede ? 1 : 0) +
     (f.tipoLoja ? 1 : 0) +
@@ -1522,87 +920,74 @@ export default function DesempenhoPage() {
     (f.tipoVenda ? 1 : 0) +
     (f.loja ? 1 : 0) +
     (f.supervisor ? 1 : 0)
-  const nomeCanal = CANAIS.find((c) => c.id === f.aba)?.label || 'Varejo (Redes)'
-  const nomeSup =
-    (dados.supervisores || []).find((s) => String(s.codparc) === f.supervisor)?.nome || 'Todos'
-  const nLojas = Number(K.nLojas || 0)
-  const emCheio = (t: 'grafico' | 'grade') => telaCheia === t
+  const cheio = (t: 'grafico' | 'grade') => telaCheia === t
 
-  const defs: Record<
-    CardId,
-    { label: string; valor: string; contexto?: string; Icone: any; tom: CardTone; vars: VarItem[] }
-  > = {
+  const defs: Record<CardId, any> = {
     fat: {
       label: 'Faturamento',
-      valor: fmtCompacto(K.faturamento),
-      contexto: fmtBRL(K.faturamento),
+      valor: comp(K.faturamento),
+      contexto: brl(K.faturamento),
       Icone: TrendingUp,
       tom: (K.faturamento_aa ?? 0) >= 0 ? 'green' : 'red',
       vars: [
-        { label: 'Meta', valor: K.faturamento_ating ?? null, comparado: cComp(K.meta_venda) },
-        {
-          label: 'A.A.',
-          valor: K.faturamento_aa ?? null,
-          comparado: cComp(K.faturamento_aa_valor),
-        },
+        { label: 'Meta', valor: K.faturamento_ating ?? null, comparado: comp(K.meta_venda) },
+        { label: 'A.A.', valor: K.faturamento_aa ?? null, comparado: comp(K.faturamento_aa_valor) },
       ],
     },
     qtd: {
       label: 'Qtde / Kg',
-      valor: fmtCompacto(K.quantidade_kg),
-      contexto: fmtNum(K.quantidade_kg) + ' un/kg',
+      valor: comp(K.quantidade_kg),
       Icone: Package,
       tom: (K.quantidade_aa ?? 0) >= 0 ? 'green' : 'red',
       vars: [
-        { label: 'M.A.', valor: K.quantidade_ma ?? null, comparado: cComp(K.quantidade_ma_valor) },
-        { label: 'A.A.', valor: K.quantidade_aa ?? null, comparado: cComp(K.quantidade_aa_valor) },
+        { label: 'M.A.', valor: K.quantidade_ma ?? null, comparado: comp(K.quantidade_ma_valor) },
+        { label: 'A.A.', valor: K.quantidade_aa ?? null, comparado: comp(K.quantidade_aa_valor) },
       ],
     },
     preco: {
       label: 'Preço Médio',
-      valor: fmtBRL(K.preco_medio, 2),
+      valor: brl(K.preco_medio, 2),
       Icone: Tag,
       tom: (K.preco_aa ?? 0) >= 0 ? 'green' : 'red',
       vars: [
-        { label: 'M.A.', valor: K.preco_ma ?? null, comparado: cBRL2(K.preco_ma_valor) },
-        { label: 'A.A.', valor: K.preco_aa ?? null, comparado: cBRL2(K.preco_aa_valor) },
+        { label: 'M.A.', valor: K.preco_ma ?? null, comparado: brl(K.preco_ma_valor, 2) },
+        { label: 'A.A.', valor: K.preco_aa ?? null, comparado: brl(K.preco_aa_valor, 2) },
       ],
     },
     cupons: {
       label: 'Cupons',
-      valor: fmtNum(K.cupons),
+      valor: n(K.cupons),
       Icone: Receipt,
       tom: (K.cupons_aa ?? 0) >= 0 ? 'blue' : 'red',
       vars: [
-        { label: 'M.A.', valor: K.cupons_ma ?? null, comparado: cNum(K.cupons_ma_valor) },
-        { label: 'A.A.', valor: K.cupons_aa ?? null, comparado: cNum(K.cupons_aa_valor) },
+        { label: 'M.A.', valor: K.cupons_ma ?? null, comparado: n(K.cupons_ma_valor) },
+        { label: 'A.A.', valor: K.cupons_aa ?? null, comparado: n(K.cupons_aa_valor) },
       ],
     },
     ticket: {
       label: 'Ticket Médio',
-      valor: fmtBRL(K.ticket_medio, 0),
+      valor: brl(K.ticket_medio, 0),
       Icone: Ticket,
       tom: (K.ticket_aa ?? 0) >= 0 ? 'violet' : 'red',
       vars: [
-        { label: 'M.A.', valor: K.ticket_ma ?? null, comparado: cBRL(K.ticket_ma_valor) },
-        { label: 'A.A.', valor: K.ticket_aa ?? null, comparado: cBRL(K.ticket_aa_valor) },
+        { label: 'M.A.', valor: K.ticket_ma ?? null, comparado: brl(K.ticket_ma_valor) },
+        { label: 'A.A.', valor: K.ticket_aa ?? null, comparado: brl(K.ticket_aa_valor) },
       ],
     },
     cmv: {
       label: 'CMV Parcial',
-      valor: fmtPct(K.cmv_pct ?? null, 2),
-      contexto: 'meta ' + fmtPct(K.meta_cmv ?? null, 1),
+      valor: pct(K.cmv_pct, 2),
+      contexto: 'meta ' + pct(K.meta_cmv),
       Icone: Percent,
       tom: (K.cmv_ating ?? 100) >= 100 ? 'green' : 'amber',
       vars: [
-        { label: 'Meta', valor: K.cmv_ating ?? null, inverso: true, comparado: cPct(K.meta_cmv) },
-        { label: 'A.A.', valor: K.cmv_aa ?? null, inverso: true, comparado: null },
+        { label: 'Meta', valor: K.cmv_ating ?? null, inverso: true, comparado: pct(K.meta_cmv) },
       ],
     },
     quebra: {
       label: 'Quebra',
-      valor: fmtPct(K.quebra_pct ?? null, 2),
-      contexto: 'limite ' + fmtPct(K.limite_perda ?? null, 1),
+      valor: pct(K.quebra_pct, 2),
+      contexto: 'limite ' + pct(K.limite_perda),
       Icone: AlertTriangle,
       tom: (K.quebra_ating ?? 0) <= 100 ? 'green' : 'red',
       vars: [
@@ -1610,64 +995,106 @@ export default function DesempenhoPage() {
           label: 'Meta',
           valor: K.quebra_ating ?? null,
           inverso: true,
-          comparado: cPct(K.limite_perda),
+          comparado: pct(K.limite_perda),
         },
-        { label: 'A.A.', valor: K.quebra_ma ?? null, inverso: true, comparado: null },
       ],
     },
     lojas: {
       label: 'Lojas',
-      valor: fmtNum(nLojas),
-      contexto: fmtNum(K.funcionarios ?? null) + ' funcionários',
+      valor: n(K.nLojas),
+      contexto: n(K.funcionarios) + ' funcionários',
       Icone: Store,
       tom: 'gray',
       vars: [],
     },
   }
 
-  const cardsVisiveis = cards.ordem.filter((id) => !cards.ocultos.includes(id))
+  const cardsVis = cards.ordem.filter((id) => !cards.ocultos.includes(id))
+  const ordemBlocos = (Object.keys(layout) as Bloco[]).sort((a, b) => layout[a] - layout[b])
+
+  const barraBloco = (b: Bloco, idx: number) => (
+    <div className="flex items-center gap-1.5 mb-1">
+      <span className="text-[9px] uppercase tracking-wider" style={{ color: T.muted }}>
+        {b === 'cards' ? 'indicadores' : b === 'grade' ? 'grade' : 'gráfico'}
+      </span>
+      <span className="flex-1 h-px" style={{ background: T.border }} />
+      <button
+        draggable
+        onDragStart={() => setArrastandoBloco(b)}
+        onDragEnd={() => setArrastandoBloco(null)}
+        title="Arraste para reposicionar"
+        className="px-1 rounded border text-[9px] inline-flex items-center gap-0.5 cursor-grab opacity-60 hover:opacity-100"
+        style={{ borderColor: T.border, color: T.muted, background: T.card }}
+      >
+        <GripVertical className="h-2.5 w-2.5" /> mover
+      </button>
+      <button
+        type="button"
+        onClick={() => moverBloco(b, -1)}
+        disabled={idx === 0}
+        title="Mover para cima"
+        className="px-1 py-0.5 rounded border disabled:opacity-30"
+        style={{ borderColor: T.border, color: T.muted, background: T.card }}
+      >
+        <ArrowUp className="h-2.5 w-2.5" />
+      </button>
+      <button
+        type="button"
+        onClick={() => moverBloco(b, 1)}
+        disabled={idx === ordemBlocos.length - 1}
+        title="Mover para baixo"
+        className="px-1 py-0.5 rounded border disabled:opacity-30"
+        style={{ borderColor: T.border, color: T.muted, background: T.card }}
+      >
+        <ArrowDown className="h-2.5 w-2.5" />
+      </button>
+      {/* (h) ocultar / reexibir */}
+      <button
+        type="button"
+        onClick={() => {
+          const oc = blocosOcultos.includes(b)
+          const nv = oc ? blocosOcultos.filter((x) => x !== b) : blocosOcultos.concat([b])
+          setBlocosOcultos(nv)
+          gravarPref(uid, 'blocosOcultos', nv)
+        }}
+        title={blocosOcultos.includes(b) ? 'Reexibir este bloco' : 'Ocultar este bloco'}
+        className="px-1 py-0.5 rounded border inline-flex items-center"
+        style={{
+          borderColor: blocosOcultos.includes(b) ? T.nav : T.border,
+          color: blocosOcultos.includes(b) ? T.nav : T.muted,
+          background: T.card,
+        }}
+      >
+        {blocosOcultos.includes(b) ? (
+          <Eye className="h-2.5 w-2.5" />
+        ) : (
+          <EyeOff className="h-2.5 w-2.5" />
+        )}
+      </button>
+    </div>
+  )
 
   const blocoCards = (
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2 items-stretch">
-      {cardsVisiveis.map((id) => {
+      {cardsVis.map((id) => {
         const d = defs[id]
         return (
-          <ScoreCard
+          <Card
             key={id}
-            id={id}
-            label={d.label}
-            valor={d.valor}
-            contexto={d.contexto}
-            Icone={d.Icone}
-            tom={d.tom}
-            variacoes={d.vars}
-            arrastando={cardArrastando === id}
-            onDragStart={() => setCardArrastando(id)}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => soltarCard(id)}
-            onMover={(dir) => moverCard(id, dir)}
+            {...d}
+            arrastando={arrastandoCard === id}
+            onDragStart={() => setArrastandoCard(id)}
+            onDragOver={(e: any) => e.preventDefault()}
+            onDrop={() => setArrastandoCard(null)}
+            onMover={(dir: number) => moverCard(id, dir as -1 | 1)}
             onOcultar={() => {
-              const n = { ...cards, ocultos: cards.ocultos.concat([id]) }
-              setCards(n)
-              gravarPref(userId, K_CARDS, n)
+              const nv = cards.ocultos.concat([id])
+              setCards({ ...cards, ocultos: nv })
+              gravarPref(uid, 'cardsOcultos', nv)
             }}
           />
         )
       })}
-      {cards.ocultos.length > 0 && (
-        <button
-          type="button"
-          onClick={() => {
-            const n = { ...cards, ocultos: [] }
-            setCards(n)
-            gravarPref(userId, K_CARDS, n)
-          }}
-          className="rounded-md border border-dashed text-[10px] font-semibold flex flex-col items-center justify-center gap-0.5 py-2"
-          style={{ borderColor: T.border, color: T.muted }}
-        >
-          <Eye className="h-3 w-3" /> reexibir {cards.ocultos.length}
-        </button>
-      )}
     </div>
   )
 
@@ -1675,24 +1102,22 @@ export default function DesempenhoPage() {
     <div
       className={cn(
         'bg-white border p-3.5 flex flex-col',
-        emCheio('grafico') && 'fixed inset-2 z-50 shadow-2xl',
+        cheio('grafico') && 'fixed inset-2 z-50 shadow-2xl',
       )}
       style={{ borderColor: T.border, borderRadius: 8 }}
     >
       <div className="flex items-center justify-between mb-2 gap-2">
         <div className="flex items-center gap-2">
-          <GripVertical className="h-3.5 w-3.5 cursor-grab" style={{ color: T.muted }} />
           <div className="relative">
             <select
               value={metrica}
               onChange={(e) => setMetrica(e.target.value)}
-              title="Escolher o indicador do gráfico"
               className="text-[14px] font-semibold bg-transparent border-none outline-none cursor-pointer pr-5 appearance-none"
               style={{ color: T.text }}
             >
-              {METRICAS.map((mm) => (
-                <option key={mm.id} value={mm.id}>
-                  Evolução {mm.label}
+              {METRICAS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  Evolução {m.label}
                 </option>
               ))}
             </select>
@@ -1708,111 +1133,60 @@ export default function DesempenhoPage() {
             parcial
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] hidden sm:inline" style={{ color: T.muted }}>
-            Clique no ano da legenda para ocultar
-          </span>
-          <button
-            type="button"
-            onClick={() => setTelaCheia(emCheio('grafico') ? null : 'grafico')}
-            className="inline-flex items-center justify-center h-7 w-7 rounded border"
-            style={{ borderColor: T.border, color: T.text, borderRadius: 6, background: T.card }}
-          >
-            {emCheio('grafico') ? (
-              <Minimize2 className="h-3.5 w-3.5" />
-            ) : (
-              <Maximize2 className="h-3.5 w-3.5" />
-            )}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setTelaCheia(cheio('grafico') ? null : 'grafico')}
+          className="inline-flex items-center justify-center h-7 w-7 rounded border"
+          style={{ borderColor: T.border, color: T.text, background: T.card }}
+        >
+          {cheio('grafico') ? (
+            <Minimize2 className="h-3.5 w-3.5" />
+          ) : (
+            <Maximize2 className="h-3.5 w-3.5" />
+          )}
+        </button>
       </div>
-      <div className={cn('w-full', emCheio('grafico') ? 'flex-1 min-h-0' : 'h-[250px]')}>
+      <div className={cn('w-full', cheio('grafico') ? 'flex-1 min-h-0' : 'h-[250px]')}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={seriePivot} margin={{ top: 5, right: 12, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-            <XAxis
-              dataKey="mes"
-              tickLine={false}
-              axisLine={{ stroke: '#9ca3af' }}
-              tick={{ fill: T.muted, fontSize: 10 }}
-            />
+            <XAxis dataKey="mes" tickLine={false} tick={{ fill: T.muted, fontSize: 10 }} />
             <YAxis
               tickLine={false}
-              axisLine={false}
               tick={{ fill: T.muted, fontSize: 10 }}
-              tickFormatter={(v) => (defM.tipo === 'num' ? fmtNum(Number(v)) : fmtCompacto(v))}
+              tickFormatter={(v) => (defM.tipo === 'num' ? n(v) : comp(v))}
             />
-            <Tooltip
-              formatter={(v: any) =>
-                defM.tipo === 'num' ? fmtNum(Number(v)) : fmtBRL(Number(v), 2)
-              }
-              contentStyle={{ borderRadius: 8, border: '1px solid ' + T.border, fontSize: 11 }}
-            />
+            <Tooltip formatter={(v: any) => (defM.tipo === 'num' ? n(v) : brl(v, 2))} />
             <Legend
-              wrapperStyle={{ fontSize: 10, cursor: 'pointer' }}
               onClick={(e: any) => {
-                const n = String(e?.dataKey ?? e?.value ?? '')
-                if (!n) return
-                setAnosOcultos((p) => (p.includes(n) ? p.filter((x) => x !== n) : p.concat([n])))
+                const nn = String(e?.dataKey ?? '')
+                if (!nn) return
+                setAnosOcultos((p) => (p.includes(nn) ? p.filter((x) => x !== nn) : p.concat([nn])))
               }}
-              formatter={(v: any, e: any) => {
-                const n = String(e?.dataKey ?? v)
-                const oc = anosOcultos.includes(n)
-                return (
-                  <span
-                    style={{
-                      color: oc ? '#9ca3af' : n.includes('parcial') ? T.warn : T.text,
-                      fontWeight: oc ? 400 : 700,
-                      textDecoration: oc ? 'line-through' : 'none',
-                    }}
-                  >
-                    {n}
-                  </span>
-                )
-              }}
+              wrapperStyle={{ fontSize: 10, cursor: 'pointer' }}
             />
-            {anos.map((a, i) => {
-              const ult = anos[anos.length - 1]
-              if (a === ult) {
-                return (
-                  <Line
-                    key={a + 's'}
-                    type="monotone"
-                    dataKey={a}
-                    name={a}
-                    hide={anosOcultos.includes(a)}
-                    stroke={T.pos}
-                    strokeWidth={2.5}
-                    dot={{ r: 2, strokeWidth: 0, fill: T.pos }}
-                    connectNulls={false}
-                  />
-                )
-              }
-              return (
-                <Line
-                  key={a}
-                  type="monotone"
-                  dataKey={a}
-                  name={a}
-                  hide={anosOcultos.includes(a)}
-                  stroke={i === 0 ? '#2563eb' : '#94a3b8'}
-                  strokeWidth={2}
-                  dot={{ r: 2, strokeWidth: 0 }}
-                  connectNulls
-                />
-              )
-            })}
+            {anos.map((a, i) => (
+              <Line
+                key={a}
+                type="monotone"
+                dataKey={a}
+                name={a}
+                hide={anosOcultos.includes(a)}
+                stroke={i === anos.length - 1 ? T.pos : i === 0 ? '#2563eb' : '#94a3b8'}
+                strokeWidth={i === anos.length - 1 ? 2.5 : 2}
+                dot={{ r: 2 }}
+                connectNulls={i !== anos.length - 1}
+              />
+            ))}
             {anos.length > 0 && (
               <Line
-                key="p"
                 type="monotone"
                 dataKey={anos[anos.length - 1] + ' parcial'}
                 name={anos[anos.length - 1] + ' parcial'}
-                hide={anosOcultos.includes(anos[anos.length - 1] + ' parcial')}
                 stroke="#ea580c"
                 strokeWidth={2.5}
                 strokeDasharray="6 4"
-                dot={{ r: 2, strokeWidth: 0, fill: '#ea580c' }}
+                dot={{ r: 2 }}
                 connectNulls
               />
             )}
@@ -1825,26 +1199,22 @@ export default function DesempenhoPage() {
   const blocoGrade = (
     <div
       className={cn(
-        'bg-white border relative flex flex-col',
-        emCheio('grade') && 'fixed inset-2 z-50 shadow-2xl',
+        'bg-white border flex flex-col',
+        cheio('grade') && 'fixed inset-2 z-50 shadow-2xl',
       )}
       style={{
         borderColor: T.border,
         borderRadius: 8,
-        maxHeight: emCheio('grade') ? 'calc(100vh - 16px)' : undefined,
+        maxHeight: cheio('grade') ? 'calc(100vh - 16px)' : undefined,
       }}
     >
       <div className="flex items-center justify-between gap-2 px-3 py-2.5 flex-wrap">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <GripVertical
-            className="h-3.5 w-3.5 cursor-grab self-center"
-            style={{ color: T.muted }}
-          />
+        <div className="flex items-baseline gap-2">
           <h2 className="text-[14px] font-semibold" style={{ color: T.text }}>
             Desempenho por loja
           </h2>
           <span className="text-[11px]" style={{ color: T.muted }}>
-            {linhas.length} unidades
+            {lojasFiltradas.length} unidades
           </span>
           {filtrado && (
             <button
@@ -1868,7 +1238,7 @@ export default function DesempenhoPage() {
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Buscar loja"
               className="h-7 w-32 rounded border pl-6 pr-2 text-[11px] outline-none"
-              style={{ background: T.input, borderColor: T.border, borderRadius: 6, color: T.text }}
+              style={{ background: T.input, borderColor: T.border, color: T.text }}
             />
           </div>
           {alertas.length > 0 && (
@@ -1877,15 +1247,8 @@ export default function DesempenhoPage() {
                 type="button"
                 onClick={() => setDrawerAberto((v) => !v)}
                 aria-expanded={drawerAberto}
-                aria-controls="drc"
-                aria-label={`Atenção: ${alertas.length}`}
                 className="relative inline-flex items-center justify-center h-7 w-7 rounded border"
-                style={{
-                  borderColor: T.border,
-                  background: T.card,
-                  borderRadius: 6,
-                  color: T.text,
-                }}
+                style={{ borderColor: T.border, background: T.card }}
               >
                 <Bell className="h-3.5 w-3.5" />
                 <span
@@ -1895,15 +1258,46 @@ export default function DesempenhoPage() {
                   {alertas.length}
                 </span>
               </button>
-              <div id="drc">
-                <DrawerAtencao
-                  aberto={drawerAberto}
-                  alertas={alertas}
-                  onFechar={() => setDrawerAberto(false)}
-                  onVer={verLoja}
-                  anchorRef={bellRef}
-                />
-              </div>
+              {drawerAberto && (
+                <div
+                  className="absolute right-0 top-full mt-2 z-50 w-[300px] bg-white border shadow-xl"
+                  style={{ borderColor: T.border, borderRadius: 8 }}
+                >
+                  <div
+                    className="flex items-center justify-between px-3 py-2 border-b"
+                    style={{ borderColor: T.border }}
+                  >
+                    <span className="text-[13px] font-semibold" style={{ color: T.neg }}>
+                      Atenção
+                    </span>
+                    <button type="button" onClick={() => setDrawerAberto(false)}>
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="max-h-[280px] overflow-y-auto">
+                    {alertas.map((a) => (
+                      <div
+                        key={a.id}
+                        className="px-3 py-2 border-b flex items-start gap-2"
+                        style={{ borderColor: T.border }}
+                      >
+                        <span
+                          className="mt-1 h-1.5 w-1.5 rounded-full"
+                          style={{ background: a.tom === 'red' ? T.neg : T.warn }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[12px] font-bold truncate" style={{ color: T.text }}>
+                            {a.loja}
+                          </div>
+                          <div className="text-[11px]" style={{ color: T.muted }}>
+                            {a.d}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <div className="relative">
@@ -1911,7 +1305,7 @@ export default function DesempenhoPage() {
               type="button"
               onClick={() => setMenuColunas((v) => !v)}
               className="inline-flex items-center gap-1 h-7 px-2 rounded border text-[11px] font-semibold"
-              style={{ borderColor: T.border, color: T.text, borderRadius: 6, background: T.card }}
+              style={{ borderColor: T.border, color: T.text, background: T.card }}
             >
               <Columns3 className="h-3 w-3" /> Colunas{' '}
               <ChevronDown className="h-3 w-3" style={{ color: T.muted }} />
@@ -1922,28 +1316,27 @@ export default function DesempenhoPage() {
                 style={{ borderColor: T.border, borderRadius: 8 }}
               >
                 {COLUNAS.map((c) => {
-                  const oc = colCfg.ocultas.includes(c.id as string)
+                  const oc = colOcultas.includes(c.id)
                   return (
                     <label
-                      key={c.id as string}
-                      className="flex items-center gap-2 px-1.5 py-1 rounded cursor-pointer text-[11px] hover:bg-gray-50"
+                      key={c.id}
+                      className="flex items-center gap-2 px-1.5 py-1 rounded text-[11px] cursor-pointer hover:bg-gray-50"
                       style={{ color: T.text }}
                     >
                       <input
                         type="checkbox"
                         checked={!oc}
                         onChange={() => {
-                          const ocultas = oc
-                            ? colCfg.ocultas.filter((x) => x !== c.id)
-                            : colCfg.ocultas.concat([c.id as string])
-                          const n = { ...colCfg, ocultas }
-                          setColCfg(n)
-                          gravarPref(userId, K_COLUNAS, n)
+                          const nv = oc
+                            ? colOcultas.filter((x) => x !== c.id)
+                            : colOcultas.concat([c.id])
+                          setColOcultas(nv)
+                          gravarPref(uid, 'colunasOcultas', nv)
                         }}
-                        className="h-3 w-3 accent-[#14532d]"
+                        className="h-3 w-3"
                       />
                       {oc ? (
-                        <EyeOff className="h-3 w-3" style={{ color: T.muted }} />
+                        <EyeOff className="h-3 w-3" />
                       ) : (
                         <Eye className="h-3 w-3" style={{ color: T.pos }} />
                       )}
@@ -1954,38 +1347,24 @@ export default function DesempenhoPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const n = {
-                      ordem: COLUNAS.map((c) => c.id as string),
-                      ocultas: [] as string[],
-                      larguras: {},
-                    }
-                    setColCfg(n)
-                    gravarPref(userId, K_COLUNAS, n)
+                    setColOcultas([])
+                    gravarPref(uid, 'colunasOcultas', [])
                   }}
-                  className="mt-1 w-full inline-flex items-center justify-center gap-1 text-[10px] font-semibold py-1 rounded hover:bg-gray-50"
+                  className="mt-1 w-full text-[10px] font-semibold py-1 rounded hover:bg-gray-50"
                   style={{ color: T.muted }}
                 >
-                  <RotateCcw className="h-3 w-3" /> Mostrar todas
+                  Mostrar todas
                 </button>
               </div>
             )}
           </div>
           <button
             type="button"
-            onClick={exportar}
-            title="Exportar CSV"
+            onClick={() => setTelaCheia(cheio('grade') ? null : 'grade')}
             className="inline-flex items-center justify-center h-7 w-7 rounded border"
-            style={{ borderColor: T.border, color: T.text, borderRadius: 6, background: T.card }}
+            style={{ borderColor: T.border, color: T.text, background: T.card }}
           >
-            <Download className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setTelaCheia(emCheio('grade') ? null : 'grade')}
-            className="inline-flex items-center justify-center h-7 w-7 rounded border"
-            style={{ borderColor: T.border, color: T.text, borderRadius: 6, background: T.card }}
-          >
-            {emCheio('grade') ? (
+            {cheio('grade') ? (
               <Minimize2 className="h-3.5 w-3.5" />
             ) : (
               <Maximize2 className="h-3.5 w-3.5" />
@@ -1994,53 +1373,44 @@ export default function DesempenhoPage() {
         </div>
       </div>
       <div className="border-t" style={{ borderColor: T.border }} />
-      <div className={cn('overflow-auto', emCheio('grade') && 'flex-1')}>
+      <div className={cn('overflow-auto', cheio('grade') && 'flex-1')}>
         <table
           className="text-[12px]"
-          style={{ minWidth: colunasVisiveis.reduce((a, c) => a + larguraDe(c), 0), width: '100%' }}
+          style={{ minWidth: colVisiveis.reduce((a, c) => a + largura(c), 0), width: '100%' }}
         >
           <colgroup>
-            {colunasVisiveis.map((c) => (
-              <col key={c.id as string} style={{ width: larguraDe(c) }} />
+            {colVisiveis.map((c) => (
+              <col key={c.id} style={{ width: largura(c) }} />
             ))}
           </colgroup>
           <thead className="sticky top-0 z-10" style={{ background: T.card }}>
             <tr className="border-b" style={{ borderColor: T.border }}>
-              {colunasVisiveis.map((c) => (
+              {colVisiveis.map((c) => (
                 <th
-                  key={c.id as string}
-                  draggable
-                  onDragStart={() => (arrastandoCol.current = 'c:' + c.id)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => {
-                    if (arrastandoCol.current?.startsWith('c:'))
-                      moverColuna(arrastandoCol.current.slice(2), c.id as string)
-                    arrastandoCol.current = null
-                  }}
+                  key={c.id}
                   onClick={() =>
                     setOrdem((o) =>
                       o?.id === c.id
-                        ? { id: c.id as string, dir: o.dir === 'asc' ? 'desc' : 'asc' }
-                        : { id: c.id as string, dir: 'desc' },
+                        ? { id: c.id, dir: o.dir === 'asc' ? 'desc' : 'asc' }
+                        : { id: c.id, dir: 'desc' },
                     )
                   }
                   aria-sort={
                     ordem?.id === c.id ? (ordem.dir === 'asc' ? 'ascending' : 'descending') : 'none'
                   }
                   className={cn(
-                    'relative py-2 px-2 text-[10px] font-bold uppercase tracking-wider cursor-pointer select-none',
-                    c.alinhamento === 'right' ? 'text-right' : 'text-left',
+                    'relative py-2 px-2 text-[10px] font-bold uppercase cursor-pointer select-none',
+                    c.al === 'right' ? 'text-right' : 'text-left',
                   )}
                   style={{ color: T.muted }}
                 >
                   <span
                     className={cn(
                       'inline-flex items-center gap-1',
-                      c.alinhamento === 'right' && 'justify-end w-full',
+                      c.al === 'right' && 'justify-end w-full',
                     )}
                   >
-                    <GripVertical className="h-2.5 w-2.5 shrink-0 opacity-40" />
-                    <span className="truncate">{c.label}</span>
+                    {c.label}
                     {ordem?.id === c.id &&
                       (ordem.dir === 'asc' ? (
                         <ArrowUp className="h-2.5 w-2.5" />
@@ -2052,11 +1422,7 @@ export default function DesempenhoPage() {
                     onMouseDown={(e) => {
                       e.stopPropagation()
                       e.preventDefault()
-                      redimensionando.current = {
-                        id: c.id as string,
-                        ini: e.clientX,
-                        largura: larguraDe(c),
-                      }
+                      redim.current = { id: c.id, ini: e.clientX, w: largura(c) }
                       document.body.style.cursor = 'col-resize'
                     }}
                     onClick={(e) => e.stopPropagation()}
@@ -2068,312 +1434,235 @@ export default function DesempenhoPage() {
             </tr>
           </thead>
           <tbody>
-            {linhas.map((l, idx) => {
-              const sel = selecionadas.includes(l.codparc)
-              const anterior = idx > 0 ? linhas[idx - 1] : null
-              const chaveRede = 'r:' + String(l.rede || '')
-              const chaveSub = chaveRede + '|' + (l.loja_nova ? 'nova' : 'exist')
-              const mudaRede = !anterior || String(anterior.rede || '') !== String(l.rede || '')
-              const mudaSub = mudaRede || anterior?.loja_nova !== l.loja_nova
-              // (f) Recolher NÃO esconde o nível superior: a linha da Rede e a
-              // do subgrupo continuam visíveis com "+". Só as lojas somem.
-              const redeFechada = gruposFechados.includes(chaveRede)
-              const subFechado = gruposFechados.includes(chaveSub)
-              if (redeFechada && !mudaRede) return null
-              if (subFechado && !mudaSub && !mudaRede) return null
-              const qtdRede = linhas.filter(
-                (x) => String(x.rede || '') === String(l.rede || ''),
-              ).length
-              const qtdSub = linhas.filter(
-                (x) => String(x.rede || '') === String(l.rede || '') && x.loja_nova === l.loja_nova,
-              ).length
-              void qtdSub
+            {/* (f,i) Rede -> Bandeira -> Loja. Recolher esconde só os níveis
+                abaixo; a linha recolhida mantém "+" e os subtotais de TODAS as
+                colunas, inclusive os % (f1 e f3). */}
+            {grupos.map((g) => {
+              const chR = 'r:' + g.rede
+              const fechR = fechados.includes(chR)
               return (
-                <Fragment key={l.codparc}>
-                  {mudaRede &&
-                    (() => {
-                      const g = grupos.find((x) => 'r:' + x.rede === chaveRede)
-                      const t = g ? g.total : null
-                      return (
-                        <tr style={{ background: '#eef2f5', borderTop: '1px solid ' + T.border }}>
-                          {colunasVisiveis.map((c) => {
-                            const al = c.alinhamento === 'right' ? 'text-right' : 'text-left'
-                            if (c.id === 'rede')
-                              return (
-                                <td key={c.id as string} className="px-2 py-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => alternarGrupo(chaveRede)}
-                                    aria-expanded={!gruposFechados.includes(chaveRede)}
-                                    className="inline-flex items-center gap-1.5 text-[12px] font-bold"
-                                    style={{ color: T.text }}
-                                  >
-                                    <span
-                                      className="inline-flex items-center justify-center h-4 w-4 rounded border text-[10px] font-bold"
-                                      style={{
-                                        borderColor: T.border,
-                                        color: T.muted,
-                                        background: T.card,
-                                      }}
-                                    >
-                                      {gruposFechados.includes(chaveRede) ? '+' : '−'}
-                                    </span>
-                                    {l.rede || 'Sem rede'}
-                                  </button>
-                                </td>
-                              )
-                            if (c.id === 'loja')
-                              return (
-                                <td
-                                  key={c.id as string}
-                                  className="px-2 text-[11px]"
-                                  style={{ color: T.muted }}
-                                >
-                                  {qtdRede} lojas
-                                </td>
-                              )
-                            return (
-                              <td
-                                key={c.id as string}
-                                className={cn('px-2 py-1.5 tabular-nums font-bold', al)}
-                                style={{ color: T.text }}
-                              >
-                                {celula(c, t ? (t as any)[c.id === 'meta' ? 'meta' : c.id] : null)}
-                              </td>
-                            )
-                          })}
-                        </tr>
-                      )
-                    })()}
-                  {!gruposFechados.includes(chaveRede) && mudaSub && (
-                    <tr style={{ background: T.input }}>
-                      {colunasVisiveis.map((c) => {
-                        const g = grupos.find((x) => 'r:' + x.rede === chaveRede)
-                        const sg =
-                          g?.subgrupos?.find((s) => chaveRede + '|' + s.chave === chaveSub) ?? null
-                        const t = sg ? sg.total : null
-                        const al = c.alinhamento === 'right' ? 'text-right' : 'text-left'
-                        if (c.id === 'rede')
-                          return (
-                            <td key={c.id as string} className="px-2 py-1">
-                              <button
-                                type="button"
-                                onClick={() => alternarGrupo(chaveSub)}
-                                aria-expanded={!gruposFechados.includes(chaveSub)}
-                                className="inline-flex items-center gap-1.5 text-[11px] font-semibold pl-3"
-                                style={{ color: T.text }}
-                              >
-                                <span
-                                  className="inline-flex items-center justify-center h-3.5 w-3.5 rounded border text-[9px] font-bold"
-                                  style={{
-                                    borderColor: T.border,
-                                    color: T.muted,
-                                    background: T.card,
-                                  }}
-                                >
-                                  {gruposFechados.includes(chaveSub) ? '+' : '−'}
-                                </span>
-                                {l.loja_nova ? 'Loja Nova' : 'SSS'}
-                              </button>
-                            </td>
-                          )
-                        if (c.id === 'loja')
-                          return (
-                            <td
-                              key={c.id as string}
-                              className="px-2 text-[10px]"
-                              style={{ color: T.muted }}
-                            >
-                              {qtdSub} lojas
-                            </td>
-                          )
-                        return (
-                          <td
-                            key={c.id as string}
-                            className={cn('px-2 py-1 tabular-nums font-semibold', al)}
-                            style={{ color: T.text }}
-                          >
-                            {celula(c, t ? (t as any)[c.id === 'meta' ? 'meta' : c.id] : null)}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )}
-                  <tr
-                    onClick={() => alternarLinha(l.codparc)}
-                    className="border-b hover:bg-[#f9fafb] cursor-pointer"
-                    style={{
-                      borderColor: T.border,
-                      height: 38,
-                      background: sel ? T.tintGreen : undefined,
-                    }}
-                  >
-                    {colunasVisiveis.map((c) => {
-                      const valor = valorCol(l, c)
-                      const al = c.alinhamento === 'right' ? 'text-right' : 'text-left'
-                      if (c.id === 'ating') {
-                        if (valor === null || valor === undefined)
-                          return (
-                            <td
-                              key={c.id as string}
-                              className={cn('px-2', al)}
-                              style={{ color: T.muted }}
-                            >
-                              —
-                            </td>
-                          )
-                        const vv = Number(valor)
-                        const acima = vv >= LIMIAR_ATG.meta
-                        const at = vv >= LIMIAR_ATG.atencao && vv < LIMIAR_ATG.meta
-                        return (
-                          <td
-                            key={c.id as string}
-                            className={cn('px-2 tabular-nums', al)}
-                            style={{
-                              background: acima ? T.tintGreen : at ? T.tintAmber : T.tintRed,
-                            }}
-                          >
-                            <span
-                              className="inline-flex items-center gap-1 justify-end w-full font-bold"
-                              style={{ color: acima ? T.pos : at ? T.warn : T.neg }}
-                            >
-                              {acima ? '▲' : at ? '▬' : '▼'} {fmtPct(vv)}
-                            </span>
-                          </td>
-                        )
-                      }
-                      if (c.tipo === 'delta') {
-                        if (valor === null || valor === undefined)
-                          return (
-                            <td
-                              key={c.id as string}
-                              className={cn('px-2', al)}
-                              style={{ color: T.muted }}
-                            >
-                              —
-                            </td>
-                          )
-                        const vv = Number(valor)
-                        const cor = vv > 0.05 ? T.pos : vv < -0.05 ? T.neg : T.muted
-                        return (
-                          <td
-                            key={c.id as string}
-                            className={cn('px-2 tabular-nums font-semibold', al)}
-                            style={{ color: cor }}
-                          >
-                            {vv > 0.05 ? '▲ ' : vv < -0.05 ? '▼ ' : ''}
-                            {fmtPct(vv)}
-                          </td>
-                        )
-                      }
-                      if (c.id === 'loja')
-                        return (
-                          <td
-                            key={c.id as string}
-                            className="px-2 font-semibold truncate"
-                            style={{ color: T.text }}
-                            title={l.loja}
-                          >
-                            <span className="inline-flex items-center gap-1 max-w-full">
-                              <span className="truncate">{l.loja}</span>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setParecerLoja(l)
-                                  setParecerAberto(true)
-                                }}
-                                title="Parecer"
-                                className="shrink-0 opacity-60 hover:opacity-100"
-                                style={{ color: T.nav }}
-                              >
-                                <Sparkles className="h-3 w-3" />
-                              </button>
-                            </span>
-                          </td>
-                        )
+                <Fragment key={chR}>
+                  <tr style={{ background: '#eef2f5', borderTop: '1px solid ' + T.border }}>
+                    {colVisiveis.map((c) => {
                       if (c.id === 'rede')
                         return (
-                          <td
-                            key={c.id as string}
-                            className="px-2 truncate"
-                            style={{ color: T.muted }}
-                          >
-                            {l.rede}
+                          <td key={c.id} className="px-2 py-1.5">
+                            <button
+                              type="button"
+                              onClick={() => alternar(chR)}
+                              aria-expanded={!fechR}
+                              className="inline-flex items-center gap-1.5 text-[12px] font-bold"
+                              style={{ color: T.text }}
+                            >
+                              <span
+                                className="inline-flex items-center justify-center h-4 w-4 rounded border text-[11px] font-bold"
+                                style={{
+                                  borderColor: T.border,
+                                  color: T.muted,
+                                  background: T.card,
+                                }}
+                              >
+                                {fechR ? '+' : '−'}
+                              </span>
+                              {g.rede}
+                            </button>
                           </td>
                         )
-                      const txt =
-                        valor === null || valor === undefined
-                          ? '—'
-                          : c.tipo === 'brl'
-                            ? fmtBRL(Number(valor))
-                            : c.tipo === 'pct'
-                              ? fmtPct(Number(valor))
-                              : c.tipo === 'num'
-                                ? fmtNum(Number(valor))
-                                : String(valor)
+                      if (c.id === 'loja')
+                        return (
+                          <td key={c.id} className="px-2 text-[11px]" style={{ color: T.muted }}>
+                            {g.nLojas} lojas
+                          </td>
+                        )
                       return (
                         <td
-                          key={c.id as string}
-                          className={cn('px-2 tabular-nums truncate', al)}
-                          style={{
-                            color: c.id === 'faturamento' ? T.text : T.muted,
-                            fontWeight: c.id === 'faturamento' ? 700 : 400,
-                          }}
-                          title={txt}
+                          key={c.id}
+                          className={cn(
+                            'px-2 py-1.5 tabular-nums font-bold',
+                            c.al === 'right' ? 'text-right' : 'text-left',
+                          )}
+                          style={{ color: T.text }}
                         >
-                          {txt}
+                          {celula(c, (g.total as any)[c.id])}
                         </td>
                       )
                     })}
                   </tr>
+                  {!fechR &&
+                    g.bandeiras.map((b) => {
+                      const chB = chR + '|' + b.chave
+                      const fechB = fechados.includes(chB)
+                      return (
+                        <Fragment key={chB}>
+                          <tr style={{ background: T.input }}>
+                            {colVisiveis.map((c) => {
+                              if (c.id === 'rede')
+                                return (
+                                  <td key={c.id} className="px-2 py-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => alternar(chB)}
+                                      aria-expanded={!fechB}
+                                      className="inline-flex items-center gap-1.5 text-[11px] font-semibold pl-3"
+                                      style={{ color: T.text }}
+                                    >
+                                      <span
+                                        className="inline-flex items-center justify-center h-3.5 w-3.5 rounded border text-[9px] font-bold"
+                                        style={{
+                                          borderColor: T.border,
+                                          color: T.muted,
+                                          background: T.card,
+                                        }}
+                                      >
+                                        {fechB ? '+' : '−'}
+                                      </span>
+                                      {b.label}
+                                    </button>
+                                  </td>
+                                )
+                              if (c.id === 'loja')
+                                return (
+                                  <td
+                                    key={c.id}
+                                    className="px-2 text-[10px]"
+                                    style={{ color: T.muted }}
+                                  >
+                                    {b.lojas.length} lojas
+                                  </td>
+                                )
+                              return (
+                                <td
+                                  key={c.id}
+                                  className={cn(
+                                    'px-2 py-1 tabular-nums font-semibold',
+                                    c.al === 'right' ? 'text-right' : 'text-left',
+                                  )}
+                                  style={{ color: T.text }}
+                                >
+                                  {celula(c, (b.total as any)[c.id])}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                          {!fechB &&
+                            b.lojas.map((l) => {
+                              const sel = selecionadas.includes(l.codparc)
+                              return (
+                                <tr
+                                  key={l.codparc}
+                                  onClick={() => altLinha(l.codparc)}
+                                  className="border-b hover:bg-[#f9fafb] cursor-pointer"
+                                  style={{
+                                    borderColor: T.border,
+                                    height: 34,
+                                    background: sel ? T.tintGreen : undefined,
+                                  }}
+                                >
+                                  {colVisiveis.map((c) => {
+                                    if (c.id === 'rede')
+                                      return <td key={c.id} className="px-2 pl-8" />
+                                    if (c.id === 'loja')
+                                      return (
+                                        <td
+                                          key={c.id}
+                                          className="px-2 text-[11px] font-medium truncate pl-6"
+                                          style={{ color: T.text }}
+                                          title={l.loja}
+                                        >
+                                          <span className="inline-flex items-center gap-1 max-w-full">
+                                            <span className="truncate">{l.loja}</span>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation()
+                                                setParecerLoja(l)
+                                                setParecerAberto(true)
+                                              }}
+                                              className="shrink-0 opacity-0 hover:opacity-100"
+                                              style={{ color: T.nav }}
+                                            >
+                                              <Sparkles className="h-3 w-3" />
+                                            </button>
+                                          </span>
+                                        </td>
+                                      )
+                                    return (
+                                      <td
+                                        key={c.id}
+                                        className={cn(
+                                          'px-2 tabular-nums',
+                                          c.al === 'right' ? 'text-right' : 'text-left',
+                                        )}
+                                      >
+                                        {celula(c, (l as any)[c.id])}
+                                      </td>
+                                    )
+                                  })}
+                                </tr>
+                              )
+                            })}
+                        </Fragment>
+                      )
+                    })}
                 </Fragment>
               )
             })}
-            {linhas.length === 0 && (
-              <tr>
-                <td
-                  colSpan={colunasVisiveis.length}
-                  className="py-8 text-center text-[12px]"
-                  style={{ color: T.muted }}
-                >
-                  Sem lojas para os filtros.
-                </td>
-              </tr>
-            )}
+            <tr style={{ background: '#eef2f5', borderTop: '2px solid ' + T.border }}>
+              {colVisiveis.map((c) => {
+                if (c.id === 'rede')
+                  return (
+                    <td
+                      key={c.id}
+                      className="px-2 py-2 text-[12px] font-bold"
+                      style={{ color: T.text }}
+                    >
+                      Total
+                    </td>
+                  )
+                if (c.id === 'loja')
+                  return (
+                    <td key={c.id} className="px-2 text-[11px]" style={{ color: T.muted }}>
+                      {lojasFiltradas.length} lojas
+                    </td>
+                  )
+                return (
+                  <td
+                    key={c.id}
+                    className={cn(
+                      'px-2 py-2 tabular-nums font-bold',
+                      c.al === 'right' ? 'text-right' : 'text-left',
+                    )}
+                    style={{ color: T.text }}
+                  >
+                    {celula(c, (somaGrupo(lojasFiltradas) as any)[c.id])}
+                  </td>
+                )
+              })}
+            </tr>
           </tbody>
         </table>
-      </div>
-      <div
-        className="px-3 py-1.5 text-[10px] border-t flex items-center justify-between"
-        style={{ color: T.muted, borderColor: T.border }}
-      >
-        <span>Arraste as colunas pelo cabeçalho · arraste a borda direita para redimensionar</span>
-        <span>Clique numa linha para filtrar os cards</span>
       </div>
     </div>
   )
 
-  const mapaBlocos: Record<BlocoId, React.ReactNode> = {
+  const mapBlocos: Record<Bloco, any> = {
     cards: blocoCards,
     grade: blocoGrade,
     grafico: blocoGrafico,
   }
-  const ordemBlocos = (Object.keys(layout) as BlocoId[]).sort((a, b) => layout[a] - layout[b])
 
   return (
     <div className="space-y-3 pb-8" style={{ background: T.bg }}>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
-          <h1 className="text-[18px] font-bold tracking-tight" style={{ color: T.text }}>
+          <h1 className="text-[18px] font-bold" style={{ color: T.text }}>
             Desempenho por Unidade
           </h1>
           <p className="text-[11px]" style={{ color: T.muted }}>
             {nomeCanal} · {MESES[f.mes - 1]}/{f.ano}
             {dados.do_cache && (
               <span className="ml-1.5">
-                · {dados.stale ? 'cache antigo' : 'cache'}
-                {dados.cache_idade_min ? ` ${dados.cache_idade_min} min` : ''}
+                · {dados.stale ? 'cache antigo' : 'cache'} {dados.cache_idade_min ?? 0} min
               </span>
             )}
           </p>
@@ -2395,7 +1684,7 @@ export default function DesempenhoPage() {
               size="sm"
               onClick={() => carregar(true)}
               disabled={loading}
-              className={cn('h-8 text-[11px] transition-colors', loading && 'animate-pulse')}
+              className={cn('h-8 text-[11px]', loading && 'animate-pulse')}
               style={{
                 borderRadius: 6,
                 borderColor: loading ? T.warn : undefined,
@@ -2404,12 +1693,13 @@ export default function DesempenhoPage() {
               }}
             >
               <RefreshCw className={cn('h-3 w-3 mr-1', loading && 'animate-spin')} />
-              <span>{loading ? 'Atualizando' : 'Atualizar'}</span>
+              {loading ? 'Atualizando' : 'Atualizar'}
             </Button>
           )}
         </div>
       </div>
 
+      {/* painel de filtros */}
       <div className="bg-white border" style={{ borderColor: T.border, borderRadius: 8 }}>
         <div className="flex items-center gap-2 px-3 h-[50px] overflow-x-auto">
           <button
@@ -2426,31 +1716,12 @@ export default function DesempenhoPage() {
               <ChevronDown className="h-3 w-3" />
             )}
           </button>
-          <div className="flex items-center gap-1.5 min-w-0">
-            <Chip rotulo="Canal" valor={nomeCanal} onRemover={() => setCampo('aba', 'varejo')} />
-            <Chip
-              rotulo="Ano"
-              valor={String(f.ano)}
-              onRemover={() => setCampo('ano', anoCorrente)}
-            />
-            <Chip
-              rotulo="Mês"
-              valor={MESES[f.mes - 1]?.slice(0, 3) || ''}
-              onRemover={() => setCampo('mes', mesCorrente)}
-            />
-            <Chip rotulo="Rede" valor={f.rede || 'Todas'} onRemover={() => setCampo('rede', '')} />
-            <Chip
-              rotulo="Supervisor"
-              valor={nomeSup}
-              onRemover={() => setCampo('supervisor', '')}
-            />
-          </div>
           <div className="ml-auto flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setFiltrosAbertos((v) => !v)}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded border text-[11px] font-semibold"
-              style={{ borderColor: T.border, color: T.text, borderRadius: 6, background: T.card }}
+              className="px-2 py-1 rounded border text-[11px] font-semibold"
+              style={{ borderColor: T.border, color: T.text, background: T.card }}
             >
               Mais filtros{filtrosAtivos > 0 ? ` (${filtrosAtivos})` : ''}
             </button>
@@ -2459,8 +1730,8 @@ export default function DesempenhoPage() {
               onClick={() =>
                 setF({
                   aba: 'varejo',
-                  ano: anoCorrente,
-                  mes: mesCorrente,
+                  ano: anoC,
+                  mes: mesC,
                   rede: '',
                   tipoLoja: '',
                   tipoGrupo: '',
@@ -2480,93 +1751,87 @@ export default function DesempenhoPage() {
           <>
             <div className="border-t" style={{ borderColor: T.border }} />
             <div className="px-3 py-2.5 flex flex-wrap gap-3 items-end">
-              <CampoSelect
+              <Sel
                 label="Canal"
                 largura={230}
                 value={f.aba}
-                onChange={(v) => setCampo('aba', v)}
+                onChange={(v: any) => setCampo('aba', v)}
                 options={CANAIS.map((c) => ({ v: c.id, l: c.label }))}
               />
-              <CampoSelect
+              <Sel
                 label="Ano"
                 largura={90}
                 value={String(f.ano)}
-                onChange={(v) => setCampo('ano', Number(v))}
-                options={[anoCorrente - 2, anoCorrente - 1, anoCorrente, anoCorrente + 1].map(
-                  (a) => ({ v: String(a), l: String(a) }),
-                )}
+                onChange={(v: any) => setCampo('ano', Number(v))}
+                options={[anoC - 2, anoC - 1, anoC, anoC + 1].map((a) => ({
+                  v: String(a),
+                  l: String(a),
+                }))}
               />
-              <CampoSelect
+              <Sel
                 label="Mês"
                 largura={110}
                 value={String(f.mes)}
-                onChange={(v) => setCampo('mes', Number(v))}
+                onChange={(v: any) => setCampo('mes', Number(v))}
                 options={MESES.map((m, i) => ({ v: String(i + 1), l: m.slice(0, 3) }))}
               />
-              {/* (c) Rede só habilita no canal Varejo (Redes) */}
-              <CampoSelect
+              {/* (c) Rede só no canal Varejo */}
+              <Sel
                 label="Rede"
                 largura={130}
                 value={f.aba === 'varejo' ? f.rede : ''}
-                onChange={(v) => setCampo('rede', v)}
+                onChange={(v: any) => setCampo('rede', v)}
                 options={f.aba === 'varejo' ? REDES : [{ v: '', l: '—' }]}
                 disabled={f.aba !== 'varejo'}
               />
-              <CampoSelect
+              {/* (f2) NSS / SSS */}
+              <Sel
                 label="Tipo Loja"
                 largura={130}
                 value={f.tipoLoja}
-                onChange={(v) => setCampo('tipoLoja', v)}
+                onChange={(v: any) => setCampo('tipoLoja', v)}
                 options={[
                   { v: '', l: 'Todas' },
-                  { v: 'nova', l: 'Loja Nova' },
-                  { v: 'existente', l: 'Existente' },
+                  { v: 'nova', l: 'NSS' },
+                  { v: 'existente', l: 'SSS' },
                 ]}
               />
-              <CampoSelect
-                label="Tipo Grupo"
-                largura={140}
+              {/* (d,e) Bandeira conforme a Rede */}
+              <Sel
+                label="Bandeira"
+                largura={150}
                 value={f.tipoGrupo}
-                onChange={(v) => setCampo('tipoGrupo', v)}
-                options={
-                  f.aba === 'varejo' && f.rede === 'carone'
-                    ? GRUPOS_CARONE
-                    : f.aba === 'varejo' && f.rede === 'extrabom'
-                      ? GRUPOS_COUTINHO
-                      : [
-                          { v: '', l: 'Todos' },
-                          { v: 'varejo', l: 'Varejo' },
-                          { v: 'atacado', l: 'Atacado Vem' },
-                        ]
-                }
+                onChange={(v: any) => setCampo('tipoGrupo', v)}
+                options={carteiraBandeira}
                 disabled={f.aba !== 'varejo'}
               />
-              <CampoSelect
+              <Sel
                 label="Tipo Venda"
                 largura={135}
                 value={f.tipoVenda}
-                onChange={(v) => setCampo('tipoVenda', v)}
+                onChange={(v: any) => setCampo('tipoVenda', v)}
                 options={[
                   { v: '', l: 'Todos' },
                   { v: 'loja', l: 'Stores' },
                   { v: 'ecommerce', l: 'Ecommerce' },
                 ]}
               />
-              <CampoSelect
+              <Sel
                 label="Loja"
                 largura={210}
                 value={f.loja}
-                onChange={(v) => setCampo('loja', v)}
+                onChange={(v: any) => setCampo('loja', v)}
                 options={[
                   { v: '', l: 'Todas' },
                   ...(dados.lojas || []).map((l) => ({ v: String(l.codparc), l: l.loja })),
                 ]}
               />
-              <CampoSelect
+              {/* (g) Supervisor 30% menor: 260 -> 182 */}
+              <Sel
                 label="Supervisor"
-                largura={208}
+                largura={182}
                 value={f.supervisor}
-                onChange={(v) => setCampo('supervisor', v)}
+                onChange={(v: any) => setCampo('supervisor', v)}
                 options={[
                   { v: '', l: 'Todos' },
                   ...(dados.supervisores || []).map((s) => ({
@@ -2582,11 +1847,10 @@ export default function DesempenhoPage() {
 
       {dados.aviso && (
         <div
-          className="px-3 py-2 rounded-lg border text-[11px] flex items-start gap-2"
+          className="px-3 py-2 rounded-lg border text-[11px]"
           style={{ background: T.tintAmber, borderColor: '#fde68a', color: T.warn }}
         >
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-          <div>{dados.aviso}</div>
+          {dados.aviso}
         </div>
       )}
       {filtrado && (
@@ -2610,88 +1874,28 @@ export default function DesempenhoPage() {
         <div
           key={b}
           onDragOver={(e) => {
-            if (blocoArrastando) e.preventDefault()
+            if (arrastandoBloco) e.preventDefault()
           }}
           onDrop={(e) => {
-            if (blocoArrastando) {
+            if (arrastandoBloco) {
               e.preventDefault()
-              soltarBloco(idx)
+              const nv = { ...layout } as any
+              const a = layout[arrastandoBloco]
+              nv[arrastandoBloco] = idx
+              const outro = (Object.keys(layout) as Bloco[]).find(
+                (x) => x !== arrastandoBloco && layout[x] === idx,
+              )
+              if (outro) nv[outro] = a
+              setLayout(nv)
+              gravarPref(uid, 'layout', nv)
+              setArrastandoBloco(null)
             }
           }}
         >
-          {/* (h) barra do bloco: mover (arrastar), subir, descer e ocultar */}
-          <div className="flex items-center gap-1.5 mb-1">
-            <span className="text-[9px] uppercase tracking-wider" style={{ color: T.muted }}>
-              {b === 'cards' ? 'indicadores' : b === 'grade' ? 'grade' : 'gráfico'}
-            </span>
-            <span className="flex-1 h-px" style={{ background: T.border }} />
-            <button
-              type="button"
-              draggable
-              onDragStart={() => setBlocoArrastando(b)}
-              onDragEnd={() => setBlocoArrastando(null)}
-              title="Arraste para reposicionar"
-              className="px-1 rounded border text-[9px] inline-flex items-center gap-0.5 cursor-grab opacity-60 hover:opacity-100"
-              style={{ borderColor: T.border, color: T.muted, background: T.card }}
-            >
-              <GripVertical className="h-2.5 w-2.5" /> mover
-            </button>
-            <button
-              type="button"
-              onClick={() => moverBloco(b, -1)}
-              disabled={idx === 0}
-              title="Mover para cima"
-              aria-label="Mover para cima"
-              className="px-1 py-0.5 rounded border inline-flex items-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50"
-              style={{ borderColor: T.border, color: T.muted, background: T.card }}
-            >
-              <ArrowUp className="h-2.5 w-2.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => moverBloco(b, 1)}
-              disabled={idx === ordemBlocos.length - 1}
-              title="Mover para baixo"
-              aria-label="Mover para baixo"
-              className="px-1 py-0.5 rounded border inline-flex items-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50"
-              style={{ borderColor: T.border, color: T.muted, background: T.card }}
-            >
-              <ArrowDown className="h-2.5 w-2.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const n = blocosOcultos.concat([b])
-                setBlocosOcultos(n)
-                gravarPref(userId, 'blocosOcultos', n)
-              }}
-              title="Ocultar este bloco"
-              aria-label="Ocultar bloco"
-              className="px-1 py-0.5 rounded border inline-flex items-center hover:bg-gray-50"
-              style={{ borderColor: T.border, color: T.muted, background: T.card }}
-            >
-              <EyeOff className="h-2.5 w-2.5" />
-            </button>
-          </div>
-          {!blocosOcultos.includes(b) && (
-            <div className={cn(blocoArrastando === b && 'opacity-60')}>{mapaBlocos[b]}</div>
-          )}
+          {barraBloco(b, idx)}
+          {!blocosOcultos.includes(b) && <div>{mapBlocos[b]}</div>}
         </div>
       ))}
-
-      {blocosOcultos.length > 0 && (
-        <button
-          type="button"
-          onClick={() => {
-            setBlocosOcultos([])
-            gravarPref(userId, 'blocosOcultos', [])
-          }}
-          className="w-full rounded border border-dashed py-1.5 text-[10px] font-semibold inline-flex items-center justify-center gap-1"
-          style={{ borderColor: T.border, color: T.muted }}
-        >
-          <Eye className="h-3 w-3" /> reexibir {blocosOcultos.length} bloco(s) oculto(s)
-        </button>
-      )}
 
       <ParceiroParecerDialog
         aberto={parecerAberto}
@@ -2702,24 +1906,24 @@ export default function DesempenhoPage() {
           ', ' +
           dados.periodo +
           '. Faturamento ' +
-          fmtBRL(K.faturamento) +
+          brl(K.faturamento) +
           ', venda orçada ' +
-          fmtBRL(K.meta_venda) +
+          brl(K.meta_venda) +
           ' (atingimento ' +
-          fmtPct(K.faturamento_ating ?? null) +
+          pct(K.faturamento_ating) +
           ')' +
           ', quantidade ' +
-          fmtNum(K.quantidade_kg) +
+          n(K.quantidade_kg) +
           ', preço médio ' +
-          fmtBRL(K.preco_medio, 2) +
+          brl(K.preco_medio, 2) +
           ', ticket médio ' +
-          fmtBRL(K.ticket_medio, 2) +
+          brl(K.ticket_medio, 2) +
           ', cupons ' +
-          fmtNum(K.cupons) +
+          n(K.cupons) +
           ', lojas ' +
-          nLojas +
+          n(K.nLojas) +
           ', funcionários ' +
-          fmtNum(K.funcionarios ?? null) +
+          n(K.funcionarios) +
           '.'
         }
         loja={parecerLoja}
@@ -2729,16 +1933,16 @@ export default function DesempenhoPage() {
               parecerLoja.loja +
               ' (rede ' +
               parecerLoja.rede +
+              ', bandeira ' +
+              (parecerLoja.bandeira || '—') +
               '). Faturamento ' +
-              fmtBRL(parecerLoja.faturamento) +
+              brl(parecerLoja.faturamento) +
               ', orçado ' +
-              fmtBRL(parecerLoja.meta ?? null) +
+              brl(parecerLoja.meta) +
               ' (atingimento ' +
-              fmtPct(parecerLoja.ating_venda ?? null) +
+              pct(parecerLoja.ating_venda) +
               '), A.A. ' +
-              fmtPct(parecerLoja.cresc_aa ?? null) +
-              ', funcionários ' +
-              fmtNum(parecerLoja.funcionarios ?? null) +
+              pct(parecerLoja.cresc_aa) +
               '.'
             : ''
         }
