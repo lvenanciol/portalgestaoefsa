@@ -91,7 +91,12 @@
 // v60 (13/11/2026): Desempenho Unidades v5 — tela cheia em gráficos e grade,
 // controles de exibir/ocultar/mover no próprio item, cards 25% mais estreitos,
 // gráfico de evolução com 5 anos (2022-2026) e colunas por loja com meta e A.A.
-const CACHE_NAME = 'pge-pwa-v60'
+// v61 (13/11/2026 12:40): Desempenho por Unidade — tela cheia em gráfico e
+// grade, dropdown de supervisor sem estouro, grade com larguras explícitas
+// por coluna, cards com ícone/ cor próprios e rodapé centralizado de variações
+// (% meta e % A.A. em Faturamento/CMV/Quebra; % M.A. e % A.A. nos demais),
+// controles de exibir/ocultar/mover no próprio card e quebra por loja.
+const CACHE_NAME = 'pge-pwa-v61'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
