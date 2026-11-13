@@ -36,15 +36,13 @@ import {
   ChevronLeft,
   ChevronRight,
   TrendingUp,
-  TrendingDown,
   Percent,
   Package,
   Tag,
   Receipt,
   Ticket,
   Store,
-  DollarSign,
-  ShoppingCart,
+  Users,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { Button } from '@/components/ui/button'
@@ -53,19 +51,20 @@ import { useBotoes } from '@/services/botoes-service'
 import { cn } from '@/lib/utils'
 
 // ============================================================================
-// DESEMPENHO POR UNIDADE — camada de apresentação (13/11/2026)
+// DESEMPENHO POR UNIDADE — apresentação (13/11/2026, v7)
 //
 // ESCOPO: só HTML/CSS/JS. Nenhuma query, endpoint, KPI ou rota alterada.
 //
-// CORREÇÕES DESTA RODADA (print do dono):
-//  a) Tela cheia em TODOS os gráficos e na grade.
-//  b) Dropdown de supervisor não estoura mais o layout (min-w-0 + truncate).
-//  c) Grade reorganizada: larguras explícitas por coluna (colgroup) — o
-//     table-fixed sem width espremia tudo e truncava em "Caro…", "R$ 2…".
-//  d) Cards Faturamento/CMV/Quebra: rodapé centralizado com % da meta e % A.A.
-//  e) Cards Quantidade/Preço/Cupons/Ticket: rodapé com % M.A e % A.A.
-//  f) Cada card tem ícone e cor próprios.
-//  g) Colunas por loja preenchidas a partir do Sankhya (ver hook).
+// ITENS DESTA RODADA:
+//  a) arrastar blocos (gráfico/grade) entre as áreas da tela
+//  b) largura dos filtros = largura do conteúdo (auto-fit no grid)
+//  c) grade com largura default pelo conteúdo + redimensionável por arrasto
+//  d) nomes dos cards legíveis (não truncados)
+//  e) clicar na(s) linha(s) filtra os cards para a(s) loja(s) selecionada(s)
+//  f) exibir/ocultar/mover cards e gráficos no próprio item
+//  g) colunas por loja vindas do Sankhya
+//  h) funcionários no card "Lojas"
+//  i) "Segmento" -> "Canal"; "Varejo (Carone + Extrabom)" -> "Varejo (Redes)"
 // ============================================================================
 
 const T = {
@@ -89,8 +88,9 @@ const LIMIAR_ATG = { meta: 100, atencao: 95 }
 
 type Aba = 'distribuicao' | 'atacado' | 'carone' | 'extrabom' | 'varejo'
 
-const SEGMENTOS: { id: Aba; label: string }[] = [
-  { id: 'varejo', label: 'Varejo (Carone + Extrabom)' },
+// item i) Canal em vez de Segmento; rótulo Varejo (Redes)
+const CANAIS: { id: Aba; label: string }[] = [
+  { id: 'varejo', label: 'Varejo (Redes)' },
   { id: 'extrabom', label: 'Extrabom' },
   { id: 'carone', label: 'Carone' },
   { id: 'atacado', label: 'Atacado' },
@@ -151,6 +151,7 @@ interface Loja {
   cmv_parcial?: number | null
   cmv_mensal?: number | null
   quebra?: number | null
+  funcionarios?: number | null
 }
 
 interface Resposta {
@@ -162,7 +163,8 @@ interface Resposta {
   origem: Record<string, string>
   serie: { MES: string; ANO: string; FAT: number | null }[]
   lojas: Loja[]
-  supervisores: { codparc: string | number; nome: string; qtd?: number; email?: string | null }[]
+  supervisores: { codparc: string | number; nome: string; qtd?: number }[]
+  total_funcionarios?: number
   falhas?: string[]
   aviso?: string
   do_cache?: boolean
@@ -170,20 +172,18 @@ interface Resposta {
   cache_idade_min?: number
 }
 
-const fmtNum = (v: number | null | undefined, dec = 0) =>
+const fmtNum = (v: number | null | undefined, d = 0) =>
   v === null || v === undefined
     ? '—'
-    : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec })
-
-const fmtBRL = (v: number | null | undefined, dec = 0) =>
+    : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d })
+const fmtBRL = (v: number | null | undefined, d = 0) =>
   v === null || v === undefined
     ? '—'
     : Number(v).toLocaleString('pt-BR', {
         style: 'currency',
         currency: 'BRL',
-        maximumFractionDigits: dec,
+        maximumFractionDigits: d,
       })
-
 const fmtCompacto = (v: number | null | undefined) => {
   if (v === null || v === undefined) return '—'
   const n = Number(v)
@@ -193,28 +193,25 @@ const fmtCompacto = (v: number | null | undefined) => {
     return (n / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' Mil'
   return fmtNum(n)
 }
-
-const fmtPct = (v: number | null | undefined, dec = 1) =>
-  v === null || v === undefined ? '—' : Number(v).toFixed(dec).replace('.', ',') + '%'
+const fmtPct = (v: number | null | undefined, d = 1) =>
+  v === null || v === undefined ? '—' : Number(v).toFixed(d).replace('.', ',') + '%'
 
 // ============================================================================
-// CARD — ícone e cor próprios; rodapé centralizado com as variações
+// CARD — nome legível (item d), ícone/cor, rodapé de variações
 // ============================================================================
 type CardTone = 'green' | 'amber' | 'red' | 'gray' | 'blue' | 'violet'
-
-const TONE: Record<CardTone, { icon: string; bg: string; text: string }> = {
-  green: { icon: T.pos, bg: T.tintGreen, text: T.pos },
-  amber: { icon: T.warn, bg: T.tintAmber, text: T.warn },
-  red: { icon: T.neg, bg: T.tintRed, text: T.neg },
-  gray: { icon: T.muted, bg: T.input, text: T.muted },
-  blue: { icon: '#1d4ed8', bg: '#eff6ff', text: '#1d4ed8' },
-  violet: { icon: '#6d28d9', bg: '#f5f3ff', text: '#6d28d9' },
+const TONE: Record<CardTone, { icon: string; bg: string }> = {
+  green: { icon: T.pos, bg: T.tintGreen },
+  amber: { icon: T.warn, bg: T.tintAmber },
+  red: { icon: T.neg, bg: T.tintRed },
+  gray: { icon: T.muted, bg: T.input },
+  blue: { icon: '#1d4ed8', bg: '#eff6ff' },
+  violet: { icon: '#6d28d9', bg: '#f5f3ff' },
 }
 
-interface CardVars {
+interface VarItem {
   label: string
   valor: number | null
-  tom?: CardTone
   inverso?: boolean
 }
 
@@ -226,13 +223,12 @@ function ScoreCard({
   Icone,
   tom,
   variacoes,
-  arrastavel,
   onDragStart,
   onDragOver,
   onDrop,
   onMover,
   onOcultar,
-  dragAtivo,
+  arrastando,
 }: {
   id: string
   label: string
@@ -240,97 +236,95 @@ function ScoreCard({
   contexto?: string
   Icone: React.ComponentType<{ className?: string; style?: React.CSSProperties }>
   tom: CardTone
-  variacoes: CardVars[]
-  arrastavel?: boolean
-  onDragStart?: (e: React.DragEvent) => void
+  variacoes: VarItem[]
+  onDragStart?: () => void
   onDragOver?: (e: React.DragEvent) => void
   onDrop?: () => void
-  onMover?: (dir: -1 | 1) => void
+  onMover?: (d: -1 | 1) => void
   onOcultar?: () => void
-  dragAtivo?: boolean
+  arrastando?: boolean
 }) {
   const c = TONE[tom]
   return (
     <div
       data-card={id}
-      draggable={arrastavel}
+      draggable
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
       className={cn(
         'group relative h-full flex flex-col bg-white border p-3 transition-shadow hover:shadow-sm',
-        dragAtivo && 'ring-2 ring-offset-1',
+        arrastando && 'opacity-50',
       )}
-      style={{ borderColor: T.border, borderRadius: 6, cursor: arrastavel ? 'grab' : 'default' }}
+      style={{ borderColor: T.border, borderRadius: 6, cursor: 'grab' }}
     >
-      {/* controles no próprio item (item f) */}
-      <div className="absolute top-1 right-1 z-20 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white/95 border rounded shadow-sm px-0.5">
-        {onMover && (
-          <>
-            <button
-              type="button"
-              onClick={() => onMover(-1)}
-              title="Mover para a esquerda"
-              className="p-0.5 hover:bg-gray-100 rounded"
-              style={{ color: T.muted }}
-            >
-              <ChevronLeft className="h-3 w-3" />
-            </button>
-            <button
-              type="button"
-              onClick={() => onMover(1)}
-              title="Mover para a direita"
-              className="p-0.5 hover:bg-gray-100 rounded"
-              style={{ color: T.muted }}
-            >
-              <ChevronRight className="h-3 w-3" />
-            </button>
-          </>
-        )}
-        {onOcultar && (
-          <button
-            type="button"
-            onClick={onOcultar}
-            title="Ocultar card"
-            className="p-0.5 hover:bg-gray-100 rounded"
-            style={{ color: T.muted }}
-          >
-            <X className="h-3 w-3" />
-          </button>
-        )}
+      {/* item f: controles no próprio card */}
+      <div className="absolute top-1 right-1 z-20 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-white border rounded shadow-sm px-0.5">
+        <button
+          type="button"
+          onClick={() => onMover?.(-1)}
+          title="Mover para a esquerda"
+          className="p-0.5 hover:bg-gray-100 rounded"
+          style={{ color: T.muted }}
+        >
+          <ChevronLeft className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
+          onClick={() => onMover?.(1)}
+          title="Mover para a direita"
+          className="p-0.5 hover:bg-gray-100 rounded"
+          style={{ color: T.muted }}
+        >
+          <ChevronRight className="h-3 w-3" />
+        </button>
+        <button
+          type="button"
+          onClick={onOcultar}
+          title="Ocultar card"
+          className="p-0.5 hover:bg-gray-100 rounded"
+          style={{ color: T.muted }}
+        >
+          <X className="h-3 w-3" />
+        </button>
       </div>
 
-      {/* cabeçalho: ícone + label */}
-      <div className="flex items-center gap-1.5 pr-12">
+      {/* label SEM truncate: quebra em até 2 linhas e cabe (item d) */}
+      <div className="flex items-start gap-1.5 pr-12">
         <span
-          className="shrink-0 inline-flex items-center justify-center h-5 w-5 rounded"
+          className="shrink-0 inline-flex items-center justify-center h-5 w-5 rounded mt-0.5"
           style={{ background: c.bg, color: c.icon }}
         >
           <Icone className="h-3 w-3" />
         </span>
         <span
-          className="text-[10px] font-bold uppercase tracking-[0.05em] truncate"
+          className="text-[10px] font-bold uppercase tracking-[0.03em] leading-[1.15]"
           style={{ color: T.muted }}
+          title={label}
         >
           {label}
         </span>
       </div>
 
       <div
-        className="text-[22px] font-bold leading-none mt-1.5 tabular-nums"
+        className="text-[21px] font-bold leading-none mt-1.5 tabular-nums"
         style={{ color: T.text }}
       >
         {valor}
       </div>
 
       {contexto && (
-        <div className="text-[10px] mt-0.5 truncate" style={{ color: T.muted }} title={contexto}>
+        <div
+          className="text-[10px] mt-0.5 leading-tight"
+          style={{ color: T.muted }}
+          title={contexto}
+        >
           {contexto}
         </div>
       )}
 
-      {/* rodapé CENTRALIZADO com as variações (itens d e e) */}
       <div className="mt-auto pt-2 flex items-center justify-center gap-2 flex-wrap text-[10px] leading-none">
+        {variacoes.length === 0 && <span style={{ color: T.muted }}>—</span>}
         {variacoes.map((v, i) => {
           const n = v.valor
           if (n === null || n === undefined) {
@@ -341,9 +335,9 @@ function ScoreCard({
               </span>
             )
           }
-          const positivo = v.inverso ? n < 0 : n > 0
+          const ok = v.inverso ? n < 0 : n > 0
           const neutro = Math.abs(n) < 0.05
-          const cor = neutro ? T.muted : positivo ? T.pos : T.neg
+          const cor = neutro ? T.muted : ok ? T.pos : T.neg
           const Ico = neutro ? Minus : n > 0 ? ArrowUpRight : ArrowDownRight
           return (
             <span
@@ -363,7 +357,7 @@ function ScoreCard({
 }
 
 // ============================================================================
-// Painel de filtros (mantido da rodada aprovada)
+// FILTROS
 // ============================================================================
 function Chip({
   rotulo,
@@ -376,7 +370,7 @@ function Chip({
 }) {
   return (
     <span
-      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 border text-[11px] shrink-0 max-w-[220px]"
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 border text-[11px] shrink-0 max-w-[240px]"
       style={{ background: T.input, borderColor: T.border, color: T.muted }}
     >
       <span className="truncate">
@@ -399,15 +393,19 @@ function CampoSelect({
   value,
   onChange,
   options,
+  largura,
 }: {
   label: string
   value: string
   onChange: (v: string) => void
   options: { v: string; l: string }[]
+  largura: number
 }) {
+  // item b: largura baseada no conteúdo (+ espaço para o chevron)
+  const maiorRotulo = options.reduce((m, o) => Math.max(m, o.l.length), label.length)
+  const w = Math.min(largura, Math.max(96, maiorRotulo * 6.6 + 42))
   return (
-    // min-w-0 é o que impede o select de estourar a célula do grid (item b)
-    <div className="min-w-0 w-full">
+    <div style={{ width: w }} className="min-w-0 shrink-0">
       <label
         className="block text-[10px] font-bold uppercase tracking-wider mb-1 truncate"
         style={{ color: T.muted }}
@@ -437,7 +435,7 @@ function CampoSelect({
 }
 
 // ============================================================================
-// Drawer de atenção
+// DRAWER ATENÇÃO
 // ============================================================================
 interface Alerta {
   id: string
@@ -457,22 +455,20 @@ function DrawerAtencao({
   aberto: boolean
   alertas: Alerta[]
   onFechar: () => void
-  onVer: (codparc: number) => void
+  onVer: (c: number) => void
   anchorRef: React.RefObject<HTMLDivElement | null>
 }) {
   const ref = useRef<HTMLDivElement | null>(null)
-
   useEffect(() => {
     if (!aberto) return
     const onDown = (ev: MouseEvent) => {
-      const alvo = ev.target as Node
-      if (ref.current?.contains(alvo) || anchorRef.current?.contains(alvo)) return
+      const a = ev.target as Node
+      if (ref.current?.contains(a) || anchorRef.current?.contains(a)) return
       onFechar()
     }
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [aberto, onFechar, anchorRef])
-
   useEffect(() => {
     if (!aberto) return
     const onKey = (ev: KeyboardEvent) => {
@@ -481,12 +477,12 @@ function DrawerAtencao({
         return
       }
       if (ev.key === 'Tab' && ref.current) {
-        const foc = ref.current.querySelectorAll<HTMLElement>(
+        const f = ref.current.querySelectorAll<HTMLElement>(
           'button, [href], input, [tabindex]:not([tabindex="-1"])',
         )
-        if (!foc.length) return
-        const p = foc[0]
-        const u = foc[foc.length - 1]
+        if (!f.length) return
+        const p = f[0],
+          u = f[f.length - 1]
         if (ev.shiftKey && document.activeElement === p) {
           ev.preventDefault()
           u.focus()
@@ -500,9 +496,7 @@ function DrawerAtencao({
     ref.current?.querySelector<HTMLElement>('button')?.focus()
     return () => document.removeEventListener('keydown', onKey)
   }, [aberto, onFechar])
-
   if (!aberto) return null
-
   return (
     <div
       ref={ref}
@@ -534,7 +528,7 @@ function DrawerAtencao({
       <div className="max-h-[300px] overflow-y-auto">
         {alertas.length === 0 && (
           <div className="px-3 py-4 text-[11px]" style={{ color: T.muted }}>
-            Nenhum alerta para a seleção atual.
+            Nenhum alerta.
           </div>
         )}
         {alertas.map((a) => (
@@ -571,7 +565,7 @@ function DrawerAtencao({
 }
 
 // ============================================================================
-// Colunas da grade — larguras EXPLÍCITAS (item c: sem sobreposição)
+// COLUNAS
 // ============================================================================
 interface ColDef {
   id: keyof Loja | 'ating' | 'meta'
@@ -586,7 +580,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'rede',
     label: 'Rede',
-    largura: 82,
+    largura: 84,
     alinhamento: 'left',
     tipo: 'texto',
     visivelPadrao: true,
@@ -594,7 +588,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'loja',
     label: 'Loja',
-    largura: 190,
+    largura: 196,
     alinhamento: 'left',
     tipo: 'texto',
     visivelPadrao: true,
@@ -602,7 +596,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'participacao',
     label: 'Part. %',
-    largura: 72,
+    largura: 74,
     alinhamento: 'right',
     tipo: 'pct',
     visivelPadrao: true,
@@ -610,7 +604,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'meta',
     label: 'Venda Orçada',
-    largura: 118,
+    largura: 122,
     alinhamento: 'right',
     tipo: 'brl',
     visivelPadrao: true,
@@ -618,7 +612,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'faturamento',
     label: 'Venda Realizada',
-    largura: 128,
+    largura: 134,
     alinhamento: 'right',
     tipo: 'brl',
     visivelPadrao: true,
@@ -626,7 +620,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'ating',
     label: '% Atg',
-    largura: 88,
+    largura: 90,
     alinhamento: 'right',
     tipo: 'pct',
     visivelPadrao: true,
@@ -634,7 +628,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'cresc_aa',
     label: '% Cresc A.A',
-    largura: 104,
+    largura: 108,
     alinhamento: 'right',
     tipo: 'delta',
     visivelPadrao: true,
@@ -642,15 +636,23 @@ const COLUNAS: ColDef[] = [
   {
     id: 'preco_medio',
     label: 'Preço Médio',
-    largura: 104,
+    largura: 110,
     alinhamento: 'right',
     tipo: 'brl',
     visivelPadrao: true,
   },
   {
+    id: 'funcionarios',
+    label: 'Funcionários',
+    largura: 108,
+    alinhamento: 'right',
+    tipo: 'num',
+    visivelPadrao: false,
+  },
+  {
     id: 'quantidade',
     label: 'Qtde/Kg',
-    largura: 100,
+    largura: 104,
     alinhamento: 'right',
     tipo: 'num',
     visivelPadrao: false,
@@ -658,7 +660,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'qtd_aa',
     label: '% Qtde/Kg A.A',
-    largura: 116,
+    largura: 120,
     alinhamento: 'right',
     tipo: 'delta',
     visivelPadrao: false,
@@ -666,7 +668,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'preco_aa',
     label: '% Pc Médio A.A',
-    largura: 122,
+    largura: 126,
     alinhamento: 'right',
     tipo: 'delta',
     visivelPadrao: false,
@@ -674,7 +676,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'cupons',
     label: 'Cupom',
-    largura: 82,
+    largura: 86,
     alinhamento: 'right',
     tipo: 'num',
     visivelPadrao: false,
@@ -682,7 +684,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'cupons_aa',
     label: '% Cupom A.A',
-    largura: 108,
+    largura: 112,
     alinhamento: 'right',
     tipo: 'delta',
     visivelPadrao: false,
@@ -690,7 +692,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'ticket_medio',
     label: 'Ticket Médio',
-    largura: 108,
+    largura: 112,
     alinhamento: 'right',
     tipo: 'brl',
     visivelPadrao: false,
@@ -698,7 +700,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'ticket_aa',
     label: '% T. Médio A.A',
-    largura: 118,
+    largura: 122,
     alinhamento: 'right',
     tipo: 'delta',
     visivelPadrao: false,
@@ -706,7 +708,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'cmv_orcado',
     label: '% CMV Orçado',
-    largura: 112,
+    largura: 116,
     alinhamento: 'right',
     tipo: 'pct',
     visivelPadrao: false,
@@ -714,7 +716,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'cmv_mensal',
     label: '% CMV Mensal',
-    largura: 112,
+    largura: 116,
     alinhamento: 'right',
     tipo: 'pct',
     visivelPadrao: false,
@@ -722,7 +724,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'cmv_parcial',
     label: '% CMV Parcial',
-    largura: 114,
+    largura: 118,
     alinhamento: 'right',
     tipo: 'pct',
     visivelPadrao: false,
@@ -730,7 +732,7 @@ const COLUNAS: ColDef[] = [
   {
     id: 'limite_quebra',
     label: '% Lim. Quebra',
-    largura: 112,
+    largura: 116,
     alinhamento: 'right',
     tipo: 'pct',
     visivelPadrao: false,
@@ -738,55 +740,48 @@ const COLUNAS: ColDef[] = [
   {
     id: 'quebra',
     label: '% Quebra',
-    largura: 92,
+    largura: 96,
     alinhamento: 'right',
     tipo: 'pct',
     visivelPadrao: false,
   },
 ]
 
-const CHAVE_FILTROS_ABERTOS = 'pge_desempenho_filtros_aberto'
-const CHAVE_COLUNAS = 'pge_desempenho_colunas_v4'
-const CHAVE_CARDS = 'pge_desempenho_cards_v4'
+const K_FILTROS = 'pge_des_r8_filtros'
+const K_COLUNAS = 'pge_des_r8_colunas'
+const K_CARDS = 'pge_des_r8_cards'
+const K_LAYOUT = 'pge_des_r8_layout'
 
-function lerColunas(): { ordem: string[]; ocultas: string[] } {
-  const padrao = {
-    ordem: COLUNAS.map((c) => c.id as string),
-    ocultas: COLUNAS.filter((c) => !c.visivelPadrao).map((c) => c.id as string),
-  }
+const CARDS_IDS = [
+  'fat',
+  'meta',
+  'qtd',
+  'preco',
+  'cupons',
+  'ticket',
+  'cmv',
+  'quebra',
+  'lojas',
+] as const
+type CardId = (typeof CARDS_IDS)[number]
+
+const BLOCOS = ['cards', 'grade', 'grafico'] as const
+type BlocoId = (typeof BLOCOS)[number]
+
+function lsGet<T>(k: string, padrao: T): T {
   try {
-    const raw = localStorage.getItem(CHAVE_COLUNAS)
+    const raw = localStorage.getItem(k)
     if (!raw) return padrao
-    const o = JSON.parse(raw) as { ordem?: string[]; ocultas?: string[] }
-    const base = COLUNAS.map((c) => c.id as string)
-    const ordem = (o.ordem || []).filter((id) => base.includes(id))
-    return {
-      ordem: ordem.concat(base.filter((id) => !ordem.includes(id))),
-      ocultas: (o.ocultas || []).filter((id) => base.includes(id)),
-    }
+    return JSON.parse(raw) as T
   } catch (_e) {
     return padrao
   }
 }
-
-// Ordem dos cards (item f)
-const CARDS_IDS = ['fat', 'cmv', 'quebra', 'qtd', 'preco', 'cupons', 'ticket', 'lojas'] as const
-type CardId = (typeof CARDS_IDS)[number]
-
-function lerCards(): { ordem: CardId[]; ocultos: CardId[] } {
-  const padrao = { ordem: [...CARDS_IDS] as CardId[], ocultos: [] as CardId[] }
+function lsSet(k: string, v: unknown) {
   try {
-    const raw = localStorage.getItem(CHAVE_CARDS)
-    if (!raw) return padrao
-    const o = JSON.parse(raw) as { ordem?: string[]; ocultos?: string[] }
-    const base = CARDS_IDS as unknown as string[]
-    const ordem = (o.ordem || []).filter((id) => base.includes(id)) as CardId[]
-    return {
-      ordem: ordem.concat(base.filter((id) => !ordem.includes(id)) as CardId[]),
-      ocultos: (o.ocultos || []).filter((id) => base.includes(id)) as CardId[],
-    }
+    localStorage.setItem(k, JSON.stringify(v))
   } catch (_e) {
-    return padrao
+    /* bloqueado */
   }
 }
 
@@ -810,18 +805,65 @@ export default function DesempenhoPage() {
     loja: '',
     supervisor: '',
   })
-
   const [dados, setDados] = useState<Resposta | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
+  const [filtrosAbertos, setFiltrosAbertos] = useState<boolean>(() => lsGet(K_FILTROS, false))
+  useEffect(() => {
+    lsSet(K_FILTROS, filtrosAbertos)
+  }, [filtrosAbertos])
 
-  // filtros: lê da URL no primeiro render (deep link)
+  // colunas: larguras redimensionáveis (item c)
+  const [colCfg, setColCfg] = useState<{
+    ordem: string[]
+    ocultas: string[]
+    larguras: Record<string, number>
+  }>(() =>
+    lsGet(K_COLUNAS, {
+      ordem: COLUNAS.map((c) => c.id as string),
+      ocultas: COLUNAS.filter((c) => !c.visivelPadrao).map((c) => c.id as string),
+      larguras: {},
+    }),
+  )
+  const [menuColunas, setMenuColunas] = useState(false)
+  const [ordem, setOrdem] = useState<{ id: string; dir: 'asc' | 'desc' } | null>(null)
+  const arrastandoCol = useRef<string | null>(null)
+  const redimensionando = useRef<{ id: string; ini: number; largura: number } | null>(null)
+
+  // cards (item f)
+  const [cards, setCards] = useState<{ ordem: CardId[]; ocultos: CardId[] }>(() =>
+    lsGet(K_CARDS, { ordem: [...CARDS_IDS], ocultos: [] }),
+  )
+  const [cardArrastando, setCardArrastando] = useState<CardId | null>(null)
+
+  // layout: onde cada bloco está (item a)
+  const [layout, setLayout] = useState<{ cards: number; grade: number; grafico: number }>(() =>
+    lsGet(K_LAYOUT, { cards: 0, grade: 1, grafico: 2 }),
+  )
+  const [blocoArrastando, setBlocoArrastando] = useState<BlocoId | null>(null)
+
+  const [drawerAberto, setDrawerAberto] = useState(false)
+  const bellRef = useRef<HTMLDivElement | null>(null)
+  const [telaCheia, setTelaCheia] = useState<'grafico' | 'grade' | null>(null)
+  useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setTelaCheia(null)
+    }
+    window.addEventListener('keydown', onEsc)
+    return () => window.removeEventListener('keydown', onEsc)
+  }, [])
+
+  const [parecerAberto, setParecerAberto] = useState(false)
+  const [parecerLoja, setParecerLoja] = useState<Loja | null>(null)
+  const [busca, setBusca] = useState('')
+  const [selecionadas, setSelecionadas] = useState<number[]>([])
+
+  // URL -> estado inicial
   useEffect(() => {
     const q = new URLSearchParams(window.location.search)
-    const abaRaw = (q.get('aba') || 'varejo') as Aba
-    const aba = SEGMENTOS.some((s) => s.id === abaRaw) ? abaRaw : 'varejo'
+    const raw = (q.get('aba') || 'varejo') as Aba
     setF({
-      aba,
+      aba: CANAIS.some((c) => c.id === raw) ? raw : 'varejo',
       ano: Number(q.get('ano') || anoCorrente),
       mes: Number(q.get('mes') || mesCorrente),
       rede: q.get('rede') || '',
@@ -834,67 +876,8 @@ export default function DesempenhoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const [filtrosAbertos, setFiltrosAbertos] = useState(false)
-  useEffect(() => {
-    try {
-      setFiltrosAbertos(localStorage.getItem(CHAVE_FILTROS_ABERTOS) === '1')
-    } catch (_e) {
-      /* sem localStorage */
-    }
-  }, [])
-  useEffect(() => {
-    try {
-      localStorage.setItem(CHAVE_FILTROS_ABERTOS, filtrosAbertos ? '1' : '0')
-    } catch (_e) {
-      /* idem */
-    }
-  }, [filtrosAbertos])
+  const setCampo = (c: keyof typeof f, v: string | number) => setF((p) => ({ ...p, [c]: v }))
 
-  const [colCfg, setColCfg] = useState(lerColunas)
-  const [menuColunas, setMenuColunas] = useState(false)
-  const [ordem, setOrdem] = useState<{ id: string; dir: 'asc' | 'desc' } | null>(null)
-  const arrastandoCol = useRef<string | null>(null)
-
-  const [cards, setCards] = useState(lerCards)
-  const [cardArrastando, setCardArrastando] = useState<CardId | null>(null)
-
-  const [drawerAberto, setDrawerAberto] = useState(false)
-  const bellRef = useRef<HTMLDivElement | null>(null)
-
-  const [telaCheia, setTelaCheia] = useState<'grafico' | 'grade' | null>(null)
-  useEffect(() => {
-    const onEsc = (ev: KeyboardEvent) => {
-      if (ev.key === 'Escape') setTelaCheia(null)
-    }
-    window.addEventListener('keydown', onEsc)
-    return () => window.removeEventListener('keydown', onEsc)
-  }, [])
-
-  const [parecerAberto, setParecerAberto] = useState(false)
-  const [parecerLoja, setParecerLoja] = useState<Loja | null>(null)
-  const [busca, setBusca] = useState('')
-
-  const salvarColunas = (cfg: { ordem: string[]; ocultas: string[] }) => {
-    setColCfg(cfg)
-    try {
-      localStorage.setItem(CHAVE_COLUNAS, JSON.stringify(cfg))
-    } catch (_e) {
-      /* idem */
-    }
-  }
-  const salvarCards = (cfg: { ordem: CardId[]; ocultos: CardId[] }) => {
-    setCards(cfg)
-    try {
-      localStorage.setItem(CHAVE_CARDS, JSON.stringify(cfg))
-    } catch (_e) {
-      /* idem */
-    }
-  }
-
-  const setCampo = (campo: keyof typeof f, valor: string | number) =>
-    setF((p) => ({ ...p, [campo]: valor }))
-
-  // URL espelha os filtros
   useEffect(() => {
     const q = new URLSearchParams()
     q.set('aba', f.aba)
@@ -928,7 +911,6 @@ export default function DesempenhoPage() {
   )
 
   const memoria = useRef<Record<string, Resposta>>({})
-
   const carregar = useCallback(
     async (forcar = false) => {
       const chave = qs(false)
@@ -944,6 +926,7 @@ export default function DesempenhoPage() {
         const resp = r as Resposta
         setDados(resp)
         memoria.current[chave] = resp
+        setSelecionadas([])
       } catch (e) {
         setErro(String(e))
         setDados(null)
@@ -960,6 +943,88 @@ export default function DesempenhoPage() {
 
   const k = dados?.kpis || {}
   const ultimoFechado = f.ano === anoCorrente ? Math.max(0, mesCorrente - 1) : f.mes
+
+  // ------------------------------------------------------------------
+  // item e) KPIs das linhas selecionadas (ou do total quando nada marcado)
+  // ------------------------------------------------------------------
+  const lojasParaKpi = useMemo(() => {
+    const todas = dados?.lojas || []
+    if (!selecionadas.length) return todas
+    return todas.filter((l) => selecionadas.includes(l.codparc))
+  }, [dados, selecionadas])
+
+  const filtrado = selecionadas.length > 0
+
+  const soma = (fn: (l: Loja) => number | null | undefined) =>
+    lojasParaKpi.reduce((a, l) => a + (Number(fn(l)) || 0), 0)
+  const bruto = (fn: (l: Loja) => number | null | undefined): number | null => {
+    const vs = lojasParaKpi.map(fn).filter((x): x is number => x !== null && x !== undefined)
+    if (!vs.length) return null
+    return vs.reduce((a, b) => a + Number(b), 0)
+  }
+  const media = (fn: (l: Loja) => number | null | undefined): number | null => {
+    const vs = lojasParaKpi.map(fn).filter((x): x is number => x !== null && x !== undefined)
+    if (!vs.length) return null
+    return vs.reduce((a, b) => a + Number(b), 0) / vs.length
+  }
+  const pct = (a: number | null, b: number | null) =>
+    a !== null && b !== null && b !== 0 ? Number((((a - b) / b) * 100).toFixed(1)) : null
+
+  const K = useMemo(() => {
+    if (!filtrado) {
+      return {
+        ...(k as Record<string, number | null>),
+        funcionarios: dados?.total_funcionarios ?? null,
+        nLojas: dados?.lojas.length || 0,
+      }
+    }
+    const fat = soma((l) => l.faturamento)
+    const qtd = soma((l) => l.quantidade)
+    const cup = soma((l) => l.cupons)
+    const meta = soma((l) => l.meta)
+    const func = soma((l) => l.funcionarios)
+    // variações: média ponderada simples das lojas selecionadas
+    const mediaAting = media((l) => l.ating_venda)
+    const mediaCresc = media((l) => l.cresc_aa)
+    const mediaQtdAA = media((l) => l.qtd_aa)
+    const mediaPrecoAA = media((l) => l.preco_aa)
+    const mediaCupAA = media((l) => l.cupons_aa)
+    const mediaTickAA = media((l) => l.ticket_aa)
+    const mediaCmv = media((l) => l.cmv_parcial)
+    const mediaCmvOrc = media((l) => l.cmv_orcado)
+    const mediaQuebra = media((l) => l.quebra)
+    const mediaLim = media((l) => l.limite_quebra)
+    return {
+      faturamento: fat || null,
+      meta_venda: meta || null,
+      faturamento_ating: mediaAting,
+      faturamento_aa: mediaCresc,
+      quantidade_kg: qtd || null,
+      quantidade_aa: mediaQtdAA,
+      quantidade_ma: null,
+      preco_medio: fat && qtd ? Number((fat / qtd).toFixed(2)) : null,
+      preco_aa: mediaPrecoAA,
+      preco_ma: null,
+      cupons: cup || null,
+      cupons_aa: mediaCupAA,
+      cupons_ma: null,
+      ticket_medio: fat && cup ? Number((fat / cup).toFixed(2)) : null,
+      ticket_aa: mediaTickAA,
+      ticket_ma: null,
+      cmv_pct: mediaCmv,
+      meta_cmv: mediaCmvOrc,
+      cmv_ating:
+        mediaCmv && mediaCmvOrc ? Number(((mediaCmvOrc / mediaCmv) * 100).toFixed(1)) : null,
+      cmv_aa: null,
+      quebra_pct: mediaQuebra,
+      limite_perda: mediaLim,
+      quebra_ating:
+        mediaQuebra && mediaLim ? Number(((mediaQuebra / mediaLim) * 100).toFixed(1)) : null,
+      quebra_ma: null,
+      funcionarios: func || null,
+      nLojas: lojasParaKpi.length,
+    } as Record<string, number | null>
+  }, [filtrado, k, lojasParaKpi, dados])
 
   const seriePivot = useMemo(() => {
     const mapa: Record<string, Record<string, number>> = {}
@@ -998,12 +1063,12 @@ export default function DesempenhoPage() {
   const alertas = useMemo<Alerta[]>(() => {
     const out: Alerta[] = []
     for (const l of dados?.lojas || []) {
-      const atg = l.ating_venda
-      if (atg !== null && atg !== undefined && atg < LIMIAR_ATG.atencao) {
+      const a = l.ating_venda
+      if (a !== null && a !== undefined && a < LIMIAR_ATG.atencao) {
         out.push({
-          id: 'atg-' + l.codparc,
+          id: 'a' + l.codparc,
           loja: l.loja,
-          descricao: `Atingimento ${fmtPct(atg)}`,
+          descricao: `Atingimento ${fmtPct(a)}`,
           tom: 'red',
           codparc: l.codparc,
         })
@@ -1014,7 +1079,7 @@ export default function DesempenhoPage() {
         l.quebra > l.limite_quebra
       ) {
         out.push({
-          id: 'qbr-' + l.codparc,
+          id: 'q' + l.codparc,
           loja: l.loja,
           descricao: `Quebra ${fmtPct(l.quebra - l.limite_quebra)} acima da meta`,
           tom: 'amber',
@@ -1022,7 +1087,7 @@ export default function DesempenhoPage() {
         })
       } else if (l.meta === null || l.meta === undefined) {
         out.push({
-          id: 'meta-' + l.codparc,
+          id: 'm' + l.codparc,
           loja: l.loja,
           descricao: 'Venda orçada não configurada',
           tom: 'amber',
@@ -1073,37 +1138,98 @@ export default function DesempenhoPage() {
         ? (l.meta ?? null)
         : ((l as any)[c.id] ?? null)
 
+  const larguraDe = (c: ColDef) => colCfg.larguras[c.id as string] || c.largura
+
   const moverColuna = (de: string, para: string) => {
     if (de === para) return
     const arr = [...colCfg.ordem]
-    const iDe = arr.indexOf(de)
-    const iPara = arr.indexOf(para)
-    if (iDe < 0 || iPara < 0) return
-    arr.splice(iDe, 1)
-    arr.splice(iPara, 0, de)
-    salvarColunas({ ...colCfg, ordem: arr })
+    const i = arr.indexOf(de),
+      j = arr.indexOf(para)
+    if (i < 0 || j < 0) return
+    arr.splice(i, 1)
+    arr.splice(j, 0, de)
+    const novo = { ...colCfg, ordem: arr }
+    setColCfg(novo)
+    lsSet(K_COLUNAS, novo)
   }
+
+  // item c: redimensionar por arrasto
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const r = redimensionando.current
+      if (!r) return
+      const delta = e.clientX - r.ini
+      const nova = Math.max(64, r.largura + delta)
+      setColCfg((prev) => {
+        const novo = { ...prev, larguras: { ...prev.larguras, [r.id]: nova } }
+        return novo
+      })
+    }
+    const onUp = () => {
+      if (redimensionando.current) {
+        setColCfg((prev) => {
+          lsSet(K_COLUNAS, prev)
+          return prev
+        })
+        redimensionando.current = null
+        document.body.style.cursor = ''
+      }
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+  }, [])
 
   const moverCard = (id: CardId, dir: -1 | 1) => {
     const arr = [...cards.ordem]
-    const i = arr.indexOf(id)
-    const j = i + dir
+    const i = arr.indexOf(id),
+      j = i + dir
     if (i < 0 || j < 0 || j >= arr.length) return
     arr.splice(i, 1)
     arr.splice(j, 0, id)
-    salvarCards({ ...cards, ordem: arr })
+    const novo = { ...cards, ordem: arr }
+    setCards(novo)
+    lsSet(K_CARDS, novo)
+  }
+  const soltarCard = (destino: CardId) => {
+    if (!cardArrastando || cardArrastando === destino) {
+      setCardArrastando(null)
+      return
+    }
+    const arr = [...cards.ordem]
+    const i = arr.indexOf(cardArrastando),
+      j = arr.indexOf(destino)
+    if (i < 0 || j < 0) {
+      setCardArrastando(null)
+      return
+    }
+    arr.splice(i, 1)
+    arr.splice(j, 0, cardArrastando)
+    const novo = { ...cards, ordem: arr }
+    setCards(novo)
+    lsSet(K_CARDS, novo)
+    setCardArrastando(null)
   }
 
-  const soltarCard = (destino: CardId) => {
-    if (!cardArrastando || cardArrastando === destino) return
-    const arr = [...cards.ordem]
-    const de = arr.indexOf(cardArrastando)
-    const para = arr.indexOf(destino)
-    if (de < 0 || para < 0) return
-    arr.splice(de, 1)
-    arr.splice(para, 0, cardArrastando)
-    salvarCards({ ...cards, ordem: arr })
-    setCardArrastando(null)
+  // item a: mover blocos entre áreas
+  const soltarBloco = (destino: number) => {
+    if (!blocoArrastando) return
+    const atual = layout[blocoArrastando]
+    if (atual === destino) {
+      setBlocoArrastando(null)
+      return
+    }
+    const outro = (Object.keys(layout) as BlocoId[]).find(
+      (b) => b !== blocoArrastando && layout[b] === destino,
+    )
+    const novo = { ...layout, [blocoArrastando]: destino } as typeof layout
+    if (outro) (novo as any)[outro] = atual
+    setLayout(novo)
+    lsSet(K_LAYOUT, novo)
+    setBlocoArrastando(null)
   }
 
   const exportar = () => {
@@ -1118,18 +1244,21 @@ export default function DesempenhoPage() {
     const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }))
     const a = document.createElement('a')
     a.href = url
-    a.download = 'desempenho-unidades-' + f.ano + '-' + String(f.mes).padStart(2, '0') + '.csv'
+    a.download = 'desempenho-' + f.ano + '-' + String(f.mes).padStart(2, '0') + '.csv'
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  const verLoja = (codparc: number) => {
-    const l = (dados?.lojas || []).find((x) => x.codparc === codparc)
+  const verLoja = (c: number) => {
+    const l = (dados?.lojas || []).find((x) => x.codparc === c)
     if (!l) return
     setParecerLoja(l)
     setParecerAberto(true)
     setDrawerAberto(false)
   }
+
+  const alternarLinha = (c: number) =>
+    setSelecionadas((p) => (p.includes(c) ? p.filter((x) => x !== c) : p.concat([c])))
 
   if (loading && !dados) {
     return (
@@ -1141,14 +1270,13 @@ export default function DesempenhoPage() {
       </div>
     )
   }
-
   if (erro || !dados) {
     return (
       <div
         className="p-4 rounded-lg border text-[13px] font-medium flex items-center gap-2"
         style={{ background: T.tintRed, borderColor: '#fecaca', color: T.neg }}
       >
-        <AlertTriangle className="h-4 w-4" /> Erro ao carregar: {erro || 'sem dados'}
+        <AlertTriangle className="h-4 w-4" /> Erro: {erro || 'sem dados'}
         <Button variant="outline" size="sm" className="ml-auto" onClick={() => carregar(true)}>
           <RefreshCw className="h-3.5 w-3.5" /> Tentar de novo
         </Button>
@@ -1163,93 +1291,108 @@ export default function DesempenhoPage() {
     (f.tipoVenda ? 1 : 0) +
     (f.loja ? 1 : 0) +
     (f.supervisor ? 1 : 0)
-
-  const nomeSegmento = SEGMENTOS.find((s) => s.id === f.aba)?.label || 'Varejo'
-  const nomeSupervisor =
+  const nomeCanal = CANAIS.find((c) => c.id === f.aba)?.label || 'Varejo (Redes)'
+  const nomeSup =
     (dados.supervisores || []).find((s) => String(s.codparc) === f.supervisor)?.nome || 'Todos'
+  const nLojas = Number(K.nLojas || 0)
 
-  // ---- definição dos cards (d, e, f) ----
   const defs: Record<
     CardId,
-    { label: string; valor: string; contexto?: string; Icone: any; tom: CardTone; vars: CardVars[] }
+    { label: string; valor: string; contexto?: string; Icone: any; tom: CardTone; vars: VarItem[] }
   > = {
     fat: {
       label: 'Faturamento',
-      valor: fmtCompacto(k.faturamento),
-      contexto: fmtBRL(k.faturamento),
+      valor: fmtCompacto(K.faturamento),
+      contexto: fmtBRL(K.faturamento),
       Icone: TrendingUp,
-      tom: (k.faturamento_aa ?? 0) >= 0 ? 'green' : 'red',
+      tom: (K.faturamento_aa ?? 0) >= 0 ? 'green' : 'red',
       vars: [
-        { label: 'Meta', valor: k.faturamento_ating ?? null },
-        { label: 'A.A.', valor: k.faturamento_aa ?? null },
+        { label: 'Meta', valor: K.faturamento_ating ?? null },
+        { label: 'A.A.', valor: K.faturamento_aa ?? null },
       ],
     },
-    cmv: {
-      label: 'CMV Parcial',
-      valor: fmtPct(k.cmv_pct ?? null, 2),
-      contexto: 'meta ' + fmtPct(k.meta_cmv ?? null, 1),
+    meta: {
+      label: 'Venda Orçada',
+      valor: fmtCompacto(K.meta_venda),
+      contexto: 'atingido ' + fmtPct(K.faturamento_ating ?? null),
       Icone: Percent,
-      tom: (k.cmv_ating ?? 100) >= 100 ? 'green' : 'amber',
+      tom:
+        (K.faturamento_ating ?? 0) >= 100
+          ? 'green'
+          : (K.faturamento_ating ?? 0) >= 95
+            ? 'amber'
+            : 'red',
       vars: [
-        { label: 'Meta', valor: k.cmv_ating ?? null, inverso: true },
-        { label: 'A.A.', valor: k.cmv_aa ?? null, inverso: true },
-      ],
-    },
-    quebra: {
-      label: 'Quebra Varejo',
-      valor: fmtPct(k.quebra_pct ?? null, 2),
-      contexto: 'limite ' + fmtPct(k.limite_perda ?? null, 1),
-      Icone: AlertTriangle,
-      tom: (k.quebra_ating ?? 100) <= 100 ? 'green' : 'red',
-      vars: [
-        { label: 'Meta', valor: k.quebra_ating ?? null, inverso: true },
-        { label: 'A.A.', valor: k.quebra_ma ?? null, inverso: true },
+        { label: 'Meta', valor: K.faturamento_ating ?? null },
+        { label: 'A.A.', valor: K.faturamento_aa ?? null },
       ],
     },
     qtd: {
       label: 'Qtde / Kg',
-      valor: fmtCompacto(k.quantidade_kg),
-      contexto: fmtNum(k.quantidade_kg) + ' un/kg',
+      valor: fmtCompacto(K.quantidade_kg),
+      contexto: fmtNum(K.quantidade_kg) + ' un/kg',
       Icone: Package,
-      tom: (k.quantidade_aa ?? 0) >= 0 ? 'green' : 'red',
+      tom: (K.quantidade_aa ?? 0) >= 0 ? 'green' : 'red',
       vars: [
-        { label: 'M.A.', valor: k.quantidade_ma ?? null },
-        { label: 'A.A.', valor: k.quantidade_aa ?? null },
+        { label: 'M.A.', valor: K.quantidade_ma ?? null },
+        { label: 'A.A.', valor: K.quantidade_aa ?? null },
       ],
     },
     preco: {
       label: 'Preço Médio',
-      valor: fmtBRL(k.preco_medio, 2),
+      valor: fmtBRL(K.preco_medio, 2),
       Icone: Tag,
-      tom: (k.preco_aa ?? 0) >= 0 ? 'green' : 'red',
+      tom: (K.preco_aa ?? 0) >= 0 ? 'green' : 'red',
       vars: [
-        { label: 'M.A.', valor: k.preco_ma ?? null },
-        { label: 'A.A.', valor: k.preco_aa ?? null },
+        { label: 'M.A.', valor: K.preco_ma ?? null },
+        { label: 'A.A.', valor: K.preco_aa ?? null },
       ],
     },
     cupons: {
       label: 'Cupons',
-      valor: fmtNum(k.cupons),
+      valor: fmtNum(K.cupons),
       Icone: Receipt,
-      tom: (k.cupons_aa ?? 0) >= 0 ? 'blue' : 'red',
+      tom: (K.cupons_aa ?? 0) >= 0 ? 'blue' : 'red',
       vars: [
-        { label: 'M.A.', valor: k.cupons_ma ?? null },
-        { label: 'A.A.', valor: k.cupons_aa ?? null },
+        { label: 'M.A.', valor: K.cupons_ma ?? null },
+        { label: 'A.A.', valor: K.cupons_aa ?? null },
       ],
     },
     ticket: {
       label: 'Ticket Médio',
-      valor: fmtBRL(k.ticket_medio, 0),
+      valor: fmtBRL(K.ticket_medio, 0),
       Icone: Ticket,
-      tom: (k.ticket_aa ?? 0) >= 0 ? 'violet' : 'red',
+      tom: (K.ticket_aa ?? 0) >= 0 ? 'violet' : 'red',
       vars: [
-        { label: 'M.A.', valor: k.ticket_ma ?? null },
-        { label: 'A.A.', valor: k.ticket_aa ?? null },
+        { label: 'M.A.', valor: K.ticket_ma ?? null },
+        { label: 'A.A.', valor: K.ticket_aa ?? null },
+      ],
+    },
+    cmv: {
+      label: 'CMV Parcial',
+      valor: fmtPct(K.cmv_pct ?? null, 2),
+      contexto: 'meta ' + fmtPct(K.meta_cmv ?? null, 1),
+      Icone: Percent,
+      tom: (K.cmv_ating ?? 100) >= 100 ? 'green' : 'amber',
+      vars: [
+        { label: 'Meta', valor: K.cmv_ating ?? null, inverso: true },
+        { label: 'A.A.', valor: K.cmv_aa ?? null, inverso: true },
+      ],
+    },
+    quebra: {
+      label: 'Quebra',
+      valor: fmtPct(K.quebra_pct ?? null, 2),
+      contexto: 'limite ' + fmtPct(K.limite_perda ?? null, 1),
+      Icone: AlertTriangle,
+      tom: (K.quebra_ating ?? 0) <= 100 ? 'green' : 'red',
+      vars: [
+        { label: 'Meta', valor: K.quebra_ating ?? null, inverso: true },
+        { label: 'A.A.', valor: K.quebra_ma ?? null, inverso: true },
       ],
     },
     lojas: {
       label: 'Lojas',
-      valor: fmtNum(dados.lojas.length),
+      valor: fmtNum(nLojas),
       contexto: dados.lojas.filter((l) => l.loja_nova).length + ' novas',
       Icone: Store,
       tom: 'gray',
@@ -1258,18 +1401,604 @@ export default function DesempenhoPage() {
   }
 
   const cardsVisiveis = cards.ordem.filter((id) => !cards.ocultos.includes(id))
-  const emCheio = (tipo: 'grafico' | 'grade') => telaCheia === tipo
+  const emCheio = (t: 'grafico' | 'grade') => telaCheia === t
+
+  // ---------------------------------------------------------------
+  // blocos ordenáveis (item a)
+  // ---------------------------------------------------------------
+  const blocoCards = (
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2 items-stretch">
+      {cardsVisiveis.map((id) => {
+        const d = defs[id]
+        return (
+          <ScoreCard
+            key={id}
+            id={id}
+            label={d.label}
+            valor={d.valor}
+            contexto={d.contexto}
+            Icone={d.Icone}
+            tom={d.tom}
+            variacoes={d.vars}
+            arrastando={cardArrastando === id}
+            onDragStart={() => setCardArrastando(id)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => soltarCard(id)}
+            onMover={(dir) => moverCard(id, dir)}
+            onOcultar={() => {
+              const n = { ...cards, ocultos: cards.ocultos.concat([id]) }
+              setCards(n)
+              lsSet(K_CARDS, n)
+            }}
+          />
+        )
+      })}
+    </div>
+  )
+
+  const blocoGrafico = (
+    <div
+      className={cn(
+        'bg-white border p-3.5 flex flex-col',
+        emCheio('grafico') && 'fixed inset-2 z-50 shadow-2xl',
+      )}
+      style={{ borderColor: T.border, borderRadius: 8 }}
+    >
+      <div className="flex items-center justify-between mb-2 gap-2">
+        <div className="flex items-center gap-2">
+          <GripVertical className="h-3.5 w-3.5 cursor-grab" style={{ color: T.muted }} />
+          <h2 className="text-[14px] font-semibold" style={{ color: T.text }}>
+            Evolução Faturamento
+          </h2>
+          <span
+            className="text-[10px] font-semibold rounded px-1.5 py-0.5 border"
+            style={{ background: T.tintAmber, borderColor: '#fde68a', color: T.warn }}
+          >
+            parcial
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] hidden sm:inline" style={{ color: T.muted }}>
+            Clique no ano da legenda para ocultar
+          </span>
+          <button
+            type="button"
+            onClick={() => setTelaCheia(emCheio('grafico') ? null : 'grafico')}
+            className="inline-flex items-center justify-center h-7 w-7 rounded border"
+            style={{ borderColor: T.border, color: T.text, borderRadius: 6, background: T.card }}
+          >
+            {emCheio('grafico') ? (
+              <Minimize2 className="h-3.5 w-3.5" />
+            ) : (
+              <Maximize2 className="h-3.5 w-3.5" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setCards((c) => c)}
+            title="Ocultar gráfico"
+            className="inline-flex items-center justify-center h-7 w-7 rounded border"
+            style={{ borderColor: T.border, color: T.muted, borderRadius: 6, background: T.card }}
+          >
+            <EyeOff className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </div>
+      <div className={cn('w-full', emCheio('grafico') ? 'flex-1 min-h-0' : 'h-[250px]')}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={seriePivot} margin={{ top: 5, right: 12, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis
+              dataKey="mes"
+              tickLine={false}
+              axisLine={{ stroke: '#9ca3af' }}
+              tick={{ fill: T.muted, fontSize: 10 }}
+            />
+            <YAxis
+              tickLine={false}
+              axisLine={false}
+              tick={{ fill: T.muted, fontSize: 10 }}
+              tickFormatter={(v) => fmtCompacto(v)}
+            />
+            <Tooltip
+              formatter={(v: any) => fmtBRL(Number(v))}
+              contentStyle={{ borderRadius: 8, border: '1px solid ' + T.border, fontSize: 11 }}
+            />
+            <Legend
+              wrapperStyle={{ fontSize: 10, cursor: 'pointer' }}
+              onClick={(e: any) => {
+                const n = String(e?.dataKey ?? e?.value ?? '')
+                if (!n) return
+                setAnosOcultos((p) => (p.includes(n) ? p.filter((x) => x !== n) : p.concat([n])))
+              }}
+              formatter={(v: any, e: any) => {
+                const n = String(e?.dataKey ?? v)
+                const oc = anosOcultos.includes(n)
+                return (
+                  <span
+                    style={{
+                      color: oc ? '#9ca3af' : n.includes('parcial') ? T.warn : T.text,
+                      fontWeight: oc ? 400 : 700,
+                      textDecoration: oc ? 'line-through' : 'none',
+                    }}
+                  >
+                    {n}
+                  </span>
+                )
+              }}
+            />
+            {anos.map((a, i) => {
+              const ult = anos[anos.length - 1]
+              if (a === ult)
+                return (
+                  <Line
+                    key={a + 's'}
+                    type="monotone"
+                    dataKey={a}
+                    name={a}
+                    hide={anosOcultos.includes(a)}
+                    stroke={T.pos}
+                    strokeWidth={2.5}
+                    dot={{ r: 2, strokeWidth: 0, fill: T.pos }}
+                    connectNulls={false}
+                  />
+                )
+              return (
+                <Line
+                  key={a}
+                  type="monotone"
+                  dataKey={a}
+                  name={a}
+                  hide={anosOcultos.includes(a)}
+                  stroke={i === 0 ? '#2563eb' : '#94a3b8'}
+                  strokeWidth={2}
+                  dot={{ r: 2, strokeWidth: 0 }}
+                  connectNulls
+                />
+              )
+            })}
+            {anos.length > 0 && (
+              <Line
+                key="p"
+                type="monotone"
+                dataKey={anos[anos.length - 1] + ' parcial'}
+                name={anos[anos.length - 1] + ' parcial'}
+                hide={anosOcultos.includes(anos[anos.length - 1] + ' parcial')}
+                stroke="#ea580c"
+                strokeWidth={2.5}
+                strokeDasharray="6 4"
+                dot={{ r: 2, strokeWidth: 0, fill: '#ea580c' }}
+                connectNulls
+              />
+            )}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+
+  const blocoGrade = (
+    <div
+      className={cn(
+        'bg-white border relative flex flex-col',
+        emCheio('grade') && 'fixed inset-2 z-50 shadow-2xl',
+      )}
+      style={{
+        borderColor: T.border,
+        borderRadius: 8,
+        maxHeight: emCheio('grade') ? 'calc(100vh - 16px)' : undefined,
+      }}
+    >
+      <div className="flex items-center justify-between gap-2 px-3 py-2.5 flex-wrap">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <GripVertical
+            className="h-3.5 w-3.5 cursor-grab self-center"
+            style={{ color: T.muted }}
+          />
+          <h2 className="text-[14px] font-semibold" style={{ color: T.text }}>
+            Desempenho por loja
+          </h2>
+          <span className="text-[11px]" style={{ color: T.muted }}>
+            {linhas.length} unidades
+          </span>
+          {filtrado && (
+            <button
+              type="button"
+              onClick={() => setSelecionadas([])}
+              className="text-[10px] px-1.5 py-0.5 rounded border hover:bg-gray-50"
+              style={{ borderColor: T.border, color: T.nav }}
+            >
+              {selecionadas.length} selecionada(s) · limpar
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="relative hidden sm:block">
+            <Search
+              className="h-3 w-3 absolute left-2 top-1/2 -translate-y-1/2"
+              style={{ color: T.muted }}
+            />
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar loja"
+              className="h-7 w-32 rounded border pl-6 pr-2 text-[11px] outline-none"
+              style={{ background: T.input, borderColor: T.border, borderRadius: 6, color: T.text }}
+            />
+          </div>
+          {alertas.length > 0 && (
+            <div ref={bellRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setDrawerAberto((v) => !v)}
+                aria-expanded={drawerAberto}
+                aria-controls="drc"
+                aria-label={`Atenção: ${alertas.length}`}
+                className="relative inline-flex items-center justify-center h-7 w-7 rounded border"
+                style={{
+                  borderColor: T.border,
+                  background: T.card,
+                  borderRadius: 6,
+                  color: T.text,
+                }}
+              >
+                <Bell className="h-3.5 w-3.5" />
+                <span
+                  className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] font-bold flex items-center justify-center"
+                  style={{ background: T.alertFill, color: T.neg }}
+                >
+                  {alertas.length}
+                </span>
+              </button>
+              <div id="drc">
+                <DrawerAtencao
+                  aberto={drawerAberto}
+                  alertas={alertas}
+                  onFechar={() => setDrawerAberto(false)}
+                  onVer={verLoja}
+                  anchorRef={bellRef}
+                />
+              </div>
+            </div>
+          )}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuColunas((v) => !v)}
+              className="inline-flex items-center gap-1 h-7 px-2 rounded border text-[11px] font-semibold"
+              style={{ borderColor: T.border, color: T.text, borderRadius: 6, background: T.card }}
+            >
+              <Columns3 className="h-3 w-3" /> Colunas{' '}
+              <ChevronDown className="h-3 w-3" style={{ color: T.muted }} />
+            </button>
+            {menuColunas && (
+              <div
+                className="absolute right-0 top-full mt-1 z-50 bg-white border shadow-lg p-2 w-60 max-h-72 overflow-y-auto"
+                style={{ borderColor: T.border, borderRadius: 8 }}
+              >
+                {COLUNAS.map((c) => {
+                  const oc = colCfg.ocultas.includes(c.id as string)
+                  return (
+                    <label
+                      key={c.id as string}
+                      className="flex items-center gap-2 px-1.5 py-1 rounded cursor-pointer text-[11px] hover:bg-gray-50"
+                      style={{ color: T.text }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!oc}
+                        onChange={() => {
+                          const ocultas = oc
+                            ? colCfg.ocultas.filter((x) => x !== c.id)
+                            : colCfg.ocultas.concat([c.id as string])
+                          const n = { ...colCfg, ocultas }
+                          setColCfg(n)
+                          lsSet(K_COLUNAS, n)
+                        }}
+                        className="h-3 w-3 accent-[#14532d]"
+                      />
+                      {oc ? (
+                        <EyeOff className="h-3 w-3" style={{ color: T.muted }} />
+                      ) : (
+                        <Eye className="h-3 w-3" style={{ color: T.pos }} />
+                      )}
+                      <span className="truncate">{c.label}</span>
+                    </label>
+                  )
+                })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const n = {
+                      ordem: COLUNAS.map((c) => c.id as string),
+                      ocultas: COLUNAS.filter((c) => !c.visivelPadrao).map((c) => c.id as string),
+                      larguras: {},
+                    }
+                    setColCfg(n)
+                    lsSet(K_COLUNAS, n)
+                  }}
+                  className="mt-1 w-full inline-flex items-center justify-center gap-1 text-[10px] font-semibold py-1 rounded hover:bg-gray-50"
+                  style={{ color: T.muted }}
+                >
+                  <RotateCcw className="h-3 w-3" /> Restaurar padrão
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={exportar}
+            title="Exportar CSV"
+            className="inline-flex items-center justify-center h-7 w-7 rounded border"
+            style={{ borderColor: T.border, color: T.text, borderRadius: 6, background: T.card }}
+          >
+            <Download className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setTelaCheia(emCheio('grade') ? null : 'grade')}
+            className="inline-flex items-center justify-center h-7 w-7 rounded border"
+            style={{ borderColor: T.border, color: T.text, borderRadius: 6, background: T.card }}
+          >
+            {emCheio('grade') ? (
+              <Minimize2 className="h-3.5 w-3.5" />
+            ) : (
+              <Maximize2 className="h-3.5 w-3.5" />
+            )}
+          </button>
+        </div>
+      </div>
+      <div className="border-t" style={{ borderColor: T.border }} />
+      <div className={cn('overflow-auto', emCheio('grade') && 'flex-1')}>
+        <table
+          className="text-[12px]"
+          style={{ minWidth: colunasVisiveis.reduce((a, c) => a + larguraDe(c), 0), width: '100%' }}
+        >
+          <colgroup>
+            {colunasVisiveis.map((c) => (
+              <col key={c.id as string} style={{ width: larguraDe(c) }} />
+            ))}
+          </colgroup>
+          <thead className="sticky top-0 z-10" style={{ background: T.card }}>
+            <tr className="border-b" style={{ borderColor: T.border }}>
+              {colunasVisiveis.map((c) => (
+                <th
+                  key={c.id as string}
+                  draggable
+                  onDragStart={() => (arrastandoCol.current = 'c:' + c.id)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    if (arrastandoCol.current?.startsWith('c:'))
+                      moverColuna(arrastandoCol.current.slice(2), c.id as string)
+                    arrastandoCol.current = null
+                  }}
+                  onClick={() =>
+                    setOrdem((o) =>
+                      o?.id === c.id
+                        ? { id: c.id as string, dir: o.dir === 'asc' ? 'desc' : 'asc' }
+                        : { id: c.id as string, dir: 'desc' },
+                    )
+                  }
+                  aria-sort={
+                    ordem?.id === c.id ? (ordem.dir === 'asc' ? 'ascending' : 'descending') : 'none'
+                  }
+                  className={cn(
+                    'relative py-2 px-2 text-[10px] font-bold uppercase tracking-wider cursor-pointer select-none',
+                    c.alinhamento === 'right' ? 'text-right' : 'text-left',
+                  )}
+                  style={{ color: T.muted }}
+                >
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1',
+                      c.alinhamento === 'right' && 'justify-end w-full',
+                    )}
+                  >
+                    <GripVertical className="h-2.5 w-2.5 shrink-0 opacity-40" />
+                    <span className="truncate">{c.label}</span>
+                    {ordem?.id === c.id &&
+                      (ordem.dir === 'asc' ? (
+                        <ArrowUp className="h-2.5 w-2.5" />
+                      ) : (
+                        <ArrowDown className="h-2.5 w-2.5" />
+                      ))}
+                  </span>
+                  {/* item c: alça de redimensionamento */}
+                  <span
+                    onMouseDown={(e) => {
+                      e.stopPropagation()
+                      e.preventDefault()
+                      redimensionando.current = {
+                        id: c.id as string,
+                        ini: e.clientX,
+                        largura: larguraDe(c),
+                      }
+                      document.body.style.cursor = 'col-resize'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize hover:bg-[#14532d]/30"
+                    style={{ cursor: 'col-resize' }}
+                  />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((l) => {
+              const sel = selecionadas.includes(l.codparc)
+              return (
+                <tr
+                  key={l.codparc}
+                  onClick={() => alternarLinha(l.codparc)}
+                  className="border-b hover:bg-[#f9fafb] cursor-pointer"
+                  style={{
+                    borderColor: T.border,
+                    height: 38,
+                    background: sel ? T.tintGreen : undefined,
+                  }}
+                >
+                  {colunasVisiveis.map((c) => {
+                    const valor = valorColuna(l, c)
+                    const al = c.alinhamento === 'right' ? 'text-right' : 'text-left'
+                    if (c.id === 'ating') {
+                      if (valor === null || valor === undefined)
+                        return (
+                          <td
+                            key={c.id as string}
+                            className={cn('px-2 tabular-nums', al)}
+                            style={{ color: T.muted }}
+                          >
+                            —
+                          </td>
+                        )
+                      const vv = Number(valor)
+                      const acima = vv >= LIMIAR_ATG.meta
+                      const at = vv >= LIMIAR_ATG.atencao && vv < LIMIAR_ATG.meta
+                      return (
+                        <td
+                          key={c.id as string}
+                          className={cn('px-2 tabular-nums', al)}
+                          style={{ background: acima ? T.tintGreen : at ? T.tintAmber : T.tintRed }}
+                        >
+                          <span
+                            className="inline-flex items-center gap-1 justify-end w-full font-bold"
+                            style={{ color: acima ? T.pos : at ? T.warn : T.neg }}
+                          >
+                            {acima ? '▲' : at ? '▬' : '▼'} {fmtPct(vv)}
+                          </span>
+                        </td>
+                      )
+                    }
+                    if (c.tipo === 'delta') {
+                      if (valor === null || valor === undefined)
+                        return (
+                          <td
+                            key={c.id as string}
+                            className={cn('px-2 tabular-nums', al)}
+                            style={{ color: T.muted }}
+                          >
+                            —
+                          </td>
+                        )
+                      const vv = Number(valor)
+                      const cor = vv > 0.05 ? T.pos : vv < -0.05 ? T.neg : T.muted
+                      return (
+                        <td
+                          key={c.id as string}
+                          className={cn('px-2 tabular-nums font-semibold', al)}
+                          style={{ color: cor }}
+                        >
+                          {vv > 0.05 ? '▲ ' : vv < -0.05 ? '▼ ' : ''}
+                          {fmtPct(vv)}
+                        </td>
+                      )
+                    }
+                    if (c.id === 'loja')
+                      return (
+                        <td
+                          key={c.id as string}
+                          className="px-2 font-semibold truncate"
+                          style={{ color: T.text }}
+                          title={l.loja}
+                        >
+                          <span className="inline-flex items-center gap-1 max-w-full">
+                            <span className="truncate">{l.loja}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setParecerLoja(l)
+                                setParecerAberto(true)
+                              }}
+                              title="Parecer"
+                              className="shrink-0 opacity-60 hover:opacity-100"
+                              style={{ color: T.nav }}
+                            >
+                              <Sparkles className="h-3 w-3" />
+                            </button>
+                          </span>
+                        </td>
+                      )
+                    if (c.id === 'rede')
+                      return (
+                        <td
+                          key={c.id as string}
+                          className="px-2 truncate"
+                          style={{ color: T.muted }}
+                        >
+                          {l.rede}
+                        </td>
+                      )
+                    const txt =
+                      valor === null || valor === undefined
+                        ? '—'
+                        : c.tipo === 'brl'
+                          ? fmtBRL(Number(valor))
+                          : c.tipo === 'pct'
+                            ? fmtPct(Number(valor))
+                            : c.tipo === 'num'
+                              ? fmtNum(Number(valor))
+                              : String(valor)
+                    return (
+                      <td
+                        key={c.id as string}
+                        className={cn('px-2 tabular-nums truncate', al)}
+                        style={{
+                          color: c.id === 'faturamento' ? T.text : T.muted,
+                          fontWeight: c.id === 'faturamento' ? 700 : 400,
+                        }}
+                        title={txt}
+                      >
+                        {txt}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+            {linhas.length === 0 && (
+              <tr>
+                <td
+                  colSpan={colunasVisiveis.length}
+                  className="py-8 text-center text-[12px]"
+                  style={{ color: T.muted }}
+                >
+                  Sem lojas para os filtros.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div
+        className="px-3 py-1.5 text-[10px] border-t flex items-center justify-between"
+        style={{ color: T.muted, borderColor: T.border }}
+      >
+        <span>
+          Arraste as colunas pelo cabeçalho para reordenar · arraste a borda direita para
+          redimensionar
+        </span>
+        <span>Clique numa linha para filtrar os cards</span>
+      </div>
+    </div>
+  )
+
+  const mapaBlocos: Record<BlocoId, React.ReactNode> = {
+    cards: blocoCards,
+    grade: blocoGrade,
+    grafico: blocoGrafico,
+  }
+  const ordemBlocos = (Object.keys(layout) as BlocoId[]).sort((a, b) => layout[a] - layout[b])
 
   return (
     <div className="space-y-3 pb-8" style={{ background: T.bg }}>
-      {/* header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
           <h1 className="text-[18px] font-bold tracking-tight" style={{ color: T.text }}>
             Desempenho por Unidade
           </h1>
           <p className="text-[11px]" style={{ color: T.muted }}>
-            {nomeSegmento} · {MESES[f.mes - 1]}/{f.ano}
+            {nomeCanal} · {MESES[f.mes - 1]}/{f.ano}
             {dados.do_cache && (
               <span className="ml-1.5">
                 · {dados.stale ? 'cache antigo' : 'cache'}
@@ -1283,9 +2012,13 @@ export default function DesempenhoPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => salvarCards({ ...cards, ocultos: [] })}
               className="h-8 text-[11px]"
               style={{ borderRadius: 6 }}
+              onClick={() => {
+                const n = { ...cards, ocultos: [] }
+                setCards(n)
+                lsSet(K_CARDS, n)
+              }}
             >
               <Eye className="h-3 w-3 mr-1" /> Reexibir ({cards.ocultos.length})
             </Button>
@@ -1314,7 +2047,7 @@ export default function DesempenhoPage() {
         </div>
       </div>
 
-      {/* painel de filtros (mantido) */}
+      {/* PAINEL DE FILTROS */}
       <div className="bg-white border" style={{ borderColor: T.border, borderRadius: 8 }}>
         <div className="flex items-center gap-2 px-3 h-[50px] overflow-x-auto">
           <button
@@ -1324,8 +2057,7 @@ export default function DesempenhoPage() {
             className="inline-flex items-center gap-1.5 text-[11px] font-semibold shrink-0"
             style={{ color: T.text }}
           >
-            <Filter className="h-3.5 w-3.5" style={{ color: T.nav }} />
-            Filtros
+            <Filter className="h-3.5 w-3.5" style={{ color: T.nav }} /> Filtros
             {filtrosAbertos ? (
               <ChevronUp className="h-3 w-3" />
             ) : (
@@ -1333,11 +2065,7 @@ export default function DesempenhoPage() {
             )}
           </button>
           <div className="flex items-center gap-1.5 min-w-0">
-            <Chip
-              rotulo="Segmento"
-              valor={nomeSegmento}
-              onRemover={() => setCampo('aba', 'varejo')}
-            />
+            <Chip rotulo="Canal" valor={nomeCanal} onRemover={() => setCampo('aba', 'varejo')} />
             <Chip
               rotulo="Ano"
               valor={String(f.ano)}
@@ -1362,7 +2090,7 @@ export default function DesempenhoPage() {
             />
             <Chip
               rotulo="Supervisor"
-              valor={nomeSupervisor}
+              valor={nomeSup}
               onRemover={() => setCampo('supervisor', '')}
             />
           </div>
@@ -1411,16 +2139,18 @@ export default function DesempenhoPage() {
         {filtrosAbertos && (
           <>
             <div className="border-t" style={{ borderColor: T.border }} />
-            {/* grid 100% da largura; minmax evita estouro (item b) */}
-            <div className="px-3 py-2.5 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-9 gap-3 items-end">
+            {/* item b: larguras pelo conteúdo, flex-wrap sem espaço vazio */}
+            <div className="px-3 py-2.5 flex flex-wrap gap-3 items-end">
               <CampoSelect
-                label="Segmento"
+                label="Canal"
+                largura={230}
                 value={f.aba}
                 onChange={(v) => setCampo('aba', v)}
-                options={SEGMENTOS.map((s) => ({ v: s.id, l: s.label }))}
+                options={CANAIS.map((c) => ({ v: c.id, l: c.label }))}
               />
               <CampoSelect
                 label="Ano"
+                largura={90}
                 value={String(f.ano)}
                 onChange={(v) => setCampo('ano', Number(v))}
                 options={[anoCorrente - 2, anoCorrente - 1, anoCorrente, anoCorrente + 1].map(
@@ -1429,12 +2159,14 @@ export default function DesempenhoPage() {
               />
               <CampoSelect
                 label="Mês"
+                largura={110}
                 value={String(f.mes)}
                 onChange={(v) => setCampo('mes', Number(v))}
                 options={MESES.map((m, i) => ({ v: String(i + 1), l: m.slice(0, 3) }))}
               />
               <CampoSelect
                 label="Rede"
+                largura={130}
                 value={f.rede}
                 onChange={(v) => setCampo('rede', v)}
                 options={[
@@ -1445,6 +2177,7 @@ export default function DesempenhoPage() {
               />
               <CampoSelect
                 label="Tipo Loja"
+                largura={130}
                 value={f.tipoLoja}
                 onChange={(v) => setCampo('tipoLoja', v)}
                 options={[
@@ -1455,6 +2188,7 @@ export default function DesempenhoPage() {
               />
               <CampoSelect
                 label="Tipo Grupo"
+                largura={140}
                 value={f.tipoGrupo}
                 onChange={(v) => setCampo('tipoGrupo', v)}
                 options={[
@@ -1465,6 +2199,7 @@ export default function DesempenhoPage() {
               />
               <CampoSelect
                 label="Tipo Venda"
+                largura={135}
                 value={f.tipoVenda}
                 onChange={(v) => setCampo('tipoVenda', v)}
                 options={[
@@ -1475,6 +2210,7 @@ export default function DesempenhoPage() {
               />
               <CampoSelect
                 label="Loja"
+                largura={210}
                 value={f.loja}
                 onChange={(v) => setCampo('loja', v)}
                 options={[
@@ -1484,6 +2220,7 @@ export default function DesempenhoPage() {
               />
               <CampoSelect
                 label="Supervisor"
+                largura={260}
                 value={f.supervisor}
                 onChange={(v) => setCampo('supervisor', v)}
                 options={[
@@ -1508,7 +2245,6 @@ export default function DesempenhoPage() {
           <div>{dados.aviso}</div>
         </div>
       )}
-
       {dados.falhas && dados.falhas.length > 0 && (
         <div
           className="px-3 py-2 rounded-lg border text-[11px]"
@@ -1525,583 +2261,107 @@ export default function DesempenhoPage() {
         </div>
       )}
 
-      {/* SCORECARD — cards idênticos, arrastáveis, ocultáveis (item f) */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2 items-stretch">
-        {cardsVisiveis.map((id) => {
-          const d = defs[id]
-          return (
-            <ScoreCard
-              key={id}
-              id={id}
-              label={d.label}
-              valor={d.valor}
-              contexto={d.contexto}
-              Icone={d.Icone}
-              tom={d.tom}
-              variacoes={d.vars}
-              arrastavel
-              dragAtivo={cardArrastando === id}
-              onDragStart={() => setCardArrastando(id)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => soltarCard(id)}
-              onMover={(dir) => moverCard(id, dir)}
-              onOcultar={() => salvarCards({ ...cards, ocultos: cards.ocultos.concat([id]) })}
-            />
-          )
-        })}
-      </div>
+      {filtrado && (
+        <div
+          className="px-3 py-1.5 rounded border text-[11px] flex items-center gap-2"
+          style={{ background: T.tintGreen, borderColor: '#bbf7d0', color: T.pos }}
+        >
+          <span className="font-semibold">{selecionadas.length} loja(s) selecionada(s)</span>
+          <span style={{ color: T.muted }}>— cards e gráfico refletem apenas a seleção</span>
+          <button
+            type="button"
+            onClick={() => setSelecionadas([])}
+            className="ml-auto text-[10px] underline"
+            style={{ color: T.muted }}
+          >
+            limpar seleção
+          </button>
+        </div>
+      )}
 
-      {/* GRADE — tela cheia (item a) e larguras explícitas (item c) */}
-      <div
-        className={cn(
-          'bg-white border relative flex flex-col',
-          emCheio('grade') && 'fixed inset-2 z-50 shadow-2xl',
-        )}
-        style={{
-          borderColor: T.border,
-          borderRadius: 8,
-          maxHeight: emCheio('grade') ? 'calc(100vh - 16px)' : undefined,
-        }}
-      >
-        <div className="flex items-center justify-between gap-2 px-3 py-2.5 flex-wrap">
-          <div className="flex items-baseline gap-2 min-w-0">
-            <h2 className="text-[14px] font-semibold" style={{ color: T.text }}>
-              Desempenho por loja
-            </h2>
-            <span className="text-[11px]" style={{ color: T.muted }}>
-              {linhas.length} unidades
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="relative hidden sm:block">
-              <Search
-                className="h-3 w-3 absolute left-2 top-1/2 -translate-y-1/2"
-                style={{ color: T.muted }}
-              />
-              <input
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Buscar loja"
-                className="h-7 w-36 rounded border pl-6 pr-2 text-[11px] outline-none"
-                style={{
-                  background: T.input,
-                  borderColor: T.border,
-                  borderRadius: 6,
-                  color: T.text,
-                }}
-              />
-            </div>
-
-            {alertas.length > 0 && (
-              <div ref={bellRef} className="relative">
-                <button
-                  type="button"
-                  onClick={() => setDrawerAberto((v) => !v)}
-                  aria-expanded={drawerAberto}
-                  aria-controls="drawer-atencao"
-                  aria-label={`Atenção: ${alertas.length} alertas`}
-                  className="relative inline-flex items-center justify-center h-7 w-7 rounded border"
-                  style={{
-                    borderColor: T.border,
-                    background: T.card,
-                    borderRadius: 6,
-                    color: T.text,
-                  }}
-                >
-                  <Bell className="h-3.5 w-3.5" />
-                  <span
-                    className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] font-bold flex items-center justify-center"
-                    style={{ background: T.alertFill, color: T.neg }}
-                  >
-                    {alertas.length}
-                  </span>
-                </button>
-                <div id="drawer-atencao">
-                  <DrawerAtencao
-                    aberto={drawerAberto}
-                    alertas={alertas}
-                    onFechar={() => setDrawerAberto(false)}
-                    onVer={verLoja}
-                    anchorRef={bellRef}
-                  />
-                </div>
-              </div>
-            )}
-
-            <div className="relative">
+      {/* ÁREAS ORDENÁVEIS — item a */}
+      {ordemBlocos.map((b, idx) => (
+        <div
+          key={b}
+          onDragOver={(e) => {
+            if (blocoArrastando) e.preventDefault()
+          }}
+          onDrop={(e) => {
+            if (blocoArrastando) {
+              e.preventDefault()
+              soltarBloco(idx)
+            }
+          }}
+          className={cn(idx > 0 && 'relative')}
+        >
+          {idx > 0 && (
+            <div className="flex items-center gap-1.5 mb-1 group/sep">
+              <span className="text-[9px] uppercase tracking-wider" style={{ color: T.muted }}>
+                {b === 'cards' ? 'indicadores' : b === 'grade' ? 'grade' : 'gráfico'}
+              </span>
+              <span className="flex-1 h-px" style={{ background: T.border }} />
               <button
                 type="button"
-                onClick={() => setMenuColunas((v) => !v)}
-                className="inline-flex items-center gap-1 h-7 px-2 rounded border text-[11px] font-semibold"
-                style={{
-                  borderColor: T.border,
-                  color: T.text,
-                  borderRadius: 6,
-                  background: T.card,
-                }}
+                draggable
+                onDragStart={() => setBlocoArrastando(b)}
+                onDragEnd={() => setBlocoArrastando(null)}
+                title="Arraste para reposicionar este bloco"
+                className="opacity-0 group-hover/sep:opacity-100 transition-opacity px-1 rounded border text-[9px] inline-flex items-center gap-0.5 cursor-grab"
+                style={{ borderColor: T.border, color: T.muted, background: T.card }}
               >
-                <Columns3 className="h-3 w-3" /> Colunas{' '}
-                <ChevronDown className="h-3 w-3" style={{ color: T.muted }} />
+                <GripVertical className="h-2.5 w-2.5" /> mover
               </button>
-              {menuColunas && (
-                <div
-                  className="absolute right-0 top-full mt-1 z-50 bg-white border shadow-lg p-2 w-60 max-h-72 overflow-y-auto"
-                  style={{ borderColor: T.border, borderRadius: 8 }}
-                >
-                  {COLUNAS.map((c) => {
-                    const oculta = colCfg.ocultas.includes(c.id as string)
-                    return (
-                      <label
-                        key={c.id as string}
-                        className="flex items-center gap-2 px-1.5 py-1 rounded cursor-pointer text-[11px] hover:bg-gray-50"
-                        style={{ color: T.text }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!oculta}
-                          onChange={() => {
-                            const ocultas = oculta
-                              ? colCfg.ocultas.filter((x) => x !== c.id)
-                              : colCfg.ocultas.concat([c.id as string])
-                            salvarColunas({ ...colCfg, ocultas })
-                          }}
-                          className="h-3 w-3 accent-[#14532d]"
-                        />
-                        {oculta ? (
-                          <EyeOff className="h-3 w-3" style={{ color: T.muted }} />
-                        ) : (
-                          <Eye className="h-3 w-3" style={{ color: T.pos }} />
-                        )}
-                        <span className="truncate">{c.label}</span>
-                      </label>
-                    )
-                  })}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      salvarColunas({
-                        ordem: COLUNAS.map((c) => c.id as string),
-                        ocultas: COLUNAS.filter((c) => !c.visivelPadrao).map((c) => c.id as string),
-                      })
-                    }
-                    className="mt-1 w-full inline-flex items-center justify-center gap-1 text-[10px] font-semibold py-1 rounded hover:bg-gray-50"
-                    style={{ color: T.muted }}
-                  >
-                    <RotateCcw className="h-3 w-3" /> Restaurar padrão
-                  </button>
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  const n = { ...layout }
+                  const cur = n[b]
+                  const alvo = idx - 1
+                  const outro = (Object.keys(n) as BlocoId[]).find((x) => n[x] === alvo)
+                  n[b] = alvo
+                  if (outro) n[outro] = cur
+                  setLayout(n)
+                  lsSet(K_LAYOUT, n)
+                }}
+                title="Subir este bloco"
+                className="opacity-0 group-hover/sep:opacity-100 transition-opacity px-1 rounded border text-[9px]"
+                style={{ borderColor: T.border, color: T.muted, background: T.card }}
+              >
+                ↑
+              </button>
             </div>
-
-            <button
-              type="button"
-              onClick={exportar}
-              title="Exportar CSV"
-              className="inline-flex items-center justify-center h-7 w-7 rounded border"
-              style={{ borderColor: T.border, color: T.text, borderRadius: 6, background: T.card }}
-            >
-              <Download className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setTelaCheia(emCheio('grade') ? null : 'grade')}
-              title={emCheio('grade') ? 'Sair da tela cheia' : 'Tela cheia'}
-              aria-label={emCheio('grade') ? 'Sair da tela cheia' : 'Tela cheia'}
-              className="inline-flex items-center justify-center h-7 w-7 rounded border"
-              style={{ borderColor: T.border, color: T.text, borderRadius: 6, background: T.card }}
-            >
-              {emCheio('grade') ? (
-                <Minimize2 className="h-3.5 w-3.5" />
-              ) : (
-                <Maximize2 className="h-3.5 w-3.5" />
-              )}
-            </button>
-          </div>
+          )}
+          <div className={cn(blocoArrastando === b && 'opacity-60')}>{mapaBlocos[b]}</div>
         </div>
-
-        <div className="border-t" style={{ borderColor: T.border }} />
-
-        <div className={cn('overflow-auto', emCheio('grade') && 'flex-1')}>
-          <table
-            className="text-[12px] w-full"
-            style={{ minWidth: colunasVisiveis.reduce((a, c) => a + c.largura, 0) }}
-          >
-            {/* larguras explícitas: resolve sobreposição/truncamento (item c) */}
-            <colgroup>
-              {colunasVisiveis.map((c) => (
-                <col key={c.id as string} style={{ width: c.largura }} />
-              ))}
-            </colgroup>
-            <thead className="sticky top-0 z-10" style={{ background: T.card }}>
-              <tr className="border-b" style={{ borderColor: T.border }}>
-                {colunasVisiveis.map((c) => (
-                  <th
-                    key={c.id as string}
-                    draggable
-                    onDragStart={() => (arrastandoCol.current = 'col:' + c.id)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => {
-                      if (arrastandoCol.current?.startsWith('col:'))
-                        moverColuna(arrastandoCol.current.replace('col:', ''), c.id as string)
-                      arrastandoCol.current = null
-                    }}
-                    onClick={() =>
-                      setOrdem((o) =>
-                        o?.id === c.id
-                          ? { id: c.id as string, dir: o.dir === 'asc' ? 'desc' : 'asc' }
-                          : { id: c.id as string, dir: 'desc' },
-                      )
-                    }
-                    aria-sort={
-                      ordem?.id === c.id
-                        ? ordem.dir === 'asc'
-                          ? 'ascending'
-                          : 'descending'
-                        : 'none'
-                    }
-                    className={cn(
-                      'py-2 px-2 text-[10px] font-bold uppercase tracking-wider cursor-pointer select-none',
-                      c.alinhamento === 'right' ? 'text-right' : 'text-left',
-                    )}
-                    style={{ color: T.muted }}
-                  >
-                    <span
-                      className={cn(
-                        'inline-flex items-center gap-1',
-                        c.alinhamento === 'right' && 'justify-end w-full',
-                      )}
-                    >
-                      <GripVertical className="h-2.5 w-2.5 shrink-0 opacity-40" />
-                      <span className="truncate">{c.label}</span>
-                      {ordem?.id === c.id &&
-                        (ordem.dir === 'asc' ? (
-                          <ArrowUp className="h-2.5 w-2.5" />
-                        ) : (
-                          <ArrowDown className="h-2.5 w-2.5" />
-                        ))}
-                    </span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {linhas.map((l) => (
-                <tr
-                  key={l.codparc}
-                  className="border-b hover:bg-[#f9fafb]"
-                  style={{ borderColor: T.border, height: 38 }}
-                >
-                  {colunasVisiveis.map((c) => {
-                    const valor = valorColuna(l, c)
-                    const al = c.alinhamento === 'right' ? 'text-right' : 'text-left'
-
-                    if (c.id === 'ating') {
-                      if (valor === null || valor === undefined)
-                        return (
-                          <td
-                            key={c.id as string}
-                            className={cn('px-2 tabular-nums', al)}
-                            style={{ color: T.muted }}
-                          >
-                            —
-                          </td>
-                        )
-                      const vv = Number(valor)
-                      const acima = vv >= LIMIAR_ATG.meta
-                      const atencao = vv >= LIMIAR_ATG.atencao && vv < LIMIAR_ATG.meta
-                      const fundo = acima ? T.tintGreen : atencao ? T.tintAmber : T.tintRed
-                      const cor = acima ? T.pos : atencao ? T.warn : T.neg
-                      return (
-                        <td
-                          key={c.id as string}
-                          className={cn('px-2 tabular-nums', al)}
-                          style={{ background: fundo }}
-                        >
-                          <span
-                            className="inline-flex items-center gap-1 justify-end w-full font-bold"
-                            style={{ color: cor }}
-                          >
-                            {acima ? '▲' : atencao ? '▬' : '▼'} {fmtPct(vv)}
-                          </span>
-                        </td>
-                      )
-                    }
-
-                    if (c.tipo === 'delta') {
-                      if (valor === null || valor === undefined)
-                        return (
-                          <td
-                            key={c.id as string}
-                            className={cn('px-2 tabular-nums', al)}
-                            style={{ color: T.muted }}
-                          >
-                            —
-                          </td>
-                        )
-                      const vv = Number(valor)
-                      const cor = vv > 0.05 ? T.pos : vv < -0.05 ? T.neg : T.muted
-                      return (
-                        <td
-                          key={c.id as string}
-                          className={cn('px-2 tabular-nums font-semibold', al)}
-                          style={{ color: cor }}
-                        >
-                          {vv > 0.05 ? '▲ ' : vv < -0.05 ? '▼ ' : ''}
-                          {fmtPct(vv)}
-                        </td>
-                      )
-                    }
-
-                    if (c.id === 'loja') {
-                      return (
-                        <td
-                          key={c.id as string}
-                          className="px-2 font-semibold truncate"
-                          style={{ color: T.text }}
-                          title={l.loja}
-                        >
-                          <span className="group inline-flex items-center gap-1 max-w-full">
-                            <span className="truncate">{l.loja}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setParecerLoja(l)
-                                setParecerAberto(true)
-                              }}
-                              title="Parecer desta loja"
-                              className="opacity-0 group-hover:opacity-100 shrink-0"
-                              style={{ color: T.nav }}
-                            >
-                              <Sparkles className="h-3 w-3" />
-                            </button>
-                          </span>
-                        </td>
-                      )
-                    }
-
-                    if (c.id === 'rede')
-                      return (
-                        <td
-                          key={c.id as string}
-                          className="px-2 truncate"
-                          style={{ color: T.muted }}
-                          title={l.rede}
-                        >
-                          {l.rede}
-                        </td>
-                      )
-
-                    const txt =
-                      valor === null || valor === undefined
-                        ? '—'
-                        : c.tipo === 'brl'
-                          ? fmtBRL(Number(valor))
-                          : c.tipo === 'pct'
-                            ? fmtPct(Number(valor))
-                            : c.tipo === 'num'
-                              ? fmtNum(Number(valor))
-                              : String(valor)
-
-                    return (
-                      <td
-                        key={c.id as string}
-                        className={cn('px-2 tabular-nums truncate', al)}
-                        style={{
-                          color: c.id === 'faturamento' ? T.text : T.muted,
-                          fontWeight: c.id === 'faturamento' ? 700 : 400,
-                        }}
-                        title={txt}
-                      >
-                        {txt}
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-              {linhas.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={colunasVisiveis.length}
-                    className="py-8 text-center text-[12px]"
-                    style={{ color: T.muted }}
-                  >
-                    Sem lojas para os filtros aplicados.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div
-          className="px-3 py-1.5 text-[10px] border-t"
-          style={{ color: T.muted, borderColor: T.border }}
-        >
-          Arraste as colunas pelo cabeçalho para reordenar · clique para ordenar
-        </div>
-      </div>
-
-      {/* GRÁFICO — tela cheia (item a) */}
-      <div
-        className={cn(
-          'bg-white border p-3.5 flex flex-col',
-          emCheio('grafico') && 'fixed inset-2 z-50 shadow-2xl',
-        )}
-        style={{ borderColor: T.border, borderRadius: 8 }}
-      >
-        <div className="flex items-center justify-between mb-2 gap-2">
-          <div className="flex items-center gap-2">
-            <h2 className="text-[14px] font-semibold" style={{ color: T.text }}>
-              Evolução Faturamento
-            </h2>
-            <span
-              className="text-[10px] font-semibold rounded px-1.5 py-0.5 border"
-              style={{ background: T.tintAmber, borderColor: '#fde68a', color: T.warn }}
-              title={`${MESES_CURTOS[ultimoFechado - 1] || ''} é o último mês fechado`}
-            >
-              parcial
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] hidden sm:inline" style={{ color: T.muted }}>
-              Clique no ano da legenda para ocultar ou exibir a linha
-            </span>
-            <button
-              type="button"
-              onClick={() => setTelaCheia(emCheio('grafico') ? null : 'grafico')}
-              title={emCheio('grafico') ? 'Sair da tela cheia' : 'Tela cheia'}
-              aria-label={emCheio('grafico') ? 'Sair da tela cheia' : 'Tela cheia'}
-              className="inline-flex items-center justify-center h-7 w-7 rounded border shrink-0"
-              style={{ borderColor: T.border, color: T.text, borderRadius: 6, background: T.card }}
-            >
-              {emCheio('grafico') ? (
-                <Minimize2 className="h-3.5 w-3.5" />
-              ) : (
-                <Maximize2 className="h-3.5 w-3.5" />
-              )}
-            </button>
-          </div>
-        </div>
-        <div className={cn('w-full', emCheio('grafico') ? 'flex-1 min-h-0' : 'h-[250px]')}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={seriePivot} margin={{ top: 5, right: 12, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis
-                dataKey="mes"
-                tickLine={false}
-                axisLine={{ stroke: '#9ca3af' }}
-                tick={{ fill: T.muted, fontSize: 10 }}
-              />
-              <YAxis
-                tickLine={false}
-                axisLine={false}
-                tick={{ fill: T.muted, fontSize: 10 }}
-                tickFormatter={(v) => fmtCompacto(v)}
-              />
-              <Tooltip
-                formatter={(v: any) => fmtBRL(Number(v))}
-                contentStyle={{ borderRadius: 8, border: '1px solid ' + T.border, fontSize: 11 }}
-              />
-              <Legend
-                wrapperStyle={{ fontSize: 10, cursor: 'pointer' }}
-                onClick={(entry: any) => {
-                  const nome = String(entry?.dataKey ?? entry?.value ?? '')
-                  if (!nome) return
-                  setAnosOcultos((prev) =>
-                    prev.includes(nome) ? prev.filter((x) => x !== nome) : prev.concat([nome]),
-                  )
-                }}
-                formatter={(value: any, entry: any) => {
-                  const nome = String(entry?.dataKey ?? value)
-                  const oculto = anosOcultos.includes(nome)
-                  return (
-                    <span
-                      style={{
-                        color: oculto ? '#9ca3af' : nome.includes('parcial') ? T.warn : T.text,
-                        fontWeight: oculto ? 400 : 700,
-                        textDecoration: oculto ? 'line-through' : 'none',
-                      }}
-                    >
-                      {nome}
-                    </span>
-                  )
-                }}
-              />
-              {anos.map((a, i) => {
-                const ultimo = anos[anos.length - 1]
-                if (a === ultimo) {
-                  return (
-                    <Line
-                      key={a + '-s'}
-                      type="monotone"
-                      dataKey={a}
-                      name={a}
-                      hide={anosOcultos.includes(a)}
-                      stroke={T.pos}
-                      strokeWidth={2.5}
-                      dot={{ r: 2, strokeWidth: 0, fill: T.pos }}
-                      connectNulls={false}
-                    />
-                  )
-                }
-                return (
-                  <Line
-                    key={a}
-                    type="monotone"
-                    dataKey={a}
-                    name={a}
-                    hide={anosOcultos.includes(a)}
-                    stroke={i === 0 ? '#2563eb' : '#94a3b8'}
-                    strokeWidth={2}
-                    dot={{ r: 2, strokeWidth: 0 }}
-                    connectNulls
-                  />
-                )
-              })}
-              {anos.length > 0 && (
-                <Line
-                  key="parcial"
-                  type="monotone"
-                  dataKey={anos[anos.length - 1] + ' parcial'}
-                  name={anos[anos.length - 1] + ' parcial'}
-                  hide={anosOcultos.includes(anos[anos.length - 1] + ' parcial')}
-                  stroke="#ea580c"
-                  strokeWidth={2.5}
-                  strokeDasharray="6 4"
-                  dot={{ r: 2, strokeWidth: 0, fill: '#ea580c' }}
-                  connectNulls
-                />
-              )}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      ))}
 
       <ParceiroParecerDialog
         aberto={parecerAberto}
         onFechar={() => setParecerAberto(false)}
-        abaLabel={nomeSegmento}
+        abaLabel={nomeCanal}
         contexto={
-          nomeSegmento +
+          nomeCanal +
           ', ' +
           dados.periodo +
           '. Faturamento ' +
-          fmtBRL(k.faturamento) +
+          fmtBRL(K.faturamento) +
           ', venda orçada ' +
-          fmtBRL(k.meta_venda) +
+          fmtBRL(K.meta_venda) +
           ' (atingimento ' +
-          fmtPct(k.faturamento_ating ?? null) +
+          fmtPct(K.faturamento_ating ?? null) +
           ')' +
           ', quantidade ' +
-          fmtNum(k.quantidade_kg) +
+          fmtNum(K.quantidade_kg) +
           ', preço médio ' +
-          fmtBRL(k.preco_medio, 2) +
+          fmtBRL(K.preco_medio, 2) +
           ', ticket médio ' +
-          fmtBRL(k.ticket_medio, 2) +
+          fmtBRL(K.ticket_medio, 2) +
           ', cupons ' +
-          fmtNum(k.cupons) +
+          fmtNum(K.cupons) +
           ', lojas ' +
-          dados.lojas.length +
+          nLojas +
+          ', funcionários ' +
+          fmtNum(K.funcionarios ?? null) +
           '.'
         }
         loja={parecerLoja}
@@ -2111,22 +2371,16 @@ export default function DesempenhoPage() {
               parecerLoja.loja +
               ' (rede ' +
               parecerLoja.rede +
-              '). ' +
-              'Venda realizada ' +
+              '). Faturamento ' +
               fmtBRL(parecerLoja.faturamento) +
               ', venda orçada ' +
               fmtBRL(parecerLoja.meta ?? null) +
               ' (atingimento ' +
               fmtPct(parecerLoja.ating_venda ?? null) +
-              ')' +
-              ', crescimento A.A. ' +
+              '), crescimento A.A. ' +
               fmtPct(parecerLoja.cresc_aa ?? null) +
-              ', preço médio ' +
-              fmtBRL(parecerLoja.preco_medio, 2) +
-              ', ticket médio ' +
-              fmtBRL(parecerLoja.ticket_medio, 2) +
-              ', participação ' +
-              fmtPct(parecerLoja.participacao) +
+              ', funcionários ' +
+              fmtNum(parecerLoja.funcionarios ?? null) +
               '.'
             : ''
         }

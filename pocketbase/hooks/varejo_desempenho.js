@@ -413,6 +413,21 @@ routerAdd(
       supervisores.push({ codparc: String(cp), nome: nm, qtd: n(v(r, 2)), email: null })
     }
 
+    // FUNCIONÁRIOS POR LOJA — EF_VIEW_FUNCIONARIOS_LOJAS (1.798 vínculos).
+    // Usado no card "Lojas" (item h). [0]=CODPARC [1]=QTD
+    const funcRows = lista(
+      'funcionarios',
+      'SELECT F.CODPARC, COUNT(DISTINCT F.CODFUNC) FUNC ' +
+        'FROM SANKHYA.EF_VIEW_FUNCIONARIOS_LOJAS F ' +
+        'JOIN SANKHYA.TGFPAR P ON P.CODPARC = F.CODPARC ' +
+        'WHERE P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 ' +
+        'GROUP BY F.CODPARC',
+    )
+    const funcPorLoja = {}
+    for (const r of funcRows) {
+      funcPorLoja[String(v(r, 0))] = n(v(r, 1))
+    }
+
     // QUEBRA POR LOJA — tela "Resumo Lojas".
     // A AD_BIDRCQUEBRA só tem o total da rede, mas a AD_RESUMOLOJAS tem
     // AJUSTEQUEBRA por CODCENCUS. Cobertura real: ~3 lojas/mês com valor
@@ -554,6 +569,7 @@ routerAdd(
         cmv_mensal:
           (cmvPorCC[m.CC] || {}).MENSAL !== undefined ? (cmvPorCC[m.CC] || {}).MENSAL : null,
         quebra: quebraPorCC[m.CC] !== undefined ? quebraPorCC[m.CC] : null,
+        funcionarios: funcPorLoja[String(cp)] !== undefined ? funcPorLoja[String(cp)] : null,
         qtd_aa: varPct(qL, aa.QTD),
         participacao: null,
       })
@@ -638,6 +654,9 @@ routerAdd(
       serie: serie,
       lojas: lojas,
       supervisores: supervisores,
+      total_funcionarios: lojas.reduce(function (a, l) {
+        return a + (l.funcionarios || 0)
+      }, 0),
     }
 
     if (lojas.length === 0) {
