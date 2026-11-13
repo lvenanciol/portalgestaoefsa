@@ -154,19 +154,26 @@ routerAdd(
     const SUB_VAR =
       '(SELECT CODPARC FROM SANKHYA.TGFPAR WHERE AD_CODCENCUS >= 10105000 AND AD_CODCENCUS < 10107000)'
 
+    // ------------------------------------------------------------------
+    // REGRA DE FONTE POR CANAL (definida pelo dono em 13/11/2026)
+    //
+    //   ATACADO      -> empresa 1 (CODEMP = 1)
+    //   DISTRIBUIÇÃO -> empresas 10 e 4 (CODEMP IN (10,4))
+    //   REDES (Carone/Coutinho) -> NUNCA entram nesses dois canais, e o
+    //   faturamento delas vem do "RESUMO VENDAS" (AD_RESUMOLOJAS), não do
+    //   TGFCAB bruto — ver bloco de receita mais abaixo.
+    //
+    // Medido em out/2026 (excluindo lojas):
+    //   empresa 10 = R$ 129,0M · empresa 1 = R$ 18,1M · empresa 4 = R$ 10,9M
+    // ------------------------------------------------------------------
+    const EMP_ATACADO = '(1)'
+    const EMP_DISTRIB = '(10,4)'
+
     let fAba = ' AND C.CODPARC IN ' + SUB_VAR + ' '
-    if (aba === 'extrabom') fAba = ' AND C.CODPARC IN ' + SUB_EB + ' '
-    else if (aba === 'carone') fAba = ' AND C.CODPARC IN ' + SUB_CR + ' '
-    else if (aba === 'atacado')
-      fAba =
-        ' AND C.CODPARC NOT IN ' +
-        SUB_VAR +
-        ' AND C.CODEMP IN (1,2,3,4,5,6,10,11,12,13,14) AND C.CODEMP < 100 '
+    if (aba === 'atacado')
+      fAba = ' AND C.CODPARC NOT IN ' + SUB_VAR + ' AND C.CODEMP IN ' + EMP_ATACADO + ' '
     else if (aba === 'distribuicao')
-      fAba =
-        ' AND C.CODPARC NOT IN ' +
-        SUB_VAR +
-        ' AND C.CODEMP NOT IN (1,2,3,4,5,6,10,11,12,13,14) AND C.CODEMP < 100 '
+      fAba = ' AND C.CODPARC NOT IN ' + SUB_VAR + ' AND C.CODEMP IN ' + EMP_DISTRIB + ' '
 
     let extra = ''
     if (rede === 'extrabom') extra += ' AND C.CODPARC IN ' + SUB_EB + ' '
@@ -463,6 +470,20 @@ routerAdd(
         OK +
         ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 ' +
         extra +
+        'GROUP BY P.CODPARC ' +
+        // TIPO 4: QUANTIDADE do mesmo mês do ano anterior (base do % A.A.
+        // de Qtde/Kg). Faltava este UNION — o JS lia TIPO 4 mas a query
+        // nunca produzia a linha, e a coluna ficava "—".
+        'UNION ALL SELECT 4 T, P.CODPARC, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, ROUND(SUM(I.QTDNEG),2), NULL ' +
+        'FROM SANKHYA.TGFITE I JOIN SANKHYA.TGFCAB C ON C.NUNOTA=I.NUNOTA ' +
+        'JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
+        'WHERE C.DTNEG >= ' +
+        INI_AA +
+        ' AND C.DTNEG < ' +
+        FIM_AA +
+        OK +
+        ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 ' +
+        extra +
         'GROUP BY P.CODPARC' +
         ') ORDER BY T, 6 DESC',
     )
@@ -480,6 +501,41 @@ routerAdd(
         aaL[cp] = cur
       }
     }
+
+    // ------------------------------------------------------------------
+    // COMPOSIÇÃO DA QUEBRA POR LOJA E PRODUTO (item i2)
+    //
+    // O card "Quebra" abre um drilldown Rede -> Bandeira -> Loja -> Itens.
+    // A composição por produto usa AD_ITEINVENTARIO (contagem do inventário)
+    // cruzada com o custo; quando uma loja não tem inventário no mês, a linha
+    // vem vazia e a tela avisa — nunca inventamos número.
+    // [0]=CODPARC [1]=CODPROD [2]=DESCRPROD [3]=QTD [4]=CUSTO [5]=VALOR
+    const quebraIteRows = lista(
+      'quebra_itens',
+      'SELECT P.CODPARC, I.CODPROD, PR.DESCRPROD, ' +
+        'ROUND(SUM(I.QTD),3) QTD, ROUND(AVG(I.CUSTO),4) CUSTO, ROUND(SUM(I.TOTAL),2) VALOR ' +
+        'FROM SANKHYA.AD_CABINVENTARIO CB ' +
+        'JOIN SANKHYA.AD_ITEINVENTARIO I ON I.CODINV = CB.CODINV ' +
+        'JOIN SANKHYA.TGFPAR P ON P.CODPARC = CB.CODPARC ' +
+        'LEFT JOIN SANKHYA.TGFPRO PR ON PR.CODPROD = I.CODPROD ' +
+        'WHERE CB.DTINVENTARIO >= ' +
+        INI +
+        ' AND CB.DTINVENTARIO < ' +
+        FIM +
+        ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 ' +
+        'GROUP BY P.CODPARC, I.CODPROD, PR.DESCRPROD ' +
+        'ORDER BY SUM(I.TOTAL) DESC',
+    )
+    const quebraItens = quebraIteRows.slice(0, 400).map(function (r) {
+      return {
+        codparc: n(v(r, 0)),
+        codprod: n(v(r, 1)),
+        produto: v(r, 2) || 'Produto ' + String(v(r, 1)),
+        qtd: n(v(r, 3)),
+        custo: n(v(r, 4)),
+        valor: n(v(r, 5)),
+      }
+    })
 
     // supervisores — carteira por e-mail + parceiros que não são loja
     const emRows = lista(
@@ -822,6 +878,7 @@ routerAdd(
       serie: serie,
       lojas: lojas,
       supervisores: supervisores,
+      quebra_itens: quebraItens,
       total_funcionarios: lojas.reduce(function (a, l) {
         return a + (l.funcionarios || 0)
       }, 0),
