@@ -1,196 +1,307 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
-import { BarChart3, Loader2, RefreshCw, AlertTriangle, Database, Building2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+} from 'recharts'
+import {
+  BarChart3,
+  Loader2,
+  RefreshCw,
+  AlertTriangle,
+  Building2,
+  Info,
+  Store,
+  Sparkles,
+} from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
-import { ParecerIaCard } from '@/components/ParecerIaCard'
 import { Button } from '@/components/ui/button'
+import { ParceiroParecerDialog } from '@/components/varejo/ParceiroParecerDialog'
 import { useBotoes } from '@/services/botoes-service'
 import { cn } from '@/lib/utils'
 
-// Fase 8 — Desempenho por Unidade (REAL): faturamento e posição de títulos
-// POR EMPRESA (unidade gerencial do grupo) direto do Sankhya via proxy.
-// Nota: TGFCAB/TGFFIN são por CODEMP — a unidade gerencial do grupo é a
-// empresa (Extrafruti/Casafruti/FoldBox + filiais). Fallback mock quando
-// o proxy falha.
+// TAREFA VAREJO (13/11/2026) — "Desempenho Unidades"
+// Antes: "Desempenho por Unidade" (só empresa/CODEMP + títulos).
+// Agora: 5 abas por bandeira, com os cards do painel de referência, na paleta
+// e identidade do PGE (verde #1B5E20). Dados REAIS do Sankhya via hook
+// /backend/v1/varejo/desempenho — sem número inventado: métrica que não existe
+// na base volta "—" com a origem esperada no tooltip.
 
-const fmtBRL = (v: number) =>
-  Math.abs(v).toLocaleString('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    maximumFractionDigits: 0,
-  })
+const VERDE = '#1B5E20'
+const VERDE_CLARO = '#4CAF50'
+const DOURADO = '#C8A951'
+const CINZA = '#9CA3AF'
 
-const fmtMilhoes = (v: number) => {
-  const m = Math.abs(v) / 1_000_000
-  return (
-    'R$ ' + m.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + 'M'
-  )
-}
+type Aba = 'distribuicao' | 'atacado' | 'carone' | 'extrabom' | 'varejo'
 
-interface FinReal {
+const ABAS: { id: Aba; label: string }[] = [
+  { id: 'distribuicao', label: 'Distribuição' },
+  { id: 'atacado', label: 'Atacado' },
+  { id: 'carone', label: 'Carone' },
+  { id: 'extrabom', label: 'Extrabom' },
+  { id: 'varejo', label: 'Varejo (Carone + Extrabom)' },
+]
+
+interface Resposta {
   ok: boolean
-  empresas?: [number, string][]
-  fat?: [string, number, number][]
-  ap_por_empresa?: [number, string, number][]
-  ar_por_empresa?: [number, string, number][]
-  ap_mensal?: [string, number, number][]
-  ar_mensal?: [string, number, number][]
+  aba: Aba
+  gerado_em: string
+  periodo: string
+  kpis: {
+    faturamento: number | null
+    quantidade_kg: number | null
+    preco_medio: number | null
+    cupons: number | null
+    ticket_medio: number | null
+    cmv_pct: number | null
+    quebra_pct: number | null
+  }
+  sem_dado?: Record<string, string>
+  serie: any[]
+  lojas: any[]
+  cidades: any[]
+  participacao: any[]
   falhas?: string[]
 }
 
-function TooltipEmp({ active, payload }: { active?: boolean; payload?: any[] }) {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white p-3 rounded-xl border border-gray-200 shadow-xl text-xs">
-        {payload.map((p) => (
-          <div key={p.name} className="flex justify-between gap-3">
-            <span className="text-gray-600 font-medium">{p.name}</span>
-            <span className="font-semibold text-gray-900 tabular-nums">{fmtBRL(p.value)}</span>
-          </div>
-        ))}
-      </div>
-    )
-  }
-  return null
+const fmtNum = (v: number | null, dec = 0) =>
+  v === null || v === undefined
+    ? '—'
+    : v.toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec })
+
+const fmtBRL = (v: number | null) =>
+  v === null || v === undefined
+    ? '—'
+    : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+
+const fmtCompacto = (v: number | null) => {
+  if (v === null || v === undefined) return '—'
+  if (Math.abs(v) >= 1_000_000)
+    return (v / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' Mi'
+  if (Math.abs(v) >= 1_000)
+    return (v / 1_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' Mil'
+  return fmtNum(v)
 }
 
-function RankingList({
+/** Card de KPI no padrão do painel de referência, com a paleta do PGE. */
+function KpiCard({
   titulo,
-  itens,
+  valor,
+  sub,
+  cor = 'verde',
+  tooltip,
+  semDado,
 }: {
   titulo: string
-  itens: { nome: string; total: number }[]
+  valor: string
+  sub?: string
+  cor?: 'verde' | 'dourado' | 'cinza'
+  tooltip?: string
+  semDado?: boolean
 }) {
-  const max = Math.max(...itens.map((i) => i.total), 1)
+  const bg = cor === 'dourado' ? 'bg-[#7A5C1E]' : cor === 'cinza' ? 'bg-[#374151]' : 'bg-[#1B5E20]'
+  return (
+    <div className={cn('rounded-xl p-4 text-white shadow-xs relative', bg)} title={tooltip}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-[10px] font-bold uppercase tracking-[0.09em] text-white/75">
+          {titulo}
+        </div>
+        {tooltip && <Info className="h-3 w-3 text-white/50 shrink-0" />}
+      </div>
+      <div
+        className={cn(
+          'text-xl font-bold tabular-nums mt-1.5 leading-none',
+          semDado && 'text-white/45',
+        )}
+      >
+        {valor}
+      </div>
+      {sub && (
+        <div className="text-[10px] text-white/70 mt-1.5 font-medium tabular-nums">{sub}</div>
+      )}
+      {semDado && (
+        <span className="absolute top-3 right-3 text-[8px] font-bold uppercase bg-white/15 px-1.5 py-0.5 rounded">
+          sem dado
+        </span>
+      )}
+    </div>
+  )
+}
+
+function CardPainel({
+  titulo,
+  children,
+  acao,
+}: {
+  titulo: string
+  children: React.ReactNode
+  acao?: React.ReactNode
+}) {
   return (
     <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs">
-      <div className="text-sm font-bold text-gray-900 mb-3">{titulo}</div>
-      <div className="space-y-2.5">
-        {itens.map((i, idx) => (
-          <div key={idx}>
-            <div className="flex items-center justify-between gap-2 text-[12px]">
-              <span className="flex items-center gap-1.5 text-gray-700 font-medium truncate">
-                <Building2 className="h-3 w-3 text-gray-400 shrink-0" />
-                {i.nome}
-              </span>
-              <span className="font-bold text-gray-900 tabular-nums shrink-0">
-                {fmtBRL(i.total)}
-              </span>
-            </div>
-            <div className="h-1.5 rounded-full bg-gray-100 mt-1 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-[#1B5E20] transition-all"
-                style={{ width: `${(i.total / max) * 100}%` }}
-              />
-            </div>
-          </div>
-        ))}
-        {itens.length === 0 && <p className="text-[12px] text-gray-400">Sem dados no período.</p>}
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <h3 className="text-sm font-bold text-gray-900">{titulo}</h3>
+        {acao}
       </div>
+      {children}
     </div>
   )
 }
 
 export default function DesempenhoPage() {
   const { pode } = useBotoes()
-  const [dados, setDados] = useState<FinReal | null>(null)
+  const [aba, setAba] = useState<Aba>('varejo')
+  const [dados, setDados] = useState<Resposta | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
 
-  const carregar = async () => {
+  // Parecer: null = aberto para a ABA inteira; objeto = aberto para uma loja
+  const [parecerAberto, setParecerAberto] = useState(false)
+  const [parecerLoja, setParecerLoja] = useState<any | null>(null)
+
+  const carregar = useCallback(async (a: Aba) => {
     setLoading(true)
     setErro('')
     try {
-      const r = await pb.send('/backend/v1/financeiro/real', { method: 'POST' })
-      setDados(r as FinReal)
+      const r = await pb.send('/backend/v1/varejo/desempenho?aba=' + a, { method: 'GET' })
+      setDados(r as Resposta)
     } catch (e) {
       setErro(String(e))
+      setDados(null)
     } finally {
       setLoading(false)
     }
-  }
-
-  useEffect(() => {
-    carregar()
   }, [])
 
-  const agg = useMemo(() => {
-    if (!dados) return null
-    const nomeEmpresa = new Map<number, string>()
-    ;(dados.empresas || []).forEach((e) => nomeEmpresa.set(Number(e[0]), String(e[1])))
+  useEffect(() => {
+    carregar(aba)
+  }, [aba, carregar])
 
-    // Faturamento 12m por empresa (todas as CODEMP com NF liberada)
-    const porEmp = new Map<number, number>()
-    ;(dados.fat || []).forEach((r) => porEmp.set(r[1], (porEmp.get(r[1]) || 0) + r[2]))
-    const fatEmpresas = Array.from(porEmp.entries())
-      .map(([cod, tot]) => ({ nome: nomeEmpresa.get(cod) || 'Empresa ' + cod, total: tot }))
-      .sort((a, b) => b.total - a.total)
+  const kpis = dados?.kpis
 
-    const fatTotal = fatEmpresas.reduce((a, f) => a + f.total, 0)
-    const apPorEmp = (dados.ap_por_empresa || []).map((r) => ({
-      nome: String(r[1]) || nomeEmpresa.get(Number(r[0])) || 'Empresa ' + r[0],
-      total: Number(r[2]),
-    }))
-    const arPorEmp = (dados.ar_por_empresa || []).map((r) => ({
-      nome: String(r[1]) || nomeEmpresa.get(Number(r[0])) || 'Empresa ' + r[0],
-      total: Number(r[2]),
-    }))
-    const apTotal = apPorEmp.reduce((a, x) => a + x.total, 0)
-    const arTotal = arPorEmp.reduce((a, x) => a + x.total, 0)
-
-    // gráfico: top 8 empresas por faturamento
-    const grafico = fatEmpresas.slice(0, 8).map((f) => ({ nome: f.nome, faturamento: f.total }))
-
-    return { fatEmpresas, fatTotal, apPorEmp, arPorEmp, apTotal, arTotal, grafico }
-  }, [dados])
-
-  const contextoParecer = agg
-    ? 'Desempenho por empresa (dados reais Sankhya, janela 12m). Faturamento total: ' +
-      fmtBRL(agg.fatTotal) +
-      '. Ranking: ' +
-      agg.fatEmpresas.map((f) => f.nome + ' ' + fmtBRL(f.total)).join('; ') +
-      '. A/P aberto por empresa: ' +
-      (agg.apPorEmp.map((x) => x.nome + ' ' + fmtBRL(x.total)).join('; ') || 'nenhum') +
-      '. A/R aberto por empresa: ' +
-      (agg.arPorEmp.map((x) => x.nome + ' ' + fmtBRL(x.total)).join('; ') || 'nenhum') +
-      '. Analise concentração, desequilíbrios entre unidades e riscos.'
-    : ''
+  // Contexto enviado à IA: monta um resumo textual do que está na tela.
+  const contextoAba = useMemo(() => {
+    if (!dados || !kpis) return ''
+    const lojasTxt = (dados.lojas || [])
+      .slice(0, 15)
+      .map((l: any) => `${l.LOJA} ${fmtBRL(Number(l.FAT))}`)
+      .join('; ')
+    const cidTxt = (dados.cidades || [])
+      .slice(0, 10)
+      .map((c: any) => `${c.CIDADE} ${fmtBRL(Number(c.FAT))}`)
+      .join('; ')
+    const partTxt = (dados.participacao || [])
+      .map((p: any) => `${p.BANDEIRA} ${fmtBRL(Number(p.FAT))}`)
+      .join('; ')
+    return (
+      `Aba: ${ABAS.find((x) => x.id === aba)?.label}. Período: ${dados.periodo}. ` +
+      `Faturamento: ${fmtBRL(kpis.faturamento)}. ` +
+      `Quantidade/KG: ${fmtNum(kpis.quantidade_kg, 0)}. ` +
+      `Preço médio: ${fmtBRL(kpis.preco_medio)}. ` +
+      `Cupons: ${fmtNum(kpis.cupons)}. ` +
+      `Ticket médio: ${fmtBRL(kpis.ticket_medio)}. ` +
+      (partTxt ? `Participação por bandeira: ${partTxt}. ` : '') +
+      (lojasTxt ? `Ranking de lojas: ${lojasTxt}. ` : '') +
+      (cidTxt ? `Faturamento por cidade: ${cidTxt}. ` : '') +
+      'CMV e Quebra não estão disponíveis na fonte de dados atual.'
+    )
+  }, [dados, kpis, aba])
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loader2 className="h-6 w-6 animate-spin text-[#1B5E20]" />
-        <span className="ml-2 text-sm text-gray-500">Consultando Sankhya via proxy...</span>
+        <span className="ml-2 text-sm text-gray-500">Consultando o Sankhya…</span>
       </div>
     )
   }
 
-  if (erro || !dados || !agg) {
+  if (erro || !dados || !kpis) {
     return (
       <div className="p-4 rounded-lg bg-red-50 border border-red-200 text-[13px] text-red-700 font-medium flex items-center gap-2">
-        <AlertTriangle className="h-4 w-4" /> Erro ao carregar dados reais: {erro || 'sem dados'}
-        <Button variant="outline" size="sm" className="ml-auto" onClick={carregar}>
+        <AlertTriangle className="h-4 w-4" /> Erro ao carregar o desempenho: {erro || 'sem dados'}
+        <Button variant="outline" size="sm" className="ml-auto" onClick={() => carregar(aba)}>
           <RefreshCw className="h-3.5 w-3.5" /> Tentar de novo
         </Button>
       </div>
     )
   }
 
+  const serieGrafico = (dados.serie || []).map((s: any) => ({
+    mes: String(s.MES || '').slice(5) + '/' + String(s.MES || '').slice(2, 4),
+    faturamento: Number(s.FAT) || 0,
+    cupons: Number(s.CUPONS) || 0,
+  }))
+
+  const cidadesGrafico = (dados.cidades || []).slice(0, 12).map((c: any) => ({
+    nome: c.CIDADE || '—',
+    valor: Number(c.FAT) || 0,
+  }))
+
+  const participacaoGrafico = (dados.participacao || []).map((p: any) => ({
+    name: p.BANDEIRA,
+    value: Number(p.FAT) || 0,
+  }))
+  const totalParticipacao = participacaoGrafico.reduce((a, b) => a + b.value, 0)
+
   return (
     <div className="space-y-5 pb-8">
+      {/* Cabeçalho */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-gray-200/80">
         <div>
           <h1 className="text-2xl lg:text-[26px] font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
-            <BarChart3 className="h-6 w-6 text-[#1B5E20]" />
-            Desempenho por Unidade
+            <Store className="h-6 w-6 text-[#1B5E20]" />
+            Desempenho Unidades
           </h1>
           <p className="text-xs sm:text-[13px] text-gray-500 mt-0.5">
-            Faturamento e posição de títulos por empresa/unidade — dados reais do ERP (12 meses)
+            Indicadores de varejo por bandeira — dados reais do ERP · {dados.periodo}
           </p>
         </div>
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 self-start sm:self-auto">
-          <Database className="h-3 w-3" /> Real — Sankhya
-        </span>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <Button
+            onClick={() => {
+              setParecerLoja(null)
+              setParecerAberto(true)
+            }}
+            className="bg-[#1B5E20] hover:bg-[#0F3D13] text-white text-[12px] h-9"
+          >
+            <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Parecer
+          </Button>
+          {pode('desempenho', 'atualizar') && (
+            <Button variant="outline" size="sm" onClick={() => carregar(aba)} className="h-9">
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Atualizar
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Abas */}
+      <div className="flex flex-wrap gap-1.5 border-b border-gray-200">
+        {ABAS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setAba(t.id)}
+            className={cn(
+              'px-3.5 py-2 text-[12px] font-semibold rounded-t-lg transition-colors -mb-px border border-b-0',
+              aba === t.id
+                ? 'bg-white text-[#1B5E20] border-gray-200 shadow-xs'
+                : 'bg-transparent text-gray-500 border-transparent hover:text-gray-800 hover:bg-gray-50',
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {dados.falhas && dados.falhas.length > 0 && (
@@ -199,101 +310,243 @@ export default function DesempenhoPage() {
         </div>
       )}
 
-      {/* KPIs */}
+      {/* Cards de KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {[
-          { label: 'FATURAMENTO 12M (GRUPO)', v: fmtMilhoes(agg.fatTotal), cor: 'text-gray-900' },
-          { label: 'A PAGAR ABERTO', v: fmtMilhoes(agg.apTotal), cor: 'text-red-600' },
-          { label: 'A RECEBER ABERTO', v: fmtMilhoes(agg.arTotal), cor: 'text-emerald-700' },
-          {
-            label: 'EMPRESAS COM FATURAMENTO',
-            v: String(agg.fatEmpresas.length),
-            cor: 'text-gray-900',
-          },
-        ].map((k) => (
-          <div key={k.label} className="bg-white rounded-xl border border-[#E5E7EB] p-4 shadow-xs">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-              {k.label}
-            </div>
-            <div className={cn('text-lg font-bold tabular-nums mt-1', k.cor)}>{k.v}</div>
-          </div>
-        ))}
+        <KpiCard
+          titulo="Faturamento"
+          valor={fmtCompacto(kpis.faturamento)}
+          sub={fmtBRL(kpis.faturamento)}
+        />
+        <KpiCard
+          titulo="Quantidade / KG"
+          valor={fmtCompacto(kpis.quantidade_kg)}
+          sub="soma de unidades e kg"
+        />
+        <KpiCard titulo="Preço Médio" valor={fmtBRL(kpis.preco_medio)} />
+        <KpiCard titulo="Cupons" valor={fmtNum(kpis.cupons)} sub="notas emitidas" />
+        <KpiCard titulo="Ticket Médio" valor={fmtBRL(kpis.ticket_medio)} />
+        <KpiCard
+          titulo="CMV Parcial"
+          valor="—"
+          cor="dourado"
+          semDado
+          tooltip={dados.sem_dado?.cmv_pct}
+        />
+        <KpiCard
+          titulo="Quebra"
+          valor="—"
+          cor="cinza"
+          semDado
+          tooltip={dados.sem_dado?.quebra_pct}
+        />
+        <KpiCard
+          titulo="Lojas / Parceiros"
+          valor={fmtNum((dados.lojas || []).length)}
+          sub="no ranking do período"
+        />
       </div>
 
-      {/* Gráfico por empresa */}
-      <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Database className="h-4 w-4 text-[#1B5E20]" />
-            <span className="text-sm font-bold text-gray-900">
-              Faturamento por empresa — 12 meses
-            </span>
-          </div>
-          <span className="text-[11px] text-gray-400">NFs liberadas · TGFCAB</span>
-        </div>
-        <div className="h-[300px] w-full">
+      {/* Evolução do faturamento (12m) */}
+      <CardPainel titulo="Evolução Faturamento — 12 meses">
+        <div className="h-[260px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={agg.grafico}
-              layout="vertical"
-              margin={{ top: 5, right: 20, left: 10, bottom: 0 }}
-            >
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F3F4F6" />
+            <LineChart data={serieGrafico} margin={{ top: 5, right: 12, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
               <XAxis
-                type="number"
-                axisLine={{ stroke: '#E5E7EB' }}
+                dataKey="mes"
                 tickLine={false}
+                axisLine={{ stroke: '#E5E7EB' }}
                 tick={{ fill: '#6B7280', fontSize: 11 }}
-                tickFormatter={(v) =>
-                  v >= 1_000_000 ? Math.round(v / 1_000_000) + 'M' : Math.round(v / 1000) + 'k'
-                }
               />
               <YAxis
-                type="category"
-                dataKey="nome"
-                width={150}
-                axisLine={false}
                 tickLine={false}
-                tick={{ fill: '#374151', fontSize: 11, fontWeight: 600 }}
+                axisLine={false}
+                tick={{ fill: '#6B7280', fontSize: 11 }}
+                tickFormatter={(v) => fmtCompacto(v)}
               />
-              <Tooltip content={<TooltipEmp />} cursor={{ fill: '#F9FAFB' }} />
-              <Bar
+              <Tooltip
+                formatter={(v: any) => fmtBRL(Number(v))}
+                contentStyle={{ borderRadius: 8, border: '1px solid #E5E7EB', fontSize: 12 }}
+              />
+              <Line
+                type="monotone"
                 dataKey="faturamento"
-                name="Faturamento"
-                fill="#1B5E20"
-                radius={[0, 4, 4, 0]}
+                name="Venda Realizada"
+                stroke={VERDE}
+                strokeWidth={2.5}
+                dot={{ r: 3, fill: VERDE }}
                 animationDuration={600}
               />
-            </BarChart>
+            </LineChart>
           </ResponsiveContainer>
+        </div>
+      </CardPainel>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Participação por bandeira */}
+        {participacaoGrafico.length > 0 && (
+          <CardPainel titulo="Participação por Faturamento">
+            <div className="h-[240px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={participacaoGrafico}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={80}
+                    paddingAngle={2}
+                  >
+                    {participacaoGrafico.map((_, i) => (
+                      <Cell key={i} fill={i === 0 ? VERDE : i === 1 ? VERDE_CLARO : DOURADO} />
+                    ))}
+                  </Pie>
+                  <Legend
+                    formatter={(v: any, entry: any) => {
+                      const val = entry?.payload?.value || 0
+                      const pct = totalParticipacao ? (val / totalParticipacao) * 100 : 0
+                      return `${v} ${pct.toFixed(1)}%`
+                    }}
+                    wrapperStyle={{ fontSize: 11 }}
+                  />
+                  <Tooltip
+                    formatter={(v: any) => fmtBRL(Number(v))}
+                    contentStyle={{ borderRadius: 8, border: '1px solid #E5E7EB', fontSize: 12 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </CardPainel>
+        )}
+
+        {/* Faturamento por cidade */}
+        <div className={cn(participacaoGrafico.length > 0 ? 'lg:col-span-2' : 'lg:col-span-3')}>
+          <CardPainel titulo="Faturamento por Cidade">
+            <div className="h-[240px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={cidadesGrafico}
+                  layout="vertical"
+                  margin={{ top: 0, right: 16, left: 4, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F3F4F6" />
+                  <XAxis
+                    type="number"
+                    tickLine={false}
+                    axisLine={{ stroke: '#E5E7EB' }}
+                    tick={{ fill: '#6B7280', fontSize: 10 }}
+                    tickFormatter={(v) => fmtCompacto(v)}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="nome"
+                    width={100}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#374151', fontSize: 10, fontWeight: 600 }}
+                  />
+                  <Tooltip
+                    formatter={(v: any) => fmtBRL(Number(v))}
+                    contentStyle={{ borderRadius: 8, border: '1px solid #E5E7EB', fontSize: 12 }}
+                  />
+                  <Bar dataKey="valor" name="Faturamento" fill={VERDE} radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardPainel>
         </div>
       </div>
 
-      {/* Rankings A/P e A/R por empresa */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <RankingList titulo="A Pagar em aberto — por empresa" itens={agg.apPorEmp} />
-        <RankingList titulo="A Receber em aberto — por empresa" itens={agg.arPorEmp} />
-      </div>
-
-      {/* Parecer IA */}
-      <ParecerIaCard
-        titulo="Parecer IA — desempenho por unidade"
-        contexto={contextoParecer}
-        prompt="Analise o desempenho das unidades/empresas do grupo. Destaque concentração de receita, unidades com desequilíbrio entre A/R e A/P, riscos e 2-3 recomendações práticas."
-      />
+      {/* Ranking de lojas — cada linha tem seu próprio Parecer */}
+      <CardPainel
+        titulo="Desempenho por Loja"
+        acao={
+          <span className="text-[11px] text-gray-400">
+            Clique em uma loja para gerar o parecer dela
+          </span>
+        }
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="border-b border-gray-200 text-gray-500">
+                <th className="text-left font-semibold py-2 px-2">Loja</th>
+                <th className="text-right font-semibold py-2 px-2">Cupons</th>
+                <th className="text-right font-semibold py-2 px-2">Faturamento</th>
+                <th className="text-right font-semibold py-2 px-2">Ticket</th>
+                <th className="text-right font-semibold py-2 px-2 w-24">Parecer</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(dados.lojas || []).map((l: any) => {
+                const fat = Number(l.FAT) || 0
+                const cup = Number(l.CUPONS) || 0
+                return (
+                  <tr key={l.LOJA} className="border-b border-gray-100 hover:bg-gray-50/60">
+                    <td className="py-2 px-2 font-semibold text-gray-800 flex items-center gap-1.5">
+                      <Building2 className="h-3 w-3 text-gray-400 shrink-0" />
+                      {l.LOJA}
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums text-gray-600">
+                      {fmtNum(cup)}
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums font-bold text-gray-900">
+                      {fmtBRL(fat)}
+                    </td>
+                    <td className="py-2 px-2 text-right tabular-nums text-gray-600">
+                      {cup > 0 ? fmtBRL(fat / cup) : '—'}
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setParecerLoja({ ...l, fat, cup })
+                          setParecerAberto(true)
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#1B5E20] hover:text-[#0F3D13] hover:underline"
+                      >
+                        <Sparkles className="h-3 w-3" /> Parecer
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+              {(dados.lojas || []).length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-gray-400">
+                    Sem movimento no período para esta aba.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </CardPainel>
 
       <div className="flex items-center justify-between text-[11px] text-gray-400">
-        <span>Fonte: Sankhya via edge proxy (DbExplorerSP) · janela 12 meses · TGFCAB/TGFFIN</span>
-        {pode('desempenho', 'atualizar') && (
-          <button
-            type="button"
-            onClick={carregar}
-            className="inline-flex items-center gap-1 hover:text-gray-600 font-semibold"
-          >
-            <RefreshCw className="h-3 w-3" /> Atualizar
-          </button>
-        )}
+        <span>
+          Sankhya · TGFCAB/TGFITE/TGFPAR · mês corrente · gerado em{' '}
+          {dados.gerado_em?.slice(0, 19).replace('T', ' ')}
+        </span>
       </div>
+
+      <ParceiroParecerDialog
+        aberto={parecerAberto}
+        onFechar={() => setParecerAberto(false)}
+        abaLabel={ABAS.find((x) => x.id === aba)?.label || ''}
+        contexto={contextoAba}
+        loja={parecerLoja}
+        contextoLoja={
+          parecerLoja
+            ? `Loja ${parecerLoja.LOJA}. Faturamento ${fmtBRL(parecerLoja.fat)}. ` +
+              `Cupons ${fmtNum(parecerLoja.cup)}. ` +
+              `Ticket médio ${parecerLoja.cup > 0 ? fmtBRL(parecerLoja.fat / parecerLoja.cup) : '—'}. ` +
+              `Aba: ${ABAS.find((x) => x.id === aba)?.label}.`
+            : ''
+        }
+      />
     </div>
   )
 }
