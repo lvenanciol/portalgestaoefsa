@@ -599,7 +599,12 @@ export default function DesempenhoPage() {
 
         if (quebraLojas.length) {
           const mapa: Record<string, any> = {}
-          for (const q of quebraLojas) mapa[String(q.codparc)] = q
+          const prods: Record<string, any[]> = {}
+          for (const q of quebraLojas) {
+            mapa[String(q.codparc)] = q
+            if (q.produtos && q.produtos.length) prods[String(q.codparc)] = q.produtos
+          }
+          ;(r as any).quebra_produtos = prods
           r.lojas = (r.lojas || []).map((l: Loja) => {
             const q = mapa[String(l.codparc)]
             return q
@@ -1709,13 +1714,13 @@ export default function DesempenhoPage() {
   )
 
   // ---- item i2: composição da quebra (Rede -> Bandeira -> Loja -> Item) ----
-  const itensQuebra: any[] = (dados as any)?.quebra_itens || []
-  const itensPorLoja: Record<string, any[]> = {}
-  for (const it of itensQuebra) {
-    const kk = String(it.codparc)
-    if (!itensPorLoja[kk]) itensPorLoja[kk] = []
-    itensPorLoja[kk].push(it)
-  }
+  // COMPOSIÇÃO DA QUEBRA (item i2) — agora vem do hook /varejo/quebra,
+  // que reproduz a query oficial do dashboard "Quebra TOP 50".
+  // Cada produto traz: EI, Recebido, EF, Vendas, Consumo, Qtd Quebra,
+  // Custo Unit (preço médio de venda como proxy, definido pelo dono) e Valor.
+  const itensPorLoja: Record<string, any[]> = (dados as any)?.quebra_produtos || {}
+  const temComposicao = Object.keys(itensPorLoja).length > 0
+  const itensQuebra: any[] = temComposicao ? [{ _: 1 }] : []
   const alternarDrill = (ch: string) =>
     setDrillAberto((p: string[]) => (p.includes(ch) ? p.filter((x) => x !== ch) : p.concat([ch])))
 
@@ -1857,9 +1862,14 @@ export default function DesempenhoPage() {
                                     <thead>
                                       <tr style={{ color: T.muted }}>
                                         <th className="text-left font-semibold py-0.5">Produto</th>
-                                        <th className="text-right font-semibold">Qtd</th>
-                                        <th className="text-right font-semibold">Custo</th>
-                                        <th className="text-right font-semibold">Valor</th>
+                                        <th className="text-right font-semibold">EI</th>
+                                        <th className="text-right font-semibold">Recebido</th>
+                                        <th className="text-right font-semibold">EF</th>
+                                        <th className="text-right font-semibold">Vendas</th>
+                                        <th className="text-right font-semibold">Consumo</th>
+                                        <th className="text-right font-semibold">Qtd Quebra</th>
+                                        <th className="text-right font-semibold">Custo Unit</th>
+                                        <th className="text-right font-semibold">Valor Quebra</th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -1867,7 +1877,8 @@ export default function DesempenhoPage() {
                                         .slice()
                                         .sort(
                                           (a: any, b: any) =>
-                                            (Number(b.valor) || 0) - (Number(a.valor) || 0),
+                                            (Number(b.vlr_quebra) || 0) -
+                                            (Number(a.vlr_quebra) || 0),
                                         )
                                         .slice(0, 40)
                                         .map((it: any) => (
@@ -1887,19 +1898,49 @@ export default function DesempenhoPage() {
                                               className="text-right tabular-nums"
                                               style={{ color: T.muted }}
                                             >
-                                              {n(it.qtd, 2)}
+                                              {n(it.ei, 0)}
                                             </td>
                                             <td
                                               className="text-right tabular-nums"
                                               style={{ color: T.muted }}
                                             >
-                                              {brl(it.custo, 2)}
+                                              {n(it.recebido, 0)}
+                                            </td>
+                                            <td
+                                              className="text-right tabular-nums"
+                                              style={{ color: T.muted }}
+                                            >
+                                              {n(it.ef, 0)}
+                                            </td>
+                                            <td
+                                              className="text-right tabular-nums"
+                                              style={{ color: T.muted }}
+                                            >
+                                              {n(it.vendas, 0)}
+                                            </td>
+                                            <td
+                                              className="text-right tabular-nums"
+                                              style={{ color: T.muted }}
+                                            >
+                                              {n(it.consumo, 0)}
+                                            </td>
+                                            <td
+                                              className="text-right tabular-nums font-semibold"
+                                              style={{ color: T.neg }}
+                                            >
+                                              {n(it.qtd_quebra, 0)}
+                                            </td>
+                                            <td
+                                              className="text-right tabular-nums"
+                                              style={{ color: T.muted }}
+                                            >
+                                              {brl(it.custo_unit, 2)}
                                             </td>
                                             <td
                                               className="text-right tabular-nums font-semibold"
                                               style={{ color: T.text }}
                                             >
-                                              {brl(it.valor)}
+                                              {brl(it.vlr_quebra)}
                                             </td>
                                           </tr>
                                         ))}
