@@ -35,7 +35,14 @@ routerAdd(
 
     // TTL dentro do callback: o JSVM do PocketBase roda cada callback em VM
     // separado e não enxerga declaração de topo ("Hook scoping error").
-    const CACHE_TTL_MS = 15 * 60 * 1000
+    //
+    // 6 HORAS, não 15 min. A tela mostra agregado de MÊS CORRENTE — o número
+    // não muda de forma relevante a cada quarto de hora. Com TTL curto, o
+    // cache vencia no meio do expediente e o primeiro usuário pagava os ~11 s
+    // de consulta. Com 6 h, o job das 22h sustenta a manhã e o cache só é
+    // recalculado em horários de baixo uso. O botão "Atualizar" (?forcar=1)
+    // continua dando o dado do instante quando alguém precisa.
+    const CACHE_TTL_MS = 6 * 60 * 60 * 1000
 
     const q = e.requestInfo().query || {}
     const aba = String(q.aba || 'varejo').toLowerCase()
@@ -187,44 +194,64 @@ routerAdd(
         " GROUP BY TO_CHAR(C.DTNEG,'YYYY-MM') ORDER BY 1",
     )
 
-    // Ranking de lojas
-    const lojas = lista(
-      'lojas',
-      'SELECT * FROM (SELECT P.NOMEPARC LOJA, COUNT(DISTINCT C.NUMNOTA) CUPONS, ' +
-        'ROUND(SUM(C.VLRNOTA),2) FAT ' +
-        ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
-        ' WHERE ' +
-        MED +
-        ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 ' +
-        ' GROUP BY P.NOMEPARC ORDER BY SUM(C.VLRNOTA) DESC) WHERE ROWNUM <= 30',
-    )
-
-    // Faturamento por cidade
-    const cidades = lista(
-      'cidades',
-      'SELECT * FROM (SELECT CI.NOMECID CIDADE, ROUND(SUM(C.VLRNOTA),2) FAT ' +
-        ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
-        ' LEFT JOIN SANKHYA.TSICID CI ON CI.CODCID=P.CODCID ' +
-        ' WHERE ' +
-        MED +
-        ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 ' +
-        ' GROUP BY CI.NOMECID ORDER BY SUM(C.VLRNOTA) DESC) WHERE ROWNUM <= 15',
-    )
-
-    // Participação por bandeira
+    // LOJAS + CIDADES + PARTICIPAÇÃO em UMA chamada (UNION ALL).
+    // Antes eram 3 idas ao proxy (~1,5 s cada). Agora é 1: o UNION ALL resolve
+    // no banco e cada trecho vem marcado pelo campo TIPO.
+    let lojas = []
+    let cidades = []
     let participacao = []
-    if (aba === 'varejo' || aba === 'distribuicao') {
-      participacao = lista(
-        'participacao',
-        "SELECT CASE WHEN P.AD_CODCENCUS < 10106000 THEN 'EXTRABOM' ELSE 'CARONE' END BANDEIRA, " +
-          ' ROUND(SUM(C.VLRNOTA),2) FAT ' +
+    try {
+      const rU = rodar(
+        'SELECT * FROM (' +
+          // --- TIPO 1: ranking de lojas ---
+          'SELECT 1 TIPO, P.NOMEPARC NOME, COUNT(DISTINCT C.NUMNOTA) CUPONS, ' +
+          'ROUND(SUM(C.VLRNOTA),2) FAT ' +
+          ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
+          ' WHERE ' +
+          MED +
+          ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 ' +
+          ' GROUP BY P.NOMEPARC ' +
+          ' UNION ALL ' +
+          // --- TIPO 2: faturamento por cidade ---
+          'SELECT 2 TIPO, CI.NOMECID NOME, COUNT(DISTINCT C.NUMNOTA) CUPONS, ' +
+          'ROUND(SUM(C.VLRNOTA),2) FAT ' +
+          ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
+          ' LEFT JOIN SANKHYA.TSICID CI ON CI.CODCID=P.CODCID ' +
+          ' WHERE ' +
+          MED +
+          ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 ' +
+          ' GROUP BY CI.NOMECID ' +
+          ' UNION ALL ' +
+          // --- TIPO 3: participação por bandeira ---
+          'SELECT 3 TIPO, CASE WHEN P.AD_CODCENCUS < 10106000 THEN ' +
+          "'EXTRABOM' ELSE 'CARONE' END NOME, " +
+          'COUNT(DISTINCT C.NUMNOTA) CUPONS, ROUND(SUM(C.VLRNOTA),2) FAT ' +
           ' FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
           ' WHERE ' +
           MED +
           ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 ' +
           ' GROUP BY CASE WHEN P.AD_CODCENCUS < 10106000 THEN ' +
-          "'EXTRABOM' ELSE 'CARONE' END ORDER BY 2 DESC",
+          "'EXTRABOM' ELSE 'CARONE' END" +
+          ') ORDER BY TIPO, FAT DESC',
       )
+      if (rU.erro) {
+        falhas.dimensoes = rU.erro
+        diag.dimensoes = 'ERRO: ' + rU.erro
+      } else {
+        diag.dimensoes = 'ok ' + rU.rows.length
+        for (const row of rU.rows) {
+          const tipo = Number(row.TIPO)
+          if (tipo === 1 && lojas.length < 30) {
+            lojas.push({ LOJA: row.NOME, CUPONS: row.CUPONS, FAT: row.FAT })
+          } else if (tipo === 2 && cidades.length < 15) {
+            cidades.push({ CIDADE: row.NOME, FAT: row.FAT })
+          } else if (tipo === 3) {
+            participacao.push({ BANDEIRA: row.NOME, FAT: row.FAT })
+          }
+        }
+      }
+    } catch (err) {
+      falhas.dimensoes = String(err).slice(0, 160)
     }
 
     // CMV — tela "Resumo Lojas" (AD_RESUMOLOJAS), por bandeira
