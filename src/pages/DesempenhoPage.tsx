@@ -842,9 +842,9 @@ export default function DesempenhoPage() {
     const p = prefsIniciais[K_CARDS] as { ordem?: string[]; ocultos?: string[] } | undefined
     const base = CARDS_IDS as unknown as string[]
     if (!p || !Array.isArray(p.ordem)) return { ordem: [...CARDS_IDS] as CardId[], ocultos: [] }
-    const ord = p.ordem.filter((id) => base.includes(id)) as CardId[]
+    const ord: string[] = p.ordem.filter((id) => base.includes(id))
     return {
-      ordem: ord.concat(base.filter((id) => !ord.includes(id)) as CardId[]),
+      ordem: ord.concat(base.filter((id) => !ord.includes(id))) as CardId[],
       ocultos: (p.ocultos || []).filter((id) => base.includes(id)) as CardId[],
     }
   })
@@ -2081,9 +2081,8 @@ export default function DesempenhoPage() {
                     <tr style={{ background: T.input }}>
                       {colunasVisiveis.map((c) => {
                         const g = grupos.find((x) => 'r:' + x.rede === chaveRede)
-                        const sg = g
-                          ? g.subs.find((s) => chaveRede + '|' + s.chave === chaveSub)
-                          : null
+                        const sg =
+                          g?.subgrupos?.find((s) => chaveRede + '|' + s.chave === chaveSub) ?? null
                         const t = sg ? sg.total : null
                         const al = c.alinhamento === 'right' ? 'text-right' : 'text-left'
                         if (c.id === 'rede')

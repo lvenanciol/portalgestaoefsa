@@ -109,7 +109,11 @@
 // como dropdown de indicadores, valor comparado sob cada %, grupos
 // expandíveis Rede → Loja Nova/Existente, botão "Atualizando" em âmbar e
 // versão da sidebar lida de src/lib/app-version.ts.
-const CACHE_NAME = 'pge-pwa-v65'
+// v66 (13/11/2026): correção do TypeError "Cannot read properties of undefined
+// (reading 'find')" que quebrava a montagem de /desempenho — o subtotal de
+// subrede da grade lia `g.subs` (campo inexistente; o correto é `subgrupos`)
+// com guarda defensiva `g?.subgrupos?.find(...) ?? null`.
+const CACHE_NAME = 'pge-pwa-v66'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
