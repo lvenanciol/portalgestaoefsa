@@ -83,12 +83,34 @@ const LIMIAR_ATG = { meta: 100, atencao: 95 }
 
 type Aba = 'distribuicao' | 'atacado' | 'carone' | 'extrabom' | 'varejo'
 
+// (b) Canal NÃO expõe Carone/Extrabom: essas são REDES, não canais.
+// O recorte por rede é feito no filtro "Rede" (item c), que só habilita
+// quando o canal é Varejo (Redes).
 const CANAIS: { id: Aba; label: string }[] = [
   { id: 'varejo', label: 'Varejo (Redes)' },
-  { id: 'extrabom', label: 'Extrabom' },
-  { id: 'carone', label: 'Carone' },
   { id: 'atacado', label: 'Atacado' },
   { id: 'distribuicao', label: 'Distribuição' },
+]
+
+// (e) ExtraBom passa a se chamar "Coutinho" na interface
+const REDES: { v: string; l: string }[] = [
+  { v: '', l: 'Todas' },
+  { v: 'carone', l: 'Carone' },
+  { v: 'extrabom', l: 'Coutinho' },
+]
+
+// (d) Tipo Grupo quando Rede = Carone
+const GRUPOS_CARONE = [
+  { v: '', l: 'Todos' },
+  { v: 'carone', l: 'Carone' },
+  { v: 'sempre_tem', l: 'Sempre Tem' },
+]
+
+// (e) Tipo Grupo quando Rede = Coutinho (ex-Extrabom)
+const GRUPOS_COUTINHO = [
+  { v: '', l: 'Todos' },
+  { v: 'atacado', l: 'Atacado Vem' },
+  { v: 'extrabom', l: 'Coutinho' },
 ]
 
 const MESES = [
@@ -423,12 +445,14 @@ function CampoSelect({
   onChange,
   options,
   largura,
+  disabled,
 }: {
   label: string
   value: string
   onChange: (v: string) => void
   options: { v: string; l: string }[]
   largura: number
+  disabled?: boolean
 }) {
   const maior = options.reduce((m, o) => Math.max(m, o.l.length), label.length)
   const w = Math.min(largura, Math.max(96, maior * 6.6 + 42))
@@ -859,6 +883,10 @@ export default function DesempenhoPage() {
       : { cards: 0, grade: 1, grafico: 2 }
   })
   const [blocoArrastando, setBlocoArrastando] = useState<BlocoId | null>(null)
+  // (h) blocos ocultos pelo próprio item, persistidos por usuário
+  const [blocosOcultos, setBlocosOcultos] = useState<BlocoId[]>(
+    () => (prefsIniciais.blocosOcultos as BlocoId[] | undefined) || [],
+  )
 
   // item f: grupos recolhidos
   const [gruposFechados, setGruposFechados] = useState<string[]>([])
@@ -1373,6 +1401,20 @@ export default function DesempenhoPage() {
     setCards(novo)
     gravarPref(userId, K_CARDS, novo)
     setCardArrastando(null)
+  }
+
+  // (h) move um bloco uma posição para cima (-1) ou para baixo (+1)
+  const moverBloco = (b: BlocoId, dir: -1 | 1) => {
+    const ord = (Object.keys(layout) as BlocoId[]).sort((x, y) => layout[x] - layout[y])
+    const i = ord.indexOf(b)
+    const j = i + dir
+    if (i < 0 || j < 0 || j >= ord.length) return
+    const novo = { ...layout }
+    const posB = layout[b]
+    ;(novo as any)[b] = layout[ord[j]]
+    ;(novo as any)[ord[j]] = posB
+    setLayout(novo)
+    gravarPref(userId, K_LAYOUT, novo)
   }
 
   const soltarBloco = (destino: number) => {
@@ -2436,15 +2478,14 @@ export default function DesempenhoPage() {
                 options={MESES.map((m, i) => ({ v: String(i + 1), l: m.slice(0, 3) }))}
               />
               <CampoSelect
+              {/* (c) Rede só habilita no canal Varejo (Redes) */}
+              <CampoSelect
                 label="Rede"
                 largura={130}
-                value={f.rede}
+                value={f.aba === 'varejo' ? f.rede : ''}
                 onChange={(v) => setCampo('rede', v)}
-                options={[
-                  { v: '', l: 'Todas' },
-                  { v: 'carone', l: 'Carone' },
-                  { v: 'extrabom', l: 'ExtraBOM' },
-                ]}
+                options={f.aba === 'varejo' ? REDES : [{ v: '', l: '—' }]}
+                disabled={f.aba !== 'varejo'}
               />
               <CampoSelect
                 label="Tipo Loja"
@@ -2462,11 +2503,18 @@ export default function DesempenhoPage() {
                 largura={140}
                 value={f.tipoGrupo}
                 onChange={(v) => setCampo('tipoGrupo', v)}
-                options={[
-                  { v: '', l: 'Todos' },
-                  { v: 'varejo', l: 'Varejo' },
-                  { v: 'atacado', l: 'Atacado VEM' },
-                ]}
+                options={
+                  f.aba === 'varejo' && f.rede === 'carone'
+                    ? GRUPOS_CARONE
+                    : f.aba === 'varejo' && f.rede === 'extrabom'
+                      ? GRUPOS_COUTINHO
+                      : [
+                          { v: '', l: 'Todos' },
+                          { v: 'varejo', l: 'Varejo' },
+                          { v: 'atacado', l: 'Atacado Vem' },
+                        ]
+                }
+                disabled={f.aba !== 'varejo'}
               />
               <CampoSelect
                 label="Tipo Venda"
@@ -2491,7 +2539,7 @@ export default function DesempenhoPage() {
               />
               <CampoSelect
                 label="Supervisor"
-                largura={260}
+                largura={208}
                 value={f.supervisor}
                 onChange={(v) => setCampo('supervisor', v)}
                 options={[
@@ -2546,28 +2594,79 @@ export default function DesempenhoPage() {
             }
           }}
         >
-          {idx > 0 && (
-            <div className="flex items-center gap-1.5 mb-1 group/sep">
-              <span className="text-[9px] uppercase tracking-wider" style={{ color: T.muted }}>
-                {b === 'cards' ? 'indicadores' : b === 'grade' ? 'grade' : 'gráfico'}
-              </span>
-              <span className="flex-1 h-px" style={{ background: T.border }} />
-              <button
-                type="button"
-                draggable
-                onDragStart={() => setBlocoArrastando(b)}
-                onDragEnd={() => setBlocoArrastando(null)}
-                title="Arraste para reposicionar"
-                className="opacity-0 group-hover/sep:opacity-100 px-1 rounded border text-[9px] inline-flex items-center gap-0.5 cursor-grab"
-                style={{ borderColor: T.border, color: T.muted, background: T.card }}
-              >
-                <GripVertical className="h-2.5 w-2.5" /> mover
-              </button>
-            </div>
+          {/* (h) barra do bloco: mover (arrastar), subir, descer e ocultar */}
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="text-[9px] uppercase tracking-wider" style={{ color: T.muted }}>
+              {b === 'cards' ? 'indicadores' : b === 'grade' ? 'grade' : 'gráfico'}
+            </span>
+            <span className="flex-1 h-px" style={{ background: T.border }} />
+            <button
+              type="button"
+              draggable
+              onDragStart={() => setBlocoArrastando(b)}
+              onDragEnd={() => setBlocoArrastando(null)}
+              title="Arraste para reposicionar"
+              className="px-1 rounded border text-[9px] inline-flex items-center gap-0.5 cursor-grab opacity-60 hover:opacity-100"
+              style={{ borderColor: T.border, color: T.muted, background: T.card }}
+            >
+              <GripVertical className="h-2.5 w-2.5" /> mover
+            </button>
+            <button
+              type="button"
+              onClick={() => moverBloco(b, -1)}
+              disabled={idx === 0}
+              title="Mover para cima"
+              aria-label="Mover para cima"
+              className="px-1 py-0.5 rounded border inline-flex items-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50"
+              style={{ borderColor: T.border, color: T.muted, background: T.card }}
+            >
+              <ArrowUp className="h-2.5 w-2.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => moverBloco(b, 1)}
+              disabled={idx === ordemBlocos.length - 1}
+              title="Mover para baixo"
+              aria-label="Mover para baixo"
+              className="px-1 py-0.5 rounded border inline-flex items-center disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-50"
+              style={{ borderColor: T.border, color: T.muted, background: T.card }}
+            >
+              <ArrowDown className="h-2.5 w-2.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const n = blocosOcultos.concat([b])
+                setBlocosOcultos(n)
+                gravarPref(userId, 'blocosOcultos', n)
+              }}
+              title="Ocultar este bloco"
+              aria-label="Ocultar bloco"
+              className="px-1 py-0.5 rounded border inline-flex items-center hover:bg-gray-50"
+              style={{ borderColor: T.border, color: T.muted, background: T.card }}
+            >
+              <EyeOff className="h-2.5 w-2.5" />
+            </button>
+          </div>
+          {!blocosOcultos.includes(b) && (
+            <div className={cn(blocoArrastando === b && 'opacity-60')}>{mapaBlocos[b]}</div>
           )}
-          <div className={cn(blocoArrastando === b && 'opacity-60')}>{mapaBlocos[b]}</div>
         </div>
       ))}
+
+      {blocosOcultos.length > 0 && (
+        <button
+          type="button"
+          onClick={() => {
+            setBlocosOcultos([])
+            gravarPref(userId, 'blocosOcultos', [])
+          }}
+          className="w-full rounded border border-dashed py-1.5 text-[10px] font-semibold inline-flex items-center justify-center gap-1"
+          style={{ borderColor: T.border, color: T.muted }}
+        >
+          <Eye className="h-3 w-3" /> reexibir {blocosOcultos.length} bloco(s) oculto(s)
+        </button>
+      )}
 
       <ParceiroParecerDialog
         aberto={parecerAberto}
