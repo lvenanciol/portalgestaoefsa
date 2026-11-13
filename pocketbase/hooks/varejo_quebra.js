@@ -237,14 +237,33 @@ routerAdd(
       }
     }
 
-    // GUARDA: sem inventário inicial E sem final, não há como calcular quebra
-    // daquele produto. Antes isso virava % absurdo (229%, -66%). Agora o
-    // produto é descartado e a loja só entra no cálculo com base válida.
+    // ------------------------------------------------------------------
+    // CAUSA RAIZ DO % ABSURDO (229%, -66%, -75%) — 13/11
+    //
+    // Os inventários são PARCIAIS e rodam em ondas: na loja 07-CR-LAR, o
+    // inventário de 06/10 tem 413 produtos e o de 31/10 tem 254. Um produto
+    // presente no EI mas ausente no EF entrava como:
+    //     QTDCMV = EI + REC - 0  (sem EF)  ->  quebra gigante e falsa
+    // e produto no EF sem EI entrava como quebra negativa.
+    //
+    // REGRA: só entra no cálculo o produto com inventário nas DUAS pontas
+    // (EI > 0 E EF > 0). Produto sem uma das pontas é descartado — melhor
+    // não mostrar do que mostrar número inventado. O total de produtos
+    // considerados vai na resposta para a tela poder avisar.
+    // ------------------------------------------------------------------
     const porLoja = {}
+    let descartadosEi = 0
+    let descartadosEf = 0
     for (const kk of Object.keys(porLojaProduto)) {
       const d = porLojaProduto[kk]
-      const temInventario = d.ei > 0 || d.ef > 0
-      if (!temInventario) continue
+      if (!(d.ei > 0)) {
+        descartadosEi++
+        continue
+      }
+      if (!(d.ef > 0)) {
+        descartadosEf++
+        continue
+      }
       if (!porLoja[d.cp]) {
         porLoja[d.cp] = {
           codparc: d.cp,
@@ -325,7 +344,14 @@ routerAdd(
     const resp = {
       ok: true,
       periodo: 'Mês ' + mm + '/' + ano,
-      janelas: { mes: [iniMes, fimMes], estoque_inicial_ate: fimEI, estoque_final_de: iniEF },
+      janelas: { mes: [iniMes, fimMes] },
+      // transparência: quantos produtos ficaram de fora por inventário
+      // parcial em uma das pontas (não escondemos a limitação)
+      cobertura: {
+        produtos_sem_estoque_inicial: descartadosEi,
+        produtos_sem_estoque_final: descartadosEf,
+        lojas_com_quebra: out.length,
+      },
       lojas: out,
     }
     if (falhasArr.length)
