@@ -2108,7 +2108,11 @@ export default function DesempenhoPage() {
               className="h-8 text-[11px]"
               style={{ borderRadius: 6 }}
             >
-              <RefreshCw className={cn('h-3 w-3 mr-1', loading && 'animate-spin')} /> Atualizar
+              {/* item i: enquanto busca, o botão "pisca" suave e vira "Atualizando" */}
+              <RefreshCw className={cn('h-3 w-3 mr-1', loading && 'animate-spin')} />
+              <span className={cn(loading && 'animate-pulse')}>
+                {loading ? 'Atualizando' : 'Atualizar'}
+              </span>
             </Button>
           )}
         </div>
