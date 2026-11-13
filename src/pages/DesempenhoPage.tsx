@@ -817,16 +817,33 @@ export default function DesempenhoPage() {
   const anoCorrente = hoje.getFullYear()
   const mesCorrente = hoje.getMonth() + 1
 
-  const [f, setF] = useState({
-    aba: 'varejo' as Aba,
-    ano: anoCorrente,
-    mes: mesCorrente,
-    rede: '',
-    tipoLoja: '',
-    tipoGrupo: '',
-    tipoVenda: '',
-    loja: '',
-    supervisor: '',
+  // (a) ÚLTIMO FILTRO APLICADO — memorizado por usuário e reaplicado na
+  // abertura. A URL continua tendo prioridade (deep link compartilhado).
+  const [f, setF] = useState(() => {
+    const p = prefsIniciais.filtroApp as
+      | {
+          aba?: Aba
+          ano?: number
+          mes?: number
+          rede?: string
+          tipoLoja?: string
+          tipoGrupo?: string
+          tipoVenda?: string
+          loja?: string
+          supervisor?: string
+        }
+      | undefined
+    return {
+      aba: (p?.aba && CANAIS.some((c) => c.id === p.aba) ? p.aba : 'varejo') as Aba,
+      ano: Number(p?.ano || anoCorrente),
+      mes: Number(p?.mes || mesCorrente),
+      rede: p?.rede || '',
+      tipoLoja: p?.tipoLoja || '',
+      tipoGrupo: p?.tipoGrupo || '',
+      tipoVenda: p?.tipoVenda || '',
+      loja: p?.loja || '',
+      supervisor: p?.supervisor || '',
+    }
   })
   const [dados, setDados] = useState<Resposta | null>(null)
   const [loading, setLoading] = useState(true)
@@ -941,6 +958,11 @@ export default function DesempenhoPage() {
   }, [])
 
   const setCampo = (c: string, v: string | number) => setF((p) => ({ ...p, [c]: v }))
+
+  // (a) persiste o filtro aplicado a cada mudança, por usuário
+  useEffect(() => {
+    gravarPref(userId, 'filtroApp', f)
+  }, [f, userId])
 
   useEffect(() => {
     const q = new URLSearchParams()
@@ -2053,8 +2075,12 @@ export default function DesempenhoPage() {
               const chaveSub = chaveRede + '|' + (l.loja_nova ? 'nova' : 'exist')
               const mudaRede = !anterior || String(anterior.rede || '') !== String(l.rede || '')
               const mudaSub = mudaRede || anterior?.loja_nova !== l.loja_nova
-              if (gruposFechados.includes(chaveRede) || gruposFechados.includes(chaveSub))
-                return null
+              // (f) Recolher NÃO esconde o nível superior: a linha da Rede e a
+              // do subgrupo continuam visíveis com "+". Só as lojas somem.
+              const redeFechada = gruposFechados.includes(chaveRede)
+              const subFechado = gruposFechados.includes(chaveSub)
+              if (redeFechada && !mudaRede) return null
+              if (subFechado && !mudaSub && !mudaRede) return null
               const qtdRede = linhas.filter(
                 (x) => String(x.rede || '') === String(l.rede || ''),
               ).length
