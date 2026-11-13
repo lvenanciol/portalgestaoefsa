@@ -213,6 +213,8 @@ interface VarItem {
   label: string
   valor: number | null
   inverso?: boolean
+  // item d: valor absoluto do período comparado (M.A., A.A. ou meta)
+  comparado?: string | null
 }
 
 function ScoreCard({
@@ -340,14 +342,19 @@ function ScoreCard({
           const cor = neutro ? T.muted : ok ? T.pos : T.neg
           const Ico = neutro ? Minus : n > 0 ? ArrowUpRight : ArrowDownRight
           return (
-            <span
-              key={i}
-              className="inline-flex items-center gap-0.5 font-semibold tabular-nums"
-              style={{ color: cor }}
-            >
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: cor }} />
-              <Ico className="h-2.5 w-2.5" />
-              {v.label} {(n > 0 ? '+' : '') + n.toFixed(1).replace('.', ',')}%
+            // item d: % de variação com o VALOR DO PERÍODO COMPARADO embaixo
+            <span key={i} className="inline-flex flex-col items-center leading-tight">
+              <span
+                className="inline-flex items-center gap-0.5 font-semibold tabular-nums"
+                style={{ color: cor }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: cor }} />
+                <Ico className="h-2.5 w-2.5" />
+                {v.label} {(n > 0 ? '+' : '') + n.toFixed(1).replace('.', ',')}%
+              </span>
+              <span className="text-[9px] tabular-nums" style={{ color: T.muted }}>
+                {v.comparado || '—'}
+              </span>
             </span>
           )
         })}
@@ -747,10 +754,33 @@ const COLUNAS: ColDef[] = [
   },
 ]
 
-const K_FILTROS = 'pge_des_r8_filtros'
-const K_COLUNAS = 'pge_des_r8_colunas'
-const K_CARDS = 'pge_des_r8_cards'
-const K_LAYOUT = 'pge_des_r8_layout'
+// ---------------------------------------------------------------------------
+// PERSISTÊNCIA POR USUÁRIO (item b)
+// Todas as preferências: filtros, colunas, cards e layout. A chave carrega o
+// id do usuário logado, então cada pessoa tem a sua configuração — antes era
+// global no navegador e um usuário via a personalização do outro.
+// ---------------------------------------------------------------------------
+const NS = 'pge_des'
+function chavePrefs(userId: string) {
+  return NS + ':' + (userId || 'anon')
+}
+function lerPrefs(userId: string): Record<string, unknown> {
+  try {
+    const raw = localStorage.getItem(chavePrefs(userId))
+    return raw ? (JSON.parse(raw) as Record<string, unknown>) : {}
+  } catch (_e) {
+    return {}
+  }
+}
+function gravarPref(userId: string, campo: string, valor: unknown) {
+  try {
+    const atual = lerPrefs(userId)
+    atual[campo] = valor
+    localStorage.setItem(chavePrefs(userId), JSON.stringify(atual))
+  } catch (_e) {
+    /* localStorage bloqueado */
+  }
+}
 
 const CARDS_IDS = [
   'fat',
@@ -1307,8 +1337,8 @@ export default function DesempenhoPage() {
       Icone: TrendingUp,
       tom: (K.faturamento_aa ?? 0) >= 0 ? 'green' : 'red',
       vars: [
-        { label: 'Meta', valor: K.faturamento_ating ?? null },
-        { label: 'A.A.', valor: K.faturamento_aa ?? null },
+        { label: 'Meta', valor: K.faturamento_ating ?? null, comparado: compMeta(K.meta_venda) },
+        { label: 'A.A.', valor: K.faturamento_aa ?? null, comparado: compAA(K.faturamento_aa) },
       ],
     },
     meta: {
