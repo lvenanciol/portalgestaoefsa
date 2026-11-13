@@ -1128,6 +1128,158 @@ export default function DesempenhoPage() {
       .filter(Boolean) as ColDef[]
   }, [colCfg])
 
+  // ------------------------------------------------------------------
+  // item f: AGRUPAMENTO HIERÁRQUICO com SUBTOTAIS (igual ao print do BI)
+  //   Nível 1: Rede (Carone / ExtraBom)  — clicável, recolhe tudo
+  //   Nível 2: Loja Nova / SSS (Existente) — clicável, recolhe o subgrupo
+  //   Nível 3: lojas, ordenadas por nome
+  // Cada nível soma os valores das lojas que contém.
+  // ------------------------------------------------------------------
+  const somaGrupo = (ls: Loja[]) => {
+    const fat = ls.reduce((a, l) => a + (Number(l.faturamento) || 0), 0)
+    const meta = ls.reduce((a, l) => a + (Number(l.meta) || 0), 0)
+    const qtd = ls.reduce((a, l) => a + (Number(l.quantidade) || 0), 0)
+    const cup = ls.reduce((a, l) => a + (Number(l.cupons) || 0), 0)
+    const part = ls.reduce((a, l) => a + (Number(l.participacao) || 0), 0)
+    const comCresc = ls.filter((l) => l.cresc_aa !== null && l.cresc_aa !== undefined)
+    const cresc = comCresc.length
+      ? comCresc.reduce((a, l) => a + Number(l.cresc_aa), 0) / comCresc.length
+      : null
+    return {
+      participacao: part || null,
+      meta: meta || null,
+      faturamento: fat || null,
+      ating_venda: meta ? Number(((fat / meta) * 100).toFixed(1)) : null,
+      cresc_aa: cresc,
+      quantidade: qtd || null,
+      preco_medio: fat && qtd ? Number((fat / qtd).toFixed(2)) : null,
+      cupons: cup || null,
+      ticket_medio: fat && cup ? Number((fat / cup).toFixed(2)) : null,
+    }
+  }
+
+  const grupos = useMemo(() => {
+    let base = [...(dados?.lojas || [])]
+    if (busca.trim()) {
+      const t = busca.trim().toLowerCase()
+      base = base.filter(
+        (l) => String(l.loja).toLowerCase().includes(t) || String(l.rede).toLowerCase().includes(t),
+      )
+    }
+    const redes: Record<string, Loja[]> = {}
+    for (const l of base) {
+      const r = String(l.rede || 'Sem rede')
+      if (!redes[r]) redes[r] = []
+      redes[r].push(l)
+    }
+    return Object.keys(redes)
+      .sort()
+      .map((rede) => {
+        const ls = redes[rede].slice().sort((a, b) => String(a.loja).localeCompare(String(b.loja)))
+        const novas = ls.filter((x) => x.loja_nova)
+        const exist = ls.filter((x) => !x.loja_nova)
+        return {
+          rede,
+          total: somaGrupo(ls),
+          qtdLojas: ls.length,
+          subgrupos: [
+            { chave: 'nova', label: 'Loja Nova', lojas: novas, total: somaGrupo(novas) },
+            { chave: 'exist', label: 'SSS', lojas: exist, total: somaGrupo(exist) },
+          ].filter((sg) => sg.lojas.length > 0),
+        }
+      })
+  }, [dados, busca])
+
+  // item f: subtotais por grupo (Rede e Loja Nova/SSS), como no print do BI
+  const somaGrupo = (ls: Loja[]) => {
+    const fat = ls.reduce((a, l) => a + (Number(l.faturamento) || 0), 0)
+    const meta = ls.reduce((a, l) => a + (Number(l.meta) || 0), 0)
+    const qtd = ls.reduce((a, l) => a + (Number(l.quantidade) || 0), 0)
+    const cup = ls.reduce((a, l) => a + (Number(l.cupons) || 0), 0)
+    const part = ls.reduce((a, l) => a + (Number(l.participacao) || 0), 0)
+    const comC = ls.filter((l) => l.cresc_aa !== null && l.cresc_aa !== undefined)
+    return {
+      participacao: part || null,
+      meta: meta || null,
+      faturamento: fat || null,
+      ating_venda: meta ? Number(((fat / meta) * 100).toFixed(1)) : null,
+      cresc_aa: comC.length ? comC.reduce((a, l) => a + Number(l.cresc_aa), 0) / comC.length : null,
+      quantidade: qtd || null,
+      preco_medio: fat && qtd ? Number((fat / qtd).toFixed(2)) : null,
+      cupons: cup || null,
+      ticket_medio: fat && cup ? Number((fat / cup).toFixed(2)) : null,
+    }
+  }
+
+  const grupos = useMemo(() => {
+    let base = [...(dados?.lojas || [])]
+    if (busca.trim()) {
+      const t = busca.trim().toLowerCase()
+      base = base.filter(
+        (l) => String(l.loja).toLowerCase().includes(t) || String(l.rede).toLowerCase().includes(t),
+      )
+    }
+    const redes: Record<string, Loja[]> = {}
+    for (const l of base) {
+      const r = String(l.rede || 'Sem rede')
+      if (!redes[r]) redes[r] = []
+      redes[r].push(l)
+    }
+    return Object.keys(redes)
+      .sort()
+      .map((rede) => {
+        const ls = redes[rede].slice().sort((a, b) => String(a.loja).localeCompare(String(b.loja)))
+        const novas = ls.filter((x) => x.loja_nova)
+        const exist = ls.filter((x) => !x.loja_nova)
+        return {
+          rede,
+          total: somaGrupo(ls),
+          qtd: ls.length,
+          subs: [
+            { chave: 'nova', label: 'Loja Nova', lojas: novas, total: somaGrupo(novas) },
+            { chave: 'exist', label: 'SSS', lojas: exist, total: somaGrupo(exist) },
+          ].filter((sg) => sg.lojas.length > 0),
+        }
+      })
+  }, [dados, busca])
+
+  // formata uma célula (usado nas linhas de grupo/subtotal e de loja)
+  const celula = (c: ColDef, valor: any) => {
+    if (c.id === 'ating') {
+      if (valor === null || valor === undefined) return <span style={{ color: T.muted }}>—</span>
+      const vv = Number(valor)
+      const acima = vv >= LIMIAR_ATG.meta
+      const at = vv >= LIMIAR_ATG.atencao && vv < LIMIAR_ATG.meta
+      return (
+        <span
+          className="inline-flex items-center gap-1 justify-end w-full font-bold"
+          style={{
+            background: acima ? T.tintGreen : at ? T.tintAmber : T.tintRed,
+            color: acima ? T.pos : at ? T.warn : T.neg,
+          }}
+        >
+          {acima ? '▲' : at ? '▬' : '▼'} {fmtPct(vv)}
+        </span>
+      )
+    }
+    if (c.tipo === 'delta') {
+      if (valor === null || valor === undefined) return <span style={{ color: T.muted }}>—</span>
+      const vv = Number(valor)
+      const cor = vv > 0.05 ? T.pos : vv < -0.05 ? T.neg : T.muted
+      return (
+        <span className="font-semibold" style={{ color: cor }}>
+          {vv > 0.05 ? '▲ ' : vv < -0.05 ? '▼ ' : ''}
+          {fmtPct(vv)}
+        </span>
+      )
+    }
+    if (valor === null || valor === undefined) return <span style={{ color: T.muted }}>—</span>
+    if (c.tipo === 'brl') return fmtBRL(Number(valor))
+    if (c.tipo === 'pct') return fmtPct(Number(valor))
+    if (c.tipo === 'num') return fmtNum(Number(valor))
+    return String(valor)
+  }
+
   const linhas = useMemo(() => {
     let arr = [...(dados?.lojas || [])]
     if (busca.trim()) {
@@ -1886,45 +2038,117 @@ export default function DesempenhoPage() {
               const qtdSub = linhas.filter(
                 (x) => String(x.rede || '') === String(l.rede || '') && x.loja_nova === l.loja_nova,
               ).length
+              void qtdSub
               return (
                 <Fragment key={l.codparc}>
-                  {mudaRede && (
-                    <tr style={{ background: T.tintGreen }}>
-                      <td
-                        colSpan={colunasVisiveis.length}
-                        className="px-2 py-1.5"
-                        style={{ borderTop: '1px solid ' + T.border }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => alternarGrupo(chaveRede)}
-                          aria-expanded={!gruposFechados.includes(chaveRede)}
-                          className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider"
-                          style={{ color: T.nav }}
-                        >
-                          {gruposFechados.includes(chaveRede) ? '+' : '−'} {l.rede || 'Sem rede'} ·
-                          <span style={{ color: T.muted }} className="font-normal normal-case">
-                            {qtdRede} unidades
-                          </span>
-                        </button>
-                      </td>
-                    </tr>
-                  )}
+                  {mudaRede &&
+                    (() => {
+                      const g = grupos.find((x) => 'r:' + x.rede === chaveRede)
+                      const t = g ? g.total : null
+                      return (
+                        <tr style={{ background: '#eef2f5', borderTop: '1px solid ' + T.border }}>
+                          {colunasVisiveis.map((c) => {
+                            const al = c.alinhamento === 'right' ? 'text-right' : 'text-left'
+                            if (c.id === 'rede')
+                              return (
+                                <td key={c.id as string} className="px-2 py-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => alternarGrupo(chaveRede)}
+                                    aria-expanded={!gruposFechados.includes(chaveRede)}
+                                    className="inline-flex items-center gap-1.5 text-[12px] font-bold"
+                                    style={{ color: T.text }}
+                                  >
+                                    <span
+                                      className="inline-flex items-center justify-center h-4 w-4 rounded border text-[10px] font-bold"
+                                      style={{
+                                        borderColor: T.border,
+                                        color: T.muted,
+                                        background: T.card,
+                                      }}
+                                    >
+                                      {gruposFechados.includes(chaveRede) ? '+' : '−'}
+                                    </span>
+                                    {l.rede || 'Sem rede'}
+                                  </button>
+                                </td>
+                              )
+                            if (c.id === 'loja')
+                              return (
+                                <td
+                                  key={c.id as string}
+                                  className="px-2 text-[11px]"
+                                  style={{ color: T.muted }}
+                                >
+                                  {qtdRede} lojas
+                                </td>
+                              )
+                            return (
+                              <td
+                                key={c.id as string}
+                                className={cn('px-2 py-1.5 tabular-nums font-bold', al)}
+                                style={{ color: T.text }}
+                              >
+                                {celula(c, t ? (t as any)[c.id === 'meta' ? 'meta' : c.id] : null)}
+                              </td>
+                            )
+                          })}
+                        </tr>
+                      )
+                    })()}
                   {!gruposFechados.includes(chaveRede) && mudaSub && (
                     <tr style={{ background: T.input }}>
-                      <td colSpan={colunasVisiveis.length} className="px-2 py-1 pl-6">
-                        <button
-                          type="button"
-                          onClick={() => alternarGrupo(chaveSub)}
-                          aria-expanded={!gruposFechados.includes(chaveSub)}
-                          className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider"
-                          style={{ color: T.muted }}
-                        >
-                          {gruposFechados.includes(chaveSub) ? '+' : '−'}{' '}
-                          {l.loja_nova ? 'Loja Nova' : 'Existente'} ·
-                          <span className="font-normal normal-case">{qtdSub} unidades</span>
-                        </button>
-                      </td>
+                      {colunasVisiveis.map((c) => {
+                        const g = grupos.find((x) => 'r:' + x.rede === chaveRede)
+                        const sg = g
+                          ? g.subs.find((s) => chaveRede + '|' + s.chave === chaveSub)
+                          : null
+                        const t = sg ? sg.total : null
+                        const al = c.alinhamento === 'right' ? 'text-right' : 'text-left'
+                        if (c.id === 'rede')
+                          return (
+                            <td key={c.id as string} className="px-2 py-1">
+                              <button
+                                type="button"
+                                onClick={() => alternarGrupo(chaveSub)}
+                                aria-expanded={!gruposFechados.includes(chaveSub)}
+                                className="inline-flex items-center gap-1.5 text-[11px] font-semibold pl-3"
+                                style={{ color: T.text }}
+                              >
+                                <span
+                                  className="inline-flex items-center justify-center h-3.5 w-3.5 rounded border text-[9px] font-bold"
+                                  style={{
+                                    borderColor: T.border,
+                                    color: T.muted,
+                                    background: T.card,
+                                  }}
+                                >
+                                  {gruposFechados.includes(chaveSub) ? '+' : '−'}
+                                </span>
+                                {l.loja_nova ? 'Loja Nova' : 'SSS'}
+                              </button>
+                            </td>
+                          )
+                        if (c.id === 'loja')
+                          return (
+                            <td
+                              key={c.id as string}
+                              className="px-2 text-[10px]"
+                              style={{ color: T.muted }}
+                            >
+                              {qtdSub} lojas
+                            </td>
+                          )
+                        return (
+                          <td
+                            key={c.id as string}
+                            className={cn('px-2 py-1 tabular-nums font-semibold', al)}
+                            style={{ color: T.text }}
+                          >
+                            {celula(c, t ? (t as any)[c.id === 'meta' ? 'meta' : c.id] : null)}
+                          </td>
+                        )
+                      })}
                     </tr>
                   )}
                   <tr
