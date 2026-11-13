@@ -1,21 +1,19 @@
 // VAREJO — aquecimento de cache da tela "Desempenho Unidades" (13/11/2026)
 //
-// OBJETIVO: o usuário NUNCA espera pelo Sankhya. Este job recalcula as 5 abas
-// e grava tudo no `sankhya_cache`; ao abrir a tela, a leitura sai do cache.
+// ============ CORREÇÃO CRÍTICA 13/11 10:50 ============
+// O DbExplorerSP devolve linhas como ARRAYS POSICIONAIS, não objetos com nome
+// de coluna: SELECT FAT, CUPONS -> [["1234.56","10"], ...].
+// O código anterior lia row.FATURAMENTO (undefined) e por isso tudo aparecia
+// zerado SEM erro de consulta. Prova: sankhya_sync_cron.js funciona há meses
+// lendo r[0], r[1], r[2]. Aqui todas as leituras são por ÍNDICE.
 //
 // HORÁRIO: 22:00 BRT = '0 1 * * *' UTC (o cron do PocketBase roda em UTC).
-// O cron é só o AQUECEDOR: se ele falhar, a rota /backend/v1/varejo/desempenho
-// calcula sob demanda e regrava o cache (fallback automático, já implementado).
-// Por isso não há cron de reforço — seria código duplicado para o mesmo risco.
+// O cron é só o aquecedor: se falhar, a rota /desempenho calcula e regrava.
 //
-// POR QUE UMA CONSULTA SÓ: cada aba fazia 7 consultas em série (~11-15 s por
-// aba, medido em log). Aqui é UMA consulta com GROUP BY por bandeira que
-// devolve as 4 bandeiras de uma vez; as auxiliares (série, lojas, cidades, CMV,
-// quebra) rodam uma vez e são reaproveitadas em todas as abas.
+// UMA CONSULTA MESTRA: GROUP BY por bandeira devolve as 4 bandeiras de uma vez;
+// as auxiliares rodam uma vez e são reaproveitadas em todas as abas.
 //
-// TUDO INLINE: a VM do PocketBase executa cada callback num pool separado e não
-// enxerga funções nem constantes de topo ("Hook scoping error" reprovado pelo
-// pipeline). Por isso não existe helper fora do callback.
+// TUDO INLINE: a VM do PocketBase não enxerga declaração de topo.
 
 cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
   const edgeUrl = $secrets.get('PGE_EDGE_URL') || ''
@@ -59,6 +57,13 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
     const n = Number(v)
     return isNaN(n) ? null : n
   }
+  // leitura por índice, com fallback por nome
+  const val = function (row, idx, nome) {
+    if (!row) return undefined
+    if (row[idx] !== undefined) return row[idx]
+    if (nome && row[nome] !== undefined) return row[nome]
+    return undefined
+  }
 
   const MED = "C.DTNEG >= TRUNC(SYSDATE,'MM') AND NVL(C.PENDENTE,'N')='N' AND C.STATUSNOTA='L'"
 
@@ -68,7 +73,7 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
     ' WHEN C.CODEMP IN (1,2,3,4,5,6,10,11,12,13,14) THEN ' +
     "'ATACADO' ELSE 'DISTRIBUICAO' END"
 
-  // -------- 1) CONSULTA MESTRA: as 4 bandeiras numa passada --------
+  // -------- 1) MESTRA: [0]=BAND [1]=CUPONS [2]=NOTAS [3]=FAT [4]=TICKET --------
   const rBand = rodar(
     'SELECT ' +
       CASE_BAND +
@@ -90,10 +95,15 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
   }
   const porBandeira = {}
   for (const row of rBand.rows || []) {
-    porBandeira[String(row.BAND)] = row
+    porBandeira[String(val(row, 0, 'BAND'))] = {
+      CUPONS: val(row, 1, 'CUPONS'),
+      NOTAS: val(row, 2, 'NOTAS'),
+      FAT: val(row, 3, 'FAT'),
+      TICKET: val(row, 4, 'TICKET'),
+    }
   }
 
-  // -------- 2) Volume (itens) por bandeira --------
+  // -------- 2) VOLUME: [0]=BAND [1]=QTD --------
   const rQtd = rodar(
     'SELECT ' +
       CASE_BAND +
@@ -114,10 +124,10 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
   }
   const qtdPorBandeira = {}
   for (const row of rQtd.rows || []) {
-    qtdPorBandeira[String(row.BAND)] = num(row.QTD)
+    qtdPorBandeira[String(val(row, 0, 'BAND'))] = num(val(row, 1, 'QTD'))
   }
 
-  // -------- 3) Série 12m por bandeira (uma passada) --------
+  // -------- 3) SÉRIE 12m: [0]=MES [1]=EXTRABOM [2]=CARONE [3]=ATACADO [4]=DISTRIBUICAO --------
   const rSerie = rodar(
     "SELECT TO_CHAR(C.DTNEG,'YYYY-MM') MES, " +
       ' ROUND(SUM(CASE WHEN P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10106000 THEN C.VLRNOTA ELSE 0 END),2) EXTRABOM, ' +
@@ -137,14 +147,19 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
   }
   const seriePorBandeira = { EXTRABOM: [], CARONE: [], ATACADO: [], DISTRIBUICAO: [] }
   for (const row of rSerie.rows || []) {
-    const mes = String(row.MES || '')
+    const mes = String(val(row, 0, 'MES') || '')
+    const vals = {
+      EXTRABOM: num(val(row, 1, 'EXTRABOM')),
+      CARONE: num(val(row, 2, 'CARONE')),
+      ATACADO: num(val(row, 3, 'ATACADO')),
+      DISTRIBUICAO: num(val(row, 4, 'DISTRIBUICAO')),
+    }
     for (const b of ['EXTRABOM', 'CARONE', 'ATACADO', 'DISTRIBUICAO']) {
-      const v = num(row[b])
-      if (v !== null && v !== 0) seriePorBandeira[b].push({ MES: mes, FAT: v })
+      if (vals[b] !== null && vals[b] !== 0) seriePorBandeira[b].push({ MES: mes, FAT: vals[b] })
     }
   }
 
-  // -------- 4) Lojas por bandeira (top 30) --------
+  // -------- 4) LOJAS: [0]=LOJA [1]=CUPONS [2]=FAT --------
   const COND_BAND = {
     EXTRABOM: ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10106000 ',
     CARONE: ' AND P.AD_CODCENCUS >= 10106000 AND P.AD_CODCENCUS < 10107000 ',
@@ -170,11 +185,13 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
     if (r.erro) {
       falhas['lojas_' + band] = r.erro
     } else {
-      lojasPorBandeira[band] = r.rows
+      lojasPorBandeira[band] = r.rows.map(function (row) {
+        return { LOJA: val(row, 0, 'LOJA'), CUPONS: val(row, 1, 'CUPONS'), FAT: val(row, 2, 'FAT') }
+      })
     }
   }
 
-  // -------- 5) Cidades por bandeira --------
+  // -------- 5) CIDADES: [0]=CIDADE [1]=FAT --------
   const cidadesPorBandeira = { EXTRABOM: [], CARONE: [] }
   for (const band of ['EXTRABOM', 'CARONE']) {
     const r = rodar(
@@ -186,10 +203,14 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
         COND_BAND[band] +
         ' GROUP BY CI.NOMECID ORDER BY SUM(C.VLRNOTA) DESC) WHERE ROWNUM <= 15',
     )
-    if (!r.erro) cidadesPorBandeira[band] = r.rows
+    if (!r.erro) {
+      cidadesPorBandeira[band] = r.rows.map(function (row) {
+        return { CIDADE: val(row, 0, 'CIDADE'), FAT: val(row, 1, 'FAT') }
+      })
+    }
   }
 
-  // -------- 6) CMV por bandeira (AD_RESUMOLOJAS) --------
+  // -------- 6) CMV: [0]=MES [1]=ANO [2]=CMV_PCT --------
   const CC_CMV = {
     EXTRABOM: ' AND CODCENCUS >= 10105000 AND CODCENCUS < 10106000 ',
     CARONE: ' AND CODCENCUS >= 10106000 AND CODCENCUS < 10107000 ',
@@ -206,10 +227,17 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
         CC_CMV[band] +
         'GROUP BY MES, ANO ORDER BY ANO DESC, MES DESC) WHERE ROWNUM <= 1',
     )
-    cmvPorBandeira[band] = r.erro ? {} : r.rows[0] || {}
+    cmvPorBandeira[band] = r.erro
+      ? {}
+      : {
+          MES: val(r.rows[0], 0, 'MES'),
+          ANO: val(r.rows[0], 1, 'ANO'),
+          CMV_PCT: val(r.rows[0], 2, 'CMV_PCT'),
+        }
   }
 
-  // -------- 7) Quebra --------
+  // -------- 7) QUEBRA --------
+  // varejo: [0]=REF [1]=QUEBRA [2]=QUEBRAACUM
   const rQuebraVar = rodar(
     "SELECT * FROM (SELECT TO_CHAR(Q.REFERENCIA,'YYYY-MM') REF, " +
       'ROUND(Q.QUEBRA,2) QUEBRA, A.QUEBRAACUM ' +
@@ -217,8 +245,9 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
       ' LEFT JOIN SANKHYA.AD_BIDRCQUEBRACUM A ON A.REFERENCIA=Q.REFERENCIA ' +
       'ORDER BY Q.REFERENCIA DESC) WHERE ROWNUM <= 1',
   )
-  const quebraRow = rQuebraVar.erro ? {} : rQuebraVar.rows[0] || {}
+  const qvRow = rQuebraVar.erro ? null : rQuebraVar.rows[0]
 
+  // geral: [0]=VLR_MES [1]=VLR_12M [2]=NOTAS_12M
   const rQgeral = rodar(
     'SELECT ' +
       " ROUND(SUM(CASE WHEN C.DTNEG >= TRUNC(SYSDATE,'MM') THEN C.VLRNOTA ELSE 0 END),2) VLR_MES," +
@@ -226,19 +255,26 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
       ' FROM SANKHYA.TGFCAB C WHERE C.CODTIPOPER IN (1111,1014) ' +
       " AND C.DTNEG >= ADD_MONTHS(TRUNC(SYSDATE,'MM'),-12) AND C.STATUSNOTA='L'",
   )
-  const qGeral = rQgeral.erro ? {} : rQgeral.rows[0] || {}
+  const qgRow = rQgeral.erro ? null : rQgeral.rows[0]
 
   const rVendaTotal = rodar(
     'SELECT ROUND(SUM(VLRNOTA),2) VENDA_MES FROM SANKHYA.TGFCAB ' +
       "WHERE DTNEG >= TRUNC(SYSDATE,'MM') AND STATUSNOTA='L' AND NVL(PENDENTE,'N')='N'",
   )
-  const vendaTotalMes = rVendaTotal.erro ? 0 : Number((rVendaTotal.rows[0] || {}).VENDA_MES || 0)
+  const vendaTotalMes = rVendaTotal.erro ? 0 : Number(val(rVendaTotal.rows[0], 0, 'VENDA_MES') || 0)
+
+  const quebraVarPct = num(val(qvRow, 1, 'QUEBRA'))
+  const quebraVarRef = val(qvRow, 0, 'REF')
+  const quebraVarAcum = num(val(qvRow, 2, 'QUEBRAACUM'))
+  const quebraGeralValorMes = num(val(qgRow, 0, 'VLR_MES'))
+  const quebraGeralValor12m = num(val(qgRow, 1, 'VLR_12M'))
+  const quebraGeralNotas = num(val(qgRow, 2, 'NOTAS_12M'))
   const quebraGeralPct =
-    vendaTotalMes > 0 && num(qGeral.VLR_MES) !== null
-      ? Number(((Number(qGeral.VLR_MES) / vendaTotalMes) * 100).toFixed(2))
+    quebraGeralValorMes !== null && vendaTotalMes > 0
+      ? Number(((quebraGeralValorMes / vendaTotalMes) * 100).toFixed(2))
       : null
 
-  // -------- 8) Grava o cache de cada aba --------
+  // -------- 8) GRAVAÇÃO --------
   const agora = new DateTime().string()
   let col = null
   try {
@@ -269,31 +305,30 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
 
   const origemComum = {
     quebra_pct:
-      num(quebraRow.QUEBRA) === null
+      quebraVarPct === null
         ? 'sem dado na tela Resumo Lojas'
         : 'Tela Resumo Lojas (AD_BIDRCQUEBRA) · referência ' +
-          (quebraRow.REF || '?') +
+          (quebraVarRef || '?') +
           ' · acumulado R$ ' +
-          (Number(quebraRow.QUEBRAACUM || 0) / 1000000).toFixed(1) +
+          ((quebraVarAcum || 0) / 1000000).toFixed(1) +
           'M · a fonte só publica o total da rede',
     quebra_geral_pct:
       quebraGeralPct === null
         ? 'sem nota de perda no mês'
         : 'TGFCAB · TOPs 1111 e 1014 · quebra lançada em nota · R$ ' +
-          (Number(qGeral.VLR_MES || 0) / 1000).toFixed(0) +
+          ((quebraGeralValorMes || 0) / 1000).toFixed(0) +
           ' mil no mês · ' +
-          (qGeral.NOTAS_12M || 0) +
+          (quebraGeralNotas || 0) +
           ' notas em 12 meses',
   }
 
-  const montarAba = function (band) {
+  const montarAba = function (band, cmv) {
     const b = porBandeira[band] || {}
     const fat = num(b.FAT)
     const qtd = qtdPorBandeira[band]
-    const cmv =
-      band === 'EXTRABOM' ? cmvPorBandeira.EXTRABOM : band === 'CARONE' ? cmvPorBandeira.CARONE : {}
     const cmvPct = cmv ? num(cmv.CMV_PCT) : null
     return {
+      schema_v: 2,
       ok: true,
       aba: band.toLowerCase(),
       gerado_em: agora,
@@ -305,11 +340,11 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
         cupons: num(b.CUPONS),
         ticket_medio: num(b.TICKET),
         cmv_pct: cmvPct,
-        quebra_pct: num(quebraRow.QUEBRA),
+        quebra_pct: quebraVarPct,
         quebra_geral_pct: quebraGeralPct,
-        quebra_geral_valor_mes: num(qGeral.VLR_MES),
-        quebra_geral_valor_12m: num(qGeral.VLR_12M),
-        quebra_geral_notas_12m: num(qGeral.NOTAS_12M),
+        quebra_geral_valor_mes: quebraGeralValorMes,
+        quebra_geral_valor_12m: quebraGeralValor12m,
+        quebra_geral_notas_12m: quebraGeralNotas,
       },
       origem: {
         cmv_pct:
@@ -334,14 +369,16 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
   }
 
   const ABAS = {
-    extrabom: 'EXTRABOM',
-    carone: 'CARONE',
-    atacado: 'ATACADO',
-    distribuicao: 'DISTRIBUICAO',
+    extrabom: ['EXTRABOM', 'EXTRABOM'],
+    carone: ['CARONE', 'CARONE'],
+    atacado: ['ATACADO', null],
+    distribuicao: ['DISTRIBUICAO', null],
   }
   for (const aba of Object.keys(ABAS)) {
     try {
-      gravar('varejo_desempenho_' + aba, montarAba(ABAS[aba]))
+      const band = ABAS[aba][0]
+      const cmvBand = ABAS[aba][1]
+      gravar('varejo_desempenho_' + aba, montarAba(band, cmvBand ? cmvPorBandeira[cmvBand] : null))
     } catch (err) {
       falhas['gravar_' + aba] = String(err).slice(0, 150)
     }
@@ -378,6 +415,7 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
     const cmvPct = num(cmvV.CMV_PCT)
 
     gravar('varejo_desempenho_varejo', {
+      schema_v: 2,
       ok: true,
       aba: 'varejo',
       gerado_em: agora,
@@ -389,11 +427,11 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
         cupons: cupons,
         ticket_medio: notas ? Number((fat / notas).toFixed(2)) : null,
         cmv_pct: cmvPct,
-        quebra_pct: num(quebraRow.QUEBRA),
+        quebra_pct: quebraVarPct,
         quebra_geral_pct: quebraGeralPct,
-        quebra_geral_valor_mes: num(qGeral.VLR_MES),
-        quebra_geral_valor_12m: num(qGeral.VLR_12M),
-        quebra_geral_notas_12m: num(qGeral.NOTAS_12M),
+        quebra_geral_valor_mes: quebraGeralValorMes,
+        quebra_geral_valor_12m: quebraGeralValor12m,
+        quebra_geral_notas_12m: quebraGeralNotas,
       },
       origem: {
         cmv_pct:
