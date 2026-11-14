@@ -346,6 +346,40 @@ routerAdd(
         : aba === 'carone' || rede === 'carone'
           ? ' AND PLV.CODCENCUS >= 10106000 AND PLV.CODCENCUS < 10107000 '
           : ' AND PLV.CODCENCUS >= 10105000 AND PLV.CODCENCUS < 10107000 '
+
+    // BUG CORRIGIDO 14/11 06:50 — o filtro de BANDEIRA não funcionava.
+    // A cláusula `extra` (que contém tipoGrupo/tipoLoja/supervisor/loja) só era
+    // aplicada nas consultas de TGFCAB. A AD_VENDASPLV — que agora alimenta os
+    // cards — só recebia o filtro de rede. Escolher "Carone" ou "Sempre Tem"
+    // em Bandeira não mudava nada.
+    // Aqui a bandeira vira um filtro por CODPARC sobre a própria PLV.
+    let PLV_BANDEIRA = ''
+    if (tipoGrupo === 'carone')
+      PLV_BANDEIRA =
+        " AND PLV.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE NOMEPARC LIKE '%-CR -%') "
+    else if (tipoGrupo === 'sempre_tem')
+      PLV_BANDEIRA =
+        " AND PLV.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE NOMEPARC LIKE '%-ST -%') "
+    else if (tipoGrupo === 'extrabom')
+      PLV_BANDEIRA =
+        " AND PLV.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE NOMEPARC LIKE '%-EB -%') "
+    else if (tipoGrupo === 'atacado')
+      PLV_BANDEIRA =
+        " AND PLV.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE NOMEPARC LIKE '%-ATV -%') "
+    // Tipo Loja (NSS/SSS) e Loja específica também precisam chegar aqui
+    if (tipoLoja === 'nova')
+      PLV_BANDEIRA +=
+        " AND PLV.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE NVL(AD_LOJANOVA,'N')='S') "
+    else if (tipoLoja === 'existente')
+      PLV_BANDEIRA +=
+        " AND PLV.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE NVL(AD_LOJANOVA,'N')='N') "
+    if (lojaFiltro) PLV_BANDEIRA += ' AND PLV.CODPARC = ' + Number(lojaFiltro) + ' '
+    if (supervisor && supervisor.indexOf('@') < 0)
+      PLV_BANDEIRA +=
+        ' AND PLV.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE AD_SUPERVISORLOJA = ' +
+        Number(supervisor) +
+        ') '
+
     const vendaPlvRows = lista(
       'venda_plv',
       'SELECT TO_CHAR(PLV.DTNEG,' +
@@ -359,6 +393,7 @@ routerAdd(
         ' AND PLV.DTNEG < ' +
         FIM +
         CC_PLV +
+        PLV_BANDEIRA +
         'GROUP BY TO_CHAR(PLV.DTNEG,' +
         "'MM'" +
         ')',
