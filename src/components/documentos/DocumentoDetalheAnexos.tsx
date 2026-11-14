@@ -136,7 +136,35 @@ export function DocumentoDetalheAnexos({
       onAnexosAlterados?.(novaLista)
     } catch (err: any) {
       console.error('Erro ao anexar arquivo(s):', err)
-      alert('Falha ao anexar arquivo(s). ' + (err?.message || ''))
+
+      // 15/11/2026 — mensagem útil em vez de "Failed to fetch".
+      // O PocketBase devolve os detalhes em err.response.data (campo por campo).
+      let detalhe = err?.message || String(err)
+      try {
+        const data = err?.response?.data || err?.data
+        if (data) {
+          const partes: string[] = []
+          for (const campo of Object.keys(data)) {
+            const v: any = (data as any)[campo]
+            const msg = v?.message || v
+            if (msg) partes.push(`${campo}: ${msg}`)
+          }
+          if (partes.length) detalhe = partes.join(' | ')
+        }
+      } catch (_) {}
+
+      let dica = ''
+      const baixo = String(detalhe).toLowerCase()
+      if (baixo.includes('mime') || baixo.includes('type') || baixo.includes('file type')) {
+        dica =
+          '\n\nDica: este tipo de arquivo não é aceito. Use PDF, imagem, Word, Excel, TXT ou CSV.'
+      } else if (baixo.includes('size') || baixo.includes('tamanho') || baixo.includes('large')) {
+        dica = '\n\nDica: o arquivo excede o tamanho máximo permitido (50 MB).'
+      } else if (baixo.includes('select') || baixo.includes('maximum')) {
+        dica = '\n\nDica: esta coleção aceita no máximo 10 anexos por documento.'
+      }
+
+      alert('Falha ao anexar arquivo(s).\n\n' + detalhe + dica)
     } finally {
       setFazendoUpload(false)
       if (inputUploadRef.current) inputUploadRef.current.value = ''
@@ -158,11 +186,19 @@ export function DocumentoDetalheAnexos({
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {/*
+            15/11/2026 — CORREÇÃO DO "Erro ao anexar arquivo".
+            O accept listava 13 extensões, mas o campo `anexo` das coleções
+            aceitava apenas pdf/png/jpeg: qualquer .docx/.xlsx/.webp era
+            rejeitado pelo PocketBase com erro genérico.
+            Agora o accept é o mesmo conjunto de MIME liberado no banco
+            (migração 017), e o erro mostra o motivo real.
+          */}
           <input
             ref={inputUploadRef}
             type="file"
             multiple
-            accept=".pdf,.docx,.doc,.xlsx,.xls,.png,.jpg,.jpeg,.webp,.gif,.bmp,.txt"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp,.gif,.bmp,.txt,.csv"
             className="hidden"
             onChange={handleUploadMultiplo}
             disabled={fazendoUpload}
