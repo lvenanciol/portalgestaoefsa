@@ -303,6 +303,135 @@ Três barreiras:
 
 ---
 
+## D26 — CSV: milhar BR vs decimal BR (`5.710` vs `0,94`)
+
+O export usa ponto como separador de milhar (`Steps = 5.710`) **e** vírgula
+como decimal (`Stride = 0,94`). Não dá para tratar ponto sempre como decimal.
+
+**Regra:** se o valor tem vírgula, a vírgula é decimal e os pontos são milhar.
+Sem vírgula, um padrão `^\d{1,3}(\.\d{3})+$` indica milhar (5.710 → 5710);
+qualquer outro ponto é decimal (0.94 permanece 0.94).
+
+**Validado no arquivo real:** `5.710 → 5710`, `0,94 → 0.94`, `'-9 → -9`.
+
+---
+
+## D27 — `Avg Run Cadence` aparece DUAS VEZES no CSV
+
+As colunas 10 (com valor) e 21 (sempre `--`) têm o MESMO nome. O parser guarda
+o índice da **primeira** ocorrência e ignora a segunda.
+
+**Sem essa regra**, a cadência viria sempre `null` — metade do dado de running
+dynamics se perderia silenciosamente.
+
+---
+
+## D28 — FCmax 218 é a referência de zonas, não 220 − idade
+
+O arquivo traz 164 atividades com Max HR ≥ 200 (13,8%) e 9 com ≥ 210, pico 218
+em 03/02/2024 ("Xuri 22km, Treino Maratona de SP", 21,71 km, FC média 183).
+43,05% das atividades atingiram ≥ 190.
+
+**Decisão:** zonas sobre **218** (Z1 109–131, Z2 131–153, Z3 153–174,
+Z4 174–196, Z5 196–218), com `fcmax_validada = true` e
+`fcmax_metodo_validacao = 'estatistico_164_atividades'`.
+
+**Ressalva exibida na UI:** "recomendada confirmação por ergoespirometria".
+O número é estatisticamente forte, mas não é medição direta de VO2máx.
+
+---
+
+## D29 — Zonas ESTIMADAS (o CSV não tem streams)
+
+O CSV traz só a FC média por atividade, não as amostras. Distribuir a duração
+por zona exige um modelo.
+
+**Decisão:** gaussiana de **desvio 8 bpm** centrada na FC média, amostrada em
+61 pontos de ±30 bpm, normalizada pela soma dos pesos. O total sempre fecha
+com a duração real (testado: 2.103 s → soma 2.103 s).
+
+**Marcação obrigatória:** `zonas_estimadas = true` em 100% das linhas de CSV.
+Nunca apresentar como medição. O `.FIT` continua sendo a fonte de zona real
+(quando houver streams).
+
+---
+
+## D30 — `carga_proxy` NÃO é TSS (o export tem TSS zerado)
+
+`Training Stress Score®` está **0,0 em 1.189 de 1.189 linhas** — a coluna é
+inútil. Sem carga, não há curva de treino.
+
+**Decisão:** `carga_proxy = te_aerobico × (duracao_s / 60)`, gravada com
+`carga_metodo = 'proxy_te_x_duracao'` para nunca ser confundida com TSS.
+
+**Limitações declaradas na UI:** a nota "Estimativa por Training Effect ×
+duração (TSS indisponível no export)" acompanha o card. A coluna
+`Training Stress Score®` está em `COLUNAS_IGNORADAS` — **não é importada**.
+
+**Cobertura:** 1.182 de 1.189 linhas têm TE e duração (99,4%).
+
+---
+
+## D31 — Sinalização de longo em Z4 vale só do corte para frente
+
+Regra: corrida + ≥ 90 min + FC média ≥ 174 → `sinalizar_intensidade_excessiva`.
+
+**Decisão:** só a partir de **14/11/2026**. Atividades históricas recebem
+`false` mesmo quando atendem aos critérios — o campo é calculado, mas não
+retroage.
+
+**Por quê:** sinalizar 10 anos de histórico de uma vez produziria centenas de
+alertas sem valor de coaching. O corte marca o momento em que a regra passou a
+valer.
+
+**No arquivo real:** 0 sinalizações (a última atividade é 13/11/2026, um dia
+antes do corte).
+
+---
+
+## D32 — Força NUNCA calcula volume
+
+As 172 sessões de Strength Training trazem apenas `Total Reps` e `Total Sets` —
+não há exercício, série ou carga individual.
+
+**Decisão:** `qualidade_dados = 'limitado'`, `tem_detalhe_exercicio = false`,
+`volume_kg = null` (não calculado, nem estimado).
+
+**Consequência na UI:** badge "Registro de frequência — sem detalhe de
+exercício". Essas sessões **não alimentam** "Volume (30d)" nem "Progressão de
+carga" — só "Sessões", frequência semanal, FC média e calorias.
+
+---
+
+## D33 — Dedupe do CSV sem `device_activity_id`
+
+O CSV não tem identificador de atividade. **Chave:** (owner_id,
+data_hora_inicio, tipo, distancia_m), comparando data/hora com precisão de
+segundo.
+
+**Três caminhos:**
+
+1. existe com `fonte='garmin_csv'` → atualiza (idempotente);
+2. existe com `fonte='garmin_fit'` e data ±60 s → **enriquece o FIT** com os
+   campos que só o CSV tem;
+3. data ±1% de distância sem chave igual → `possivel_duplicata = true` (fila de
+   revisão, sem fundir).
+
+`device_activity_id` do CSV é sintético: `csv-<data>-<tipo>`.
+
+---
+
+## D34 — Fuso: o CSV já vem em horário local
+
+Diferente do .FIT (epoch UTC), o CSV traz `2026-11-13 06:11:57` **já no fuso
+do usuário**. Gravar com offset `-03:00` explícito preserva o instante correto
+sem depender do fuso do servidor.
+
+**Limitação:** atividades de 2016-2019 com horário de verão podem estar 1 h
+deslocadas em relação ao UTC real — mesma ressalva do D23.
+
+---
+
 ## D25 — Saldo do parecer: texto composto localmente neste ciclo
 
 **Ambiguidade:** o parecer deveria vir do Gemini.
