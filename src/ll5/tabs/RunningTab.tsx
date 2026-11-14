@@ -25,6 +25,7 @@ import { listar, registrarLog } from '@/ll5/repo'
 import { garminAdapter, appleHealthAdapter } from '@/ll5/adapters'
 import ParecerIaCard from '@/ll5/ParecerIaCard'
 import ImportarFitDialog from '@/ll5/fit/ImportarFitDialog'
+import ImportarCsvDialog from '@/ll5/csv/ImportarCsvDialog'
 
 // ============================================================================
 // ABA RUNNING (mockup 1)
@@ -66,6 +67,7 @@ export default function RunningTab({ aba }: { aba: any }) {
   const [garmin, setGarmin] = useState<any>(null)
   const [apple, setApple] = useState<any>(null)
   const [importarOpen, setImportarOpen] = useState(false)
+  const [importarCsvOpen, setImportarCsvOpen] = useState(false)
   const [atividades, setAtividades] = useState<any[]>([])
 
   useEffect(() => {
@@ -158,6 +160,14 @@ export default function RunningTab({ aba }: { aba: any }) {
           className="h-9 bg-[#1b5e20] hover:bg-[#0F3D13] text-white text-xs"
         >
           <Plus className="h-3.5 w-3.5 mr-1.5" /> Nova corrida
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setImportarCsvOpen(true)}
+          className="h-9 text-xs"
+        >
+          <FileArchive className="h-3.5 w-3.5 mr-1.5" /> Importar CSV do Garmin
         </Button>
         <Button
           size="sm"
@@ -480,6 +490,16 @@ export default function RunningTab({ aba }: { aba: any }) {
           dados={{ kpis, atividades: corridas.length }}
         />
       </div>
+
+      <ImportarCsvDialog
+        open={importarCsvOpen}
+        onOpenChange={setImportarCsvOpen}
+        onImportou={() => {
+          listar('ll5_activity', ator, { ownerEscolhido: ownerAtual, sort: '-data_hora_inicio' })
+            .then(setAtividades)
+            .catch(() => {})
+        }}
+      />
 
       <ImportarFitDialog
         open={importarOpen}

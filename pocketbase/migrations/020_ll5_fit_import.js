@@ -163,6 +163,11 @@ migrate(
       col.fields.add(new DateField({ name: 'iniciado_em' }))
       col.fields.add(new DateField({ name: 'finalizado_em' }))
       col.fields.add(new NumberField({ name: 'indice_retomada', onlyInt: true }))
+      // CSV do Garmin usa o mesmo job engine
+      col.fields.add(new SelectField({ name: 'formato', maxSelect: 1, values: ['fit', 'csv'] }))
+      col.fields.add(new NumberField({ name: 'ignorados', onlyInt: true }))
+      col.fields.add(new NumberField({ name: 'distancia_total_m' }))
+      col.fields.add(new NumberField({ name: 'sinalizados', onlyInt: true }))
     })
     jobs.listRule = "@request.auth.id != ''"
     jobs.viewRule = "@request.auth.id != ''"

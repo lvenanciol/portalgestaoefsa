@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-14T23:00:32.154Z",
+  "generatedAt": "2026-11-14T23:14:16.825Z",
   "collections": [
     {
       "name": "users",
@@ -5759,6 +5759,214 @@
         {
           "name": "arquivo_origem",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "titulo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origem_aba",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": [
+            "running",
+            "gym"
+          ]
+        },
+        {
+          "name": "tempo_movimento_s",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tempo_decorrido_s",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "passos",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "body_battery_drain",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "num_voltas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "melhor_volta_s",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cadencia_max_spm",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cadencia_invalida",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "melhor_pace_s_km",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "gap_s_km",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "perda_elevacao_m",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "elevacao_min_m",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "elevacao_max_m",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "comprimento_passada_m",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "potencia_media_w",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "potencia_max_w",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "potencia_normalizada_w",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "potencia_confiavel",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tem_running_dynamics",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_reps",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_sets",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "volume_kg",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tem_detalhe_exercicio",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fcmax_referencia",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fcmax_validada",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "fcmax_metodo_validacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "zonas_estimadas",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carga_proxy",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carga_metodo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carga_semana_iso",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "carga_ano_iso",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "sinalizar_intensidade_excessiva",
+          "type": "bool",
           "required": false,
           "system": false
         }
