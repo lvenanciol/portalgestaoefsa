@@ -282,7 +282,7 @@ export default function Index() {
   // Contexto para o Parecer IA
   const contextoIa = useMemo(() => {
     if (!processed || fonte !== 'real') {
-      return 'Dashboard em modo demonstração (dados mock).'
+      return 'Dashboard com dados parciais — sincronização pendente.'
     }
     return (
       `Dashboard Executivo do grupo — Filtro: ${nomeEmpresaSelecionada}. ` +
@@ -318,7 +318,7 @@ export default function Index() {
             </h1>
             {isMock ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                <FlaskConical className="h-3 w-3" /> Demonstração (mock)
+                <FlaskConical className="h-3 w-3" /> Dados parciais
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -334,7 +334,7 @@ export default function Index() {
 
           <p className="text-xs sm:text-[13px] text-gray-500 mt-1 flex items-center gap-1.5 flex-wrap">
             {isMock ? (
-              <>Visão demonstrativa — dados reais indisponíveis no momento.</>
+              <>Visão parcial — dados do Sankhya indisponíveis no momento.</>
             ) : (
               <>
                 <RefreshCw className="h-3 w-3 text-emerald-600" />

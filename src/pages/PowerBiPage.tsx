@@ -636,7 +636,7 @@ export default function PowerBiPage() {
                 <ChartColumnBig className="h-3.5 w-3.5 text-amber-400" />
                 Microsoft Power BI Embedded Workspace
               </span>
-              <span>Modo Demonstrativo & Homologação</span>
+              <span>Modo Homologação</span>
             </div>
 
             <div className="relative z-10 max-w-lg space-y-4">
