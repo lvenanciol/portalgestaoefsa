@@ -1,31 +1,29 @@
 // ============================================================================
-// NOTIFICAÇÕES DE TAREFAS — cobertura completa (14/11/2026)
+// NOTIFICAÇÕES DE TAREFAS — e-mail + sino (14/11/2026, v2)
 //
-// PEDIDO DO DONO: "Quando uma tarefa for alterada, atualizada ou ainda o
-// chat/mensagem receber/enviar nova mensagem, enviar mensagem por e-mail e
-// no sino de alerta informando a atualização aos envolvidos na tarefa"
+// PEDIDO DO DONO:
+//   a) clique no alerta abre a TAREFA (feito no Topbar: /tarefas?tarefa=<id>)
+//   b) e-mail no MESMO LAYOUT do e-mail de acesso ao PGE:
+//      faixa de logomarcas → barra verde → cartão com tabela de dados →
+//      botão de ação → rodapé de uso restrito
+//   c) remetente configurável: secret EMAIL_REMETENTE (fallback
+//      $app.settings().meta.senderAddress)
 //
-// O QUE JÁ EXISTIA (e é mantido — este hook NÃO duplica):
-//   · tarefas_notificacoes.js  -> sino (notificacoes) em criar e mudar status
-//   · tarefas_email_atribuicao.js -> e-mail em criar e em mudança de ATRIBUIÇÃO
+// O QUE JÁ EXISTIA (mantido, este hook NÃO duplica):
+//   · tarefas_notificacoes.js  -> sino em criar e mudar status
+//   · tarefas_email_atribuicao.js -> e-mail só em ATRIBUIÇÃO
 //
-// O QUE FALTAVA (coberto aqui):
-//   1. Mudança de STATUS/conclusão -> não gerava e-mail
-//   2. Qualquer outro campo alterado (título, prazo, prioridade, descrição,
-//      subtarefas, comentários, anexos) -> não gerava nada
-//   3. Nova mensagem no CHAT da tarefa (tarefas_chat) -> não avisava ninguém
+// O QUE ESTE HOOK COBRE:
+//   1. QUALQUER campo alterado na tarefa -> chat + sino + e-mail
+//   2. Nova mensagem em tarefas_chat      -> sino + e-mail
 //
-// REGRAS DE SEGURANÇA:
-//   · NUNCA bloqueia a operação: todo bloco em try/catch e e.next() no finally
-//   · Autor não recebe notificação da própria ação
-//   · Respeita users.notificacoes_desativadas
-//   · Um e-mail por destinatário por evento (dedupe por id/e-mail)
-//   · Funções declaradas DENTRO de cada callback (JSVM não compartilha escopo)
+// REGRAS (obrigatórias neste runtime — JSVM/goja):
+//   · Todo helper DENTRO do callback (top-level não é visível em runtime)
+//   · Um arquivo por responsabilidade; nada de módulo compartilhado
+//   · try/catch + e.next() no finally: e-mail nunca bloqueia a operação
+//   · Autor da ação não recebe aviso; respeita notificacoes_desativadas
 // ============================================================================
 
-// ---------------------------------------------------------------------------
-// 1) TAREFA ATUALIZADA — qualquer campo
-// ---------------------------------------------------------------------------
 onRecordAfterUpdateSuccess(function (e) {
   var t = e.record
   var orig = e.record ? e.record.original() : null
@@ -34,7 +32,7 @@ onRecordAfterUpdateSuccess(function (e) {
     return
   }
 
-  // ---- helpers (escopo local) ----
+  // ---------------------------- helpers -----------------------------------
   function txt(rec, campo) {
     try {
       var v = rec.getString(campo)
@@ -44,7 +42,7 @@ onRecordAfterUpdateSuccess(function (e) {
     }
   }
 
-  function normalizarStatus(s) {
+  function normStatus(s) {
     var v = String(s || '')
       .toLowerCase()
       .trim()
@@ -54,7 +52,7 @@ onRecordAfterUpdateSuccess(function (e) {
   }
 
   function labelStatus(s) {
-    var k = normalizarStatus(s)
+    var k = normStatus(s)
     if (k === 'triagem') return 'Triagem'
     if (k === 'a_fazer') return 'A Fazer'
     if (k === 'em_andamento') return 'Em Andamento'
@@ -63,7 +61,7 @@ onRecordAfterUpdateSuccess(function (e) {
     return s || 'Triagem'
   }
 
-  function ids(raw) {
+  function parseIds(raw) {
     if (!raw) return []
     try {
       var p = typeof raw === 'string' ? JSON.parse(raw) : raw
@@ -89,7 +87,208 @@ onRecordAfterUpdateSuccess(function (e) {
     return { id: a.id || '', email: em, nome: a.getString('name') || em || 'Sistema' }
   }
 
-  // envolvidos = responsáveis (users) + parceiros + criador
+  // remetente: secret EMAIL_REMETENTE > senderAddress do PocketBase
+  function remetente() {
+    var addr = ''
+    try {
+      addr = String($secrets.get('EMAIL_REMETENTE') || '').trim()
+    } catch (_) {}
+    if (!addr) {
+      try {
+        addr = String($app.settings().meta.senderAddress || '').trim()
+      } catch (_) {}
+    }
+    return addr
+  }
+
+  function nomeRemetente() {
+    var n = ''
+    try {
+      n = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
+    } catch (_) {}
+    return n || 'Portal de Gestão Executivo — Extrafruti'
+  }
+
+  function baseUrl() {
+    var b = ''
+    try {
+      b = String($app.settings().meta.appURL || '')
+    } catch (_) {}
+    if (!b) {
+      try {
+        b = String($secrets.get('SITE_URL') || '')
+      } catch (_) {}
+    }
+    if (!b) b = 'https://portalefsa.goskip.app'
+    return b.replace(/\/+$/, '')
+  }
+
+  // Logomarcas: as das empresas vinculadas ao usuário; sem vínculo, todas.
+  function faixaLogos(usuarioRecord, empresaNome) {
+    var base = baseUrl()
+    var colLogosId = 'pbc_3701359284'
+    var logos = []
+
+    function addLogo(nomeEmp) {
+      if (!nomeEmp) return
+      try {
+        var esc = String(nomeEmp).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+        var ach = $app.findRecordsByFilter(
+          'logomarcas',
+          'ativo = true && empresa = "' + esc + '"',
+          'empresa',
+          1,
+          0,
+        )
+        if (ach && ach.length) {
+          var rec = ach[0]
+          var arq = rec.getString('logo') || rec.getString('emblema')
+          if (arq) {
+            logos.push({
+              empresa: rec.getString('empresa'),
+              url: base + '/api/files/' + colLogosId + '/' + rec.id + '/' + arq,
+            })
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (empresaNome) addLogo(empresaNome)
+
+    if (usuarioRecord) {
+      try {
+        var empId = usuarioRecord.getString('empresa_id')
+        if (empId) addLogo($app.findRecordById('empresas', empId).getString('nome'))
+      } catch (_) {}
+      try {
+        var uniId = usuarioRecord.getString('unidade_id')
+        if (uniId) {
+          var empUni = $app.findRecordById('unidades', uniId).getString('empresa_id')
+          if (empUni) addLogo($app.findRecordById('empresas', empUni).getString('nome'))
+        }
+      } catch (_) {}
+    }
+
+    if (!logos.length) {
+      try {
+        var todas = $app.findRecordsByFilter('logomarcas', 'ativo = true', 'empresa', 6, 0)
+        for (var i = 0; i < (todas || []).length; i++) {
+          var r = todas[i]
+          var a = r.getString('logo') || r.getString('emblema')
+          if (a) {
+            logos.push({
+              empresa: r.getString('empresa'),
+              url: base + '/api/files/' + colLogosId + '/' + r.id + '/' + a,
+            })
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!logos.length) return ''
+    var imgs = ''
+    for (var j = 0; j < logos.length; j++) {
+      imgs +=
+        '<img src="' +
+        logos[j].url +
+        '" alt="' +
+        (logos[j].empresa || '') +
+        '" title="' +
+        (logos[j].empresa || '') +
+        '" height="42" style="height:42px;width:auto;max-height:42px;max-width:140px;' +
+        'margin:0 12px;vertical-align:middle;border:0;outline:none;text-decoration:none" />'
+    }
+    return (
+      '<tr><td style="background:#ffffff;padding:18px 20px;border:1px solid #e5e7eb;' +
+      'border-top:0;border-bottom:0;text-align:center">' +
+      imgs +
+      '</td></tr>'
+    )
+  }
+
+  // ------------------------------------------------------------------
+  // LAYOUT PGE — espelha o e-mail "Seu acesso está liberado"
+  // ------------------------------------------------------------------
+  function montarHtml(opts) {
+    var linhas = ''
+    if (opts.tarefa) {
+      linhas +=
+        '<tr><td style="padding:6px 0;color:#6b7280;width:130px">Tarefa</td>' +
+        '<td style="padding:6px 0;font-weight:bold">' +
+        opts.tarefa +
+        '</td></tr>'
+    }
+    if (opts.empresa) {
+      linhas +=
+        '<tr><td style="padding:6px 0;color:#6b7280">Empresa</td>' +
+        '<td style="padding:6px 0">' +
+        opts.empresa +
+        '</td></tr>'
+    }
+    if (opts.autor) {
+      linhas +=
+        '<tr><td style="padding:6px 0;color:#6b7280">De</td>' +
+        '<td style="padding:6px 0">' +
+        opts.autor +
+        '</td></tr>'
+    }
+    if (opts.quando) {
+      linhas +=
+        '<tr><td style="padding:6px 0;color:#6b7280">Quando</td>' +
+        '<td style="padding:6px 0">' +
+        opts.quando +
+        '</td></tr>'
+    }
+    if (opts.link) {
+      linhas +=
+        '<tr><td style="padding:6px 0;color:#6b7280">Acesso direto</td>' +
+        '<td style="padding:6px 0"><a href="' +
+        opts.link +
+        '" style="color:#1B5E20;font-weight:bold">clique para abrir</a></td></tr>'
+    }
+
+    return (
+      '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#1f2937">' +
+      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" ' +
+      'style="border-collapse:collapse">' +
+      (opts.logosHtml || '') +
+      '<tr><td style="background:#1B5E20;color:#fff;padding:14px 20px;border-radius:0">' +
+      '<strong style="font-size:15px">' +
+      opts.tituloBarra +
+      '</strong>' +
+      '<span style="font-size:11px;opacity:.85;display:block;margin-top:2px">' +
+      'Portal de Gestão Executivo · Grupo Extrafruti</span></td></tr>' +
+      '</table>' +
+      '<div style="padding:20px;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 8px 8px">' +
+      '<h2 style="margin:0 0 12px;font-size:16px">' +
+      opts.destaque +
+      '</h2>' +
+      '<p style="font-size:14px;line-height:1.6">Olá, <strong>' +
+      opts.destinatario +
+      '</strong>!</p>' +
+      (opts.intro ? '<p style="font-size:14px;line-height:1.6">' + opts.intro + '</p>' : '') +
+      '<table style="width:100%;font-size:14px;border-collapse:collapse;margin:14px 0">' +
+      linhas +
+      '</table>' +
+      (opts.conteudoHtml || '') +
+      (opts.link
+        ? '<p style="margin:0 0 16px"><a href="' +
+          opts.link +
+          '" style="display:inline-block;background:#1B5E20;color:#fff;text-decoration:none;' +
+          'padding:10px 18px;border-radius:8px;font-size:13px;font-weight:bold">' +
+          (opts.textoBotao || 'Abrir a tarefa') +
+          '</a></p>'
+        : '') +
+      '<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px;' +
+      'font-size:12px;color:#92400e;line-height:1.6">' +
+      'Você recebe este aviso por participar da tarefa. O histórico completo fica no Portal.' +
+      '</div>' +
+      '<p style="margin-top:20px;font-size:11px;color:#9ca3af">Sistema corporativo de uso ' +
+      'restrito. Não compartilhe suas credenciais. Grupo Extrafruti · Casafruti · FoldBox</p>' +
+      '</div></div>'
+    )
+  }
+
   function envolvidos(rec) {
     var out = []
     var vistos = {}
@@ -97,6 +296,7 @@ onRecordAfterUpdateSuccess(function (e) {
       if (!u || vistos[u.id]) return
       vistos[u.id] = true
       out.push({
+        rec: u,
         id: u.id,
         email: u.getString('email') || '',
         nome: u.getString('name') || u.getString('email') || '',
@@ -107,10 +307,11 @@ onRecordAfterUpdateSuccess(function (e) {
     var respIds = []
     try {
       var rr = rec.get('responsaveis_ids')
-      if (Array.isArray(rr))
+      if (Array.isArray(rr)) {
         respIds = rr.map(function (x) {
           return String(x)
         })
+      }
     } catch (_) {}
     for (var i = 0; i < respIds.length; i++) {
       try {
@@ -118,7 +319,7 @@ onRecordAfterUpdateSuccess(function (e) {
       } catch (_) {}
     }
 
-    var pids = ids(rec.get ? rec.get('parceiros') : null)
+    var pids = parseIds(rec.get ? rec.get('parceiros') : null)
     for (var j = 0; j < pids.length; j++) {
       var em = ''
       var nm = ''
@@ -133,13 +334,13 @@ onRecordAfterUpdateSuccess(function (e) {
         } catch (_) {}
       }
       if (nm) {
-        var primeiro = nm
+        var p1 = nm
           .replace(/^\[[^\]]+\]\s*/, '')
           .trim()
           .split(/\s+/)[0]
-        if (primeiro && primeiro.length >= 3) {
+        if (p1 && p1.length >= 3) {
           try {
-            var ach = $app.findRecordsByFilter('users', 'name ~ "' + primeiro + '"', '', 5, 0)
+            var ach = $app.findRecordsByFilter('users', 'name ~ "' + p1 + '"', '', 5, 0)
             for (var k = 0; k < ach.length; k++) push(ach[k])
           } catch (_) {}
         }
@@ -150,19 +351,19 @@ onRecordAfterUpdateSuccess(function (e) {
       .replace(/^\[[^\]]+\]\s*/, '')
       .trim()
     if (resp) {
-      var p1 = resp.split(/\s+/)[0]
-      if (p1 && p1.length >= 3) {
+      var pr1 = resp.split(/\s+/)[0]
+      if (pr1 && pr1.length >= 3) {
         try {
-          var ach2 = $app.findRecordsByFilter('users', 'name ~ "' + p1 + '"', '', 5, 0)
+          var ach2 = $app.findRecordsByFilter('users', 'name ~ "' + pr1 + '"', '', 5, 0)
           for (var m = 0; m < ach2.length; m++) push(ach2[m])
         } catch (_) {}
       }
     }
 
-    var criadoPor = txt(rec, 'criado_por').toLowerCase()
-    if (criadoPor && criadoPor.indexOf('@') !== -1) {
+    var criador = txt(rec, 'criado_por').toLowerCase()
+    if (criador && criador.indexOf('@') !== -1) {
       try {
-        push($app.findAuthRecordByEmail('users', criadoPor))
+        push($app.findAuthRecordByEmail('users', criador))
       } catch (_) {}
     }
 
@@ -190,8 +391,8 @@ onRecordAfterUpdateSuccess(function (e) {
       var reg = new Record(col)
       reg.set('usuario_id', dest.id || '')
       reg.set('usuario_email', dest.email || '')
-      reg.set('titulo', dados.titulo.slice(0, 250))
-      reg.set('mensagem', dados.mensagem.slice(0, 2000))
+      reg.set('titulo', String(dados.titulo).slice(0, 250))
+      reg.set('mensagem', String(dados.mensagem).slice(0, 2000))
       reg.set('tipo', dados.tipo)
       reg.set('tarefa_id', String(dados.tarefa_id || ''))
       reg.set('rota', '/tarefas')
@@ -204,46 +405,16 @@ onRecordAfterUpdateSuccess(function (e) {
     }
   }
 
-  function enviarEmail(dest, assunto, corpo) {
+  function enviarEmail(dest, assunto, html, texto) {
     var status = 'enviado'
     var erro = ''
     try {
-      var base = $app.settings().meta.appURL || 'https://portalefsa.goskip.app'
-      var html =
-        '<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;' +
-        'background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden">' +
-        '<div style="background:#1B5E20;padding:16px 20px">' +
-        '<p style="margin:0;color:#ffffff;font-size:15px;font-weight:bold">' +
-        'Portal de Gestão Executivo</p>' +
-        '<p style="margin:4px 0 0;color:#d1fae5;font-size:11px">Tarefas &amp; Agenda</p>' +
-        '</div>' +
-        '<div style="padding:20px">' +
-        '<p style="margin:0 0 12px;font-size:15px;font-weight:bold;color:#111827">' +
-        assunto +
-        '</p>' +
-        '<p style="margin:0 0 16px;font-size:13px;color:#374151;line-height:1.6">' +
-        corpo +
-        '</p>' +
-        '<p style="margin:0"><a href="' +
-        base +
-        '/tarefas" ' +
-        'style="display:inline-block;background:#1B5E20;color:#fff;text-decoration:none;' +
-        'padding:10px 18px;border-radius:8px;font-size:13px;font-weight:bold">' +
-        'Abrir a tarefa</a></p>' +
-        '</div>' +
-        '<div style="padding:12px 20px;background:#f9fafb;border-top:1px solid #e5e7eb">' +
-        '<p style="margin:0;font-size:11px;color:#6b7280">Sistema corporativo de uso restrito. ' +
-        'Grupo Extrafruti · Casafruti · FoldBox</p></div></div>'
-
       var msg = new MailerMessage({
-        from: {
-          address: $app.settings().meta.senderAddress,
-          name: 'Portal de Gestão Executivo — Extrafruti',
-        },
+        from: { address: remetente(), name: nomeRemetente() },
         to: [{ address: dest.email }],
         subject: assunto,
         html: html,
-        text: corpo,
+        text: texto,
       })
       $app.newMailClient().send(msg)
     } catch (err) {
@@ -251,13 +422,12 @@ onRecordAfterUpdateSuccess(function (e) {
       erro = String(err).slice(0, 500)
       console.warn('tarefa_eventos: e-mail falhou para ' + dest.email + ': ' + erro)
     }
-
     try {
       var colE = $app.findCollectionByNameOrId('emails')
       var recE = new Record(colE)
       recE.set('para', dest.email)
       recE.set('assunto', assunto)
-      recE.set('corpo', corpo.slice(0, 20000))
+      recE.set('corpo', texto.slice(0, 20000))
       recE.set('status', status)
       recE.set('erro', erro)
       recE.set('modelo', 'tarefa_atualizacao')
@@ -266,12 +436,26 @@ onRecordAfterUpdateSuccess(function (e) {
     } catch (_) {}
   }
 
+  function dataHoraBR() {
+    // PocketBase entrega DateTime em UTC; formata em pt-BR
+    try {
+      var d = new Date()
+      var dd = String(d.getDate()).padStart(2, '0')
+      var mm = String(d.getMonth() + 1).padStart(2, '0')
+      var hh = String(d.getHours()).padStart(2, '0')
+      var mi = String(d.getMinutes()).padStart(2, '0')
+      return dd + '/' + mm + '/' + d.getFullYear() + ' ' + hh + ':' + mi
+    } catch (_) {
+      return ''
+    }
+  }
+
+  // ---------------------------- fluxo -------------------------------------
   try {
     var titulo = txt(t, 'titulo') || 'Sem título'
 
-    // ---- detecta o que mudou ----
-    var stAnt = normalizarStatus(txt(orig, 'status_kanban') || txt(orig, 'status'))
-    var stNov = normalizarStatus(txt(t, 'status_kanban') || txt(t, 'status'))
+    var stAnt = normStatus(txt(orig, 'status_kanban') || txt(orig, 'status'))
+    var stNov = normStatus(txt(t, 'status_kanban') || txt(t, 'status'))
 
     var campos = [
       ['titulo', 'título'],
@@ -279,7 +463,6 @@ onRecordAfterUpdateSuccess(function (e) {
       ['prazo', 'prazo'],
       ['prioridade_p', 'prioridade'],
       ['prioridade', 'prioridade'],
-      ['status_kanban', 'fase'],
       ['empresa', 'empresa'],
       ['responsavel', 'responsável'],
       ['recorrencia', 'recorrência'],
@@ -287,15 +470,14 @@ onRecordAfterUpdateSuccess(function (e) {
 
     var mudancas = []
     for (var i = 0; i < campos.length; i++) {
-      var campo = campos[i][0]
-      var rotulo = campos[i][1]
-      if (campo === 'status_kanban') continue // tratado abaixo
-      var a = txt(orig, campo)
-      var b = txt(t, campo)
+      var cp = campos[i][0]
+      var rot = campos[i][1]
+      var a = txt(orig, cp)
+      var b = txt(t, cp)
       if (a !== b) {
-        if (!a && b) mudancas.push(rotulo + ' definido')
-        else if (a && !b) mudancas.push(rotulo + ' removido')
-        else mudancas.push(rotulo + ' alterado')
+        if (!a && b) mudancas.push(rot + ' definido')
+        else if (a && !b) mudancas.push(rot + ' removido')
+        else mudancas.push(rot + ' alterado')
       }
     }
 
@@ -304,23 +486,21 @@ onRecordAfterUpdateSuccess(function (e) {
       mudancas.unshift('status de "' + labelStatus(stAnt) + '" para "' + labelStatus(stNov) + '"')
     }
 
-    // subtarefas / comentários (JSON) — compara tamanho como sinal de mudança
     try {
-      var subA = orig.get('subtarefas')
-      var subB = t.get('subtarefas')
-      var lenA = Array.isArray(subA) ? subA.length : 0
-      var lenB = Array.isArray(subB) ? subB.length : 0
-      if (lenA !== lenB) mudancas.push('subtarefas (' + lenA + ' → ' + lenB + ')')
+      var sA = orig.get('subtarefas')
+      var sB = t.get('subtarefas')
+      var nA = Array.isArray(sA) ? sA.length : 0
+      var nB = Array.isArray(sB) ? sB.length : 0
+      if (nA !== nB) mudancas.push('subtarefas (' + nA + ' → ' + nB + ')')
     } catch (_) {}
     try {
       var cA = orig.get('comentarios')
       var cB = t.get('comentarios')
-      var lA = Array.isArray(cA) ? cA.length : 0
-      var lB = Array.isArray(cB) ? cB.length : 0
-      if (lA !== lB) mudancas.push('comentários (' + lA + ' → ' + lB + ')')
+      var m1 = Array.isArray(cA) ? cA.length : 0
+      var m2 = Array.isArray(cB) ? cB.length : 0
+      if (m1 !== m2) mudancas.push('comentários (' + m1 + ' → ' + m2 + ')')
     } catch (_) {}
 
-    // nenhuma mudança relevante (o 'updated' do PocketBase sempre muda)
     if (!mudancas.length) {
       e.next()
       return
@@ -328,33 +508,24 @@ onRecordAfterUpdateSuccess(function (e) {
 
     var autor = autorDe(e)
     var resumo = mudancas.join('; ')
+    var empresaNome = txt(t, 'empresa')
 
-    // histórico no chat da tarefa
     gravarChat(
       t.id,
       '⚡ ' + resumo.charAt(0).toUpperCase() + resumo.slice(1) + ' — por ' + autor.nome + '.',
       autor.nome,
     )
 
-    // avisa os envolvidos
     var lista = envolvidos(t)
     var jaFoi = {}
-    var assunto = (statusMudou ? 'Status atualizado: ' : 'Tarefa atualizada: ') + titulo
-    var corpo =
-      autor.nome +
-      ' atualizou a tarefa "' +
-      titulo +
-      '".\n\n' +
-      'O que mudou: ' +
-      resumo +
-      '.\n\n' +
-      'Abra o Portal para ver o histórico completo.'
+    var assunto = (statusMudou ? 'Tarefa atualizada: ' : 'Tarefa alterada: ') + titulo
+    var link = baseUrl() + '/tarefas?tarefa=' + encodeURIComponent(String(t.id))
+    var quando = dataHoraBR()
 
     for (var n = 0; n < lista.length; n++) {
       var d = lista[n]
       var chave = d.id || d.email
       if (!chave || jaFoi[chave]) continue
-      // não notifica quem fez a alteração
       if (d.id && autor.id && d.id === autor.id) continue
       if (d.email && autor.email && d.email.toLowerCase() === autor.email.toLowerCase()) continue
       jaFoi[chave] = true
@@ -369,7 +540,47 @@ onRecordAfterUpdateSuccess(function (e) {
         autor_nome: autor.nome,
         autor_email: autor.email,
       })
-      enviarEmail(d, assunto, corpo)
+
+      var html = montarHtml({
+        logosHtml: faixaLogos(d.rec, empresaNome),
+        tituloBarra: statusMudou ? 'Tarefa atualizada' : 'Tarefa alterada',
+        destaque: assunto,
+        destinatario: d.nome,
+        intro: autor.nome + ' fez uma atualização em uma tarefa da qual você participa.',
+        tarefa: titulo,
+        empresa: empresaNome,
+        autor: autor.nome + (autor.email ? ' (' + autor.email + ')' : ''),
+        quando: quando,
+        link: link,
+        textoBotao: 'Abrir a tarefa',
+        conteudoHtml:
+          '<div style="margin:14px 0;padding:12px;background:#f9fafb;border-left:3px solid #1B5E20;' +
+          'font-size:13px;color:#374151;line-height:1.6"><strong>O que mudou</strong><br/>' +
+          resumo +
+          '</div>',
+      })
+
+      var texto =
+        'Olá, ' +
+        d.nome +
+        '!\n\n' +
+        autor.nome +
+        ' atualizou a tarefa "' +
+        titulo +
+        '".\n\n' +
+        'O que mudou: ' +
+        resumo +
+        '\n' +
+        (empresaNome ? 'Empresa: ' + empresaNome + '\n' : '') +
+        'Quando: ' +
+        quando +
+        '\n\n' +
+        'Abrir a tarefa: ' +
+        link +
+        '\n\n' +
+        'Sistema corporativo de uso restrito. Grupo Extrafruti · Casafruti · FoldBox'
+
+      enviarEmail(d, assunto, html, texto)
     }
   } catch (err) {
     console.warn('tarefa_eventos (update): ' + String(err).slice(0, 200))
@@ -379,7 +590,7 @@ onRecordAfterUpdateSuccess(function (e) {
 }, 'tarefas')
 
 // ---------------------------------------------------------------------------
-// 2) MENSAGEM NOVA NO CHAT DA TAREFA
+// NOVA MENSAGEM NO CHAT DA TAREFA
 // ---------------------------------------------------------------------------
 onRecordAfterCreateSuccess(function (e) {
   var msg = e.record
@@ -399,14 +610,208 @@ onRecordAfterCreateSuccess(function (e) {
     return { id: a.id || '', email: em, nome: a.getString('name') || em || 'Sistema' }
   }
 
+  function remetente() {
+    var addr = ''
+    try {
+      addr = String($secrets.get('EMAIL_REMETENTE') || '').trim()
+    } catch (_) {}
+    if (!addr) {
+      try {
+        addr = String($app.settings().meta.senderAddress || '').trim()
+      } catch (_) {}
+    }
+    return addr
+  }
+
+  function nomeRemetente() {
+    var n = ''
+    try {
+      n = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
+    } catch (_) {}
+    return n || 'Portal de Gestão Executivo — Extrafruti'
+  }
+
+  function baseUrl() {
+    var b = ''
+    try {
+      b = String($app.settings().meta.appURL || '')
+    } catch (_) {}
+    if (!b) {
+      try {
+        b = String($secrets.get('SITE_URL') || '')
+      } catch (_) {}
+    }
+    if (!b) b = 'https://portalefsa.goskip.app'
+    return b.replace(/\/+$/, '')
+  }
+
+  function faixaLogos(usuarioRecord, empresaNome) {
+    var base = baseUrl()
+    var colLogosId = 'pbc_3701359284'
+    var logos = []
+
+    function addLogo(nomeEmp) {
+      if (!nomeEmp) return
+      try {
+        var esc = String(nomeEmp).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+        var ach = $app.findRecordsByFilter(
+          'logomarcas',
+          'ativo = true && empresa = "' + esc + '"',
+          'empresa',
+          1,
+          0,
+        )
+        if (ach && ach.length) {
+          var rec = ach[0]
+          var arq = rec.getString('logo') || rec.getString('emblema')
+          if (arq) {
+            logos.push({
+              empresa: rec.getString('empresa'),
+              url: base + '/api/files/' + colLogosId + '/' + rec.id + '/' + arq,
+            })
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (empresaNome) addLogo(empresaNome)
+    if (usuarioRecord) {
+      try {
+        var empId = usuarioRecord.getString('empresa_id')
+        if (empId) addLogo($app.findRecordById('empresas', empId).getString('nome'))
+      } catch (_) {}
+      try {
+        var uniId = usuarioRecord.getString('unidade_id')
+        if (uniId) {
+          var empUni = $app.findRecordById('unidades', uniId).getString('empresa_id')
+          if (empUni) addLogo($app.findRecordById('empresas', empUni).getString('nome'))
+        }
+      } catch (_) {}
+    }
+    if (!logos.length) {
+      try {
+        var todas = $app.findRecordsByFilter('logomarcas', 'ativo = true', 'empresa', 6, 0)
+        for (var i = 0; i < (todas || []).length; i++) {
+          var r = todas[i]
+          var a = r.getString('logo') || r.getString('emblema')
+          if (a) {
+            logos.push({
+              empresa: r.getString('empresa'),
+              url: base + '/api/files/' + colLogosId + '/' + r.id + '/' + a,
+            })
+          }
+        }
+      } catch (_) {}
+    }
+    if (!logos.length) return ''
+    var imgs = ''
+    for (var j = 0; j < logos.length; j++) {
+      imgs +=
+        '<img src="' +
+        logos[j].url +
+        '" alt="' +
+        (logos[j].empresa || '') +
+        '" title="' +
+        (logos[j].empresa || '') +
+        '" height="42" style="height:42px;width:auto;max-height:42px;max-width:140px;' +
+        'margin:0 12px;vertical-align:middle;border:0;outline:none;text-decoration:none" />'
+    }
+    return (
+      '<tr><td style="background:#ffffff;padding:18px 20px;border:1px solid #e5e7eb;' +
+      'border-top:0;border-bottom:0;text-align:center">' +
+      imgs +
+      '</td></tr>'
+    )
+  }
+
+  function montarHtml(opts) {
+    var linhas = ''
+    if (opts.tarefa) {
+      linhas +=
+        '<tr><td style="padding:6px 0;color:#6b7280;width:130px">Tarefa</td>' +
+        '<td style="padding:6px 0;font-weight:bold">' +
+        opts.tarefa +
+        '</td></tr>'
+    }
+    if (opts.empresa) {
+      linhas +=
+        '<tr><td style="padding:6px 0;color:#6b7280">Empresa</td>' +
+        '<td style="padding:6px 0">' +
+        opts.empresa +
+        '</td></tr>'
+    }
+    if (opts.autor) {
+      linhas +=
+        '<tr><td style="padding:6px 0;color:#6b7280">De</td>' +
+        '<td style="padding:6px 0">' +
+        opts.autor +
+        '</td></tr>'
+    }
+    if (opts.quando) {
+      linhas +=
+        '<tr><td style="padding:6px 0;color:#6b7280">Quando</td>' +
+        '<td style="padding:6px 0">' +
+        opts.quando +
+        '</td></tr>'
+    }
+    if (opts.link) {
+      linhas +=
+        '<tr><td style="padding:6px 0;color:#6b7280">Acesso direto</td>' +
+        '<td style="padding:6px 0"><a href="' +
+        opts.link +
+        '" style="color:#1B5E20;font-weight:bold">clique para abrir</a></td></tr>'
+    }
+
+    return (
+      '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#1f2937">' +
+      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" ' +
+      'style="border-collapse:collapse">' +
+      (opts.logosHtml || '') +
+      '<tr><td style="background:#1B5E20;color:#fff;padding:14px 20px;border-radius:0">' +
+      '<strong style="font-size:15px">' +
+      opts.tituloBarra +
+      '</strong>' +
+      '<span style="font-size:11px;opacity:.85;display:block;margin-top:2px">' +
+      'Portal de Gestão Executivo · Grupo Extrafruti</span></td></tr>' +
+      '</table>' +
+      '<div style="padding:20px;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 8px 8px">' +
+      '<h2 style="margin:0 0 12px;font-size:16px">' +
+      opts.destaque +
+      '</h2>' +
+      '<p style="font-size:14px;line-height:1.6">Olá, <strong>' +
+      opts.destinatario +
+      '</strong>!</p>' +
+      (opts.intro ? '<p style="font-size:14px;line-height:1.6">' + opts.intro + '</p>' : '') +
+      '<table style="width:100%;font-size:14px;border-collapse:collapse;margin:14px 0">' +
+      linhas +
+      '</table>' +
+      (opts.conteudoHtml || '') +
+      (opts.link
+        ? '<p style="margin:0 0 16px"><a href="' +
+          opts.link +
+          '" style="display:inline-block;background:#1B5E20;color:#fff;text-decoration:none;' +
+          'padding:10px 18px;border-radius:8px;font-size:13px;font-weight:bold">' +
+          (opts.textoBotao || 'Abrir a tarefa') +
+          '</a></p>'
+        : '') +
+      '<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px;' +
+      'font-size:12px;color:#92400e;line-height:1.6">' +
+      'Você recebe este aviso por participar da tarefa. O histórico completo fica no Portal.' +
+      '</div>' +
+      '<p style="margin-top:20px;font-size:11px;color:#9ca3af">Sistema corporativo de uso ' +
+      'restrito. Não compartilhe suas credenciais. Grupo Extrafruti · Casafruti · FoldBox</p>' +
+      '</div></div>'
+    )
+  }
+
   function gravarSino(dest, dados) {
     try {
       var col = $app.findCollectionByNameOrId('notificacoes')
       var reg = new Record(col)
       reg.set('usuario_id', dest.id || '')
       reg.set('usuario_email', dest.email || '')
-      reg.set('titulo', dados.titulo.slice(0, 250))
-      reg.set('mensagem', dados.mensagem.slice(0, 2000))
+      reg.set('titulo', String(dados.titulo).slice(0, 250))
+      reg.set('mensagem', String(dados.mensagem).slice(0, 2000))
       reg.set('tipo', 'sistema')
       reg.set('tarefa_id', String(dados.tarefa_id || ''))
       reg.set('rota', '/tarefas')
@@ -419,44 +824,16 @@ onRecordAfterCreateSuccess(function (e) {
     }
   }
 
-  function enviarEmail(dest, assunto, corpo) {
+  function enviarEmail(dest, assunto, html, texto) {
     var status = 'enviado'
     var erro = ''
     try {
-      var base = $app.settings().meta.appURL || 'https://portalefsa.goskip.app'
-      var html =
-        '<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;' +
-        'background:#ffffff;border:1px solid #e5e7eb;border-radius:10px;overflow:hidden">' +
-        '<div style="background:#1B5E20;padding:16px 20px">' +
-        '<p style="margin:0;color:#ffffff;font-size:15px;font-weight:bold">' +
-        'Nova mensagem na tarefa</p></div>' +
-        '<div style="padding:20px">' +
-        '<p style="margin:0 0 12px;font-size:15px;font-weight:bold;color:#111827">' +
-        assunto +
-        '</p>' +
-        '<div style="margin:0 0 16px;padding:12px;background:#f9fafb;border-left:3px solid #1B5E20;' +
-        'font-size:13px;color:#374151;line-height:1.6">' +
-        corpo +
-        '</div>' +
-        '<p style="margin:0"><a href="' +
-        base +
-        '/tarefas" ' +
-        'style="display:inline-block;background:#1B5E20;color:#fff;text-decoration:none;' +
-        'padding:10px 18px;border-radius:8px;font-size:13px;font-weight:bold">' +
-        'Responder</a></p></div>' +
-        '<div style="padding:12px 20px;background:#f9fafb;border-top:1px solid #e5e7eb">' +
-        '<p style="margin:0;font-size:11px;color:#6b7280">Sistema corporativo de uso restrito.</p>' +
-        '</div></div>'
-
       var m = new MailerMessage({
-        from: {
-          address: $app.settings().meta.senderAddress,
-          name: 'Portal de Gestão Executivo — Extrafruti',
-        },
+        from: { address: remetente(), name: nomeRemetente() },
         to: [{ address: dest.email }],
         subject: assunto,
         html: html,
-        text: corpo,
+        text: texto,
       })
       $app.newMailClient().send(m)
     } catch (err) {
@@ -464,13 +841,12 @@ onRecordAfterCreateSuccess(function (e) {
       erro = String(err).slice(0, 500)
       console.warn('chat_email: falhou para ' + dest.email + ': ' + erro)
     }
-
     try {
       var colE = $app.findCollectionByNameOrId('emails')
       var recE = new Record(colE)
       recE.set('para', dest.email)
       recE.set('assunto', assunto)
-      recE.set('corpo', corpo.slice(0, 20000))
+      recE.set('corpo', texto.slice(0, 20000))
       recE.set('status', status)
       recE.set('erro', erro)
       recE.set('modelo', 'tarefa_chat')
@@ -479,6 +855,20 @@ onRecordAfterCreateSuccess(function (e) {
     } catch (_) {}
   }
 
+  function dataHoraBR() {
+    try {
+      var d = new Date()
+      var dd = String(d.getDate()).padStart(2, '0')
+      var mm = String(d.getMonth() + 1).padStart(2, '0')
+      var hh = String(d.getHours()).padStart(2, '0')
+      var mi = String(d.getMinutes()).padStart(2, '0')
+      return dd + '/' + mm + '/' + d.getFullYear() + ' ' + hh + ':' + mi
+    } catch (_) {
+      return ''
+    }
+  }
+
+  // ---------------------------- fluxo -------------------------------------
   try {
     var texto = (msg.getString('texto') || '').trim()
     if (!texto) {
@@ -486,13 +876,12 @@ onRecordAfterCreateSuccess(function (e) {
       return
     }
 
-    // ignora as linhas automáticas que os próprios hooks gravam no chat
+    // ignora as linhas automáticas dos próprios hooks
     if (texto.indexOf('⚡') === 0 || texto.indexOf('📌') === 0) {
       e.next()
       return
     }
 
-    // descobre a tarefa (campo texto ou relação)
     var tarefaId = (msg.getString('tarefa_id') || '').trim()
     if (!tarefaId) {
       try {
@@ -517,6 +906,7 @@ onRecordAfterCreateSuccess(function (e) {
     var autor = autorDe(e)
     var tituloTarefa = (tarefa.getString('titulo') || 'Sem título').trim()
     var autorMsg = (msg.getString('autor') || autor.nome || 'Sistema').trim()
+    var empresaNome = (tarefa.getString('empresa') || '').trim()
     var trecho = texto.length > 300 ? texto.slice(0, 300) + '…' : texto
 
     // envolvidos
@@ -526,8 +916,10 @@ onRecordAfterCreateSuccess(function (e) {
       if (!u || vistos[u.id]) return
       vistos[u.id] = true
       lista.push({
+        rec: u,
         id: u.id,
         email: u.getString('email') || '',
+        nome: u.getString('name') || u.getString('email') || '',
         silenciado: !!u.getBool('notificacoes_desativadas'),
       })
     }
@@ -535,10 +927,11 @@ onRecordAfterCreateSuccess(function (e) {
     var respIds = []
     try {
       var rr = tarefa.get('responsaveis_ids')
-      if (Array.isArray(rr))
+      if (Array.isArray(rr)) {
         respIds = rr.map(function (x) {
           return String(x)
         })
+      }
     } catch (_) {}
     for (var i = 0; i < respIds.length; i++) {
       try {
@@ -550,12 +943,13 @@ onRecordAfterCreateSuccess(function (e) {
     try {
       var raw = tarefa.get('parceiros')
       var p = typeof raw === 'string' ? JSON.parse(raw) : raw
-      if (Array.isArray(p))
+      if (Array.isArray(p)) {
         pids = p
           .map(function (x) {
             return String(x).trim()
           })
           .filter(Boolean)
+      }
     } catch (_) {}
     for (var j = 0; j < pids.length; j++) {
       try {
@@ -565,29 +959,22 @@ onRecordAfterCreateSuccess(function (e) {
       } catch (_) {}
     }
 
-    var criadoPor = (tarefa.getString('criado_por') || '').toLowerCase()
-    if (criadoPor && criadoPor.indexOf('@') !== -1) {
+    var criador = (tarefa.getString('criado_por') || '').toLowerCase()
+    if (criador && criador.indexOf('@') !== -1) {
       try {
-        pushU($app.findAuthRecordByEmail('users', criadoPor))
+        pushU($app.findAuthRecordByEmail('users', criador))
       } catch (_) {}
     }
 
     var assunto = 'Nova mensagem em "' + tituloTarefa + '"'
-    var corpo =
-      autorMsg +
-      ' escreveu em "' +
-      tituloTarefa +
-      '":\n\n' +
-      trecho +
-      '\n\n' +
-      'Abra o Portal para responder.'
+    var link = baseUrl() + '/tarefas?tarefa=' + encodeURIComponent(tarefaId)
+    var quando = dataHoraBR()
 
     var jaFoi = {}
     for (var n = 0; n < lista.length; n++) {
       var d = lista[n]
       var chave = d.id || d.email
       if (!chave || jaFoi[chave]) continue
-      // quem escreveu não recebe
       if (d.id && autor.id && d.id === autor.id) continue
       if (d.email && autor.email && d.email.toLowerCase() === autor.email.toLowerCase()) continue
       jaFoi[chave] = true
@@ -600,7 +987,48 @@ onRecordAfterCreateSuccess(function (e) {
         autor_nome: autorMsg,
         autor_email: autor.email,
       })
-      enviarEmail(d, assunto, corpo)
+
+      var html = montarHtml({
+        logosHtml: faixaLogos(d.rec, empresaNome),
+        tituloBarra: 'Nova mensagem na tarefa',
+        destaque: assunto,
+        destinatario: d.nome,
+        intro: autorMsg + ' enviou uma mensagem em uma tarefa da qual você participa.',
+        tarefa: tituloTarefa,
+        empresa: empresaNome,
+        autor: autorMsg + (autor.email ? ' (' + autor.email + ')' : ''),
+        quando: quando,
+        link: link,
+        textoBotao: 'Responder no Portal',
+        conteudoHtml:
+          '<div style="margin:14px 0;padding:12px;background:#f9fafb;border-left:3px solid #1B5E20;' +
+          'font-size:13px;color:#374151;line-height:1.6"><strong>' +
+          autorMsg +
+          '</strong> escreveu:<br/>' +
+          trecho +
+          '</div>',
+      })
+
+      var txtPlano =
+        'Olá, ' +
+        d.nome +
+        '!\n\n' +
+        autorMsg +
+        ' enviou uma mensagem na tarefa "' +
+        tituloTarefa +
+        '":\n\n' +
+        trecho +
+        '\n\n' +
+        (empresaNome ? 'Empresa: ' + empresaNome + '\n' : '') +
+        'Quando: ' +
+        quando +
+        '\n\n' +
+        'Responder: ' +
+        link +
+        '\n\n' +
+        'Sistema corporativo de uso restrito. Grupo Extrafruti · Casafruti · FoldBox'
+
+      enviarEmail(d, assunto, html, txtPlano)
     }
   } catch (err) {
     console.warn('chat_email (create): ' + String(err).slice(0, 200))

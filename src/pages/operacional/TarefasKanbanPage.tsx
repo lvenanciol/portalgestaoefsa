@@ -202,6 +202,21 @@ export default function TarefasKanbanPage() {
           )
       setItens(visiveis)
       setErro('')
+
+      // 14/11/2026 — abrir a tarefa direto pela URL (?tarefa=<id>).
+      // O sino de alertas navega para /tarefas?tarefa=<id>; sem isto o usuário
+      // caía na lista e tinha de procurar a tarefa à mão.
+      try {
+        const alvo = new URLSearchParams(window.location.search).get('tarefa')
+        if (alvo) {
+          const achada = (visiveis as any[]).find((t) => String(t.id) === String(alvo))
+          if (achada) {
+            setDetalhe(achada)
+          }
+        }
+      } catch (_) {
+        /* deep link inválido não quebra a tela */
+      }
     } catch (e) {
       setErro(String(e))
     } finally {

@@ -264,10 +264,26 @@ routerAdd(
     let status = 'enviado'
     let erro = ''
     try {
+      // 14/11/2026 — remetente configurável.
+      // Secret EMAIL_REMETENTE (ex.: extrafruti@extrafruti.com.br) sobrescreve
+      // o senderAddress do PocketBase sem precisar de deploy.
+      // O domínio DEVE estar verificado no provedor de SMTP, senão o envio
+      // falha por SPF/DKIM — daí a ordem: secret -> settings.
+      let remAddr = ''
+      try {
+        remAddr = String($secrets.get('EMAIL_REMETENTE') || '').trim()
+      } catch (_) {}
+      if (!remAddr) remAddr = $app.settings().meta.senderAddress
+      let remNome = ''
+      try {
+        remNome = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
+      } catch (_) {}
+      if (!remNome) remNome = 'Portal de Gestão Executivo — Extrafruti'
+
       const message = new MailerMessage({
         from: {
-          address: $app.settings().meta.senderAddress,
-          name: 'Portal de Gestão Executivo — Extrafruti',
+          address: remAddr,
+          name: remNome,
         },
         to: [{ address: email }],
         subject: assunto,

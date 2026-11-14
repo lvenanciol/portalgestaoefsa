@@ -423,11 +423,20 @@ onRecordAfterCreateSuccess(function (e) {
       var status = 'enviado'
       var erro = ''
       try {
+        // 14/11/2026 — remetente configurável (secret EMAIL_REMETENTE).
+        var remA = ''
+        try {
+          remA = String($secrets.get('EMAIL_REMETENTE') || '').trim()
+        } catch (_) {}
+        if (!remA) remA = $app.settings().meta.senderAddress
+        var remN = ''
+        try {
+          remN = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
+        } catch (_) {}
+        if (!remN) remN = 'Portal de Gestão Executivo — Extrafruti'
+
         var msg = new MailerMessage({
-          from: {
-            address: $app.settings().meta.senderAddress,
-            name: 'Portal de Gestão Executivo — Extrafruti',
-          },
+          from: { address: remA, name: remN },
           to: [{ address: emailDest }],
           subject: assunto,
           html: html,
@@ -845,11 +854,19 @@ onRecordAfterUpdateSuccess(function (e) {
       var status = 'enviado'
       var erro = ''
       try {
+        var remA2 = ''
+        try {
+          remA2 = String($secrets.get('EMAIL_REMETENTE') || '').trim()
+        } catch (_) {}
+        if (!remA2) remA2 = $app.settings().meta.senderAddress
+        var remN2 = ''
+        try {
+          remN2 = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
+        } catch (_) {}
+        if (!remN2) remN2 = 'Portal de Gestão Executivo — Extrafruti'
+
         var msg = new MailerMessage({
-          from: {
-            address: $app.settings().meta.senderAddress,
-            name: 'Portal de Gestão Executivo — Extrafruti',
-          },
+          from: { address: remA2, name: remN2 },
           to: [{ address: emailDest }],
           subject: assunto,
           html: html,

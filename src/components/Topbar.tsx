@@ -746,7 +746,15 @@ export function Topbar() {
                       key={n.id}
                       onClick={() => {
                         if (!n.lida) marcarComoLida(n)
-                        if (n.rota) navigate(n.rota)
+                        // 14/11/2026: abrir a TAREFA específica, não a lista.
+                        // Antes navegava para /tarefas (genérico) e o usuário
+                        // tinha que procurar a tarefa à mão. A tela de tarefas
+                        // lê ?tarefa=<id> e abre o modal de detalhe.
+                        if (n.tarefa_id) {
+                          navigate('/tarefas?tarefa=' + String(n.tarefa_id))
+                        } else if (n.rota) {
+                          navigate(n.rota)
+                        }
                       }}
                       className={cn(
                         'p-3 hover:bg-gray-50 transition-colors text-left cursor-pointer',
