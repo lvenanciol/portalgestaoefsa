@@ -1022,7 +1022,20 @@ export default function DesempenhoPage() {
     },
     cupons: {
       label: 'Cupons',
-      valor: n(K.cupons),
+      // Quando a rede não tem fonte no Sankhya (Coutinho), o valor vem null.
+      // Em vez de "—" seco, mostramos "pendente" para não parecer zero.
+      valor:
+        K.cupons === null || K.cupons === undefined
+          ? K.cupons_fonte === 'pendente'
+            ? 'pendente'
+            : '—'
+          : n(K.cupons),
+      contexto:
+        K.cupons_fonte === 'pendente'
+          ? 'sem fonte no Sankhya para esta rede'
+          : K.cupons_fonte && K.cupons_fonte !== 'indisponivel'
+            ? 'fonte: ' + K.cupons_fonte
+            : undefined,
       Icone: Receipt,
       tom: (K.cupons_aa ?? 0) >= 0 ? 'blue' : 'red',
       vars: [
