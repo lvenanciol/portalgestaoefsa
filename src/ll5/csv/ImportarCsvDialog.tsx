@@ -102,15 +102,30 @@ export default function ImportarCsvDialog({
   }
 
   const iniciar = async () => {
-    if (!inv) return
+    if (!inv || rodando) return
     setRodando(true)
     setErro('')
+    // feedback IMEDIATO: o job aparece na tela antes de qualquer await,
+    // para o clique nunca parecer que "não fez nada".
+    setJob({
+      status: 'iniciando',
+      processados: 0,
+      total_arquivos: inv.total,
+      importados: 0,
+      duplicados: 0,
+      ignorados: 0,
+      erros: 0,
+      log: [],
+    })
+
     try {
       const id = await criarJobCsv(ownerAtual, ator.email, inv)
+
       let concluido = false
       let atual: any = null
       while (!concluido && !abortar.current) {
-        const r = await processarLoteCsv(id, ownerAtual, ator.email)
+        // a fila vem da MEMÓRIA (o registro no banco só guarda contadores)
+        const r = await processarLoteCsv(id, ownerAtual, ator.email, inv.itens)
         concluido = r.concluido
         atual = r.job
         setJob({ ...atual })
@@ -124,6 +139,7 @@ export default function ImportarCsvDialog({
       }
     } catch (e: any) {
       setErro('Falha na importação: ' + (e?.message || String(e)))
+      setJob(null)
     } finally {
       setRodando(false)
     }
@@ -257,33 +273,54 @@ export default function ImportarCsvDialog({
           {job && (
             <div className="space-y-3">
               <Card className="p-3 rounded-lg border-gray-200">
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between mb-1.5 gap-2">
                   <span className="text-[11.5px] font-bold text-gray-800">
-                    {job.processados} de {job.total_arquivos} linhas
+                    {job.status === 'iniciando'
+                      ? 'Preparando o job…'
+                      : `${job.processados} de ${job.total_arquivos} linhas`}
                   </span>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'text-[9px] font-bold uppercase',
-                      job.status === 'concluido'
-                        ? 'border-emerald-300 text-emerald-700 bg-emerald-50'
-                        : job.status === 'falhou'
-                          ? 'border-red-300 text-red-700 bg-red-50'
-                          : 'border-sky-300 text-sky-700 bg-sky-50',
-                    )}
-                  >
-                    {job.status}
-                  </Badge>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[13px] font-extrabold text-[#1b5e20] tabular-nums">
+                      {Math.round(pct)}%
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'text-[9px] font-bold uppercase',
+                        job.status === 'concluido'
+                          ? 'border-emerald-300 text-emerald-700 bg-emerald-50'
+                          : job.status === 'falhou'
+                            ? 'border-red-300 text-red-700 bg-red-50'
+                            : 'border-sky-300 text-sky-700 bg-sky-50',
+                      )}
+                    >
+                      {job.status === 'iniciando' ? 'iniciando' : job.status}
+                    </Badge>
+                  </div>
                 </div>
-                <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                <div className="h-3 rounded-full bg-gray-100 overflow-hidden relative">
                   <div
-                    className="h-full transition-all"
+                    className={cn(
+                      'h-full transition-all duration-300',
+                      job.status === 'iniciando' && 'animate-pulse',
+                    )}
                     style={{
-                      width: pct + '%',
+                      width: Math.max(pct, job.status === 'iniciando' ? 4 : 0) + '%',
                       backgroundColor: job.status === 'falhou' ? '#dc2626' : '#1b5e20',
                     }}
                   />
                 </div>
+                {/* estimativa e velocidade */}
+                {job.status !== 'iniciando' && !concluido && (
+                  <div className="flex items-center justify-between mt-1.5 text-[10px] text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" /> Importando em lotes de 100
+                    </span>
+                    <span className="tabular-nums">
+                      {job.total_arquivos - job.processados} linha(s) restante(s)
+                    </span>
+                  </div>
+                )}
                 <div className="grid grid-cols-4 gap-2 mt-2.5">
                   {[
                     { l: 'Importadas', v: job.importados || 0, c: 'text-emerald-700' },

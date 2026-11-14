@@ -177,20 +177,23 @@ export async function inventariarCsv(
   return inv
 }
 
-/** Cria o job no mesmo engine do .FIT, com formato='csv'. */
+/**
+ * Cria o job no mesmo engine do .FIT, com formato='csv'.
+ *
+ * 15/11/2026 — BUG CORRIGIDO: a versão anterior gravava a FILA COMPLETA
+ * (1.189 atividades com ~50 campos cada) num único campo JSON. O payload
+ * passava de vários MB, o PocketBase rejeitava a criação do registro e o
+ * botão "Iniciar importação" parecia não fazer nada (o erro estourava antes
+ * de qualquer feedback). Agora o job guarda só CONTADORES e RESUMO — a fila
+ * vive em memória durante a importação.
+ */
 export async function criarJobCsv(
   ownerId: string,
   createdBy: string,
   inv: InventarioCsv,
 ): Promise<string> {
-  // a fila guarda só as linhas VÁLIDAS + ignoradas (para o relatório)
-  const fila = inv.itens.map((i) => ({
-    linha: i.linha,
-    dados: i.dados,
-    motivo: i.motivo || null,
-  }))
-
   const rec = await pb.collection('ll5_fit_jobs').create({
+    // NUNCA enviamos a fila inteira: só o resumo (leve)
     owner_id: ownerId,
     created_by: createdBy,
     formato: 'csv',
@@ -203,7 +206,7 @@ export async function criarJobCsv(
     erros: inv.erros,
     ignorados: inv.ignoradas,
     indice_retomada: 0,
-    fila,
+    fila: null, // a fila vive em memória — ver nota acima
     log: [],
     resumo: {
       periodo_inicio: inv.periodoInicio,
@@ -235,9 +238,11 @@ export async function processarLoteCsv(
   jobId: string,
   ownerId: string,
   createdBy: string,
+  /** Fila em memória (o job no banco guarda só contadores). */
+  filaMemoria?: any[],
 ): Promise<{ concluido: boolean; job: any }> {
   const job = await lerJob(jobId)
-  const fila: any[] = job.fila || []
+  const fila: any[] = filaMemoria || job.fila || []
   const inicio = Number(job.indice_retomada || 0)
 
   if (inicio >= fila.length) {
