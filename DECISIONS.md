@@ -172,7 +172,138 @@ dois owners reais.
 
 ---
 
-## D13 — Saldo do parecer: texto composto localmente neste ciclo
+## D14 — Tamanho do field no .FIT: SEMPRE o `size` declarado, nunca o do base type
+
+**Achado que custou a primeira versão do parser:** um .FIT real declara
+`field 7, size 8, base type 0x86 (uint32)`. O tamanho do base type é 4, o
+`size` declarado é 8. Consumir 4 desalinha a leitura e corrompe **todo o resto
+do arquivo** — o sintoma é "data message sem definition" a poucos bytes de
+distância.
+
+**Decisão:** `readValue` devolve e o loop consome `size` do field. O base type
+define apenas COMO interpretar os bytes, não quantos são.
+
+**Prova:** os 3 .FIT reais do briefing só leram corretamente depois desta
+correção (0 erros, 6 eventos, 0 sessions — são wellness).
+
+---
+
+## D15 — Cadência: heurística de "por pé" documentada
+
+O FIT grava a cadência de **um pé** em `record.cadence`, mas
+`session.avg_running_cadence` pode já vir em passos/min. Regra aplicada:
+valor `< 120` × 2; acima disso, mantido.
+
+**Risco declarado:** um corredor muito lento (85 spm reais) seria dobrado por
+engano. O limite de 120 foi escolhido porque nenhuma corrida humana tem 85 spm
+reais — 170-180 é o normal, 42-45 por pé.
+
+---
+
+## D16 — Altitude: offset de +500 do protocolo
+
+O FIT grava altitude como `(metros + 500) × 5`. A função `altitudeComOffset`
+aplica a inversa. Sem isso, todo ganho de elevação sairia 500 m acima.
+
+---
+
+## D17 — Wellness recusado pelo NOME, não só pelo conteúdo
+
+`ehWellness` recusa quando o nome contém `wellness`/`monitoring`, **ou** quando
+o arquivo não tem `session`. As duas condições são independentes.
+
+**Por quê:** o nome é a prova mais direta (o Garmin exporta
+`<id>_WELLNESS.fit`), e a ausência de session cobre arquivos renomeados. Os 3
+fixtures reais são wellness por nome E por conteúdo — confirmado.
+
+---
+
+## D18 — FC de pulso óptico em intervalado curto = baixa confiabilidade
+
+Regra do briefing implementada literalmente: `fc_media > 0.85 × fc_max` **e**
+`duracao_s < 180` → `baixa`. Abaixo de 60 s → `insuficiente`.
+
+**Consequência:** essas sessões aparecem no histórico com badge cinza "não
+confiável (pulso óptico)" e **ficam fora** do cálculo de TSS, zonas de treino e
+carga semanal — não poluem a curva de tendência.
+
+**Teste:** 6 casos cobrindo os limites (150/172 em 120 s → baixa; em 181 s → alta).
+
+---
+
+## D19 — TRIMP com FC de repouso estimada (limitação declarada)
+
+`calcularTrimp` usa Banister com `fc_repouso = 60 bpm` quando o usuário não
+informou a dele. O valor é **indicativo**, não prescritivo.
+
+**Por quê não bloquear:** o campo é derivado e não entra em decisão clínica.
+Mas o número não é apresentado como exato — e o cálculo devolve `null` se faltar
+FC média ou duração, em vez de chutar.
+
+---
+
+## D20 — Importação em lotes de 25 com progresso persistido
+
+**Proibido pelo briefing:** processar tudo num request.
+
+**Decisão:** o ZIP é descompactado **no navegador** (fflate), cada arquivo vai
+para a `fila` do job em base64, e o processamento roda em lotes de 25. Cada
+lote faz UPSERT e grava `indice_retomada`.
+
+**Retomada:** se falhar no arquivo 1.200, `indice_retomada=1200` e a próxima
+chamada continua de 1.201. A fila fica no registro até o job concluir, quando é
+limpa (`fila: null`) para não estourar o limite de tamanho.
+
+**Bulk insert:** um `create(array)` por lote; se o batch falhar, cai para
+inserção individual **dentro do lote** — não perde os 25.
+
+---
+
+## D21 — Abortar com >5% de falha (validação bloqueante 3)
+
+`LIMITE_FALHAS_PCT = 5`. A cada lote recalcula `erros / processados`. Acima de
+5%, o job vira `falhou` e para. Os arquivos já importados **permanecem** — o job
+não faz rollback (perder 1.100 atividades boas por causa de 60 ruins seria pior).
+
+---
+
+## D22 — Enriquecimento sem sobrescrever
+
+Se a atividade já existe e a nova traz streams (`tem_streams=false → true`),
+atualiza **apenas** os campos de stream e running dynamics. `owner_id`,
+`created_by` e `created_em` **nunca** são tocados.
+
+Se já tinha streams, conta como `duplicado` e não toca em nada.
+
+---
+
+## D23 — Fuso horário: offset fixo de 180 min, não `America/Sao_Paulo`
+
+O FIT grava epoch UTC. Converter com `-3h` fixo erra em períodos com horário de
+verão (o Brasil teve até 2019 — dentro da janela de 8 anos do pacote).
+
+**Decisão atual:** offset 180 min como default, parametrizável em
+`NormalizarCtx.fusoOffsetMin`.
+
+**Limitação declarada:** registros de 2018-2019 com DST podem ficar 1 h
+deslocados. A correção definitiva é usar a lista de transições do
+`America/Sao_Paulo` por data — fica para o próximo ciclo.
+
+---
+
+## D24 — Nenhum dado de wellness entra, nem por engano
+
+Três barreiras:
+
+1. varredura do ZIP ignora `DI-Connect-Wellness/` e `DI-Connect-User/`;
+2. `ehWellness` recusa por nome e por ausência de `session`;
+3. `normalizarAtividade` devolve `ok=false` sem `session`.
+
+**Teste:** `expect(ehWellness('8386643197_WELLNESS.fit', d)).toBe(true)`.
+
+---
+
+## D25 — Saldo do parecer: texto composto localmente neste ciclo
 
 **Ambiguidade:** o parecer deveria vir do Gemini.
 
