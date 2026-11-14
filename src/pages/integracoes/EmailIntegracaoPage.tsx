@@ -96,8 +96,8 @@ interface StatusRemetente {
   matriz?: { configurada: boolean; atualizado_por?: string; atualizado_em?: string }
 }
 
-// O secret EMAIL_REMETENTE_NOME não aceita acentos — normalizamos no cliente
-// com a MESMA regra do backend, para o usuário ver o resultado antes de salvar.
+// O nome do remetente é salvo sem acentos — normalizamos no cliente com a
+// MESMA regra do backend, para o usuário ver o resultado antes de salvar.
 function semAcento(s: string): string {
   return s
     .normalize('NFD')
@@ -403,7 +403,7 @@ export default function EmailIntegracaoPage() {
                 )}
                 {editandoNome && temAcento && (
                   <div className="mt-1 text-[10.5px] text-amber-700 leading-tight">
-                    O secret não aceita acentos — será salvo como <strong>{nomeNormalizado}</strong>
+                    O nome é salvo sem acentos — ficará <strong>{nomeNormalizado}</strong>
                   </div>
                 )}
               </div>

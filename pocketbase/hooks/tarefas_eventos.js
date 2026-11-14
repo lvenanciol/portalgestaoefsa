@@ -91,13 +91,12 @@ onRecordAfterUpdateSuccess(function (e) {
   }
 
   function nomeRemetente() {
-    // secret -> coleção editável pela tela -> settings -> padrão ASCII.
-    // O secret NÃO aceita acentos; o padrão aqui já é ASCII.
+    // FONTE ÚNICA: a tela Integrações > E-mail (coleção integracoes_config,
+    // integracao="email_remetente"). O secret EMAIL_REMETENTE_NOME foi
+    // REMOVIDO em 14/11/2026 a pedido do dono — não existe mais e não é lido.
+    // Fallback: settings da plataforma -> padrão ASCII.
     var n = ''
-    try {
-      n = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
-    } catch (_) {}
-    if (!n) {
+    {
       try {
         var ach = $app.findRecordsByFilter(
           'integracoes_config',
@@ -658,11 +657,10 @@ onRecordAfterCreateSuccess(function (e) {
   }
 
   function nomeRemetente() {
+    // FONTE ÚNICA: tela Integrações > E-mail. O secret EMAIL_REMETENTE_NOME
+    // foi removido em 14/11/2026 e não é lido aqui.
     var n = ''
-    try {
-      n = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
-    } catch (_) {}
-    if (!n) {
+    {
       try {
         var ach = $app.findRecordsByFilter(
           'integracoes_config',

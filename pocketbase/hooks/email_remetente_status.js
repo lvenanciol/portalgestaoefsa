@@ -32,15 +32,10 @@ routerAdd(
       } catch (_) {}
     }
 
-    // nome: secret -> coleção editável -> settings
+    // nome: FONTE ÚNICA = tela Integrações > E-mail (secret removido 14/11/2026)
     let nomeRemetente = ''
     let nomeOrigem = ''
-    try {
-      nomeRemetente = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
-      if (nomeRemetente) nomeOrigem = 'secret EMAIL_REMETENTE_NOME'
-    } catch (_) {}
-
-    if (!nomeRemetente) {
+    {
       try {
         const ach = $app.findRecordsByFilter(
           'integracoes_config',

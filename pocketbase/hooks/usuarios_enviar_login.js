@@ -274,11 +274,28 @@ routerAdd(
         remAddr = String($secrets.get('EMAIL_REMETENTE') || '').trim()
       } catch (_) {}
       if (!remAddr) remAddr = $app.settings().meta.senderAddress
+      // Nome do remetente: FONTE ÚNICA = tela Integrações > E-mail.
+      // O secret EMAIL_REMETENTE_NOME foi removido em 14/11/2026.
       let remNome = ''
       try {
-        remNome = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
+        const ach = $app.findRecordsByFilter(
+          'integracoes_config',
+          'integracao = "email_remetente"',
+          '',
+          1,
+          0,
+        )
+        if (ach && ach.length) {
+          const cfg = ach[0].get('config') || {}
+          remNome = String(cfg.nome || '').trim()
+        }
       } catch (_) {}
-      if (!remNome) remNome = 'Portal de Gestão Executivo — Extrafruti'
+      if (!remNome) {
+        try {
+          remNome = String($app.settings().meta.senderName || '').trim()
+        } catch (_) {}
+      }
+      if (!remNome) remNome = 'Portal de Gestao Executivo - Extrafruti'
 
       const message = new MailerMessage({
         from: {

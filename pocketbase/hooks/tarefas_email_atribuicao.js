@@ -429,11 +429,27 @@ onRecordAfterCreateSuccess(function (e) {
           remA = String($secrets.get('EMAIL_REMETENTE') || '').trim()
         } catch (_) {}
         if (!remA) remA = $app.settings().meta.senderAddress
+        // Nome: FONTE ÚNICA = tela Integrações > E-mail (secret removido 14/11).
         var remN = ''
         try {
-          remN = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
+          var achN = $app.findRecordsByFilter(
+            'integracoes_config',
+            'integracao = "email_remetente"',
+            '',
+            1,
+            0,
+          )
+          if (achN && achN.length) {
+            var cfgN = achN[0].get('config') || {}
+            remN = String(cfgN.nome || '').trim()
+          }
         } catch (_) {}
-        if (!remN) remN = 'Portal de Gestão Executivo — Extrafruti'
+        if (!remN) {
+          try {
+            remN = String($app.settings().meta.senderName || '').trim()
+          } catch (_) {}
+        }
+        if (!remN) remN = 'Portal de Gestao Executivo - Extrafruti'
 
         var msg = new MailerMessage({
           from: { address: remA, name: remN },
@@ -861,9 +877,24 @@ onRecordAfterUpdateSuccess(function (e) {
         if (!remA2) remA2 = $app.settings().meta.senderAddress
         var remN2 = ''
         try {
-          remN2 = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
+          var achN2 = $app.findRecordsByFilter(
+            'integracoes_config',
+            'integracao = "email_remetente"',
+            '',
+            1,
+            0,
+          )
+          if (achN2 && achN2.length) {
+            var cfgN2 = achN2[0].get('config') || {}
+            remN2 = String(cfgN2.nome || '').trim()
+          }
         } catch (_) {}
-        if (!remN2) remN2 = 'Portal de Gestão Executivo — Extrafruti'
+        if (!remN2) {
+          try {
+            remN2 = String($app.settings().meta.senderName || '').trim()
+          } catch (_) {}
+        }
+        if (!remN2) remN2 = 'Portal de Gestao Executivo - Extrafruti'
 
         var msg = new MailerMessage({
           from: { address: remA2, name: remN2 },

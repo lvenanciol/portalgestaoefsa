@@ -33,11 +33,27 @@ routerAdd(
     } catch (_) {}
     if (!remAddr) remAddr = $app.settings().meta.senderAddress
 
+    // Nome: FONTE ÚNICA = tela Integrações > E-mail (secret removido 14/11).
     let remNome = ''
     try {
-      remNome = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
+      const achN = $app.findRecordsByFilter(
+        'integracoes_config',
+        'integracao = "email_remetente"',
+        '',
+        1,
+        0,
+      )
+      if (achN && achN.length) {
+        const cfgN = achN[0].get('config') || {}
+        remNome = String(cfgN.nome || '').trim()
+      }
     } catch (_) {}
-    if (!remNome) remNome = 'Portal de Gestão Executivo — Extrafruti'
+    if (!remNome) {
+      try {
+        remNome = String($app.settings().meta.senderName || '').trim()
+      } catch (_) {}
+    }
+    if (!remNome) remNome = 'Portal de Gestao Executivo - Extrafruti'
 
     let base = ''
     try {
