@@ -327,8 +327,21 @@ routerAdd(
         'GROUP BY MES ORDER BY TO_NUMBER(MES) DESC',
     )
 
-    // VENDAS REAIS POR LOJA (AD_VENDASPLV) — valor e quantidade do BI
-    // [0]=MES [1]=VLR [2]=QTD [3]=LINHAS(cupons)
+    // VENDAS REAIS (AD_VENDASPLV) — a fonte que o BI consome.
+    //
+    // ERRO CORRIGIDO 13/11 21:20: eu fazia JOIN com TGFPAR e filtrava por
+    // TGFPAR.AD_CODCENCUS. Mas a AD_VENDASPLV TEM a própria coluna CODCENCUS
+    // — o centro de custo da venda. O join distorcia o recorte.
+    //
+    // Validado contra o print do BI (out/2026, Extrabom):
+    //   minha conta: R$ 32.579.192,66 / 3.324.909 un
+    //   BI:          R$ 32.573.219    / 3.324.495 un   -> 0,018%
+    const CC_PLV =
+      aba === 'extrabom' || rede === 'extrabom'
+        ? ' AND PLV.CODCENCUS >= 10105000 AND PLV.CODCENCUS < 10106000 '
+        : aba === 'carone' || rede === 'carone'
+          ? ' AND PLV.CODCENCUS >= 10106000 AND PLV.CODCENCUS < 10107000 '
+          : ' AND PLV.CODCENCUS >= 10105000 AND PLV.CODCENCUS < 10107000 '
     const vendaPlvRows = lista(
       'venda_plv',
       'SELECT TO_CHAR(PLV.DTNEG,' +
@@ -337,12 +350,11 @@ routerAdd(
         'ROUND(SUM(PLV.VLRTOT),2) VLR, ROUND(SUM(PLV.QTDNEG),2) QTD, ' +
         'COUNT(DISTINCT PLV.NUNOTA) CUPONS ' +
         'FROM SANKHYA.AD_VENDASPLV PLV ' +
-        'JOIN SANKHYA.TGFPAR P ON P.CODPARC=PLV.CODPARC ' +
         'WHERE PLV.DTNEG >= ' +
         INI +
         ' AND PLV.DTNEG < ' +
         FIM +
-        FILTRO_REDE_PLV +
+        CC_PLV +
         'GROUP BY TO_CHAR(PLV.DTNEG,' +
         "'MM'" +
         ')',
