@@ -20,5 +20,5 @@
 
 // 14/11/2026 — versão sincronizada manualmente a cada publicação.
 // A sidebar mostrava 0.0.409 enquanto o app já estava em 0.0.436.
-export const APP_VERSION = '0.0.436'
-export const APP_BUILD = 'e8a4b86'
+export const APP_VERSION = '0.0.438'
+export const APP_BUILD = '5e91311'
