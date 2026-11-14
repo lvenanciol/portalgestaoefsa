@@ -71,7 +71,11 @@ routerAdd(
         } catch (_) {
           p = {}
         }
-        if (p && p.schema_v === 4 && idade >= 0 && idade < TTL_STALE) {
+        // schema_v precisa subir SEMPRE que o payload muda de forma — senão o
+        // cache antigo (com os números errados) continua sendo servido por até
+        // 7 dias. Foi o que aconteceu em 13/11: a tela mostrava "cache 350 min"
+        // com o faturamento de 59,6 Mi de uma versão anterior do cálculo.
+        if (p && p.schema_v === 5 && idade >= 0 && idade < TTL_STALE) {
           return e.json(
             200,
             Object.assign({}, p, {
@@ -855,7 +859,7 @@ routerAdd(
     }
 
     const out = {
-      schema_v: 4,
+      schema_v: 5,
       ok: true,
       aba: aba,
       periodo: 'Mês ' + mm + '/' + ano,
@@ -870,15 +874,29 @@ routerAdd(
         supervisor: supervisor || null,
       },
       kpis: {
-        // item g: faturamento e CMV pela fonte do BI (Resumo Lojas)
-        faturamento: resumoVenda !== null ? resumoVenda : fat,
+        // ------------------------------------------------------------------
+        // BUG CORRIGIDO 13/11 21:35 — "os cards não estão filtrados"
+        //
+        // O print mostrava 54 lojas (Coutinho correto) mas faturamento de
+        // R$ 59,6 Mi (total das DUAS redes). Causa: o card lia `resumoVenda`,
+        // que vem de AD_RESUMOLOJAS filtrando só por faixa de centro de custo
+        // (10105000-10106999 = Carone + Extrabom juntos) e IGNORA a rede
+        // escolhida no filtro.
+        //
+        // Agora o varejo usa AD_VENDASPLV (fonte do BI), que respeita o filtro
+        // de rede via CODCENCUS da própria tabela. Medido out/2026:
+        //   Coutinho (Extrabom): R$ 32.579.193 / 3.324.909 un  vs BI 32.573.219
+        //   Carone:              R$ 27.007.758 / 2.584.054 un
+        // ------------------------------------------------------------------
+        faturamento: plvVenda !== null ? plvVenda : resumoVenda !== null ? resumoVenda : fat,
+        faturamento_resumo_lojas: resumoVenda,
         faturamento_tgfcab: fat,
         cmv_resumo_pct: resumoCmvPct,
         cmv_resumo_aa: resumoCmvPctAnt,
-        quantidade_kg: qtd,
-        preco_medio: preco,
-        cupons: cupons,
-        ticket_medio: ticket,
+        quantidade_kg: plvQtd !== null ? plvQtd : qtd,
+        preco_medio: plvVenda && plvQtd ? Number((plvVenda / plvQtd).toFixed(2)) : preco,
+        cupons: plvCupons !== null && plvCupons > 0 ? plvCupons : cupons,
+        ticket_medio: plvVenda && plvCupons ? Number((plvVenda / plvCupons).toFixed(2)) : ticket,
         cmv_pct: cmvPct,
         quebra_pct: quebraPct,
         quebra_geral_pct: quebraGeralPct,
