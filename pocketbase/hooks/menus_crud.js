@@ -6,55 +6,17 @@
 // escrita passa pela API do PocketBase — só por `$app` no servidor. Foi por
 // isso que as migrações 076/077/078 registraram "applied" sem mudar nada.
 //
-// Aqui o servidor valida o grupo Admin e grava com privilégio total.
+// REGRA DO JSVM (obrigatória): NENHUMA função no topo do arquivo. Os callbacks
+// rodam em outro pool de VM e um helper de topo causaria ReferenceError.
+// Todo o auxiliar é declarado DENTRO de cada callback.
 //
 // ENDPOINTS (todos POST, exigem Admin):
 //   /backend/v1/menus/criar      {titulo, rota, secao, ordem, icone, ativo}
 //   /backend/v1/menus/editar     {id, ...campos}
 //   /backend/v1/menus/excluir    {id}
-//   /backend/v1/menus/mover      {id, secao, ordem}      — troca de seção
-//   /backend/v1/menus/reordenar  {secao, ids: []}        — ordem dentro da seção
+//   /backend/v1/menus/mover      {id, secao, ordem}
+//   /backend/v1/menus/reordenar  {secao, ids: []}
 // ============================================================================
-
-/** Verifica se o chamador é administrador. */
-function exigirAdmin(e) {
-  const auth = e.auth
-  if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
-
-  let isAdmin = false
-  try {
-    const grupoId = auth.getString('grupo_id')
-    if (!grupoId) {
-      // sem grupo = superusuário do portal
-      isAdmin = true
-    } else {
-      const g = $app.findRecordById('grupos_permissao', grupoId)
-      isAdmin = g.getString('nome') === 'Admin'
-    }
-  } catch (_) {
-    isAdmin = false
-  }
-
-  if (!isAdmin && e.hasSuperuserAuth && e.hasSuperuserAuth()) isAdmin = true
-  if (!isAdmin) throw new ForbiddenError('Acesso restrito a administradores.')
-  return auth
-}
-
-/** Normaliza e valida o payload de um item de menu. */
-function lerCampos(body) {
-  const titulo = String(body.titulo || '').trim()
-  if (!titulo) throw new BadRequestError('Informe o título do item.')
-
-  const rota = String(body.rota || '').trim()
-  const secao = String(body.secao || '').trim()
-  if (!secao) throw new BadRequestError('Informe a seção do item.')
-
-  const ordem = Number.isFinite(Number(body.ordem)) ? Number(body.ordem) : 99
-  const icone = String(body.icone || '').trim() || 'file-text'
-  const ativo = body.ativo === undefined ? true : !!body.ativo
-
-  return { titulo, rota, secao, ordem, icone, ativo }
-}
 
 // ---------------------------------------------------------------------------
 // CRIAR
@@ -63,30 +25,50 @@ routerAdd(
   'POST',
   '/backend/v1/menus/criar',
   (e) => {
-    exigirAdmin(e)
-    const body = e.requestInfo().body || {}
-    const c = lerCampos(body)
+    const auth = e.auth
+    if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
 
-    // rota é única (uma tela não aparece duas vezes na sidebar)
-    if (c.rota) {
+    let isAdmin = false
+    try {
+      const grupoId = auth.getString('grupo_id')
+      if (!grupoId) isAdmin = true
+      else isAdmin = $app.findRecordById('grupos_permissao', grupoId).getString('nome') === 'Admin'
+    } catch (_) {
+      isAdmin = false
+    }
+    if (!isAdmin && e.hasSuperuserAuth && e.hasSuperuserAuth()) isAdmin = true
+    if (!isAdmin) throw new ForbiddenError('Acesso restrito a administradores.')
+
+    const body = e.requestInfo().body || {}
+    const titulo = String(body.titulo || '').trim()
+    const secao = String(body.secao || '').trim()
+    const rota = String(body.rota || '').trim()
+    if (!titulo) return e.badRequestError('Informe o título do item.')
+    if (!secao) return e.badRequestError('Informe a seção do item.')
+
+    const ordem = Number.isFinite(Number(body.ordem)) ? Number(body.ordem) : 99
+    const icone = String(body.icone || '').trim() || 'file-text'
+    const ativo = body.ativo === undefined ? true : !!body.ativo
+
+    if (rota) {
       try {
-        const existe = $app.findFirstRecordByData('menus', 'rota', c.rota)
+        const existe = $app.findFirstRecordByData('menus', 'rota', rota)
         if (existe) {
-          return e.badRequestError('Já existe um item de menu com a rota ' + c.rota + '.')
+          return e.badRequestError('Já existe um item de menu com a rota ' + rota + '.')
         }
       } catch (_) {
-        // não existe — pode criar
+        // livre
       }
     }
 
     const col = $app.findCollectionByNameOrId('menus')
     const rec = new Record(col)
-    rec.set('titulo', c.titulo)
-    rec.set('rota', c.rota || null)
-    rec.set('secao', c.secao)
-    rec.set('ordem', c.ordem)
-    rec.set('icone', c.icone)
-    rec.set('ativo', c.ativo)
+    rec.set('titulo', titulo)
+    rec.set('rota', rota || null)
+    rec.set('secao', secao)
+    rec.set('ordem', ordem)
+    rec.set('icone', icone)
+    rec.set('ativo', ativo)
     $app.save(rec)
 
     return e.json(200, { ok: true, id: rec.id })
@@ -101,7 +83,20 @@ routerAdd(
   'POST',
   '/backend/v1/menus/editar',
   (e) => {
-    exigirAdmin(e)
+    const auth = e.auth
+    if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
+
+    let isAdmin = false
+    try {
+      const grupoId = auth.getString('grupo_id')
+      if (!grupoId) isAdmin = true
+      else isAdmin = $app.findRecordById('grupos_permissao', grupoId).getString('nome') === 'Admin'
+    } catch (_) {
+      isAdmin = false
+    }
+    if (!isAdmin && e.hasSuperuserAuth && e.hasSuperuserAuth()) isAdmin = true
+    if (!isAdmin) throw new ForbiddenError('Acesso restrito a administradores.')
+
     const body = e.requestInfo().body || {}
     const id = String(body.id || '').trim()
     if (!id) return e.badRequestError('Informe o id do item.')
@@ -113,26 +108,33 @@ routerAdd(
       return e.notFoundError('Item de menu não encontrado.')
     }
 
-    const c = lerCampos(body)
+    const titulo = String(body.titulo || '').trim()
+    const secao = String(body.secao || '').trim()
+    const rota = String(body.rota || '').trim()
+    if (!titulo) return e.badRequestError('Informe o título do item.')
+    if (!secao) return e.badRequestError('Informe a seção do item.')
 
-    // unicidade da rota, ignorando o próprio registro
-    if (c.rota) {
+    if (rota) {
       try {
-        const outro = $app.findFirstRecordByData('menus', 'rota', c.rota)
+        const outro = $app.findFirstRecordByData('menus', 'rota', rota)
         if (outro && outro.id !== id) {
-          return e.badRequestError('Outro item já usa a rota ' + c.rota + '.')
+          return e.badRequestError('Outro item já usa a rota ' + rota + '.')
         }
       } catch (_) {
         // livre
       }
     }
 
-    rec.set('titulo', c.titulo)
-    rec.set('rota', c.rota || null)
-    rec.set('secao', c.secao)
-    rec.set('ordem', c.ordem)
-    rec.set('icone', c.icone)
-    rec.set('ativo', c.ativo)
+    const ordem = Number.isFinite(Number(body.ordem)) ? Number(body.ordem) : rec.get('ordem') || 99
+    const icone = String(body.icone || '').trim() || 'file-text'
+    const ativo = body.ativo === undefined ? !!rec.get('ativo') : !!body.ativo
+
+    rec.set('titulo', titulo)
+    rec.set('rota', rota || null)
+    rec.set('secao', secao)
+    rec.set('ordem', ordem)
+    rec.set('icone', icone)
+    rec.set('ativo', ativo)
     $app.save(rec)
 
     return e.json(200, { ok: true })
@@ -147,7 +149,20 @@ routerAdd(
   'POST',
   '/backend/v1/menus/excluir',
   (e) => {
-    exigirAdmin(e)
+    const auth = e.auth
+    if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
+
+    let isAdmin = false
+    try {
+      const grupoId = auth.getString('grupo_id')
+      if (!grupoId) isAdmin = true
+      else isAdmin = $app.findRecordById('grupos_permissao', grupoId).getString('nome') === 'Admin'
+    } catch (_) {
+      isAdmin = false
+    }
+    if (!isAdmin && e.hasSuperuserAuth && e.hasSuperuserAuth()) isAdmin = true
+    if (!isAdmin) throw new ForbiddenError('Acesso restrito a administradores.')
+
     const body = e.requestInfo().body || {}
     const id = String(body.id || '').trim()
     if (!id) return e.badRequestError('Informe o id do item.')
@@ -171,7 +186,20 @@ routerAdd(
   'POST',
   '/backend/v1/menus/mover',
   (e) => {
-    exigirAdmin(e)
+    const auth = e.auth
+    if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
+
+    let isAdmin = false
+    try {
+      const grupoId = auth.getString('grupo_id')
+      if (!grupoId) isAdmin = true
+      else isAdmin = $app.findRecordById('grupos_permissao', grupoId).getString('nome') === 'Admin'
+    } catch (_) {
+      isAdmin = false
+    }
+    if (!isAdmin && e.hasSuperuserAuth && e.hasSuperuserAuth()) isAdmin = true
+    if (!isAdmin) throw new ForbiddenError('Acesso restrito a administradores.')
+
     const body = e.requestInfo().body || {}
     const id = String(body.id || '').trim()
     const secao = String(body.secao || '').trim()
@@ -185,18 +213,12 @@ routerAdd(
       return e.notFoundError('Item de menu não encontrado.')
     }
 
-    // ordem de destino: informada ou vai para o fim da seção
     let ordem = Number(body.ordem)
     if (!Number.isFinite(ordem)) {
       let maior = 0
       try {
-        const irmaos = $app.findRecordsByFilter(
-          'menus',
-          'secao = "' + secao.replace(/"/g, '\\"') + '"',
-          '-ordem',
-          1,
-          0,
-        )
+        const esc = secao.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+        const irmaos = $app.findRecordsByFilter('menus', 'secao = "' + esc + '"', '-ordem', 1, 0)
         if (irmaos && irmaos.length) maior = Number(irmaos[0].get('ordem')) || 0
       } catch (_) {
         maior = 0
@@ -220,7 +242,20 @@ routerAdd(
   'POST',
   '/backend/v1/menus/reordenar',
   (e) => {
-    exigirAdmin(e)
+    const auth = e.auth
+    if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
+
+    let isAdmin = false
+    try {
+      const grupoId = auth.getString('grupo_id')
+      if (!grupoId) isAdmin = true
+      else isAdmin = $app.findRecordById('grupos_permissao', grupoId).getString('nome') === 'Admin'
+    } catch (_) {
+      isAdmin = false
+    }
+    if (!isAdmin && e.hasSuperuserAuth && e.hasSuperuserAuth()) isAdmin = true
+    if (!isAdmin) throw new ForbiddenError('Acesso restrito a administradores.')
+
     const body = e.requestInfo().body || {}
     const ids = Array.isArray(body.ids) ? body.ids.map((x) => String(x).trim()) : []
     if (!ids.length) return e.badRequestError('Informe a lista de ids na nova ordem.')
@@ -233,7 +268,7 @@ routerAdd(
         $app.save(rec)
         atualizados++
       } catch (_) {
-        // item removido no meio do caminho: segue com os demais
+        // item removido: segue com os demais
       }
     }
 
