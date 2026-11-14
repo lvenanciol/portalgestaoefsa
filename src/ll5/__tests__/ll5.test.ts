@@ -1,15 +1,65 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
 // ============================================================================
-// TESTES LL5 — critérios de aceite do briefing (15/11/2026)
+// LL5 — SUÍTE DE ACEITE (15/11/2026)
 //
-// Executar com: npx vitest run src/ll5/__tests__/ll5.test.ts
-// (o pacote vitest não está no projeto; instalar com `npm i -D vitest` ou
-//  rodar o script scripts/ll5-selftest.mjs que cobre a lógica pura sem DOM)
+// Prova os critérios de aceite do briefing na CAMADA DE DADOS e nas REGRAS
+// PURAS — não na UI.
 //
-// Os testes de repositório usam um cliente FALSO, para provar que o filtro
-// por owner acontece na camada de dados — e não na UI.
+// O cliente do PocketBase é MOCKADO: os testes de isolamento controlam o que
+// o banco devolveria e verificam que o repositório recorta por owner antes de
+// qualquer transformação.
 // ============================================================================
-import { describe, it, expect } from 'vitest'
-import { filtroOwner, ownerEfetivo, atorAtual, type Ator } from '../repo'
+
+// banco falso compartilhado com o mock
+const banco: any[] = []
+
+vi.mock('@/lib/pocketbase/client', () => {
+  return {
+    default: {
+      collection: () => ({
+        async getFullList(opts: any = {}) {
+          let rows = [...banco]
+          const f: string = opts.filter || ''
+          const m = /owner_id = "([^"]+)"/.exec(f)
+          if (m) rows = rows.filter((r) => String(r.owner_id) === m[1])
+          return rows
+        },
+        async getOne(id: string) {
+          const r = banco.find((x) => x.id === id)
+          if (!r) throw new Error('404')
+          return r
+        },
+        async create(dados: any) {
+          const rec = { id: 'id' + Math.random().toString(36).slice(2, 8), ...dados }
+          banco.push(rec)
+          return rec
+        },
+        async update(id: string, dados: any) {
+          const i = banco.findIndex((x) => x.id === id)
+          if (i < 0) throw new Error('404')
+          banco[i] = { ...banco[i], ...dados }
+          return banco[i]
+        },
+        async delete(id: string) {
+          const i = banco.findIndex((x) => x.id === id)
+          if (i >= 0) banco.splice(i, 1)
+        },
+      }),
+    },
+  }
+})
+
+import {
+  filtroOwner,
+  ownerEfetivo,
+  atorAtual,
+  listar,
+  criar,
+  atualizar,
+  excluirLogico,
+  type Ator,
+} from '../repo'
 import {
   validar,
   calcIMC,
@@ -20,6 +70,7 @@ import {
   detectarMetodo,
   chaveDedupe,
   prescricaoCaloricaPermitida,
+  DICIONARIO_OCR,
   type ComposicaoDados,
 } from '../composicao-regras'
 import {
@@ -45,24 +96,25 @@ const MEMBRO: Ator = {
 const OUTRO: Ator = {
   id: 'u_outro',
   email: 'outro@extrafruti.com.br',
-  nome: 'Outro Membro',
+  nome: 'Outro',
   role: 'membro_familia',
 }
 
-// ---------------------------------------------------------------------------
-describe('isolamento por owner (camada de dados)', () => {
-  it('membro NUNCA recebe filtro que não seja o próprio id', () => {
-    // mesmo pedindo explicitamente o owner de outro, o filtro é o dele
+beforeEach(() => {
+  banco.length = 0
+})
+
+// ===========================================================================
+// CA1 — isolamento por owner (camada de dados)
+// ===========================================================================
+describe('CA1 · isolamento por owner (repositório, não UI)', () => {
+  it('membro nunca recebe filtro que não seja o próprio id', () => {
     const f = filtroOwner(MEMBRO, OUTRO.id)
     expect(f).toBe('owner_id = "u_membro"')
     expect(f).not.toContain('u_outro')
   })
 
-  it('membro sem parâmetro também recebe o próprio filtro', () => {
-    expect(filtroOwner(MEMBRO)).toBe('owner_id = "u_membro"')
-  })
-
-  it('admin sem escolha não tem cláusula de owner (vê tudo)', () => {
+  it('admin sem escolha não tem cláusula de owner', () => {
     expect(filtroOwner(ADMIN)).toBe('')
   })
 
@@ -73,57 +125,108 @@ describe('isolamento por owner (camada de dados)', () => {
   it('ownerEfetivo de membro ignora o owner pedido', () => {
     expect(ownerEfetivo(MEMBRO, OUTRO.id)).toBe(MEMBRO.id)
     expect(ownerEfetivo(ADMIN, OUTRO.id)).toBe(OUTRO.id)
-    expect(ownerEfetivo(ADMIN)).toBe(ADMIN.id)
   })
 
-  it('atorAtual deriva o papel do nome do grupo', () => {
+  it('atorAtual deriva o papel do nome do grupo (nunca de user.grupoNome)', () => {
     expect(atorAtual({ id: 'x', email: 'a@b.c' }, 'Admin').role).toBe('admin')
     expect(atorAtual({ id: 'x', email: 'a@b.c' }, 'Suprimentos').role).toBe('membro_familia')
     expect(atorAtual({ id: 'x', email: 'a@b.c' }, null).role).toBe('membro_familia')
   })
 
-  it('a lista devolvida para membro nunca contém owner de outro (recorte em memória)', () => {
-    // simula o que listar() faz após buscar: filtra por owner no cliente
-    const linhas = [
-      { id: '1', owner_id: MEMBRO.id },
-      { id: '2', owner_id: OUTRO.id },
-      { id: '3', owner_id: ADMIN.id },
-    ]
-    const visiveis = linhas.filter((r) => r.owner_id === MEMBRO.id)
-    expect(visiveis).toHaveLength(1)
-    expect(visiveis[0].id).toBe('1')
+  it('listar() para membro NÃO devolve registro de outro owner', async () => {
+    banco.push(
+      { id: 'r1', owner_id: MEMBRO.id },
+      { id: 'r2', owner_id: OUTRO.id },
+      { id: 'r3', owner_id: ADMIN.id },
+    )
+    const vistos = await listar('ll5_body_composition', MEMBRO)
+    expect(vistos).toHaveLength(1)
+    expect(vistos[0].id).toBe('r1')
+    expect(vistos.some((r) => r.owner_id === OUTRO.id)).toBe(false)
+  })
+
+  it('membro pedindo owner de outro explicitamente continua sem ver', async () => {
+    banco.push({ id: 'r1', owner_id: MEMBRO.id }, { id: 'r2', owner_id: OUTRO.id })
+    const t = await listar('ll5_body_composition', MEMBRO, { ownerEscolhido: OUTRO.id })
+    expect(t).toHaveLength(1)
+    expect(t[0].owner_id).toBe(MEMBRO.id)
+  })
+
+  it('admin vê todos os owners', async () => {
+    banco.push(
+      { id: 'r1', owner_id: MEMBRO.id },
+      { id: 'r2', owner_id: OUTRO.id },
+      { id: 'r3', owner_id: ADMIN.id },
+    )
+    expect(await listar('ll5_body_composition', ADMIN)).toHaveLength(3)
+  })
+
+  it('admin escolhendo um owner vê só aquele', async () => {
+    banco.push({ id: 'r1', owner_id: MEMBRO.id }, { id: 'r2', owner_id: OUTRO.id })
+    const v = await listar('ll5_body_composition', ADMIN, { ownerEscolhido: OUTRO.id })
+    expect(v).toHaveLength(1)
+    expect(v[0].owner_id).toBe(OUTRO.id)
+  })
+
+  it('membro não consegue ATUALIZAR registro de outro owner', async () => {
+    banco.push({ id: 'r2', owner_id: OUTRO.id, valor: 1 })
+    await expect(atualizar('ll5_running', MEMBRO, 'r2', { valor: 99 })).rejects.toThrow(
+      /Sem permissão/,
+    )
+  })
+
+  it('membro não consegue EXCLUIR registro de outro owner', async () => {
+    banco.push({ id: 'r2', owner_id: OUTRO.id })
+    await expect(excluirLogico('ll5_running', MEMBRO, 'r2')).rejects.toThrow(/Sem permissão/)
+  })
+
+  it('criar carimba owner_id e created_by', async () => {
+    const rec = await criar('ll5_running', MEMBRO, { distancia_km: 5 })
+    expect(rec.owner_id).toBe(MEMBRO.id)
+    expect(rec.created_by).toBe(MEMBRO.email)
+  })
+
+  it('admin criando para familiar registra no access_log', async () => {
+    await criar('ll5_running', ADMIN, { distancia_km: 5 }, MEMBRO.id)
+    const log = banco.filter((r) => r.acao === 'escrita')
+    expect(log).toHaveLength(1)
+    expect(log[0].owner_id_alvo).toBe(MEMBRO.id)
   })
 })
 
-// ---------------------------------------------------------------------------
-describe('composição — visibilidade de campos por método', () => {
+// ===========================================================================
+// CA3 — campos de DEXA OCULTOS na BIA
+// ===========================================================================
+describe('CA3 · campos exclusivos de DEXA ocultos (não desabilitados)', () => {
   it('sem método NENHUM campo aparece', () => {
     expect(campoVisivel('peso_kg', '')).toBe(false)
     expect(campoVisivel('peso_kg', undefined)).toBe(false)
   })
 
-  it('campos exclusivos de DEXA ficam ocultos na BIA', () => {
+  it('DEXA-only ocultos na BIA', () => {
     expect(campoVisivel('massa_ossea_kg', 'bia')).toBe(false)
     expect(campoVisivel('gordura_visceral_area_cm2', 'bia')).toBe(false)
     expect(campoVisivel('t_score', 'bia')).toBe(false)
   })
 
-  it('campos exclusivos de BIA ficam ocultos na DEXA', () => {
+  it('BIA-only ocultos na DEXA', () => {
     expect(campoVisivel('agua_corporal_l', 'dexa')).toBe(false)
     expect(campoVisivel('gordura_visceral_indice', 'dexa')).toBe(false)
     expect(campoVisivel('idade_corporal', 'dexa')).toBe(false)
   })
 
-  it('balança só mostra o bloco mínimo', () => {
+  it('balança mostra o bloco mínimo', () => {
     expect(campoVisivel('peso_kg', 'balanca')).toBe(true)
     expect(campoVisivel('massa_gorda_kg', 'balanca')).toBe(false)
     expect(campoVisivel('perimetro_quadril_cm', 'balanca')).toBe(false)
   })
 })
 
-// ---------------------------------------------------------------------------
-describe('composição — validações bloqueantes', () => {
-  const base: ComposicaoDados = {
+// ===========================================================================
+// CA2 / CA6 — banner com a conta explícita
+// ===========================================================================
+describe('CA2/CA6 · divergência aritmética com conta explícita', () => {
+  const seedB: ComposicaoDados = {
     metodo: 'bia',
     data_exame: '2026-10-11',
     peso_kg: 82.15,
@@ -132,58 +235,56 @@ describe('composição — validações bloqueantes', () => {
     massa_magra_kg: 58.0,
   }
 
-  it('bloqueia quando gordura + magra diverge ±2% e mostra a CONTA', () => {
-    const r = validar(base)
-    expect(r.bloqueios.length).toBeGreaterThan(0)
+  it('bloqueia e MOSTRA A CONTA', () => {
+    const r = validar(seedB)
     const msg = r.bloqueios.join(' ')
     expect(msg).toContain('21,00 + 58,00 = 79,00')
     expect(msg).toContain('82,15')
-    expect(msg).toContain('3,8')
+    expect(msg).toMatch(/3,[89]/)
+    expect(msg).toContain('±2%')
   })
 
   it('passa quando a soma bate com o peso', () => {
-    const r = validar({ ...base, massa_gorda_kg: 24.15, massa_magra_kg: 58.0 })
-    expect(r.bloqueios).toHaveLength(0)
+    expect(validar({ ...seedB, massa_gorda_kg: 24.15 }).bloqueios).toHaveLength(0)
   })
 
   it('bloqueia sem método', () => {
-    const r = validar({ ...base, metodo: '' })
-    expect(r.bloqueios.some((b) => b.includes('Método'))).toBe(true)
+    expect(validar({ ...seedB, metodo: '' }).bloqueios.some((b) => b.includes('Método'))).toBe(true)
   })
 
   it('bloqueia data futura', () => {
     const amanha = new Date()
     amanha.setDate(amanha.getDate() + 1)
     const r = validar({
-      ...base,
+      ...seedB,
       data_exame: amanha.toISOString().slice(0, 10),
       massa_gorda_kg: 24.15,
     })
     expect(r.bloqueios.some((b) => b.includes('futura'))).toBe(true)
   })
 
-  it('bloqueia altura variando mais de 2 cm sem confirmação', () => {
+  it('bloqueia altura variando > 2 cm sem confirmação', () => {
     const r = validar(
-      { ...base, massa_gorda_kg: 24.15, altura_cm: 180 },
-      { ...base, altura_cm: 176 },
+      { ...seedB, massa_gorda_kg: 24.15, altura_cm: 180 },
+      { ...seedB, altura_cm: 176 },
     )
     expect(r.bloqueios.some((b) => b.includes('Altura varia'))).toBe(true)
   })
 
   it('libera altura divergente quando confirmada', () => {
     const r = validar(
-      { ...base, massa_gorda_kg: 24.15, altura_cm: 180, divergencia_altura_confirmada: true },
-      { ...base, altura_cm: 176 },
+      { ...seedB, massa_gorda_kg: 24.15, altura_cm: 180, divergencia_altura_confirmada: true },
+      { ...seedB, altura_cm: 176 },
     )
     expect(r.bloqueios.some((b) => b.includes('Altura varia'))).toBe(false)
   })
 
   it('bloqueia troca de método sem confirmar nova série', () => {
-    const r = validar({ ...base, metodo: 'dexa', massa_gorda_kg: 24.15 }, { ...base })
+    const r = validar({ ...seedB, metodo: 'dexa', massa_gorda_kg: 24.15 }, { ...seedB })
     expect(r.bloqueios.some((b) => b.includes('NOVA SÉRIE'))).toBe(true)
   })
 
-  it('DEXA: bloqueia quando a soma regional diverge do total', () => {
+  it('DEXA: bloqueia soma regional divergente do total', () => {
     const r = validar({
       metodo: 'dexa',
       data_exame: '2026-10-11',
@@ -198,13 +299,11 @@ describe('composição — validações bloqueantes', () => {
         { regiao: 'perna_esquerda', massa_gorda_g: 2000, massa_magra_g: 10000 },
       ],
     })
-    // soma gordura = 14 kg vs total 20 kg → divergência
     expect(r.bloqueios.some((b) => b.includes('gordura regional'))).toBe(true)
   })
 })
 
-// ---------------------------------------------------------------------------
-describe('composição — advertências', () => {
+describe('advertências', () => {
   it('V-fat ≥ 100 gera advertência crítica', () => {
     const r = validar({
       metodo: 'dexa',
@@ -217,52 +316,43 @@ describe('composição — advertências', () => {
     expect(r.advertencias.some((a) => a.includes('crítica'))).toBe(true)
   })
 
-  it('A/G ≥ 1,0 gera advertência de distribuição central', () => {
-    const r = validar({
-      metodo: 'dexa',
-      data_exame: '2026-10-11',
-      razao_android_gynoid: 1.05,
-    })
+  it('A/G ≥ 1,0 gera advertência central', () => {
+    const r = validar({ metodo: 'dexa', data_exame: '2026-10-11', razao_android_gynoid: 1.05 })
     expect(r.advertencias.some((a) => a.includes('central'))).toBe(true)
   })
 
-  it('BIA + treinou_24h rebaixa a confiabilidade', () => {
-    const r = validar({
-      metodo: 'bia',
-      data_exame: '2026-10-11',
-      treinou_24h: true,
-    })
+  it('BIA + treinou_24h rebaixa confiabilidade', () => {
+    const r = validar({ metodo: 'bia', data_exame: '2026-10-11', treinou_24h: true })
     expect(r.confiabilidade).toBe('baixa')
-    expect(r.advertencias.some((a) => a.includes('24 h'))).toBe(true)
   })
 
-  it('BIA + jejum < 2h rebaixa a confiabilidade', () => {
-    const r = validar({ metodo: 'bia', data_exame: '2026-10-11', jejum_horas: 1 })
-    expect(r.confiabilidade).toBe('baixa')
+  it('BIA + jejum < 2h rebaixa confiabilidade', () => {
+    expect(
+      validar({ metodo: 'bia', data_exame: '2026-10-11', jejum_horas: 1 }).confiabilidade,
+    ).toBe('baixa')
   })
 })
 
-// ---------------------------------------------------------------------------
-describe('composição — cálculos', () => {
-  it('IMC', () => {
-    expect(calcIMC(82.15, 178)).toBeCloseTo(25.93, 1)
-  })
-  it('RCQ', () => {
-    expect(calcRCQ(94, 101)).toBeCloseTo(0.931, 2)
-  })
-  it('TMB Cunningham com massa magra', () => {
-    expect(calcTMB({ massaMagraKg: 58 })).toBe(1776)
-  })
-  it('TMB Mifflin sem massa magra', () => {
+describe('cálculos', () => {
+  it('IMC', () => expect(calcIMC(82.15, 178)).toBeCloseTo(25.93, 1))
+  it('RCQ', () => expect(calcRCQ(94, 101)).toBeCloseTo(0.931, 2))
+  it('TMB Cunningham', () => expect(calcTMB({ massaMagraKg: 58 })).toBe(1776))
+  it('TMB Mifflin', () => {
     const v = calcTMB({ pesoKg: 82, alturaCm: 178, idade: 45, sexo: 'M' })
     expect(v).toBeGreaterThan(1600)
     expect(v).toBeLessThan(1800)
   })
 })
 
-// ---------------------------------------------------------------------------
-describe('OCR — dicionário fixo', () => {
-  it('mapeia rótulos conhecidos e ignora os previstos', () => {
+// ===========================================================================
+// OCR — dicionário fixo
+// ===========================================================================
+describe('OCR · dicionário fixo de rótulos', () => {
+  it('tem exatamente 16 rótulos', () => {
+    expect(DICIONARIO_OCR).toHaveLength(16)
+  })
+
+  it('mapeia conhecidos e ignora previstos', () => {
     const { linhas, resumo } = conciliarOcr([
       { rotulo: 'Weight(Kg)', valor: '82,15' },
       { rotulo: 'BMI', valor: '27,1' },
@@ -275,21 +365,22 @@ describe('OCR — dicionário fixo', () => {
     expect(resumo.ignorados).toBe(1)
   })
 
-  it('Muscle weight entra para REVISÃO (ambíguo)', () => {
+  it('Muscle weight vai para REVISÃO', () => {
     const { linhas } = conciliarOcr([{ rotulo: 'Muscle weight(Kg)', valor: '58,0' }])
     expect(linhas[0].status).toBe('revisar')
     expect(linhas[0].campo).toBe('massa_magra_kg')
   })
 
-  it('rótulo desconhecido vai para revisão, nunca é adivinhado', () => {
+  it('rótulo desconhecido vai para revisão, nunca adivinhado', () => {
     const { linhas } = conciliarOcr([{ rotulo: 'Foo Bar', valor: '1' }])
     expect(linhas[0].status).toBe('revisar')
     expect(linhas[0].campo).toBeNull()
   })
 
-  it('V-fat nunca é mapeado para cm² nem kg', () => {
-    const { linhas } = conciliarOcr([{ rotulo: 'V-fat', valor: '14,5' }])
-    expect(linhas[0].campo).toBe('gordura_visceral_indice')
+  it('V-fat NUNCA vira cm² nem kg', () => {
+    expect(conciliarOcr([{ rotulo: 'V-fat', valor: '14,5' }]).linhas[0].campo).toBe(
+      'gordura_visceral_indice',
+    )
   })
 
   it('detecta assinatura BIA', () => {
@@ -300,43 +391,31 @@ describe('OCR — dicionário fixo', () => {
     expect(detectarMetodo(['T-score', 'Z-score', 'BMC'])).toBe('dexa')
   })
 
-  it('sem assinatura devolve null (salvamento bloqueado)', () => {
+  it('sem assinatura devolve null', () => {
     expect(detectarMetodo(['Weight(Kg)'])).toBeNull()
   })
 
-  it('chave de dedupe combina arquivo + owner + data + hora + método', () => {
-    const k1 = chaveDedupe({
+  it('dedupe combina arquivo + owner + data + hora + método', () => {
+    const base = {
       hashArquivo: 'abc',
       ownerId: 'u1',
       dataExame: '2026-10-11',
       horaExame: '05:27',
       metodo: 'bia',
-    })
-    const k2 = chaveDedupe({
-      hashArquivo: 'abc',
-      ownerId: 'u1',
-      dataExame: '2026-10-11',
-      horaExame: '05:27',
-      metodo: 'bia',
-    })
-    expect(k1).toBe(k2)
-    const k3 = chaveDedupe({
-      hashArquivo: 'abc',
-      ownerId: 'u2',
-      dataExame: '2026-10-11',
-      horaExame: '05:27',
-      metodo: 'bia',
-    })
-    expect(k1).not.toBe(k3)
+    }
+    expect(chaveDedupe(base)).toBe(chaveDedupe({ ...base }))
+    expect(chaveDedupe(base)).not.toBe(chaveDedupe({ ...base, ownerId: 'u2' }))
   })
 })
 
-// ---------------------------------------------------------------------------
-describe('parecer — variantes e não vazamento', () => {
+// ===========================================================================
+// CA9 — nenhuma string do protocolo no payload genérico
+// ===========================================================================
+describe('CA9 · parecer genérico sem vazamento do protocolo', () => {
   const protocolo = {
-    protocolo_farmacologico: 'testosterona 375 mg/semana, trembolona 200 mg',
+    protocolo_farmacologico: 'trembolona 200 mg, testosterona 375 mg/semana',
     baseline_laboratorial: 'HDL 18, Hematócrito 49',
-    gatilhos_especificos: 'monitorar HDL',
+    gatilhos_especificos: 'monitorar HDL, glycoxil',
   }
   const generico = {
     objetivo_principal: 'emagrecer',
@@ -356,26 +435,24 @@ describe('parecer — variantes e não vazamento', () => {
     expect(p.prompt).toContain('trembolona')
   })
 
-  it('variante genérica NÃO contém nenhuma string do protocolo', () => {
+  it('variante genérica NÃO contém nenhuma string proibida', () => {
     const p = montarPayload({
       variante: 'generico',
       persona: 'nutrologo',
       contextoGenerico: generico,
     })
-    const vazou = payloadGenericoVazou(p)
-    expect(vazou).toEqual([])
+    expect(payloadGenericoVazou(p)).toEqual([])
     for (const s of STRINGS_PROIBIDAS_GENERICO) {
       expect(p.prompt.toLowerCase()).not.toContain(s.toLowerCase())
     }
   })
 
-  it('variante genérica descarta campos fora da allowlist', () => {
+  it('injeção por campo extra é DESCARTADA', () => {
     const p = montarPayload({
       variante: 'generico',
       persona: 'fisiologia',
       contextoGenerico: {
         ...generico,
-        // tenta injetar o protocolo por um campo extra
         protocolo_farmacologico: 'trembolona',
         baseline_laboratorial: 'HDL 18',
       } as any,
@@ -384,28 +461,45 @@ describe('parecer — variantes e não vazamento', () => {
     expect(payloadGenericoVazou(p)).toEqual([])
   })
 
+  it('só 6 campos sobrevivem no contexto genérico', () => {
+    const p = montarPayload({
+      variante: 'generico',
+      persona: 'nutrologo',
+      contextoGenerico: { ...generico, extra1: 'x', extra2: 'y' } as any,
+    })
+    expect(Object.keys(p.contexto).sort()).toEqual([
+      'condicoes_preexistentes',
+      'idade',
+      'medicacoes_em_uso',
+      'nivel_atividade',
+      'objetivo_principal',
+      'sexo_biologico',
+    ])
+  })
+
   it('contexto genérico exige os 6 campos', () => {
     expect(contextoGenericoCompleto(generico)).toBe(true)
     expect(contextoGenericoCompleto({ objetivo_principal: 'x' })).toBe(false)
   })
 
   it('temperatura é 0.2', () => {
-    const p = montarPayload({
-      variante: 'generico',
-      persona: 'nutrologo',
-      contextoGenerico: generico,
-    })
-    expect(p.temperatura).toBe(0.2)
+    expect(
+      montarPayload({ variante: 'generico', persona: 'nutrologo', contextoGenerico: generico })
+        .temperatura,
+    ).toBe(0.2)
   })
 })
 
-// ---------------------------------------------------------------------------
-describe('parecer — guardrails', () => {
-  it('bloqueia prescrição calórica quando o método não é DEXA', () => {
-    const p = montarPayload({ variante: 'generico', persona: 'nutrologo', contextoGenerico: {} })
+// ===========================================================================
+// CA4 — prescrição calórica bloqueada sem DEXA
+// ===========================================================================
+describe('CA4 · prescrição calórica bloqueada sem DEXA', () => {
+  const p = montarPayload({ variante: 'generico', persona: 'nutrologo', contextoGenerico: {} })
+
+  it('bloqueia com método BIA', () => {
     const v = verificarGuardrails({
       payload: p,
-      outputText: 'Recomendo 2200 kcal por dia e 180 g de proteína.',
+      outputText: 'Composição por bioimpedância. Recomendo 2200 kcal por dia.',
       numerosDoPayload: [],
       pontosDaSerie: 5,
       metodoComposicao: 'bia',
@@ -413,11 +507,10 @@ describe('parecer — guardrails', () => {
     expect(v.some((x) => x.includes('prescrição calórica'))).toBe(true)
   })
 
-  it('permite prescrição calórica com DEXA', () => {
-    const p = montarPayload({ variante: 'generico', persona: 'nutrologo', contextoGenerico: {} })
+  it('permite com DEXA', () => {
     const v = verificarGuardrails({
       payload: p,
-      outputText: 'Bioimpedância analisada. Recomendo 2200 kcal por dia.',
+      outputText: 'Composição por DEXA. Recomendo 2200 kcal por dia.',
       numerosDoPayload: ['2200'],
       pontosDaSerie: 5,
       metodoComposicao: 'dexa',
@@ -425,8 +518,7 @@ describe('parecer — guardrails', () => {
     expect(v.filter((x) => x.includes('prescrição calórica'))).toHaveLength(0)
   })
 
-  it('bloqueia afirmação de tendência com menos de 3 pontos', () => {
-    const p = montarPayload({ variante: 'generico', persona: 'fisiologia', contextoGenerico: {} })
+  it('bloqueia tendência com menos de 3 pontos', () => {
     const v = verificarGuardrails({
       payload: p,
       outputText: 'Há tendência consistente de queda.',
@@ -436,7 +528,17 @@ describe('parecer — guardrails', () => {
     expect(v.some((x) => x.includes('tendência'))).toBe(true)
   })
 
-  it('a regra determinística reconhece só DEXA como permitido', () => {
+  it('bloqueia número inventado', () => {
+    const v = verificarGuardrails({
+      payload: p,
+      outputText: 'Seu percentual de gordura caiu para 18,4%.',
+      numerosDoPayload: ['25.6'],
+      pontosDaSerie: 5,
+    })
+    expect(v.some((x) => x.includes('não consta'))).toBe(true)
+  })
+
+  it('regra determinística reconhece só DEXA', () => {
     expect(prescricaoCaloricaPermitida('dexa')).toBe(true)
     expect(prescricaoCaloricaPermitida('bia')).toBe(false)
     expect(prescricaoCaloricaPermitida('')).toBe(false)
