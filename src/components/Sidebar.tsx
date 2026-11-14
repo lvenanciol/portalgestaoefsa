@@ -207,7 +207,9 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
       database: Database,
       message: MessageCircle,
     }
-    const ordemSecoes = ['GESTÃO', 'OPERAÇÃO', 'RELACIONAMENTO', 'PLATAFORMA', 'INTEGRAÇÕES']
+    // LL5 entra na frente: são assuntos pessoais do titular, separados do
+    // corporativo por decisão de produto (briefing da seção).
+    const ordemSecoes = ['LL5', 'GESTÃO', 'OPERAÇÃO', 'RELACIONAMENTO', 'PLATAFORMA', 'INTEGRAÇÕES']
     const out: NavSection[] = []
     for (const sec of ordemSecoes) {
       const itens = menusDb

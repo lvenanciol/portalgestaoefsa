@@ -30,6 +30,9 @@ import StatusIntegracoesPage from './pages/integracoes/StatusIntegracoesPage'
 import SankhyaIntegracaoPage from './pages/integracoes/SankhyaPage'
 import WhatsAppIntegracaoPage from './pages/integracoes/WhatsAppPage'
 import EmailIntegracaoPage from './pages/integracoes/EmailIntegracaoPage'
+import Ll5SaudePage from './pages/Ll5SaudePage'
+import Ll5AuditoriaPage from './pages/Ll5AuditoriaPage'
+import { Ll5Provider } from '@/ll5/Ll5Context'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
@@ -246,6 +249,32 @@ const AppRoutes = () => {
             </RotaProtegida>
           }
         />
+
+        {/* ================= LL5 — assuntos pessoais do titular =================
+            Seção nova dentro do PGE. O Ll5Provider resolve o papel (admin x
+            membro) e o owner dos dados; o isolamento real está no repositório
+            (src/ll5/repo.ts), não na UI. */}
+        <Route
+          path="/ll5/saude"
+          element={
+            <RotaProtegida>
+              <Ll5Provider>
+                <Ll5SaudePage />
+              </Ll5Provider>
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/ll5/auditoria"
+          element={
+            <RotaProtegida>
+              <Ll5Provider>
+                <Ll5AuditoriaPage />
+              </Ll5Provider>
+            </RotaProtegida>
+          }
+        />
+        <Route path="/ll5" element={<Navigate to="/ll5/saude" replace />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

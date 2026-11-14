@@ -18,6 +18,7 @@
     "test:watch": "echo \"there are no tests for this project\" && exit 0"
   },
   "dependencies": {
+    "@azure/msal-browser": "^4.5.0",
     "@hookform/resolvers": "^5.4.0",
     "@radix-ui/react-accordion": "^1.2.14",
     "@radix-ui/react-alert-dialog": "^1.1.17",
@@ -46,8 +47,6 @@
     "@radix-ui/react-toggle": "^1.1.12",
     "@radix-ui/react-toggle-group": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.10",
-    "@azure/msal-browser": "^4.5.0",
-    "powerbi-client": "^2.25.0",
     "@tailwindcss/aspect-ratio": "^0.4.2",
     "caniuse-lite": "^1.0.30001799",
     "class-variance-authority": "^0.7.1",
@@ -60,6 +59,7 @@
     "input-otp": "^1.4.2",
     "next-themes": "^0.4.6",
     "pocketbase": "~0.26.9",
+    "powerbi-client": "^2.25.0",
     "react": "^19.2.7",
     "react-day-picker": "^9.14.0",
     "react-dom": "^19.2.7",
@@ -71,6 +71,7 @@
     "tailwind-merge": "^2.6.1",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
+    "vitest": "5.1.0",
     "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   },

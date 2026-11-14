@@ -84,7 +84,7 @@ interface MenuItem {
   ativo: boolean
 }
 
-const SECOES_PADRAO = ['GESTÃO', 'OPERAÇÃO', 'RELACIONAMENTO', 'PLATAFORMA', 'INTEGRAÇÕES']
+const SECOES_PADRAO = ['LL5', 'GESTÃO', 'OPERAÇÃO', 'RELACIONAMENTO', 'PLATAFORMA', 'INTEGRAÇÕES']
 
 const ICONES = [
   'dashboard',
@@ -109,6 +109,15 @@ const ICONES = [
 
 const PADRAO = [
   { titulo: 'Dashboard Executivo', rota: '/', secao: 'GESTÃO', ordem: 1, icone: 'dashboard' },
+  // LL5 — assuntos pessoais do titular (seção própria, antes de GESTÃO)
+  { titulo: 'Saúde', rota: '/ll5/saude', secao: 'LL5', ordem: 1, icone: 'sparkles' },
+  {
+    titulo: 'Auditoria LL5',
+    rota: '/ll5/auditoria',
+    secao: 'LL5',
+    ordem: 2,
+    icone: 'shield',
+  },
   {
     titulo: 'Financeiro & Contábil',
     rota: '/financeiro',
