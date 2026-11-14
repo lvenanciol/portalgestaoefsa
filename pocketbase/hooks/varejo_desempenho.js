@@ -385,8 +385,7 @@ routerAdd(
       'SELECT TO_CHAR(PLV.DTNEG,' +
         "'MM'" +
         '), ' +
-        'ROUND(SUM(PLV.VLRTOT),2) VLR, ROUND(SUM(PLV.QTDNEG),2) QTD, ' +
-        'COUNT(DISTINCT PLV.NUNOTA) CUPONS ' +
+        'ROUND(SUM(PLV.VLRTOT),2) VLR, ROUND(SUM(PLV.QTDNEG),2) QTD ' +
         'FROM SANKHYA.AD_VENDASPLV PLV ' +
         'WHERE PLV.DTNEG >= ' +
         INI +
@@ -401,7 +400,63 @@ routerAdd(
     const plvAtual = vendaPlvRows[0] || null
     const plvVenda = n(v(plvAtual, 1))
     const plvQtd = n(v(plvAtual, 2))
-    const plvCupons = n(v(plvAtual, 3))
+
+    // ------------------------------------------------------------------
+    // CUPONS — fonte: AD_TICKETMEDIOCR (só CARONE / SEMPRE TEM)
+    //
+    // Validado 14/11: a soma de VALORTOTALVENDIDO em out/2026 dá
+    // R$ 27.007.667,82 contra R$ 27.007.758,30 de venda na AD_VENDASPLV
+    // (diferença de 0,0003%). É a base transacional de PDV do Carone.
+    //
+    // Grão: 1 linha por ITEM do cupom. O cupom é a combinação
+    //   NUMEROLOJAKEY + NUMEROPDVKEY + DATAOPERACAOKEY + NUMEROOPERACAO
+    //
+    // ARMADILHA: a coluna NUMEROOPERACAO (VARCHAR2) QUEBRA o DbExplorerSP
+    // — qualquer SELECT/COUNT DISTINCT que a cite devolve 0 linhas, e o
+    // gateway responde NullPointerException. Testado: SELECT, COUNT DISTINCT,
+    // SUBSTR, TRIM, CAST, TO_NUMBER, IS NOT NULL, = literal. Todas falham.
+    // Por isso contamos pelo slot (loja+PDV+dia+hora), que é o menor grão
+    // que o ERP entrega — e ele SUPERESTIMA levemente (um cupom por slot).
+    //
+    // COUTINHO: NÃO tem equivalente no Sankhya. AD_TICKETMEDIO está vazia,
+    // AD_TICKETMEDIOLOJAS morreu em 2018, TGFCAB.NUMCOO é 0. A fonte do
+    // Coutinho vive fora do schema SANKHYA (provavelmente base Spalla).
+    // Devolvemos cupons_coutinho_fonte = 'pendente' para a tela deixar "—".
+    // ------------------------------------------------------------------
+    const ehCarone = aba === 'carone' || rede === 'carone'
+    const ehCoutinho = aba === 'extrabom' || rede === 'extrabom'
+    let plvCupons = null
+    let cupomFonte = 'indisponivel'
+    let cupomObs = ''
+
+    if (ehCarone) {
+      // slots = 1 linha por (loja, pdv, dia, hora) — proxy do cupom
+      const slotRows = lista(
+        'cupom_cr',
+        'SELECT COUNT(*) SLOTS FROM (' +
+          'SELECT NUMEROLOJAKEY, NUMEROPDVKEY, DATAOPERACAOKEY, HORAOPERACAO ' +
+          'FROM SANKHYA.AD_TICKETMEDIOCR ' +
+          'WHERE DATAOPERACAOKEY >= ' +
+          INI +
+          ' AND DATAOPERACAOKEY < ' +
+          FIM +
+          ' GROUP BY NUMEROLOJAKEY, NUMEROPDVKEY, DATAOPERACAOKEY, HORAOPERACAO)',
+      )
+      const slots = n(v(slotRows[0], 0))
+      if (slots) {
+        plvCupons = slots
+        cupomFonte = 'AD_TICKETMEDIOCR (slot loja+PDV+dia+hora)'
+        cupomObs =
+          'Contagem por slot: pode superestimar levemente (a coluna NUMEROOPERACAO quebra o DbExplorer).'
+      } else {
+        cupomObs = 'AD_TICKETMEDIOCR não retornou dados para o período.'
+      }
+    } else if (ehCoutinho) {
+      cupomFonte = 'pendente'
+      cupomObs =
+        'Sem fonte no Sankhya para as 54 lojas do Coutinho: AD_TICKETMEDIO vazia, ' +
+        'AD_TICKETMEDIOLOJAS parada em 2018, TGFCAB.NUMCOO zerado.'
+    }
     const resumoAtual = resumoRows[0] || null
     const resumoAnt = resumoRows[1] || null
     const resumoVenda = n(v(resumoAtual, 1))
@@ -930,8 +985,12 @@ routerAdd(
         cmv_resumo_aa: resumoCmvPctAnt,
         quantidade_kg: plvQtd !== null ? plvQtd : qtd,
         preco_medio: plvVenda && plvQtd ? Number((plvVenda / plvQtd).toFixed(2)) : preco,
-        cupons: plvCupons !== null && plvCupons > 0 ? plvCupons : cupons,
-        ticket_medio: plvVenda && plvCupons ? Number((plvVenda / plvCupons).toFixed(2)) : ticket,
+        // Cupom: só Carone tem fonte. Coutinho fica null -> tela mostra "—"
+        cupons: plvCupons,
+        cupons_fonte: cupomFonte,
+        cupons_obs: cupomObs,
+        // Ticket = Venda ÷ Cupom (confirmado nos 4 meses de Excel do BI)
+        ticket_medio: plvVenda && plvCupons ? Number((plvVenda / plvCupons).toFixed(2)) : null,
         cmv_pct: cmvPct,
         quebra_pct: quebraPct,
         quebra_geral_pct: quebraGeralPct,
