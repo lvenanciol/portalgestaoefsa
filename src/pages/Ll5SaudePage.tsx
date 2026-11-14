@@ -483,7 +483,9 @@ function GerenciarAbasDialog({
         }
       }
       onMudou()
-    } catch (_) {}
+    } catch (_e) {
+      // reordenação parcial: os itens já movidos permanecem na nova posição
+    }
   }
 
   return (

@@ -146,7 +146,9 @@ export async function executarSeed(ator: Ator, ownerId: string): Promise<Resulta
         ownerId,
       )
       res.tipos++
-    } catch (_) {}
+    } catch (_e) {
+      // tipo já existente ou falha pontual: o seed segue com os demais
+    }
   }
 
   // ---------------------------------------------- RUNNING (5 atividades)
@@ -191,7 +193,9 @@ export async function executarSeed(ator: Ator, ownerId: string): Promise<Resulta
         ownerId,
       )
       res.running++
-    } catch (_) {}
+    } catch (_e) {
+      // atividade já existente: segue para a próxima
+    }
   }
 
   // ---------------------------------------------- GYM (5 sessões)
@@ -288,7 +292,9 @@ export async function executarSeed(ator: Ator, ownerId: string): Promise<Resulta
         )
       }
       res.gym++
-    } catch (_) {}
+    } catch (_e) {
+      // sessão já existente: segue para a próxima
+    }
   }
 
   // ---------------------------------------------- TRATAMENTOS (5)
@@ -392,7 +398,9 @@ export async function executarSeed(ator: Ator, ownerId: string): Promise<Resulta
           ownerId,
         )
       }
-    } catch (_) {}
+    } catch (_e) {
+      // anexo já existente ou falha pontual: o tratamento permanece criado
+    }
   }
 
   // ---------------------------------------------- COMPOSIÇÃO (2 BIA divergentes)
@@ -465,7 +473,9 @@ export async function executarSeed(ator: Ator, ownerId: string): Promise<Resulta
         ownerId,
       )
       res.composicoes++
-    } catch (_) {}
+    } catch (_e) {
+      // a chave de dedupe pode já existir: o seed não duplica a avaliação
+    }
   }
 
   res.mensagem =
