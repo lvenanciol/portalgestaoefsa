@@ -21,8 +21,45 @@ import {
 // 29 ignorados, 1.182 com carga_proxy calculável.
 // ============================================================================
 
+// 15/11/2026 — LOTE reduzido e inserção via createBatch().
+//
+// CAUSA DO "Too Many Requests": o SDK do PocketBase NÃO aceita
+// `create(array)` — a chamada falhava, caía no meu fallback de inserir um a
+// um, e 100 requisições em sequência estouravam o rate limit do PocketBase
+// (20 req/s por IP). Resultado: 99 erros num lote de 100 e nada importado.
+//
+// CORREÇÃO: usar `pb.createBatch()`, que envia tudo em UMA requisição HTTP
+// (limite de 100 operações por batch). Lote de 100 cabe exatamente.
 const LOTE = 100
 const LIMITE_FALHAS_PCT = 5
+/** Espera entre lotes para não encostar no rate limit. */
+const PAUSA_MS = 150
+
+const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** true quando o erro é rate limit do PocketBase. */
+function ehRateLimit(e: any): boolean {
+  const s = String(e?.status ?? '') + ' ' + String(e?.message ?? '') + ' ' + String(e ?? '')
+  return s.includes('429') || /too many requests/i.test(s)
+}
+
+/**
+ * Executa uma função com retry exponencial em caso de rate limit.
+ * 3 tentativas: 400 ms, 1,2 s, 3 s.
+ */
+async function comRetry<T>(fn: () => Promise<T>, tentativas = 3): Promise<T> {
+  let ultimo: any
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      return await fn()
+    } catch (e) {
+      ultimo = e
+      if (!ehRateLimit(e) || i === tentativas - 1) throw e
+      await esperar(400 * Math.pow(3, i))
+    }
+  }
+  throw ultimo
+}
 
 export interface ItemCsv {
   linha: number
@@ -220,22 +257,28 @@ export async function processarLoteCsv(
   let distanciaLote = 0
   const log: any[] = [...(job.log || [])]
 
-  // 1) busca existentes do lote
+  // 1) busca existentes do lote — UMA requisição por dia distinto,
+  //    com retry. Antes era um único filtro com centenas de "||" que o
+  //    PocketBase rejeitava por tamanho, e a falha era silenciosa.
   const datas = lote
     .map((i) => i.dados?.data_hora_inicio)
     .filter(Boolean)
     .map((d: string) => d.slice(0, 10))
   const unicas = Array.from(new Set(datas))
   const existentes: any[] = []
-  if (unicas.length) {
+  for (const dia of unicas) {
     try {
-      // filtra por dia (o PocketBase compara timestamp; usamos o prefixo)
-      const filtro = unicas.map((d) => `data_hora_inicio ~ "${d}"`).join(' || ')
-      const r = await pb.collection('ll5_activity').getFullList({ filter: filtro })
+      const r = await comRetry(() =>
+        pb.collection('ll5_activity').getFullList({
+          filter: `data_hora_inicio ~ "${dia}"`,
+        }),
+      )
       existentes.push(...(r as any[]))
-    } catch (_e) {
-      // segue: o UPSERT individual cobre
+    } catch (e) {
+      // sem o índice do dia, o UPSERT por chave ainda protege contra duplicata
+      console.warn('[ll5/csv] falha ao buscar existentes de ' + dia, e)
     }
+    await esperar(PAUSA_MS)
   }
 
   const porChave = new Map<string, any>()
@@ -299,33 +342,90 @@ export async function processarLoteCsv(
     }
 
     paraInserir.push(base)
-    importados++
+    // `importados` só é somado DEPOIS que a inserção confirma — antes ele
+    // contava antes de gravar e o relatório mostrava sucesso com erro.
     log.push({ linha: item.linha, status: 'importado' })
   }
 
-  // 2) insere em bulk
+  // 2) insere em BATCH REAL (uma requisição HTTP para o lote inteiro).
+  //    `create(array)` NÃO existe no SDK — era isso que disparava o
+  //    fallback de 100 inserts e estourava o rate limit.
   if (paraInserir.length) {
     try {
-      await pb.collection('ll5_activity').create(paraInserir)
-    } catch (_e) {
+      const batch = pb.createBatch()
+      let noBatch = 0
+      for (const row of paraInserir) {
+        // o limite do PocketBase é 100 operações por batch
+        if (noBatch >= LOTE) break
+        batch.collection('ll5_activity').create(row)
+        noBatch++
+      }
+      await comRetry(() => batch.send())
+      importados += noBatch
+
+      // se sobrou algo (não deve, com LOTE=100), segundo batch
+      if (paraInserir.length > noBatch) {
+        await esperar(PAUSA_MS)
+        const b2 = pb.createBatch()
+        const resto = paraInserir.slice(noBatch)
+        for (const row of resto) {
+          b2.collection('ll5_activity').create(row)
+        }
+        await comRetry(() => b2.send())
+        importados += resto.length
+      }
+    } catch (eBatch: any) {
+      // batch é atômico: se falhar, insere individualmente com retry,
+      // mas em ritmo controlado para não repetir o rate limit
+      log.push({
+        status: 'aviso',
+        motivo: 'batch falhou (' + (eBatch?.message || 'erro') + '); inserindo um a um',
+      })
       for (const row of paraInserir) {
         try {
-          await pb.collection('ll5_activity').create(row)
+          await comRetry(() => pb.collection('ll5_activity').create(row))
+          importados++
         } catch (e: any) {
           errosLote++
-          importados--
-          log.push({ linha: row.titulo || '?', status: 'erro', motivo: e?.message })
+          log.push({
+            linha: row.titulo || row.device_activity_id || '?',
+            status: 'erro',
+            motivo: e?.message || String(e),
+          })
         }
+        await esperar(60)
       }
     }
   }
-  for (const u of paraAtualizar) {
+
+  // atualizações: batch também, quando houver mais de uma
+  if (paraAtualizar.length === 1) {
     try {
-      await pb.collection('ll5_activity').update(u.id, u.dados)
+      await comRetry(() =>
+        pb.collection('ll5_activity').update(paraAtualizar[0].id, paraAtualizar[0].dados),
+      )
     } catch (e: any) {
       log.push({ status: 'erro', motivo: e?.message })
     }
+  } else if (paraAtualizar.length > 1) {
+    try {
+      const b = pb.createBatch()
+      for (const u of paraAtualizar) b.collection('ll5_activity').update(u.id, u.dados)
+      await comRetry(() => b.send())
+    } catch (eBatch: any) {
+      for (const u of paraAtualizar) {
+        try {
+          await comRetry(() => pb.collection('ll5_activity').update(u.id, u.dados))
+        } catch (e: any) {
+          log.push({ status: 'erro', motivo: e?.message })
+        }
+        await esperar(60)
+      }
+    }
   }
+
+  // pausa entre lotes: mantém a taxa abaixo do limite do PocketBase
+  await esperar(PAUSA_MS)
 
   const processados = fim
   const totalErros = Number(job.erros || 0) + errosLote

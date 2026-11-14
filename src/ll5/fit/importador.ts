@@ -340,7 +340,6 @@ export async function processarLote(
       }
 
       paraInserir.push({ ...row, owner_id: ownerId, created_by: createdBy, updated_by: createdBy })
-      importados++
       log.push({ arquivo: item.nome, status: 'importado' })
       fila[inicio + k] = { ...item, status: 'ok' }
     } catch (e: any) {
@@ -350,20 +349,24 @@ export async function processarLote(
     }
   }
 
-  // bulk insert
+  // 15/11/2026 — MESMA CORREÇÃO do CSV: `create(array)` não existe no SDK e
+  // caía no fallback individual, estourando o rate limit. Agora é createBatch.
   if (paraInserir.length) {
     try {
-      await pb.collection('ll5_activity').create(paraInserir)
-    } catch (eBatch: any) {
-      // fallback: um a um, para não perder o lote inteiro
+      const batch = pb.createBatch()
+      for (const row of paraInserir) batch.collection('ll5_activity').create(row)
+      await batch.send()
+      importados += paraInserir.length
+    } catch (_eBatch: any) {
       for (const row of paraInserir) {
         try {
           await pb.collection('ll5_activity').create(row)
+          importados++
         } catch (e: any) {
           erros++
-          importados--
           log.push({ arquivo: row.arquivo_origem || '?', status: 'erro', motivo: e?.message })
         }
+        await new Promise((r) => setTimeout(r, 60))
       }
     }
   }
