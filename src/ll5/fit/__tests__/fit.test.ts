@@ -377,11 +377,16 @@ describe('FIT · normalização para ll5_activity', () => {
     expect(r.motivo).toMatch(/session/i)
   })
 
-  it('wellness é identificado e recusado', () => {
-    const buf = fitSintetico({ comSession: false })
+  it('wellness é identificado pelo NOME, mesmo com conteúdo ambíguo', () => {
+    const buf = fitSintetico({ comSession: true, nRecords: 5 })
     const d = parseFit(buf)
+    // nome de wellness sempre recusa, independente do conteúdo
     expect(ehWellness('8386643197_WELLNESS.fit', d)).toBe(true)
+    // arquivo de atividade com session válida NÃO é wellness
     expect(ehWellness('12345_ACTIVITY.fit', d)).toBe(false)
+    // arquivo sem session não tem o que importar (tratado como ignorável)
+    const semSessao = parseFit(fitSintetico({ comSession: false }))
+    expect(ehWellness('12345_ACTIVITY.fit', semSessao)).toBe(true)
   })
 
   it('idDoNome extrai o id do padrão <id>_ACTIVITY.fit', () => {
