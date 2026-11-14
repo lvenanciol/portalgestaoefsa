@@ -16,7 +16,12 @@ import {
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
-import { MENU_MODULOS } from '@/services/permissoes-service'
+import {
+  MENU_MODULOS,
+  carregarPermissoes,
+  permissoesCache,
+  type Permissoes,
+} from '@/services/permissoes-service'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -215,7 +220,22 @@ export default function MenusCrudPage() {
     ativo: true,
   })
 
-  const isAdmin = user?.grupoNome === 'Admin' || user?.grupo_id === ''
+  // 15/11/2026 — CORREÇÃO: o record do pb.authStore NÃO tem `grupoNome`
+  // (só grupo_id). Com `user?.grupoNome === 'Admin'` a condição dava false e
+  // os botões de CRUD nunca apareciam, nem para o próprio admin.
+  // A fonte correta é o serviço de permissões, que resolve o nome do grupo.
+  const [perfil, setPerfil] = useState<Permissoes | null>(permissoesCache())
+  useEffect(() => {
+    let vivo = true
+    carregarPermissoes().then((p) => {
+      if (vivo) setPerfil(p)
+    })
+    return () => {
+      vivo = false
+    }
+  }, [user])
+
+  const isAdmin = perfil?.grupoNome === 'Admin' || (user && !user.grupo_id)
 
   const carregar = async () => {
     setLoading(true)
