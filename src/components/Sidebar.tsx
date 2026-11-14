@@ -58,6 +58,16 @@ interface NavSection {
   }[]
 }
 
+// 15/11/2026 — NOMENCLATURA OFICIAL DAS ROTAS.
+// O rótulo da sidebar vem da coleção `menus`, mas essa coleção tem
+// updateRule = null (não aceita alteração pela API), então as migrações que
+// tentaram renomear "Tarefas & Agenda" registraram como applied sem mudar o
+// dado. Aqui a tela aplica o nome oficial por rota: o menu mostra sempre o
+// texto correto, sem depender do que está gravado.
+const ROTULOS_POR_ROTA: Record<string, string> = {
+  '/tarefas': 'Tarefas',
+}
+
 // SPEC mockup: menu seccionado completo — rota casa com MENU_MODULOS
 const navSections: NavSection[] = [
   {
@@ -204,7 +214,13 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
         .filter((m) => m.secao === sec && m.ativo)
         .sort((a, b) => (a.ordem || 99) - (b.ordem || 99))
         .map((m) => ({
-          label: m.titulo,
+          // 15/11/2026 — RÓTULOS NORMALIZADOS.
+          // O label vem da coleção `menus`, e as migrações que tentaram
+          // renomear não pegaram (a coleção não aceita update pela API:
+          // updateRule = null). Em vez de depender do dado gravado, a tela
+          // aplica a nomenclatura oficial por ROTA. Assim o menu sempre
+          // mostra o nome correto, sem depender de migração ou do CRUD.
+          label: ROTULOS_POR_ROTA[m.rota || ''] || m.titulo,
           rota: m.rota || '',
           icon: ICONES[m.icone] || FolderKanban,
         }))
