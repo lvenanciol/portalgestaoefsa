@@ -48,20 +48,30 @@ export default function GymTab({ aba }: { aba: any }) {
   const [carregando, setCarregando] = useState(true)
   const [aberta, setAberta] = useState<string | null>(null)
   const [garmin, setGarmin] = useState<any>(null)
+  const [importadas, setImportadas] = useState<any[]>([])
 
   useEffect(() => {
     let vivo = true
     ;(async () => {
       setCarregando(true)
-      const [s, e, g] = await Promise.all([
+      const [s, e, g, importadas] = await Promise.all([
         listar('ll5_gym_sessions', ator, { ownerEscolhido: ownerAtual, sort: '-data' }),
         listar('ll5_gym_exercises', ator, { ownerEscolhido: ownerAtual }),
         garminAdapter.status(),
+        // 15/11/2026 — sessões de FORÇA vindas do CSV/.FIT, gravadas em
+        // ll5_activity. Antes a aba só lia ll5_gym_sessions e as 172 sessões
+        // importadas ficavam invisíveis.
+        listar('ll5_activity', ator, {
+          ownerEscolhido: ownerAtual,
+          filtroExtra: 'tipo = "forca"',
+          sort: '-data_hora_inicio',
+        }),
       ])
       if (!vivo) return
       setSessoes(s)
       setExercicios(e)
       setGarmin(g)
+      setImportadas(importadas || [])
       setCarregando(false)
     })()
     return () => {
@@ -69,15 +79,66 @@ export default function GymTab({ aba }: { aba: any }) {
     }
   }, [ator, ownerAtual])
 
+  /**
+   * Unifica as duas origens em um formato só.
+   * `origem_registro='importado'` marca o que veio do Garmin (CSV/.FIT) e
+   * habilita o badge "Registro de frequência — sem detalhe de exercício".
+   */
+  const todasSessoes = useMemo(() => {
+    const manuais = sessoes.map((s) => ({
+      id: s.id,
+      data: s.data,
+      divisao: s.divisao,
+      volume_total_kg: s.volume_total_kg,
+      rpe_medio: s.rpe_medio,
+      duracao_min: s.duracao_min,
+      fonte: s.fonte,
+      origem_registro: 'manual' as const,
+      qualidade_dados: 'completo',
+      tem_detalhe_exercicio: true,
+      calorias: null,
+      fc_media: null,
+      fc_max: null,
+      carga_proxy: null,
+      titulo: null,
+    }))
+    const importados = importadas.map((a) => ({
+      id: a.id,
+      data: a.data_hora_inicio,
+      divisao: 'custom',
+      volume_total_kg: a.volume_kg,
+      rpe_medio: null,
+      duracao_min: a.duracao_s ? Math.round(a.duracao_s / 60) : null,
+      fonte: a.fonte,
+      origem_registro: 'importado' as const,
+      qualidade_dados: a.qualidade_dados || 'limitado',
+      tem_detalhe_exercicio: !!a.tem_detalhe_exercicio,
+      calorias: a.calorias,
+      fc_media: a.fc_media,
+      fc_max: a.fc_max,
+      carga_proxy: a.carga_proxy,
+      titulo: a.titulo,
+    }))
+    return [...manuais, ...importados].sort(
+      (x, y) => new Date(y.data).getTime() - new Date(x.data).getTime(),
+    )
+  }, [sessoes, importadas])
+
   const kpis = useMemo(() => {
     const corte = new Date()
     corte.setDate(corte.getDate() - 30)
-    const janela = sessoes.filter((s) => new Date(s.data) >= corte)
-    const volume = janela.reduce((a, s) => a + Number(s.volume_total_kg || 0), 0)
-    const rpe = janela.length
-      ? janela.reduce((a, s) => a + Number(s.rpe_medio || 0), 0) / janela.length
+    const janela = todasSessoes.filter((s) => new Date(s.data) >= corte)
+
+    // Volume e RPE só consideram sessões COM detalhe de exercício.
+    // As 172 importadas do Garmin são "registro de frequência": não têm
+    // exercício, série nem carga — somá-las daria volume zero ou falso.
+    const comDetalhe = janela.filter((s) => s.tem_detalhe_exercicio)
+    const volume = comDetalhe.reduce((a, s) => a + Number(s.volume_total_kg || 0), 0)
+    const rpe = comDetalhe.length
+      ? comDetalhe.reduce((a, s) => a + Number(s.rpe_medio || 0), 0) / comDetalhe.length
       : 0
-    // PR: maior carga registrada
+
+    // PR: maior carga registrada (só existe onde há exercício detalhado)
     let pr = 0
     let prEx = '—'
     for (const e of exercicios) {
@@ -89,8 +150,21 @@ export default function GymTab({ aba }: { aba: any }) {
         }
       }
     }
-    return { volume, sessoes: janela.length, rpe, pr, prEx }
-  }, [sessoes, exercicios])
+
+    // Sessões = TODAS (inclusive as de frequência): é a métrica que elas
+    // alimentam legitimamente.
+    const semDetalhe = janela.length - comDetalhe.length
+
+    return {
+      volume,
+      sessoes: janela.length,
+      rpe,
+      pr,
+      prEx,
+      comDetalhe: comDetalhe.length,
+      semDetalhe,
+    }
+  }, [todasSessoes, exercicios])
 
   const porGrupo = useMemo(() => {
     const mapa: Record<string, number> = {}
@@ -185,10 +259,32 @@ export default function GymTab({ aba }: { aba: any }) {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { l: 'Volume (30d)', v: kpis.volume.toLocaleString('pt-BR') + ' kg', ico: Dumbbell },
-          { l: 'Sessões', v: String(kpis.sessoes), ico: CalendarDays },
-          { l: 'Carga média (RPE)', v: kpis.rpe.toFixed(1).replace('.', ','), ico: Gauge },
-          { l: 'Recordes (PR)', v: kpis.pr + ' kg', ico: Trophy, sub: kpis.prEx },
+          {
+            l: 'Volume (30d)',
+            v: kpis.comDetalhe > 0 ? kpis.volume.toLocaleString('pt-BR') + ' kg' : '—',
+            ico: Dumbbell,
+            sub:
+              kpis.semDetalhe > 0
+                ? `${kpis.semDetalhe} sessão(ões) sem detalhe de carga`
+                : undefined,
+          },
+          {
+            l: 'Sessões',
+            v: String(kpis.sessoes),
+            ico: CalendarDays,
+            sub: kpis.semDetalhe > 0 ? `${kpis.semDetalhe} de frequência` : undefined,
+          },
+          {
+            l: 'Carga média (RPE)',
+            v: kpis.comDetalhe > 0 ? kpis.rpe.toFixed(1).replace('.', ',') : '—',
+            ico: Gauge,
+          },
+          {
+            l: 'Recordes (PR)',
+            v: kpis.pr > 0 ? kpis.pr + ' kg' : '—',
+            ico: Trophy,
+            sub: kpis.prEx,
+          },
         ].map((k) => (
           <Card key={k.l} className="p-4 rounded-xl border-gray-200 shadow-sm">
             <div className="flex items-start justify-between">
@@ -205,13 +301,32 @@ export default function GymTab({ aba }: { aba: any }) {
         ))}
       </div>
 
+      {/* Frequência semanal — métrica que as sessões importadas ALIMENTAM */}
+      {todasSessoes.length > 0 && (
+        <Card className="rounded-xl border-gray-200 shadow-sm p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[13px] font-bold text-gray-900">Frequência semanal</h3>
+            <span className="text-[10px] text-gray-400">últimas 12 semanas</span>
+          </div>
+          <FrequenciaSemanal sessoes={todasSessoes} />
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <Card className="lg:col-span-2 rounded-xl border-gray-200 shadow-sm overflow-hidden">
           <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
             <h3 className="text-[13px] font-bold text-gray-900">Sessões recentes</h3>
+            {kpis.semDetalhe > 0 && (
+              <Badge
+                variant="outline"
+                className="text-[8.5px] font-bold border-amber-300 text-amber-800 bg-amber-50"
+              >
+                {kpis.semDetalhe} de frequência
+              </Badge>
+            )}
           </div>
 
-          {sessoes.length === 0 ? (
+          {todasSessoes.length === 0 ? (
             <div className="py-12 text-center">
               <Dumbbell className="h-7 w-7 text-gray-300 mx-auto mb-2" />
               <p className="text-[12px] font-semibold text-gray-700">Nenhuma sessão registrada</p>
@@ -221,7 +336,7 @@ export default function GymTab({ aba }: { aba: any }) {
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
-              {sessoes.map((s) => {
+              {todasSessoes.map((s) => {
                 const exs = exercicios.filter((e) => e.sessao_id === s.id)
                 const expandida = aberta === s.id
                 return (
@@ -243,19 +358,96 @@ export default function GymTab({ aba }: { aba: any }) {
                         {DIV_LABEL[s.divisao] || s.divisao}
                       </span>
                       <span className="text-[11.5px] text-gray-500 flex-1 min-w-0 truncate">
-                        {exs.length} exercício(s)
+                        {s.origem_registro === 'importado'
+                          ? s.titulo || 'Sessão importada'
+                          : `${exs.length} exercício(s)`}
                       </span>
-                      <span className="text-[11.5px] text-gray-700 tabular-nums shrink-0">
-                        {Number(s.volume_total_kg || 0).toLocaleString('pt-BR')} kg
-                      </span>
-                      <span className="text-[11px] text-gray-500 shrink-0">RPE {s.rpe_medio}</span>
+                      {/* Volume só quando há detalhe de exercício */}
+                      {s.tem_detalhe_exercicio ? (
+                        <span className="text-[11.5px] text-gray-700 tabular-nums shrink-0">
+                          {Number(s.volume_total_kg || 0).toLocaleString('pt-BR')} kg
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-gray-400 shrink-0">—</span>
+                      )}
+                      {s.rpe_medio != null ? (
+                        <span className="text-[11px] text-gray-500 shrink-0">
+                          RPE {s.rpe_medio}
+                        </span>
+                      ) : s.fc_media != null ? (
+                        <span className="text-[11px] text-gray-500 shrink-0 tabular-nums">
+                          {s.fc_media} bpm
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-gray-400 shrink-0">—</span>
+                      )}
+                      {s.origem_registro === 'importado' && !s.tem_detalhe_exercicio && (
+                        <Badge
+                          variant="outline"
+                          className="text-[8.5px] font-bold border-amber-300 text-amber-800 bg-amber-50 shrink-0"
+                          title="Sessão importada do Garmin: registra frequência, duração, FC e calorias — sem exercício, série ou carga individuais."
+                        >
+                          Registro de frequência
+                        </Badge>
+                      )}
                       <Badge
                         variant="outline"
                         className="text-[9px] border-gray-200 text-gray-600 shrink-0"
                       >
-                        {s.fonte === 'garmin' ? 'Garmin' : s.fonte === 'apple' ? 'Apple' : 'Manual'}
+                        {s.fonte === 'garmin_csv'
+                          ? 'CSV'
+                          : s.fonte === 'garmin_fit'
+                            ? '.FIT'
+                            : s.fonte === 'garmin'
+                              ? 'Garmin'
+                              : s.fonte === 'apple'
+                                ? 'Apple'
+                                : 'Manual'}
                       </Badge>
                     </button>
+
+                    {/* painel de detalhe de uma sessão importada */}
+                    {expandida && s.origem_registro === 'importado' && (
+                      <div className="px-4 pb-3 pl-10">
+                        <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-2.5">
+                          <p className="text-[10.5px] font-bold text-amber-900 mb-1">
+                            Registro de frequência — sem detalhe de exercício
+                          </p>
+                          <p className="text-[10.5px] text-amber-800 leading-snug">
+                            O export do Garmin não traz exercício, série ou carga desta sessão. Ela
+                            conta para frequência semanal e sessões, mas fica fora de "Volume" e
+                            "Progressão de carga".
+                          </p>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10.5px] text-gray-700">
+                            {s.duracao_min != null && (
+                              <span>
+                                Duração: <strong>{s.duracao_min} min</strong>
+                              </span>
+                            )}
+                            {s.fc_media != null && (
+                              <span>
+                                FC média: <strong>{s.fc_media} bpm</strong>
+                              </span>
+                            )}
+                            {s.fc_max != null && (
+                              <span>
+                                FC máx: <strong>{s.fc_max} bpm</strong>
+                              </span>
+                            )}
+                            {s.calorias != null && (
+                              <span>
+                                Calorias: <strong>{s.calorias}</strong>
+                              </span>
+                            )}
+                            {s.carga_proxy != null && (
+                              <span>
+                                Carga (proxy): <strong>{s.carga_proxy}</strong>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {expandida && exs.length > 0 && (
                       <div className="px-4 pb-3 pl-10">
@@ -307,7 +499,14 @@ export default function GymTab({ aba }: { aba: any }) {
         <div className="space-y-3">
           <Card className="rounded-xl border-gray-200 shadow-sm p-4">
             <h3 className="text-[13px] font-bold text-gray-900 mb-2">Progressão de carga</h3>
-            <ProgressaoCarga exercicios={exercicios} />
+            {exercicios.length === 0 ? (
+              <p className="text-[11px] text-gray-500 py-3 leading-snug">
+                Sem exercício detalhado. As sessões importadas do Garmin são registro de frequência
+                — não trazem carga por exercício.
+              </p>
+            ) : (
+              <ProgressaoCarga exercicios={exercicios} />
+            )}
           </Card>
 
           <Card className="rounded-xl border-gray-200 shadow-sm p-4">
@@ -315,7 +514,9 @@ export default function GymTab({ aba }: { aba: any }) {
               Distribuição por grupo muscular
             </h3>
             {porGrupo.length === 0 ? (
-              <p className="text-[11.5px] text-gray-500 py-3">Sem dados de exercícios.</p>
+              <p className="text-[11.5px] text-gray-500 py-3 leading-snug">
+                Sem dados de exercícios. Sessões de frequência não informam grupo muscular.
+              </p>
             ) : (
               <div className="space-y-1.5">
                 {porGrupo.map((g) => (
@@ -344,6 +545,71 @@ export default function GymTab({ aba }: { aba: any }) {
         resumo="Os dados mostram bom progresso de força e volume. Mantenha a hidratação e o sono adequados para otimizar a recuperação e evitar platôs."
         dados={{ volume_30d: kpis.volume, sessoes: kpis.sessoes, rpe_medio: kpis.rpe, pr: kpis.pr }}
       />
+    </div>
+  )
+}
+
+/**
+ * Barras de frequência por semana (últimas 12).
+ * Conta TODAS as sessões — inclusive as de frequência, que é exatamente
+ * a métrica que elas podem alimentar.
+ */
+function FrequenciaSemanal({ sessoes }: { sessoes: any[] }) {
+  const semanas = useMemo(() => {
+    const hoje = new Date()
+    const out: Array<{ rotulo: string; total: number; comDetalhe: number; inicio: Date }> = []
+    for (let i = 11; i >= 0; i--) {
+      const fim = new Date(hoje)
+      fim.setDate(fim.getDate() - i * 7)
+      const inicio = new Date(fim)
+      inicio.setDate(inicio.getDate() - 6)
+      inicio.setHours(0, 0, 0, 0)
+      const f = new Date(fim)
+      f.setHours(23, 59, 59, 999)
+
+      const daSemana = sessoes.filter((s) => {
+        const d = new Date(s.data)
+        return d >= inicio && d <= f
+      })
+      out.push({
+        rotulo: `${String(inicio.getDate()).padStart(2, '0')}/${String(inicio.getMonth() + 1).padStart(2, '0')}`,
+        total: daSemana.length,
+        comDetalhe: daSemana.filter((s) => s.tem_detalhe_exercicio).length,
+        inicio,
+      })
+    }
+    return out
+  }, [sessoes])
+
+  const maximo = Math.max(...semanas.map((s) => s.total), 1)
+
+  return (
+    <div>
+      <div className="flex items-end gap-1 h-[80px]">
+        {semanas.map((s, i) => (
+          <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5">
+            <span className="text-[9px] font-bold text-gray-600 tabular-nums">
+              {s.total > 0 ? s.total : ''}
+            </span>
+            <div
+              className="w-full rounded-t"
+              style={{
+                height: `${(s.total / maximo) * 58}px`,
+                minHeight: s.total > 0 ? 4 : 1,
+                backgroundColor: s.total > 0 ? '#1b5e20' : '#f3f4f6',
+              }}
+              title={`Semana de ${s.rotulo}: ${s.total} sessão(ões) — ${s.comDetalhe} com detalhe`}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-1 mt-1">
+        {semanas.map((s, i) => (
+          <span key={i} className="flex-1 text-center text-[8px] text-gray-400 tabular-nums">
+            {s.rotulo}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
