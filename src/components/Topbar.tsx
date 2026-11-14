@@ -145,7 +145,7 @@ const BUSCA_TELAS_FALLBACK: BuscaItem[] = [
     chaves: 'documentos alvaras contratos locacoes atas juridicos arquivo',
   },
   {
-    label: 'Tarefas & Agenda',
+    label: 'Tarefas',
     rota: '/tarefas',
     tipo: 'tela',
     chaves: 'tarefas agenda kanban chamado',
