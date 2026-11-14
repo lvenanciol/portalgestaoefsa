@@ -449,7 +449,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                               toast({
                                 title: 'Anexar arquivo',
                                 description:
-                                  'Aceita PDF/JPG/PNG até 50 MB. Neste ciclo o upload real está desativado — os anexos do seed são metadados de demonstração.',
+                                  'Aceita PDF/JPG/PNG até 50 MB. O upload de arquivo está desativado neste ciclo.',
                               })
                             }
                             className="w-full py-1.5 rounded border border-dashed border-gray-300 text-[11px] font-semibold text-gray-600 hover:border-[#1b5e20] hover:text-[#1b5e20]"

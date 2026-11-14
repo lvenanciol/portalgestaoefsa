@@ -736,7 +736,7 @@ function GerenciarAbasDialog({
                     })}
                   </div>
                   <p className="text-[10px] text-gray-400">
-                    Nenhum dispositivo está conectado neste ciclo — os dados são de demonstração.
+                    Nenhum dispositivo está conectado — os dados vêm do lançamento manual.
                   </p>
                 </div>
 
