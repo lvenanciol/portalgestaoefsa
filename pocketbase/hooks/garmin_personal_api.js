@@ -19,18 +19,10 @@
 // REGRA DO JSVM: nada de helper no topo. Tudo inline em cada callback.
 // ============================================================================
 
-/** Normaliza o que veio do campo JSON para um objeto seguro. */
-function cfgSeguro(valor) {
-  if (valor == null) return {}
-  if (typeof valor === 'object' && !Array.isArray(valor)) return valor
-  if (typeof valor === 'string') {
-    try {
-      const p = JSON.parse(valor)
-      if (p && typeof p === 'object' && !Array.isArray(p)) return p
-    } catch (_) {}
-  }
-  return {}
-}
+// NOTA: NÃO existe função no topo deste arquivo. O JSVM executa callbacks em
+// pool separado e um helper de topo causa ReferenceError em runtime (o
+// pipeline de QA detecta e bloqueia o build). A normalização do JSON está
+// INLINE em cada callback.
 
 routerAdd(
   'GET',
@@ -43,7 +35,17 @@ routerAdd(
     let cfg = {}
     try {
       rec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
-      cfg = cfgSeguro(rec.get('config'))
+      const bruto = rec.get('config')
+      if (bruto && typeof bruto === 'object' && !Array.isArray(bruto)) {
+        cfg = bruto
+      } else if (typeof bruto === 'string') {
+        try {
+          const p = JSON.parse(bruto)
+          cfg = p && typeof p === 'object' ? p : {}
+        } catch (_) {
+          cfg = {}
+        }
+      }
     } catch (_) {
       rec = null
       cfg = {}
@@ -99,7 +101,17 @@ routerAdd(
     let cfg = {}
     try {
       rec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
-      cfg = cfgSeguro(rec.get('config'))
+      const bruto = rec.get('config')
+      if (bruto && typeof bruto === 'object' && !Array.isArray(bruto)) {
+        cfg = bruto
+      } else if (typeof bruto === 'string') {
+        try {
+          const p = JSON.parse(bruto)
+          cfg = p && typeof p === 'object' ? p : {}
+        } catch (_) {
+          cfg = {}
+        }
+      }
     } catch (_) {
       rec = null
       cfg = {}
@@ -156,7 +168,17 @@ routerAdd(
     let cfg = {}
     try {
       rec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
-      cfg = cfgSeguro(rec.get('config'))
+      const bruto = rec.get('config')
+      if (bruto && typeof bruto === 'object' && !Array.isArray(bruto)) {
+        cfg = bruto
+      } else if (typeof bruto === 'string') {
+        try {
+          const p = JSON.parse(bruto)
+          cfg = p && typeof p === 'object' ? p : {}
+        } catch (_) {
+          cfg = {}
+        }
+      }
     } catch (_) {
       rec = null
       cfg = {}
@@ -311,7 +333,17 @@ routerAdd(
     let cfg = {}
     try {
       rec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
-      cfg = cfgSeguro(rec.get('config'))
+      const bruto = rec.get('config')
+      if (bruto && typeof bruto === 'object' && !Array.isArray(bruto)) {
+        cfg = bruto
+      } else if (typeof bruto === 'string') {
+        try {
+          const p = JSON.parse(bruto)
+          cfg = p && typeof p === 'object' ? p : {}
+        } catch (_) {
+          cfg = {}
+        }
+      }
     } catch (_) {
       rec = null
       cfg = {}
