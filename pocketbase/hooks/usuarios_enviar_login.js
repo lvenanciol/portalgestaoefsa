@@ -43,6 +43,7 @@ routerAdd(
     if (!email) return e.badRequestError('Usuário sem e-mail cadastrado.')
 
     const nome = usuario.getString('name') || email
+    // URL pública do Portal — nunca o host interno (dá 404 na SPA).
     const portalUrl = 'https://portalefsa.goskip.app'
     // Link de troca de senha: rota pública /reset-password com token de redefinição
     // (funciona sem sessão ativa, direto do e-mail).

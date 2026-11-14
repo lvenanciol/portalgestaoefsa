@@ -1385,7 +1385,7 @@ export default function TarefasKanbanPage() {
       <div className="pb-3 border-b border-gray-200/80">
         <h1 className="text-2xl lg:text-[26px] font-bold text-gray-900 tracking-tight flex items-center gap-2">
           <span className="text-[#1B5E20] text-xl font-bold tracking-tight select-none">|'|</span>{' '}
-          Tarefas & Agenda
+          Tarefas
         </h1>
         <p className="text-xs sm:text-[13px] text-gray-500 mt-0.5">
           Arraste os cartões para mudar a fase
@@ -1513,30 +1513,8 @@ export default function TarefasKanbanPage() {
             >
               Semana
             </button>
-            <button
-              type="button"
-              onClick={() => setFiltroRapido((f) => (f === 'atrasadas' ? 'todos' : 'atrasadas'))}
-              className={cn(
-                'px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer',
-                filtroRapido === 'atrasadas'
-                  ? 'bg-red-600 text-white shadow-xs'
-                  : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-              )}
-            >
-              Atrasadas
-            </button>
-            <button
-              type="button"
-              onClick={() => setFiltroRapido((f) => (f === 'minhas' ? 'todos' : 'minhas'))}
-              className={cn(
-                'px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer',
-                filtroRapido === 'minhas'
-                  ? 'bg-[#1B5E20] text-white shadow-xs'
-                  : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-              )}
-            >
-              Minhas
-            </button>
+            {/* 14/11/2026: filtros "Atrasadas" e "Minhas" REMOVIDOS a pedido.
+                O contador de atrasadas continua na faixa de KPIs acima. */}
           </div>
 
           {/* Botão agrupado de visão: posicionado À DIREITA de "Minhas", exibe o modo atual ("Lista ▾", "Board ▾" ou "Calendário ▾") */}
@@ -1693,72 +1671,10 @@ export default function TarefasKanbanPage() {
             </SelectContent>
           </Select>
 
-          {/* Dropdown "Origem ▾" (Prompt 7: Todos | De projeto | De contrato | De ata | Subtarefas | Avulsas) */}
-          <Select value={filtroOrigem} onValueChange={(v: any) => setFiltroOrigem(v)}>
-            <SelectTrigger
-              className={cn(
-                'h-9 min-w-[130px] max-w-[170px] bg-white border-gray-200 text-xs font-medium text-gray-800 shadow-2xs focus:ring-[#1B5E20] rounded-lg cursor-pointer',
-                filtroOrigem !== 'todos' &&
-                  'border-[#1B5E20] text-[#1B5E20] bg-emerald-50/50 font-semibold',
-              )}
-              aria-label="Filtro por origem da tarefa"
-            >
-              <div className="flex items-center gap-1.5 truncate">
-                <Link2 className="h-3.5 w-3.5 text-gray-500 shrink-0" />
-                <span className="truncate">
-                  {filtroOrigem === 'todos'
-                    ? 'Origem'
-                    : filtroOrigem === 'projeto'
-                      ? 'De projeto'
-                      : filtroOrigem === 'contrato'
-                        ? 'De contrato'
-                        : filtroOrigem === 'ata'
-                          ? 'De ata'
-                          : filtroOrigem === 'tarefa'
-                            ? 'Subtarefas'
-                            : 'Avulsas'}
-                </span>
-              </div>
-            </SelectTrigger>
-            <SelectContent align="start" className="w-[180px] bg-white">
-              <SelectItem value="todos" className="text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-gray-400" />
-                  <span>Todos</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="projeto" className="text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-emerald-600" />
-                  <span>De projeto</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="contrato" className="text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  <span>De contrato</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="ata" className="text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                  <span>De ata</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="tarefa" className="text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-blue-500" />
-                  <span>Subtarefas</span>
-                </div>
-              </SelectItem>
-              <SelectItem value="avulsa" className="text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-gray-500" />
-                  <span>Avulsas</span>
-                </div>
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          {/* 14/11/2026: dropdown "Origem" REMOVIDO a pedido do dono.
+              O filtro continua existindo no estado (filtroOrigem) e no
+              processamento — só não há mais controle na tela, então o valor
+              fica sempre "todos". */}
 
           {/* Botão Enviar (para ciência e acompanhamento) */}
           <TarefasEnviarPopover

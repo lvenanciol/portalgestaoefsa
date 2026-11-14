@@ -55,13 +55,27 @@ routerAdd(
     }
     if (!remNome) remNome = 'Portal de Gestao Executivo - Extrafruti'
 
+    // URL pública: NUNCA o host interno do Skip (dá 404 na SPA).
+    const publico = (u) => {
+      const s = String(u || '').trim()
+      if (!s) return ''
+      if (s.indexOf('internal.goskip.dev') !== -1) return ''
+      if (s.indexOf('localhost') !== -1) return ''
+      return s
+    }
     let base = ''
     try {
-      base = String($app.settings().meta.appURL || '')
+      base = publico($secrets.get('PUBLIC_SITE_URL'))
     } catch (_) {}
+    if (!base) base = 'https://portalefsa.goskip.app'
     if (!base) {
       try {
-        base = String($secrets.get('SITE_URL') || '')
+        base = publico($app.settings().meta.appURL)
+      } catch (_) {}
+    }
+    if (!base) {
+      try {
+        base = publico($secrets.get('SITE_URL'))
       } catch (_) {}
     }
     if (!base) base = 'https://portalefsa.goskip.app'

@@ -144,14 +144,39 @@ onRecordAfterUpdateSuccess(function (e) {
     }
   }
 
+  // URL pública do Portal.
+  //
+  // BUG CORRIGIDO 14/11/2026: o link "clique para abrir" do e-mail caía no
+  // host INTERNO do Skip (portal-...-b4d94.shrd01.internal.goskip.dev), que
+  // responde {"message":"File not found.","status":404} para qualquer rota da
+  // SPA. Causa: SITE_URL (secret) aponta para o host interno e era usado como
+  // fallback. Agora a ordem é:
+  //   1. PUBLIC_SITE_URL (secret novo, explícito)
+  //   2. domínio público fixo do PGE
+  //   3. settings().meta.appURL
+  //   4. SITE_URL — só se for público (nunca *.shrd01.internal.goskip.dev)
   function baseUrl() {
+    function publico(u) {
+      var s = String(u || '').trim()
+      if (!s) return ''
+      if (s.indexOf('internal.goskip.dev') !== -1) return ''
+      if (s.indexOf('localhost') !== -1) return ''
+      return s
+    }
+
     var b = ''
     try {
-      b = String($app.settings().meta.appURL || '')
+      b = publico($secrets.get('PUBLIC_SITE_URL'))
     } catch (_) {}
+    if (!b) b = 'https://portalefsa.goskip.app'
     if (!b) {
       try {
-        b = String($secrets.get('SITE_URL') || '')
+        b = publico($app.settings().meta.appURL)
+      } catch (_) {}
+    }
+    if (!b) {
+      try {
+        b = publico($secrets.get('SITE_URL'))
       } catch (_) {}
     }
     if (!b) b = 'https://portalefsa.goskip.app'
@@ -706,14 +731,28 @@ onRecordAfterCreateSuccess(function (e) {
     }
   }
 
+  // Ver comentário no callback de atualização: URL sempre PÚBLICA.
   function baseUrl() {
+    function publico(u) {
+      var s = String(u || '').trim()
+      if (!s) return ''
+      if (s.indexOf('internal.goskip.dev') !== -1) return ''
+      if (s.indexOf('localhost') !== -1) return ''
+      return s
+    }
     var b = ''
     try {
-      b = String($app.settings().meta.appURL || '')
+      b = publico($secrets.get('PUBLIC_SITE_URL'))
     } catch (_) {}
+    if (!b) b = 'https://portalefsa.goskip.app'
     if (!b) {
       try {
-        b = String($secrets.get('SITE_URL') || '')
+        b = publico($app.settings().meta.appURL)
+      } catch (_) {}
+    }
+    if (!b) {
+      try {
+        b = publico($secrets.get('SITE_URL'))
       } catch (_) {}
     }
     if (!b) b = 'https://portalefsa.goskip.app'
