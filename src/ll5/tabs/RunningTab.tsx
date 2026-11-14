@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Loader2,
   Info,
+  FileArchive,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -23,6 +24,7 @@ import { useLl5 } from '@/ll5/Ll5Context'
 import { listar, registrarLog } from '@/ll5/repo'
 import { garminAdapter, appleHealthAdapter } from '@/ll5/adapters'
 import ParecerIaCard from '@/ll5/ParecerIaCard'
+import ImportarFitDialog from '@/ll5/fit/ImportarFitDialog'
 
 // ============================================================================
 // ABA RUNNING (mockup 1)
@@ -63,16 +65,21 @@ export default function RunningTab({ aba }: { aba: any }) {
   const [carregando, setCarregando] = useState(true)
   const [garmin, setGarmin] = useState<any>(null)
   const [apple, setApple] = useState<any>(null)
+  const [importarOpen, setImportarOpen] = useState(false)
+  const [atividades, setAtividades] = useState<any[]>([])
 
   useEffect(() => {
     let vivo = true
     ;(async () => {
       setCarregando(true)
-      const linhas = await listar('ll5_running', ator, {
-        ownerEscolhido: ownerAtual,
-        sort: '-data',
-      })
-      if (vivo) setCorridas(linhas)
+      const [linhas, importadas] = await Promise.all([
+        listar('ll5_running', ator, { ownerEscolhido: ownerAtual, sort: '-data' }),
+        listar('ll5_activity', ator, { ownerEscolhido: ownerAtual, sort: '-data_hora_inicio' }),
+      ])
+      if (vivo) {
+        setCorridas(linhas)
+        setAtividades(importadas)
+      }
       const [g, a] = await Promise.all([garminAdapter.status(), appleHealthAdapter.status()])
       if (vivo) {
         setGarmin(g)
@@ -151,6 +158,14 @@ export default function RunningTab({ aba }: { aba: any }) {
           className="h-9 bg-[#1b5e20] hover:bg-[#0F3D13] text-white text-xs"
         >
           <Plus className="h-3.5 w-3.5 mr-1.5" /> Nova corrida
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setImportarOpen(true)}
+          className="h-9 text-xs"
+        >
+          <FileArchive className="h-3.5 w-3.5 mr-1.5" /> Importar arquivos .FIT
         </Button>
       </div>
 
@@ -354,6 +369,83 @@ export default function RunningTab({ aba }: { aba: any }) {
         </Card>
       </div>
 
+      {/* ===== ATIVIDADES IMPORTADAS (.FIT) ===== */}
+      {atividades.length > 0 && (
+        <Card className="rounded-xl border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
+            <h3 className="text-[13px] font-bold text-gray-900">Atividades importadas do Garmin</h3>
+            <Badge
+              variant="outline"
+              className="text-[9px] border-emerald-200 text-emerald-700 bg-emerald-50"
+            >
+              {atividades.length} arquivo(s) .FIT
+            </Badge>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12px]">
+              <thead className="bg-gray-50/70">
+                <tr className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                  <th className="text-left px-3 py-2">Data</th>
+                  <th className="text-left px-3 py-2">Tipo</th>
+                  <th className="text-right px-3 py-2">Distância</th>
+                  <th className="text-right px-3 py-2">Pace</th>
+                  <th className="text-right px-3 py-2">FC média</th>
+                  <th className="text-center px-3 py-2">Confiab. FC</th>
+                  <th className="text-center px-3 py-2">Dados</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {atividades.slice(0, 30).map((a) => {
+                  const dist = Number(a.distancia_m || 0) / 1000
+                  const pace = a.pace_medio_s_km
+                  const paceTxt = pace
+                    ? `${Math.floor(pace / 60)}'${String(Math.round(pace % 60)).padStart(2, '0')}"`
+                    : '—'
+                  return (
+                    <tr key={a.id} className="hover:bg-gray-50/50">
+                      <td className="px-3 py-2 font-semibold text-gray-800 tabular-nums">
+                        {String(a.data_hora_inicio || '')
+                          .slice(0, 10)
+                          .split('-')
+                          .reverse()
+                          .join('/')}
+                      </td>
+                      <td className="px-3 py-2 capitalize text-gray-600">{a.tipo || '—'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {dist.toFixed(2).replace('.', ',')} km
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-gray-600">{paceTxt}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-gray-600">
+                        {a.fc_media || '—'}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {a.confiabilidade_fc === 'alta' ? (
+                          <span className="text-[9px] font-bold text-emerald-700">alta</span>
+                        ) : (
+                          <span
+                            className="text-[9px] font-bold text-gray-500 bg-gray-100 rounded px-1.5 py-0.5"
+                            title="FC não confiável (pulso óptico) — fora do cálculo de TSS e carga"
+                          >
+                            {a.confiabilidade_fc === 'insuficiente'
+                              ? 'insuficiente'
+                              : 'não confiável'}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <span className="text-[9.5px] font-semibold text-gray-500">
+                          {a.qualidade_dados || '—'}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* sugestão */}
         <Card className="rounded-xl border-gray-200 shadow-sm p-4">
@@ -388,6 +480,17 @@ export default function RunningTab({ aba }: { aba: any }) {
           dados={{ kpis, atividades: corridas.length }}
         />
       </div>
+
+      <ImportarFitDialog
+        open={importarOpen}
+        onOpenChange={setImportarOpen}
+        onImportou={() => {
+          // recarrega as duas fontes após importar
+          listar('ll5_activity', ator, { ownerEscolhido: ownerAtual, sort: '-data_hora_inicio' })
+            .then(setAtividades)
+            .catch(() => {})
+        }}
+      />
     </div>
   )
 }
