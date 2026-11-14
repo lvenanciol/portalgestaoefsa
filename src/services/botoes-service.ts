@@ -56,7 +56,7 @@ export const BUTTON_GATES: TelaBotoes[] = [
   },
   {
     key: 'tarefas',
-    label: 'Tarefas & Agenda',
+    label: 'Tarefas',
     buttons: [
       { key: 'novo', label: 'Nova tarefa' },
       { key: 'editar', label: 'Editar (linha)' },

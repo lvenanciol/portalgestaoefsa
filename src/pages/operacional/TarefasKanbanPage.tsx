@@ -84,7 +84,7 @@ import {
   MarcoRegistro,
 } from '@/services/tarefas-projetos-service'
 
-// Fase 7 (prompt-mestre) — Tarefas & Agenda: kanban 4 colunas (A Fazer,
+// Fase 7 (prompt-mestre) — Tarefas: kanban 4 colunas (A Fazer,
 // Em Andamento, Bloqueado, Concluído), prioridade P1-P3, subtarefas,
 // comentários, vínculo, calendário mensal com criação rápida e widget
 // "Compromissos de hoje" + alertas de atraso.
@@ -468,14 +468,21 @@ export default function TarefasKanbanPage() {
       (t) => !t.responsavel || !String(t.responsavel).trim(),
     ).length
     const totalEmAndamento = itensFiltrados.filter((t) => t.status_kanban === 'em_andamento').length
+    // 14/11/2026: contador da SEMANA (prazo entre segunda e domingo da semana
+    // corrente) — o link "Semana" na faixa precisa do número.
+    const totalSemana = itensFiltrados.filter((t) => {
+      const p = t.prazo ? String(t.prazo).slice(0, 10) : ''
+      return !!p && p >= inicioSemanaStr && p <= fimSemanaStr
+    }).length
 
     return {
       hoje: totalHoje,
+      semana: totalSemana,
       atrasadas: totalAtrasadas,
       semResponsavel: totalSemResp,
       emAndamento: totalEmAndamento,
     }
-  }, [itensFiltrados, hoje])
+  }, [itensFiltrados, hoje, inicioSemanaStr, fimSemanaStr])
 
   // Itens para a lista após aplicar busca por texto e filtro rápido
   const itensLista = useMemo(() => {
@@ -1435,6 +1442,23 @@ export default function TarefasKanbanPage() {
           </span>
         </button>
         <span className="text-gray-300">·</span>
+        {/* 14/11/2026: "Semana" virou link aqui na faixa, ao lado de "Hoje".
+            Antes era botão na barra de filtros — agora é link com contador,
+            igual ao padrão de "Hoje". */}
+        <button
+          type="button"
+          onClick={() => setFiltroRapido((f) => (f === 'semana' ? 'todos' : 'semana'))}
+          className={cn(
+            'inline-flex items-center gap-1.5 hover:text-gray-900 transition-colors cursor-pointer py-0.5 px-1 rounded',
+            filtroRapido === 'semana' && 'font-bold text-[#1B5E20] bg-emerald-50',
+          )}
+        >
+          <span>Semana</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[11px] font-bold bg-gray-100 text-gray-700">
+            {contadores.semana}
+          </span>
+        </button>
+        <span className="text-gray-300">·</span>
         <div className="inline-flex items-center gap-1.5 py-0.5 px-1 text-gray-500">
           <span>Sem responsável</span>
           <span className="px-1.5 py-0.2 rounded-full text-[11px] font-bold bg-gray-100 text-gray-700">
@@ -1489,30 +1513,9 @@ export default function TarefasKanbanPage() {
             >
               Todos
             </button>
-            <button
-              type="button"
-              onClick={() => setFiltroRapido((f) => (f === 'hoje' ? 'todos' : 'hoje'))}
-              className={cn(
-                'px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer',
-                filtroRapido === 'hoje'
-                  ? 'bg-[#1B5E20] text-white shadow-xs'
-                  : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-              )}
-            >
-              Hoje
-            </button>
-            <button
-              type="button"
-              onClick={() => setFiltroRapido((f) => (f === 'semana' ? 'todos' : 'semana'))}
-              className={cn(
-                'px-3 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer',
-                filtroRapido === 'semana'
-                  ? 'bg-[#1B5E20] text-white shadow-xs'
-                  : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300',
-              )}
-            >
-              Semana
-            </button>
+            {/* 14/11/2026: "Hoje" REMOVIDO daqui — já existe como link com
+                contador na faixa acima da busca. "Semana" também saiu daqui e
+                virou link ao lado de "Hoje" na mesma faixa. */}
             {/* 14/11/2026: filtros "Atrasadas" e "Minhas" REMOVIDOS a pedido.
                 O contador de atrasadas continua na faixa de KPIs acima. */}
           </div>
@@ -1649,7 +1652,7 @@ export default function TarefasKanbanPage() {
                   <UsersIcon className="h-3.5 w-3.5 text-gray-500 shrink-0" />
                 )}
                 <span className="truncate">
-                  {empresaFiltroAtiva === 'todas' ? 'Todas as empresas' : empresaFiltroAtiva}
+                  {empresaFiltroAtiva === 'todas' ? 'Todas empresas' : empresaFiltroAtiva}
                 </span>
               </div>
             </SelectTrigger>
@@ -1657,7 +1660,7 @@ export default function TarefasKanbanPage() {
               <SelectItem value="todas">
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-gray-400" />
-                  <span>Todas as empresas</span>
+                  <span>Todas empresas</span>
                 </div>
               </SelectItem>
               {empresas.map((e) => (

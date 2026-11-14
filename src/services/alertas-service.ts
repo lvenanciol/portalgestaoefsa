@@ -103,7 +103,7 @@ export async function carregarDadosDoUsuario(
     alertas.push({
       id: 'alt-tarefa-atrasada',
       title: `${atrasadas.length} tarefa(s) atrasada(s)`,
-      description: 'Você é responsável ou participante — ver módulo Tarefas & Agenda',
+      description: 'Você é responsável ou participante — ver módulo Tarefas',
       detail: 'Ação imediata',
       severity: 'critical',
       rota: '/tarefas',
