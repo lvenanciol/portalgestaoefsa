@@ -88,10 +88,23 @@ interface StatusRemetente {
   remetente: string
   nomeRemetente: string
   origem: string
+  nomeOrigem?: string
   usaSmtpProprio: boolean
   host: string
   porta: number | null
   aviso?: string
+  matriz?: { configurada: boolean; atualizado_por?: string; atualizado_em?: string }
+}
+
+// O secret EMAIL_REMETENTE_NOME não aceita acentos — normalizamos no cliente
+// com a MESMA regra do backend, para o usuário ver o resultado antes de salvar.
+function semAcento(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7E]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 export default function EmailIntegracaoPage() {
@@ -102,6 +115,14 @@ export default function EmailIntegracaoPage() {
   const [testando, setTestando] = useState(false)
   const [alterado, setAlterado] = useState(false)
   const [recordId, setRecordId] = useState('')
+
+  // editor do nome do remetente (item a)
+  const [editandoNome, setEditandoNome] = useState(false)
+  const [nomeInput, setNomeInput] = useState('')
+  const [salvandoNome, setSalvandoNome] = useState(false)
+
+  const nomeNormalizado = semAcento(nomeInput)
+  const temAcento = nomeInput !== nomeNormalizado && nomeInput.trim() !== ''
 
   // ---- carrega configuração salva ----
   const carregarConfig = async () => {
@@ -159,6 +180,39 @@ export default function EmailIntegracaoPage() {
     carregarConfig()
     carregarStatus()
   }, [])
+
+  const salvarNome = async () => {
+    const limpo = semAcento(nomeInput)
+    if (!limpo) {
+      toast({
+        title: 'Nome inválido',
+        description: 'Use letras, números e hífen.',
+        variant: 'destructive',
+      })
+      return
+    }
+    setSalvandoNome(true)
+    try {
+      const r = (await pb.send('/backend/v1/email/remetente-nome', {
+        method: 'POST',
+        body: JSON.stringify({ nome: nomeInput }),
+      })) as any
+      setEditandoNome(false)
+      await carregarStatus()
+      toast({
+        title: 'Nome do remetente atualizado',
+        description: r.aviso ? r.nome + ' — ' + r.aviso : r.nome,
+      })
+    } catch (e: any) {
+      toast({
+        title: 'Falha ao salvar o nome',
+        description: e?.response?.data?.message || String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvandoNome(false)
+    }
+  }
 
   const alternar = (mod: string, ev: EventoId, canal: 'email' | 'sino') => {
     setCfg((prev) => ({
@@ -307,7 +361,51 @@ export default function EmailIntegracaoPage() {
                 <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
                   Nome exibido
                 </div>
-                <div className="text-[13px] text-gray-700">{status.nomeRemetente}</div>
+                {editandoNome ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      value={nomeInput}
+                      onChange={(e) => setNomeInput(e.target.value)}
+                      placeholder="Portal de Gestao Executivo - Extrafruti"
+                      className="h-7 w-56 rounded border border-gray-300 px-2 text-[12px] outline-none focus:border-[#1B5E20]"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={salvarNome}
+                      disabled={salvandoNome}
+                      className="h-7 px-2 rounded bg-[#1B5E20] text-white text-[11px] font-semibold disabled:opacity-50"
+                    >
+                      {salvandoNome ? '…' : 'salvar'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditandoNome(false)}
+                      className="h-7 px-2 rounded border border-gray-300 text-[11px] font-semibold text-gray-600"
+                    >
+                      cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] text-gray-700">{status.nomeRemetente}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNomeInput(status.nomeRemetente)
+                        setEditandoNome(true)
+                      }}
+                      className="text-[11px] font-semibold text-[#1B5E20] hover:underline"
+                    >
+                      editar
+                    </button>
+                  </div>
+                )}
+                {editandoNome && temAcento && (
+                  <div className="mt-1 text-[10.5px] text-amber-700 leading-tight">
+                    O secret não aceita acentos — será salvo como <strong>{nomeNormalizado}</strong>
+                  </div>
+                )}
               </div>
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">

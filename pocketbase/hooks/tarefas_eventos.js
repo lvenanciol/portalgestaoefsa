@@ -1,27 +1,18 @@
 // ============================================================================
-// NOTIFICAÇÕES DE TAREFAS — e-mail + sino (14/11/2026, v2)
+// NOTIFICAÇÕES DE TAREFAS — e-mail + sino com MATRIZ DE CANAIS (14/11/2026 v3)
 //
-// PEDIDO DO DONO:
-//   a) clique no alerta abre a TAREFA (feito no Topbar: /tarefas?tarefa=<id>)
-//   b) e-mail no MESMO LAYOUT do e-mail de acesso ao PGE:
-//      faixa de logomarcas → barra verde → cartão com tabela de dados →
-//      botão de ação → rodapé de uso restrito
-//   c) remetente configurável: secret EMAIL_REMETENTE (fallback
-//      $app.settings().meta.senderAddress)
+// v3 acrescenta o gate da matriz configurada em Integrações > E-mail:
+// desligar o toggle "E-mail" ou "Sino" de um evento REALMENTE impede o canal.
+// Eventos: criada · alterada · concluida · chat
 //
-// O QUE JÁ EXISTIA (mantido, este hook NÃO duplica):
-//   · tarefas_notificacoes.js  -> sino em criar e mudar status
-//   · tarefas_email_atribuicao.js -> e-mail só em ATRIBUIÇÃO
+// Fail-open de propósito: sem registro na matriz (ou erro de leitura), os dois
+// canais disparam. Perder uma notificação é pior do que ignorar uma preferência.
 //
-// O QUE ESTE HOOK COBRE:
-//   1. QUALQUER campo alterado na tarefa -> chat + sino + e-mail
-//   2. Nova mensagem em tarefas_chat      -> sino + e-mail
+// O nome do remetente passa a vir também da tela (coleção integracoes_config,
+// integracao="email_remetente") porque o secret não aceita acentos.
 //
-// REGRAS (obrigatórias neste runtime — JSVM/goja):
-//   · Todo helper DENTRO do callback (top-level não é visível em runtime)
-//   · Um arquivo por responsabilidade; nada de módulo compartilhado
-//   · try/catch + e.next() no finally: e-mail nunca bloqueia a operação
-//   · Autor da ação não recebe aviso; respeita notificacoes_desativadas
+// REGRAS do runtime (JSVM/goja): todo helper DENTRO do callback; try/catch com
+// e.next() no finally; autor da ação nunca recebe aviso.
 // ============================================================================
 
 onRecordAfterUpdateSuccess(function (e) {
@@ -32,7 +23,6 @@ onRecordAfterUpdateSuccess(function (e) {
     return
   }
 
-  // ---------------------------- helpers -----------------------------------
   function txt(rec, campo) {
     try {
       var v = rec.getString(campo)
@@ -87,7 +77,6 @@ onRecordAfterUpdateSuccess(function (e) {
     return { id: a.id || '', email: em, nome: a.getString('name') || em || 'Sistema' }
   }
 
-  // remetente: secret EMAIL_REMETENTE > senderAddress do PocketBase
   function remetente() {
     var addr = ''
     try {
@@ -102,11 +91,58 @@ onRecordAfterUpdateSuccess(function (e) {
   }
 
   function nomeRemetente() {
+    // secret -> coleção editável pela tela -> settings -> padrão ASCII.
+    // O secret NÃO aceita acentos; o padrão aqui já é ASCII.
     var n = ''
     try {
       n = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
     } catch (_) {}
-    return n || 'Portal de Gestão Executivo — Extrafruti'
+    if (!n) {
+      try {
+        var ach = $app.findRecordsByFilter(
+          'integracoes_config',
+          'integracao = "email_remetente"',
+          '',
+          1,
+          0,
+        )
+        if (ach && ach.length) {
+          var cfg = ach[0].get('config') || {}
+          n = String(cfg.nome || '').trim()
+        }
+      } catch (_) {}
+    }
+    if (!n) {
+      try {
+        n = String($app.settings().meta.senderName || '').trim()
+      } catch (_) {}
+    }
+    return n || 'Portal de Gestao Executivo - Extrafruti'
+  }
+
+  // Matriz de canais por evento (tela Integrações > E-mail).
+  // Fail-open: sem registro ou erro de leitura, dispara os dois.
+  function canaisDoEvento(evento) {
+    var padrao = { email: true, sino: true }
+    try {
+      var ach = $app.findRecordsByFilter(
+        'integracoes_config',
+        'integracao = "email_notificacoes"',
+        '',
+        1,
+        0,
+      )
+      if (!ach || !ach.length) return padrao
+      var cfg = ach[0].get('config') || {}
+      var no = cfg['tarefas'] && cfg['tarefas'][evento]
+      if (!no) return padrao
+      return {
+        email: no.email === undefined ? true : !!no.email,
+        sino: no.sino === undefined ? true : !!no.sino,
+      }
+    } catch (_) {
+      return padrao
+    }
   }
 
   function baseUrl() {
@@ -123,7 +159,6 @@ onRecordAfterUpdateSuccess(function (e) {
     return b.replace(/\/+$/, '')
   }
 
-  // Logomarcas: as das empresas vinculadas ao usuário; sem vínculo, todas.
   function faixaLogos(usuarioRecord, empresaNome) {
     var base = baseUrl()
     var colLogosId = 'pbc_3701359284'
@@ -154,7 +189,6 @@ onRecordAfterUpdateSuccess(function (e) {
     }
 
     if (empresaNome) addLogo(empresaNome)
-
     if (usuarioRecord) {
       try {
         var empId = usuarioRecord.getString('empresa_id')
@@ -168,7 +202,6 @@ onRecordAfterUpdateSuccess(function (e) {
         }
       } catch (_) {}
     }
-
     if (!logos.length) {
       try {
         var todas = $app.findRecordsByFilter('logomarcas', 'ativo = true', 'empresa', 6, 0)
@@ -184,7 +217,6 @@ onRecordAfterUpdateSuccess(function (e) {
         }
       } catch (_) {}
     }
-
     if (!logos.length) return ''
     var imgs = ''
     for (var j = 0; j < logos.length; j++) {
@@ -206,9 +238,6 @@ onRecordAfterUpdateSuccess(function (e) {
     )
   }
 
-  // ------------------------------------------------------------------
-  // LAYOUT PGE — espelha o e-mail "Seu acesso está liberado"
-  // ------------------------------------------------------------------
   function montarHtml(opts) {
     var linhas = ''
     if (opts.tarefa) {
@@ -437,7 +466,6 @@ onRecordAfterUpdateSuccess(function (e) {
   }
 
   function dataHoraBR() {
-    // PocketBase entrega DateTime em UTC; formata em pt-BR
     try {
       var d = new Date()
       var dd = String(d.getDate()).padStart(2, '0')
@@ -450,7 +478,6 @@ onRecordAfterUpdateSuccess(function (e) {
     }
   }
 
-  // ---------------------------- fluxo -------------------------------------
   try {
     var titulo = txt(t, 'titulo') || 'Sem título'
 
@@ -521,6 +548,8 @@ onRecordAfterUpdateSuccess(function (e) {
     var assunto = (statusMudou ? 'Tarefa atualizada: ' : 'Tarefa alterada: ') + titulo
     var link = baseUrl() + '/tarefas?tarefa=' + encodeURIComponent(String(t.id))
     var quando = dataHoraBR()
+    var evento = statusMudou && stNov === 'concluido' ? 'concluida' : 'alterada'
+    var canais = canaisDoEvento(evento)
 
     for (var n = 0; n < lista.length; n++) {
       var d = lista[n]
@@ -531,15 +560,20 @@ onRecordAfterUpdateSuccess(function (e) {
       jaFoi[chave] = true
       if (d.silenciado) continue
       if (!d.email || d.email.indexOf('@') === -1) continue
+      if (!canais.sino && !canais.email) continue
 
-      gravarSino(d, {
-        titulo: assunto,
-        mensagem: autor.nome + ' atualizou "' + titulo + '": ' + resumo + '.',
-        tipo: statusMudou ? 'tarefa_status' : 'tarefa_atribuicao',
-        tarefa_id: t.id,
-        autor_nome: autor.nome,
-        autor_email: autor.email,
-      })
+      if (canais.sino) {
+        gravarSino(d, {
+          titulo: assunto,
+          mensagem: autor.nome + ' atualizou "' + titulo + '": ' + resumo + '.',
+          tipo: statusMudou ? 'tarefa_status' : 'tarefa_atribuicao',
+          tarefa_id: t.id,
+          autor_nome: autor.nome,
+          autor_email: autor.email,
+        })
+      }
+
+      if (!canais.email) continue
 
       var html = montarHtml({
         logosHtml: faixaLogos(d.rec, empresaNome),
@@ -628,7 +662,50 @@ onRecordAfterCreateSuccess(function (e) {
     try {
       n = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
     } catch (_) {}
-    return n || 'Portal de Gestão Executivo — Extrafruti'
+    if (!n) {
+      try {
+        var ach = $app.findRecordsByFilter(
+          'integracoes_config',
+          'integracao = "email_remetente"',
+          '',
+          1,
+          0,
+        )
+        if (ach && ach.length) {
+          var cfg = ach[0].get('config') || {}
+          n = String(cfg.nome || '').trim()
+        }
+      } catch (_) {}
+    }
+    if (!n) {
+      try {
+        n = String($app.settings().meta.senderName || '').trim()
+      } catch (_) {}
+    }
+    return n || 'Portal de Gestao Executivo - Extrafruti'
+  }
+
+  function canaisDoEvento(evento) {
+    var padrao = { email: true, sino: true }
+    try {
+      var ach = $app.findRecordsByFilter(
+        'integracoes_config',
+        'integracao = "email_notificacoes"',
+        '',
+        1,
+        0,
+      )
+      if (!ach || !ach.length) return padrao
+      var cfg = ach[0].get('config') || {}
+      var no = cfg['tarefas'] && cfg['tarefas'][evento]
+      if (!no) return padrao
+      return {
+        email: no.email === undefined ? true : !!no.email,
+        sino: no.sino === undefined ? true : !!no.sino,
+      }
+    } catch (_) {
+      return padrao
+    }
   }
 
   function baseUrl() {
@@ -868,7 +945,6 @@ onRecordAfterCreateSuccess(function (e) {
     }
   }
 
-  // ---------------------------- fluxo -------------------------------------
   try {
     var texto = (msg.getString('texto') || '').trim()
     if (!texto) {
@@ -876,7 +952,6 @@ onRecordAfterCreateSuccess(function (e) {
       return
     }
 
-    // ignora as linhas automáticas dos próprios hooks
     if (texto.indexOf('⚡') === 0 || texto.indexOf('📌') === 0) {
       e.next()
       return
@@ -909,7 +984,12 @@ onRecordAfterCreateSuccess(function (e) {
     var empresaNome = (tarefa.getString('empresa') || '').trim()
     var trecho = texto.length > 300 ? texto.slice(0, 300) + '…' : texto
 
-    // envolvidos
+    var canais = canaisDoEvento('chat')
+    if (!canais.sino && !canais.email) {
+      e.next()
+      return
+    }
+
     var lista = []
     var vistos = {}
     function pushU(u) {
@@ -980,13 +1060,17 @@ onRecordAfterCreateSuccess(function (e) {
       jaFoi[chave] = true
       if (d.silenciado || !d.email || d.email.indexOf('@') === -1) continue
 
-      gravarSino(d, {
-        titulo: assunto,
-        mensagem: autorMsg + ': ' + trecho,
-        tarefa_id: tarefaId,
-        autor_nome: autorMsg,
-        autor_email: autor.email,
-      })
+      if (canais.sino) {
+        gravarSino(d, {
+          titulo: assunto,
+          mensagem: autorMsg + ': ' + trecho,
+          tarefa_id: tarefaId,
+          autor_nome: autorMsg,
+          autor_email: autor.email,
+        })
+      }
+
+      if (!canais.email) continue
 
       var html = montarHtml({
         logosHtml: faixaLogos(d.rec, empresaNome),

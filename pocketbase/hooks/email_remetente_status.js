@@ -2,13 +2,14 @@
 // E-MAIL — remetente em uso (14/11/2026)
 // GET /backend/v1/email/remetente-status
 //
-// A tela "Integrações → E-mail" mostra o remetente REAL. Antes o front teria
-// de adivinhar; aqui o backend lê a mesma ordem que os hooks de envio usam:
-//   1. secret EMAIL_REMETENTE
-//   2. $app.settings().meta.senderAddress
-// e informa se há SMTP próprio configurado.
+// A tela "Integrações → E-mail" mostra o remetente REAL e o estado da
+// configuração de notificações. Ordem de leitura do nome:
+//   1. secret EMAIL_REMETENTE_NOME
+//   2. coleção integracoes_config (integracao = "email_remetente") — editável
+//      pela tela, sem acentos
+//   3. $app.settings().meta.senderName
 //
-// Só leitura — nunca devolve senha nem host de produção além do necessário.
+// Só leitura. Nunca devolve senha.
 // ============================================================================
 routerAdd(
   'GET',
@@ -31,18 +32,46 @@ routerAdd(
       } catch (_) {}
     }
 
+    // nome: secret -> coleção editável -> settings
     let nomeRemetente = ''
+    let nomeOrigem = ''
     try {
       nomeRemetente = String($secrets.get('EMAIL_REMETENTE_NOME') || '').trim()
+      if (nomeRemetente) nomeOrigem = 'secret EMAIL_REMETENTE_NOME'
     } catch (_) {}
+
+    if (!nomeRemetente) {
+      try {
+        const ach = $app.findRecordsByFilter(
+          'integracoes_config',
+          'integracao = "email_remetente"',
+          '',
+          1,
+          0,
+        )
+        if (ach && ach.length) {
+          const cfg = ach[0].get('config') || {}
+          const n = String(cfg.nome || '').trim()
+          if (n) {
+            nomeRemetente = n
+            nomeOrigem = 'configurado na tela'
+          }
+        }
+      } catch (_) {}
+    }
+
     if (!nomeRemetente) {
       try {
         nomeRemetente = String($app.settings().meta.senderName || '').trim()
+        if (nomeRemetente) nomeOrigem = 'configuração da plataforma'
       } catch (_) {}
     }
-    if (!nomeRemetente) nomeRemetente = 'Portal de Gestão Executivo — Extrafruti'
+    if (!nomeRemetente) {
+      nomeRemetente = 'Portal de Gestao Executivo - Extrafruti'
+      nomeOrigem = 'padrão do sistema'
+    }
 
-    // SMTP próprio: o PocketBase expõe o smtp em settings()
+    // SMTP próprio
     let host = ''
     let porta = null
     let usaSmtpProprio = false
@@ -54,24 +83,45 @@ routerAdd(
       usaSmtpProprio = !!host && !!porta
     } catch (_) {}
 
+    // matriz de notificações salva
+    let temMatriz = false
+    let atualizadoPor = ''
+    let atualizadoEm = ''
+    try {
+      const ach = $app.findRecordsByFilter(
+        'integracoes_config',
+        'integracao = "email_notificacoes"',
+        '',
+        1,
+        0,
+      )
+      if (ach && ach.length) {
+        temMatriz = true
+        atualizadoPor = ach[0].getString('atualizado_por')
+        atualizadoEm = ach[0].getString('updated')
+      }
+    } catch (_) {}
+
     const resp = {
       ok: true,
       remetente: remetente || '—',
       nomeRemetente: nomeRemetente,
       origem: origem || 'não configurado',
+      nomeOrigem: nomeOrigem,
       usaSmtpProprio: usaSmtpProprio,
       host: host,
       porta: porta,
+      matriz: {
+        configurada: temMatriz,
+        atualizado_por: atualizadoPor,
+        atualizado_em: atualizadoEm,
+      },
     }
 
     if (!usaSmtpProprio) {
       resp.aviso =
         'Sem servidor SMTP próprio o "De" é reescrito pela plataforma; o endereço acima vira Responder-para.'
     }
-
-    try {
-      console.log('[email/remetente-status] ' + resp.remetente + ' | smtpProprio=' + usaSmtpProprio)
-    } catch (_) {}
 
     return e.json(200, resp)
   },
