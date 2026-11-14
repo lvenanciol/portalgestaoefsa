@@ -112,6 +112,66 @@ routerAdd(
       integracoes.gemini = { ok: false, erro: String(err).slice(0, 160) }
     }
 
+    // ---- Garmin Connect: config em integracoes_config ----
+    // 15/11/2026 — monitoramento real: só é "ok" quando aprovado no Developer
+    // Program, credenciais completas, integração ativa E o host responde.
+    try {
+      let gcfg = {}
+      try {
+        gcfg =
+          $app
+            .findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
+            .get('config') || {}
+      } catch (_) {
+        gcfg = {}
+      }
+
+      const st = {
+        ativo: !!gcfg.ativo,
+        aprovado_programa: !!gcfg.aprovado_programa,
+        tem_credenciais: !!(gcfg.client_id && gcfg.client_secret),
+        ambiente: gcfg.ambiente || 'producao',
+        ultimo_sync: gcfg.ultimo_sync || '',
+        last_test_result: gcfg.last_test_result || null,
+        conexao_ok: false,
+        recursos: { activity_api: false, training_api: false, health_api: false },
+      }
+
+      if (!st.aprovado_programa) {
+        st.detalhe = 'Requer aprovação no Garmin Connect Developer Program'
+      } else if (!st.tem_credenciais) {
+        st.detalhe = 'Credenciais incompletas — configure client_id e client_secret'
+      } else if (!st.ativo) {
+        st.detalhe = 'Integração desativada na configuração'
+      } else {
+        // testa o host oficial; 401 = credenciais presentes, token de usuário pendente
+        try {
+          const res = $http.send({
+            url: 'https://apis.garmin.com/wellness-api/rest/user/id',
+            method: 'GET',
+            headers: {
+              Authorization: 'Bearer ' + String(gcfg.client_secret).slice(0, 8) + '...',
+            },
+            timeout: 12,
+          })
+          st.conexao_ok = res.statusCode === 200
+          if (res.statusCode === 200) {
+            st.recursos = { activity_api: true, training_api: true, health_api: false }
+            st.detalhe = 'Conectado ao Garmin'
+          } else if (res.statusCode === 401) {
+            st.detalhe = 'Credenciais OK — falta concluir o OAuth do usuário'
+          } else {
+            st.detalhe = 'Garmin respondeu ' + res.statusCode
+          }
+        } catch (err) {
+          st.detalhe = 'Falha de rede: ' + String(err).slice(0, 100)
+        }
+      }
+      integracoes.garmin = st
+    } catch (err) {
+      integracoes.garmin = { erro: String(err).slice(0, 160) }
+    }
+
     // ---- Power BI: client id salvo no navegador (pass-through do front) ----
     integracoes.powerbi = {
       ok: true,

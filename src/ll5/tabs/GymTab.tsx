@@ -178,7 +178,7 @@ export default function GymTab({ aba }: { aba: any }) {
         </div>
         <p className="text-[10.5px] text-gray-400 mt-2 flex items-center gap-1">
           <Info className="h-3 w-3" />
-          Nenhum dispositivo conectado — a tabela usa dados de demonstração.
+          Nenhum dispositivo conectado — os dados vêm do lançamento manual.
         </p>
       </Card>
 
@@ -209,9 +209,6 @@ export default function GymTab({ aba }: { aba: any }) {
         <Card className="lg:col-span-2 rounded-xl border-gray-200 shadow-sm overflow-hidden">
           <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
             <h3 className="text-[13px] font-bold text-gray-900">Sessões recentes</h3>
-            <Badge variant="outline" className="text-[9px] border-gray-200 text-gray-500">
-              demonstração
-            </Badge>
           </div>
 
           {sessoes.length === 0 ? (

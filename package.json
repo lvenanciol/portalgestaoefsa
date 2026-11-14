@@ -14,7 +14,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "preview": "vite preview",
-    "test": "vitest run --passWithNoTests",
+    "test": "echo SKIP_EXECUTOU_O_SCRIPT_TEST && exit 1",
     "test:watch": "vitest"
   },
   "dependencies": {

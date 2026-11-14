@@ -19,6 +19,7 @@ import {
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
 import { useAbas } from '@/hooks/use-abas'
+import { GarminConfigSection } from '@/components/configuracoes/GarminConfigSection'
 import {
   IDIOMAS,
   PADROES,
@@ -380,6 +381,11 @@ export default function ConfiguracoesCompletaPage() {
           <div className="space-y-2">
             {[
               {
+                key: 'garmin',
+                nome: 'Garmin Connect',
+                desc: 'Activity API + Training API — requer aprovação no Developer Program',
+              },
+              {
                 key: 'sankhya',
                 nome: 'Sankhya (ERP)',
                 desc: 'OAuth serviço via edge proxy — TGFCAB/TGFFIN',
@@ -448,6 +454,11 @@ export default function ConfiguracoesCompletaPage() {
           </div>
         </section>
       )}
+
+      {/* ============ GARMIN CONNECT — parâmetros da integração ============
+          15/11/2026: seção própria dentro de Integrações, com credenciais,
+          escopos, aprovação no Developer Program e diagnóstico do último teste. */}
+      {abaVisivel('integracoes') && <GarminConfigSection />}
 
       {/* TAREFA MAIL (20/10): caixa OAuth movida p/ tela E-mail (/integracoes/email) */}
       <section hidden></section>

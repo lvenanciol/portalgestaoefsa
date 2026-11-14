@@ -14,6 +14,7 @@ import {
   Sparkles,
   ChartColumnBig,
   Clock,
+  Footprints,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useAuth } from '@/hooks/use-auth'
@@ -152,6 +153,7 @@ export default function StatusIntegracoesPage() {
   const gm = i.gemini || {}
   const pbi = i.powerbi || {}
   const wa = i.whatsapp || {}
+  const gr = (i as any).garmin || {}
 
   const skState: any = sk.erro ? 'error' : sk.ok ? 'ok' : sk.configurado ? 'warn' : 'off'
   const emState: any = em.erro ? 'error' : em.ok ? 'ok' : 'warn'
@@ -164,6 +166,13 @@ export default function StatusIntegracoesPage() {
       : wa.credenciais_ok
         ? 'warn'
         : 'off'
+  // Garmin: 'ok' só com conexão validada; 'warn' com aprovação/credenciais
+  // parciais; 'off' sem nada configurado. Nunca 'ok' por aparência.
+  const grState: any = gr.conexao_ok
+    ? 'ok'
+    : gr.aprovado_programa || gr.tem_credenciais
+      ? 'warn'
+      : 'off'
 
   if (loading)
     return (
@@ -344,6 +353,72 @@ export default function StatusIntegracoesPage() {
               <Linha label="Modelo" valor={gm.model || 'fast'} />
               {gm.erro && <p className="text-[11px] text-red-600">Erro: {gm.erro}</p>}
             </div>
+          </div>
+        )}
+
+        {/* ===== GARMIN ===== */}
+        {abaVisivel('garmin') && (
+          <div className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Footprints className="w-5 h-5 text-[#1B5E20]" />
+                <h2 className="font-semibold text-gray-900">Garmin Connect</h2>
+              </div>
+              <StateBadge state={grState} />
+            </div>
+            {gr.erro ? (
+              <p className="text-xs text-red-600">Erro: {gr.erro}</p>
+            ) : (
+              <div className="space-y-2.5 text-xs">
+                <Linha
+                  label="Developer Program"
+                  valor={
+                    gr.aprovado_programa ? (
+                      <span className="text-emerald-700">Aprovado</span>
+                    ) : (
+                      <span className="text-amber-700">Sem aprovação</span>
+                    )
+                  }
+                />
+                <Linha
+                  label="Credenciais"
+                  valor={
+                    gr.tem_credenciais ? (
+                      <span className="text-emerald-700">OK</span>
+                    ) : (
+                      <span className="text-gray-400">Incompletas</span>
+                    )
+                  }
+                />
+                <Linha label="Ativa" valor={gr.ativo ? 'Sim' : 'Não'} />
+                <Linha label="Ambiente" valor={gr.ambiente || 'producao'} />
+                <Linha
+                  label="Activity API"
+                  valor={gr.recursos?.activity_api ? 'OK' : 'Indisponível'}
+                />
+                <Linha
+                  label="Training API"
+                  valor={gr.recursos?.training_api ? 'OK' : 'Indisponível'}
+                />
+                <Linha
+                  label="Health API"
+                  valor={gr.recursos?.health_api ? 'OK' : 'Não contratada'}
+                />
+                {gr.ultimo_sync && (
+                  <Linha label="Último sync" valor={fmtDateTime(gr.ultimo_sync)} />
+                )}
+                {gr.detalhe && (
+                  <p className="text-[11px] text-gray-500 pt-1.5 border-t border-gray-100">
+                    {gr.detalhe}
+                  </p>
+                )}
+                {gr.last_test_result?.detalhe && (
+                  <p className="text-[10.5px] text-gray-400">
+                    Último teste: {gr.last_test_result.detalhe}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
 

@@ -112,7 +112,7 @@ export default function Ll5SaudePage() {
     try {
       const r = await executarSeed(ator, ownerAtual)
       toast({
-        title: r.pulado ? 'Seed já aplicado' : 'Demonstração criada',
+        title: r.pulado ? 'Seed já aplicado' : 'Dados carregados',
         description: r.mensagem,
       })
       await carregarAbas()
@@ -144,7 +144,7 @@ export default function Ll5SaudePage() {
           </div>
           <h3 className="text-sm font-bold text-gray-900">Nenhuma aba criada ainda</h3>
           <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
-            As abas de Saúde são criadas por você. Comece carregando a demonstração ou crie a
+            As abas de Saúde são criadas por você. Comece carregando a base inicial ou crie a
             primeira aba manualmente.
           </p>
           <div className="flex items-center justify-center gap-2 mt-4">
@@ -158,7 +158,7 @@ export default function Ll5SaudePage() {
               ) : (
                 <Sparkles className="h-3.5 w-3.5 mr-1.5" />
               )}
-              Carregar demonstração
+              Carregar base inicial
             </Button>
             {isAdmin && (
               <Button

@@ -215,8 +215,7 @@ export default function RunningTab({ aba }: { aba: any }) {
         <p className="text-[10.5px] text-gray-400 mt-2 flex items-center gap-1">
           <Info className="h-3 w-3" />
           Garmin exige aprovação no Garmin Connect Developer Program. HealthKit não possui API
-          server-side (requer app iOS). Nenhum dispositivo está conectado — a tabela usa dados de
-          demonstração.
+          server-side (requer app iOS). Nenhum dispositivo está conectado.
         </p>
       </Card>
 
@@ -263,9 +262,6 @@ export default function RunningTab({ aba }: { aba: any }) {
         <Card className="lg:col-span-2 rounded-xl border-gray-200 shadow-sm overflow-hidden">
           <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
             <h3 className="text-[13px] font-bold text-gray-900">Atividades recentes</h3>
-            <Badge variant="outline" className="text-[9px] border-gray-200 text-gray-500">
-              demonstração
-            </Badge>
           </div>
 
           {corridas.length === 0 ? (

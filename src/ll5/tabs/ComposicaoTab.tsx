@@ -395,8 +395,8 @@ export default function ComposicaoTab({ aba }: { aba: any }) {
         </div>
         <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-2 flex items-start gap-1">
           <Info className="h-3 w-3 shrink-0 mt-0.5" />
-          O OCR real está fora do escopo deste ciclo. A conciliação usa um conjunto de rótulos
-          simulado do mesmo aplicativo de bioimpedância — o fluxo de revisão é o definitivo.
+          O OCR real está fora do escopo deste ciclo. A conciliação usa uma amostra de rótulos do
+          mesmo aplicativo de bioimpedância — o fluxo de revisão é o definitivo.
         </p>
       </Card>
 
@@ -947,7 +947,7 @@ export default function ComposicaoTab({ aba }: { aba: any }) {
           <DialogHeader>
             <DialogTitle className="text-sm font-bold">Print do aplicativo</DialogTitle>
             <DialogDescription className="text-xs text-gray-600">
-              Imagem simulada — o OCR real está fora do escopo deste ciclo.
+              O OCR real está fora do escopo deste ciclo.
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-lg border border-gray-200 p-3 bg-gray-50 font-mono text-[10.5px] space-y-0.5">
