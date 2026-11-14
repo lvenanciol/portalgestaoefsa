@@ -11,6 +11,7 @@ import {
   Info,
   Eye,
   EyeOff,
+  KeyRound,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { Button } from '@/components/ui/button'
@@ -79,6 +80,68 @@ export function GarminConfigSection() {
   const [testando, setTestando] = useState(false)
   const [status, setStatus] = useState<any>(null)
   const [erro, setErro] = useState('')
+  const [apiKey, setApiKey] = useState('')
+  const [obtendoToken, setObtendoToken] = useState(false)
+
+  /** Salva só a API key pessoal (fluxo principal). */
+  const salvarApiKey = async () => {
+    const k = apiKey.trim()
+    if (!k) return
+    setSalvando(true)
+    try {
+      await pb.send('/backend/v1/garmin/personal/config', {
+        method: 'POST',
+        body: JSON.stringify({ api_key: k, ativo: true }),
+      })
+      toast({ title: 'API key salva', description: 'Agora clique em "Obter token".' })
+      setApiKey('')
+      await carregar()
+      await carregarStatus()
+    } catch (e: any) {
+      toast({
+        title: 'Falha ao salvar a API key',
+        description: e?.response?.data?.message || e?.message || String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  /** Troca a API key por um token no servidor (endpoint do fluxo oficial). */
+  const obterToken = async () => {
+    setObtendoToken(true)
+    try {
+      const r: any = await pb.send('/backend/v1/garmin/personal/token', {
+        method: 'POST',
+        body: '{}',
+      })
+      if (r.success) {
+        toast({
+          title: 'Token obtido',
+          description: r.validade
+            ? 'Válido até ' + String(r.validade).slice(0, 16).replace('T', ' ')
+            : 'Conexão estabelecida com o Garmin.',
+        })
+      } else {
+        toast({
+          title: 'O Garmin não autorizou',
+          description: r.erro || 'Verifique a API key.',
+          variant: 'destructive',
+        })
+      }
+      await carregar()
+      await carregarStatus()
+    } catch (e: any) {
+      toast({
+        title: 'Falha ao obter token',
+        description: e?.response?.data?.message || e?.message || String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setObtendoToken(false)
+    }
+  }
 
   const carregar = async () => {
     setCarregando(true)
@@ -209,14 +272,14 @@ export function GarminConfigSection() {
         </div>
       )}
 
-      {/* diagnóstico honesto */}
+      {/* diagnóstico — fluxo da API key pessoal */}
       <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3">
         <p className="text-[11px] font-bold text-sky-900 flex items-center gap-1.5 mb-1">
-          <Info className="h-3.5 w-3.5" /> Como habilitar
+          <Info className="h-3.5 w-3.5" /> Como conectar (Personal API)
         </p>
         <ol className="text-[11px] text-sky-900 leading-relaxed list-decimal pl-4 space-y-0.5">
           <li>
-            Solicite acesso no{' '}
+            Gere a sua API key pessoal no{' '}
             <a
               href="https://developer.garmin.com/gc-developer-program/"
               target="_blank"
@@ -225,15 +288,69 @@ export function GarminConfigSection() {
             >
               Garmin Connect Developer Program
               <ExternalLink className="h-2.5 w-2.5" />
-            </a>{' '}
-            (a Garmin aprova a conta antes de liberar as APIs).
+            </a>
           </li>
-          <li>Depois da aprovação, crie o app no portal e copie client_id e client_secret.</li>
-          <li>Cole as credenciais abaixo, marque a aprovação e ative a integração.</li>
+          <li>Cole a chave no campo abaixo e clique em Salvar.</li>
+          <li>
+            Clique em <strong>Obter token</strong> — o servidor troca a API key por um token de
+            acesso e testa a conexão.
+          </li>
         </ol>
         <p className="text-[10.5px] text-sky-800 mt-1.5">
-          Sem esses três passos não existe chamada possível — a tela não simula conexão.
+          A API key fica no servidor e <strong>nunca volta ao navegador</strong>. O endpoint usado é
+          o do fluxo oficial:{' '}
+          <code className="text-[9.5px] bg-white/70 px-1 rounded">
+            POST personal.connectapi.garmin.com/…/personal-api-key/token
+          </code>
         </p>
+      </div>
+
+      {/* campo da API key — fluxo principal */}
+      <div className="space-y-1.5 p-3 rounded-lg border border-emerald-200 bg-emerald-50/40">
+        <Label className="text-[11px] font-bold text-gray-800 flex items-center gap-1.5">
+          API key pessoal do Garmin
+          {cfg.tem_client_secret && (
+            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-300 rounded px-1">
+              salva
+            </span>
+          )}
+        </Label>
+        <Input
+          type={mostrarSecret ? 'text' : 'password'}
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder="Cole a API key gerada no portal do desenvolvedor"
+          className="h-9 text-[12px] font-mono"
+        />
+        <div className="flex items-center gap-2 pt-1">
+          <Button
+            size="sm"
+            onClick={salvarApiKey}
+            disabled={salvando || !apiKey.trim()}
+            className="h-8 text-[11.5px] bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+          >
+            {salvando ? (
+              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+            ) : (
+              <Save className="h-3 w-3 mr-1" />
+            )}
+            Salvar API key
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={obterToken}
+            disabled={obtendoToken || !cfg.tem_client_secret}
+            className="h-8 text-[11.5px]"
+          >
+            {obtendoToken ? (
+              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+            ) : (
+              <KeyRound className="h-3 w-3 mr-1" />
+            )}
+            Obter token
+          </Button>
+        </div>
       </div>
 
       {/* parâmetros */}
