@@ -1,360 +1,481 @@
-import { useEffect, useState } from 'react'
-import { Mail, Loader2, RefreshCw, Inbox, LogOut, Plug, X, Paperclip } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  Mail,
+  Loader2,
+  Save,
+  CheckCircle2,
+  AlertTriangle,
+  Bell,
+  FileText,
+  MessageSquare,
+  PlusCircle,
+  PencilLine,
+  Send,
+  Info,
+  RefreshCw,
+} from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { Button } from '@/components/ui/button'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
-// TAREFA MAIL + T0 (20/10) — Tela E-mail dentro de INTEGRAÇÕES:
-// a) abas Gmail / Outlook com conexão OAuth + "Sincronizar caixa" por aba
-// b) clicar no e-mail sincronizado abre o conteúdo (preview) em dialog
-// c) assinaturas por conta (upload na própria tela, usadas no compositor)
+// ============================================================================
+// INTEGRAÇÕES → E-MAIL  (reformulada em 14/11/2026)
+//
+// ANTES: esta tela duplicava "Relacionamentos → E-mails" (caixa sincronizada,
+// OAuth, assinatura). Duas telas mostrando a mesma caixa geravam confusão.
+//
+// AGORA: é a tela de GESTÃO/CONFIGURAÇÃO de notificações por e-mail nas telas
+// do sistema — o que faltava para configurar o envio de tarefas.
+//
+// O que ela faz:
+//  1. Mostra o REMETENTE em uso (lê do backend, não do bundle)
+//  2. Matriz de eventos × canais por módulo (Tarefas: criada/alterada/chat)
+//  3. Salva em integracoes_config (integracao = "email_notificacoes")
+//  4. Testa o envio de um e-mail para o próprio usuário logado
+//
+// A caixa de entrada continua em Relacionamentos → E-mails (lá é o lugar).
+// ============================================================================
 
-const URI_CALLBACK =
-  'https://portal-de-gestao-executivo-b4d94.shrd01.internal.goskip.dev/backend/v1/email/oauth/callback'
+const INTEGRACAO_ID = 'email_notificacoes'
 
-interface InboxMsg {
+type EventoId = 'criada' | 'alterada' | 'chat' | 'concluida' | 'excluida'
+
+interface Modulo {
   id: string
-  provedor: string
-  message_id: string
-  de: string
-  assunto: string
-  preview: string
-  recebido_em: string
-  lido: boolean
+  nome: string
+  descricao: string
+  eventos: { id: EventoId; label: string; desc: string }[]
+}
+
+const MODULOS: Modulo[] = [
+  {
+    id: 'tarefas',
+    nome: 'Tarefas & Agenda',
+    descricao: 'Avisos para quem participa da tarefa (responsáveis, parceiros e criador)',
+    eventos: [
+      { id: 'criada', label: 'Tarefa criada', desc: 'Nova tarefa com responsável definido' },
+      {
+        id: 'alterada',
+        label: 'Tarefa alterada',
+        desc: 'Qualquer campo: prazo, prioridade, título…',
+      },
+      { id: 'concluida', label: 'Tarefa concluída', desc: 'Tarefa marcada como concluída' },
+      { id: 'chat', label: 'Nova mensagem no chat', desc: 'Comentário enviado na tarefa' },
+    ],
+  },
+]
+
+interface CfgEvento {
+  email: boolean
+  sino: boolean
+}
+
+type Config = Record<string, Record<EventoId, CfgEvento>>
+
+const PADRAO: Config = {
+  tarefas: {
+    criada: { email: true, sino: true },
+    alterada: { email: true, sino: true },
+    concluida: { email: true, sino: true },
+    chat: { email: true, sino: true },
+    excluida: { email: false, sino: false },
+  },
+}
+
+interface StatusRemetente {
+  ok: boolean
+  remetente: string
+  nomeRemetente: string
+  origem: string
+  usaSmtpProprio: boolean
+  host: string
+  porta: number | null
+  aviso?: string
 }
 
 export default function EmailIntegracaoPage() {
-  const [oauth, setOauth] = useState<Record<string, { conectado: boolean; conta?: string }>>({
-    google: { conectado: false },
-    microsoft: { conectado: false },
-  })
-  const [msg, setMsg] = useState('')
-  const [loading, setLoading] = useState('')
-  const [inbox, setInbox] = useState<InboxMsg[]>([])
-  const [aberta, setAberta] = useState<InboxMsg | null>(null)
-  const [assinaturas, setAssinaturas] = useState<Record<string, string>>({
-    google: '',
-    microsoft: '',
-  })
+  const [cfg, setCfg] = useState<Config>(PADRAO)
+  const [status, setStatus] = useState<StatusRemetente | null>(null)
+  const [carregandoStatus, setCarregandoStatus] = useState(true)
+  const [salvando, setSalvando] = useState(false)
+  const [testando, setTestando] = useState(false)
+  const [alterado, setAlterado] = useState(false)
+  const [recordId, setRecordId] = useState('')
 
-  const carregarOauth = async () => {
+  // ---- carrega configuração salva ----
+  const carregarConfig = async () => {
     try {
-      const r = (await pb.send('/backend/v1/email/oauth/status', { method: 'GET' })) as any
-      setOauth({
-        google: r.google || { conectado: false },
-        microsoft: r.microsoft || { conectado: false },
-      })
-    } catch (_e) {
-      /* sem tokens ainda — segue desconectado */
-    }
-  }
-
-  const carregarInbox = async () => {
-    try {
-      const r = await pb.collection('emails_inbox').getFullList({ sort: '-recebido_em' })
-      setInbox(r as any[])
-    } catch (_) {
-      setInbox([])
-    }
-  }
-
-  const carregarAssinaturas = async () => {
-    try {
-      const r = await pb.collection('email_assinaturas').getFullList()
-      const m: Record<string, string> = { google: '', microsoft: '' }
-      for (const a of r as any[]) {
-        if (a.provedor && a.arquivo) m[a.provedor] = pb.files.getURL(a, a.arquivo)
+      const r = (await pb.collection('integracoes_config').getFullList({
+        filter: 'integracao = "' + INTEGRACAO_ID + '"',
+      })) as any[]
+      if (r.length) {
+        setRecordId(r[0].id)
+        const salvo = r[0].config || {}
+        // merge defensivo: mantém o padrão para chaves ausentes
+        const novo: Config = {}
+        for (const mod of MODULOS) {
+          novo[mod.id] = {} as Record<EventoId, CfgEvento>
+          for (const ev of mod.eventos) {
+            const s = salvo?.[mod.id]?.[ev.id]
+            novo[mod.id][ev.id] = {
+              email: s?.email !== undefined ? !!s.email : PADRAO[mod.id][ev.id].email,
+              sino: s?.sino !== undefined ? !!s.sino : PADRAO[mod.id][ev.id].sino,
+            }
+          }
+        }
+        setCfg(novo)
       }
-      setAssinaturas(m)
     } catch (_e) {
-      /* coleção ainda sem registros — segue vazio */
+      /* sem registro ainda — usa o padrão */
+    }
+  }
+
+  // ---- remetente real (vem do backend, não do bundle) ----
+  const carregarStatus = async () => {
+    setCarregandoStatus(true)
+    try {
+      const r = (await pb.send('/backend/v1/email/remetente-status', {
+        method: 'GET',
+      })) as StatusRemetente
+      setStatus(r)
+    } catch (e) {
+      setStatus({
+        ok: false,
+        remetente: '—',
+        nomeRemetente: '—',
+        origem: 'indisponível',
+        usaSmtpProprio: false,
+        host: '',
+        porta: null,
+        aviso: 'Não foi possível ler a configuração de envio: ' + String(e),
+      })
+    } finally {
+      setCarregandoStatus(false)
     }
   }
 
   useEffect(() => {
-    carregarOauth()
-    carregarInbox()
-    carregarAssinaturas()
-    const p = new URLSearchParams(window.location.search)
-    if (p.get('oauth') === 'ok') {
-      setMsg('Conectado com sucesso (' + (p.get('provedor') || '') + ').')
-      window.history.replaceState({}, '', '/integracoes/email')
-    } else if (p.get('oauth') === 'erro') {
-      setMsg('Falha na conexão: ' + (p.get('det') || 'erro desconhecido'))
-      window.history.replaceState({}, '', '/integracoes/email')
-    }
+    carregarConfig()
+    carregarStatus()
   }, [])
 
-  const conectar = async (provedor: string) => {
-    setLoading(provedor)
-    setMsg('')
-    try {
-      const r = (await pb.send('/backend/v1/email/oauth/iniciar', {
-        method: 'POST',
-        body: JSON.stringify({ provedor }),
-      })) as any
-      if (r.ok && r.url) {
-        window.location.href = r.url
-        return
-      }
-      setMsg(r.erro || 'Falha ao iniciar OAuth.')
-    } catch (e) {
-      setMsg('Erro: ' + String(e))
-    } finally {
-      setLoading('')
-    }
+  const alternar = (mod: string, ev: EventoId, canal: 'email' | 'sino') => {
+    setCfg((prev) => ({
+      ...prev,
+      [mod]: {
+        ...prev[mod],
+        [ev]: { ...prev[mod][ev], [canal]: !prev[mod][ev][canal] },
+      },
+    }))
+    setAlterado(true)
   }
 
-  const sincronizar = async (provedor: string) => {
-    setLoading('sync-' + provedor)
-    setMsg('')
+  const salvar = async () => {
+    setSalvando(true)
     try {
-      const r = (await pb.send('/backend/v1/email/oauth/sync', {
-        method: 'POST',
-        body: JSON.stringify({ provedor }),
-      })) as any
-      if (r.ok) {
-        setMsg('Caixa sincronizada — ' + r.novos + ' novo(s) e-mail(s).')
-        await carregarInbox()
-      } else {
-        setMsg('Falha no sync: ' + (r.erro || 'desconhecido'))
+      const dados = {
+        integracao: INTEGRACAO_ID,
+        config: cfg,
+        atualizado_por: pb.authStore.model?.email || '',
       }
-    } catch (e) {
-      setMsg('Erro no sync: ' + String(e))
-    } finally {
-      setLoading('')
-      setTimeout(() => setMsg(''), 10000)
-    }
-  }
-
-  const desconectar = async (provedor: string) => {
-    setLoading('desc-' + provedor)
-    try {
-      await pb.send('/backend/v1/email/oauth/desconectar', {
-        method: 'POST',
-        body: JSON.stringify({ provedor }),
+      if (recordId) await pb.collection('integracoes_config').update(recordId, dados)
+      else {
+        const novo = await pb.collection('integracoes_config').create(dados)
+        setRecordId((novo as any).id)
+      }
+      setAlterado(false)
+      toast({
+        title: 'Configuração salva',
+        description: 'As notificações passam a seguir esta matriz.',
       })
-      setMsg('Desconectado (' + provedor + ').')
-      await carregarOauth()
-    } catch (e) {
-      setMsg('Erro: ' + String(e))
-    } finally {
-      setLoading('')
-    }
-  }
-
-  const uploadAssinatura = async (provedor: string, f: File) => {
-    setMsg('')
-    try {
-      // upsert: 1 assinatura por provedor
-      const existentes = (await pb.collection('email_assinaturas').getFullList({
-        filter: 'provedor="' + provedor + '"',
-      })) as any[]
-      const fd = new FormData()
-      fd.append('provedor', provedor)
-      fd.append('arquivo', f)
-      if (existentes.length) await pb.collection('email_assinaturas').update(existentes[0].id, fd)
-      else await pb.collection('email_assinaturas').create(fd)
-      setMsg('Assinatura ' + (provedor === 'google' ? 'Gmail' : 'Outlook') + ' salva.')
-      await carregarAssinaturas()
     } catch (e: any) {
-      setMsg('Falha ao salvar assinatura: ' + (e?.response?.data?.erro || e?.message || String(e)))
+      toast({
+        title: 'Falha ao salvar',
+        description: e?.response?.data?.message || String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setSalvando(false)
     }
-    setTimeout(() => setMsg(''), 8000)
   }
 
-  const aba = (prov: 'google' | 'microsoft', nome: string) => {
-    const st = oauth[prov] || { conectado: false }
-    const lista = inbox.filter((m) => m.provedor === prov)
-    return (
-      <div className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl border border-gray-100 bg-gray-50/50">
-          <div>
-            <div className="text-[13px] font-bold text-gray-900 flex items-center gap-2">
-              {nome}
-              {st.conectado ? (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  Conectado
-                </span>
-              ) : (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
-                  Desconectado
-                </span>
-              )}
-            </div>
-            <div className="text-[11px] text-gray-500">
-              {st.conectado ? st.conta || 'conta conectada' : 'OAuth 2.0 — leitura + envio'}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {st.conectado ? (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8"
-                  onClick={() => sincronizar(prov)}
-                  disabled={loading === 'sync-' + prov}
-                >
-                  {loading === 'sync-' + prov ? (
-                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4 mr-1" />
-                  )}
-                  Sincronizar caixa
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8"
-                  onClick={() => desconectar(prov)}
-                  disabled={loading === 'desc-' + prov}
-                >
-                  <LogOut className="h-4 w-4 mr-1" /> Desconectar
-                </Button>
-              </>
-            ) : (
-              <Button
-                size="sm"
-                className="h-8 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
-                onClick={() => conectar(prov)}
-                disabled={loading === prov}
-              >
-                <Plug className="h-4 w-4 mr-1" /> Conectar {prov === 'google' ? 'Gmail' : 'Outlook'}
-              </Button>
-            )}
-          </div>
-        </div>
-        {/* assinatura por conta (T0c) */}
-        <div className="flex items-center gap-3 p-3 rounded-xl border border-emerald-100 bg-emerald-50/40">
-          <span className="text-[12px] font-semibold text-gray-700">Assinatura do e-mail:</span>
-          {assinaturas[prov] ? (
-            <img src={assinaturas[prov]} alt="assinatura" className="h-10 object-contain" />
-          ) : (
-            <span className="text-[11px] text-gray-400">nenhuma — envie PNG/JPG/PDF/SVG</span>
-          )}
-          <label className="h-8 px-2.5 inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-[11px] font-semibold text-gray-700 cursor-pointer">
-            <Paperclip className="h-3 w-3" /> Enviar assinatura
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/svg+xml,application/pdf"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                if (f) uploadAssinatura(prov, f)
-              }}
-            />
-          </label>
-        </div>
-        {/* caixa sincronizada (T0b: clique abre o conteúdo) */}
-        <div className="bg-white rounded-xl border border-[#E5E7EB] shadow-xs overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-gray-100 text-[11px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-2">
-            <Inbox className="h-3.5 w-3.5" /> Caixa sincronizada ({lista.length})
-          </div>
-          <div className="divide-y divide-gray-50 max-h-[480px] overflow-y-auto">
-            {lista.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setAberta(m)}
-                className="block w-full text-left px-4 py-2.5 hover:bg-gray-50/70"
-              >
-                <div className="text-[13px] font-semibold text-gray-800 truncate">{m.assunto}</div>
-                <div className="text-[11px] text-gray-500 truncate">
-                  {m.de} · {String(m.recebido_em).slice(0, 16).replace('T', ' ')}
-                </div>
-                <div className="text-[11px] text-gray-400 line-clamp-1">{m.preview}</div>
-              </button>
-            ))}
-            {lista.length === 0 && (
-              <p className="text-center text-[12px] text-gray-400 py-8">
-                Nenhum e-mail sincronizado — conecte a conta e clique em "Sincronizar caixa".
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-    )
+  const testar = async () => {
+    setTestando(true)
+    try {
+      const r = (await pb.send('/backend/v1/email/testar-envio', { method: 'POST' })) as any
+      if (r.ok) {
+        toast({
+          title: 'E-mail de teste enviado',
+          description: 'Verifique a caixa de ' + (r.para || 'seu e-mail') + '.',
+        })
+      } else {
+        toast({
+          title: 'Falha no teste',
+          description: r.erro || 'Erro desconhecido no envio.',
+          variant: 'destructive',
+        })
+      }
+    } catch (e: any) {
+      toast({
+        title: 'Falha no teste',
+        description: e?.response?.data?.erro || String(e),
+        variant: 'destructive',
+      })
+    } finally {
+      setTestando(false)
+    }
   }
+
+  const totalAtivo = useMemo(() => {
+    let n = 0
+    for (const mod of Object.keys(cfg)) {
+      for (const ev of Object.keys(cfg[mod]) as EventoId[]) {
+        if (cfg[mod][ev].email || cfg[mod][ev].sino) n++
+      }
+    }
+    return n
+  }, [cfg])
 
   return (
     <div className="space-y-5 pb-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-gray-200/80">
+      {/* cabeçalho */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-gray-200/80">
         <div>
           <h1 className="text-2xl lg:text-[26px] font-bold text-gray-900 tracking-tight flex items-center gap-2.5">
             <Mail className="h-6 w-6 text-[#1B5E20]" /> E-mail
           </h1>
           <p className="text-xs sm:text-[13px] text-gray-500 mt-0.5">
-            Conexão real (OAuth), sincronização da caixa e assinaturas por conta
+            Configuração dos avisos por e-mail nas telas do sistema
           </p>
         </div>
-      </div>
-
-      <div className="p-2.5 rounded-lg bg-sky-50 border border-sky-200">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-sky-700 mb-1">
-          URI de redirecionamento autorizado — registrar no Google Cloud e no Azure Entra
-        </div>
-        <code className="text-[11px] text-sky-900 break-all select-all">{URI_CALLBACK}</code>
-      </div>
-
-      {msg && (
-        <div
-          className={cn(
-            'p-2.5 rounded-lg text-[12px] font-semibold',
-            msg.startsWith('Falha') || msg.startsWith('Erro')
-              ? 'bg-red-50 text-red-700 border border-red-200'
-              : 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-          )}
-        >
-          {msg}
-        </div>
-      )}
-
-      <Tabs defaultValue="gmail">
-        <TabsList className="bg-gray-100 p-1 rounded-lg h-10">
-          <TabsTrigger value="gmail" className="rounded-md px-4 text-[13px] font-semibold gap-1.5">
-            <Mail className="h-3.5 w-3.5" /> Gmail
-          </TabsTrigger>
-          <TabsTrigger
-            value="outlook"
-            className="rounded-md px-4 text-[13px] font-semibold gap-1.5"
+        {alterado && (
+          <Button
+            onClick={salvar}
+            disabled={salvando}
+            className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
           >
-            <Mail className="h-3.5 w-3.5" /> Outlook
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="gmail" className="mt-3">
-          {aba('google', 'Gmail (Google)')}
-        </TabsContent>
-        <TabsContent value="outlook" className="mt-3">
-          {aba('microsoft', 'Outlook (Microsoft 365)')}
-        </TabsContent>
-      </Tabs>
+            {salvando ? (
+              <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4 mr-1.5" />
+            )}
+            Salvar alterações
+          </Button>
+        )}
+      </div>
 
-      {/* T0b: dialog do e-mail aberto */}
-      <Dialog open={!!aberta} onOpenChange={(o) => !o && setAberta(null)}>
-        <DialogContent className="bg-white w-full max-w-[95vw] sm:max-w-3xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-start justify-between gap-3">
-              <span className="text-[15px]">{aberta?.assunto}</span>
-              <button onClick={() => setAberta(null)} className="text-gray-400 hover:text-gray-600">
-                <X className="h-4 w-4" />
-              </button>
-            </DialogTitle>
-          </DialogHeader>
-          <div className="text-[12px] text-gray-500 border-b border-gray-100 pb-2">
-            De: <strong>{aberta?.de}</strong> ·{' '}
-            {aberta ? String(aberta.recebido_em).slice(0, 16).replace('T', ' ') : ''}
+      {/* aviso de escopo */}
+      <div className="flex items-start gap-2.5 p-3 rounded-lg bg-sky-50 border border-sky-200">
+        <Info className="h-4 w-4 text-sky-700 shrink-0 mt-0.5" />
+        <div className="text-[12px] text-sky-900 leading-relaxed">
+          <strong>Esta tela configura os avisos.</strong> A caixa de entrada sincronizada
+          (Gmail/Outlook) fica em <strong>Relacionamentos → E-mails</strong> — as duas não se
+          sobrepõem mais.
+        </div>
+      </div>
+
+      {/* remetente */}
+      <div className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-2">
+            <Send className="h-3.5 w-3.5" /> Remetente em uso
+          </span>
+          <button
+            type="button"
+            onClick={carregarStatus}
+            className="text-[11px] font-semibold text-gray-500 hover:text-gray-800 inline-flex items-center gap-1"
+          >
+            <RefreshCw className={cn('h-3 w-3', carregandoStatus && 'animate-spin')} /> atualizar
+          </button>
+        </div>
+
+        {carregandoStatus ? (
+          <div className="px-4 py-6 flex items-center gap-2 text-[12px] text-gray-500">
+            <Loader2 className="h-4 w-4 animate-spin" /> Lendo configuração de envio…
           </div>
-          <p className="text-[13px] text-gray-800 whitespace-pre-wrap leading-relaxed">
-            {aberta?.preview}
-          </p>
-          <p className="text-[11px] text-gray-400">
-            Anexos e corpo completo dependem do provedor (preview = trecho sincronizado).
-          </p>
-        </DialogContent>
-      </Dialog>
+        ) : status ? (
+          <div className="p-4 space-y-3">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                  Endereço
+                </div>
+                <div className="text-[13px] font-semibold text-gray-900">{status.remetente}</div>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                  Nome exibido
+                </div>
+                <div className="text-[13px] text-gray-700">{status.nomeRemetente}</div>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                  Origem
+                </div>
+                <div className="text-[13px] text-gray-700">{status.origem}</div>
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                  Envio
+                </div>
+                <div className="text-[13px] text-gray-700">
+                  {status.usaSmtpProprio
+                    ? 'SMTP próprio' +
+                      (status.host ? ' · ' + status.host + ':' + (status.porta ?? '') : '')
+                    : 'Relay da plataforma'}
+                </div>
+              </div>
+            </div>
+
+            {status.usaSmtpProprio ? (
+              <div className="flex items-start gap-2 p-2.5 rounded-lg bg-emerald-50 border border-emerald-200">
+                <CheckCircle2 className="h-4 w-4 text-emerald-700 shrink-0 mt-0.5" />
+                <div className="text-[11.5px] text-emerald-900">
+                  Enviando pelo servidor próprio — o e-mail sai com o endereço acima no{' '}
+                  <strong>De</strong>.
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200">
+                <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
+                <div className="text-[11.5px] text-amber-900 leading-relaxed">
+                  <strong>Usando o relay da plataforma.</strong> Nesse modo o <em>De</em> é
+                  reescrito para o domínio verificado da plataforma e o endereço acima vai apenas
+                  como <em>Responder para</em>. Para enviar com o seu domínio no <em>De</em>, é
+                  preciso um servidor SMTP próprio (Microsoft 365:{' '}
+                  <code className="bg-amber-100 px-1 rounded">smtp.office365.com:587</code>).
+                  {status.aviso ? ' ' + status.aviso : ''}
+                </div>
+              </div>
+            )}
+
+            <div className="pt-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={testar}
+                disabled={testando}
+                className="h-8 text-[12px]"
+              >
+                {testando ? (
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <Send className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                Enviar e-mail de teste para mim
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* matriz de notificações */}
+      {MODULOS.map((mod) => {
+        const icoPorEvento: Record<string, any> = {
+          criada: PlusCircle,
+          alterada: PencilLine,
+          concluida: CheckCircle2,
+          chat: MessageSquare,
+          excluida: FileText,
+        }
+        return (
+          <div key={mod.id} className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100">
+              <div className="text-[13px] font-bold text-gray-900 flex items-center gap-2">
+                <FileText className="h-4 w-4 text-[#1B5E20]" /> {mod.nome}
+              </div>
+              <div className="text-[11.5px] text-gray-500 mt-0.5">{mod.descricao}</div>
+            </div>
+
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="bg-gray-50/70 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                  <th className="text-left px-4 py-2">Evento</th>
+                  <th className="text-center px-3 py-2 w-[130px]">
+                    <span className="inline-flex items-center gap-1">
+                      <Mail className="h-3 w-3" /> E-mail
+                    </span>
+                  </th>
+                  <th className="text-center px-3 py-2 w-[130px]">
+                    <span className="inline-flex items-center gap-1">
+                      <Bell className="h-3 w-3" /> Sino
+                    </span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {mod.eventos.map((ev) => {
+                  const Ico = icoPorEvento[ev.id] || FileText
+                  const c = cfg[mod.id]?.[ev.id] || { email: false, sino: false }
+                  return (
+                    <tr key={ev.id} className="hover:bg-gray-50/50">
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-start gap-2">
+                          <Ico className="h-3.5 w-3.5 text-gray-400 shrink-0 mt-0.5" />
+                          <div>
+                            <div className="font-semibold text-gray-800">{ev.label}</div>
+                            <div className="text-[11px] text-gray-500">{ev.desc}</div>
+                          </div>
+                        </div>
+                      </td>
+                      {(['email', 'sino'] as const).map((canal) => (
+                        <td key={canal} className="px-3 py-2.5 text-center">
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={c[canal]}
+                            aria-label={ev.label + ' por ' + canal}
+                            onClick={() => alternar(mod.id, ev.id, canal)}
+                            className={cn(
+                              'relative inline-flex h-5 w-9 items-center rounded-full transition-colors',
+                              c[canal] ? 'bg-[#1B5E20]' : 'bg-gray-300',
+                            )}
+                          >
+                            <span
+                              className={cn(
+                                'inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform',
+                                c[canal] ? 'translate-x-[19px]' : 'translate-x-[3px]',
+                              )}
+                            />
+                          </button>
+                        </td>
+                      ))}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+
+            <div className="px-4 py-2 bg-gray-50/60 border-t border-gray-100 text-[11px] text-gray-500">
+              Envolvidos: responsáveis, parceiros vinculados e criador. Quem executa a ação nunca
+              recebe aviso da própria ação.
+            </div>
+          </div>
+        )
+      })}
+
+      {/* rodapé de estado */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50/60">
+        <div className="text-[11.5px] text-gray-600">
+          <strong>{totalAtivo}</strong> evento(s) com pelo menos um canal ativo.
+          {alterado && (
+            <span className="text-amber-700 font-semibold"> Alterações não salvas.</span>
+          )}
+        </div>
+        <Button
+          onClick={salvar}
+          disabled={salvando || !alterado}
+          className="h-9 bg-[#1B5E20] hover:bg-[#0F3D13] text-white disabled:opacity-50"
+        >
+          {salvando ? (
+            <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4 mr-1.5" />
+          )}
+          Salvar alterações
+        </Button>
+      </div>
     </div>
   )
 }
