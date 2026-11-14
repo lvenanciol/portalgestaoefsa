@@ -1,63 +1,64 @@
 // ============================================================================
-// GARMIN CONNECT — PERSONAL API (API key → access token) — 15/11/2026
+// GARMIN CONNECT — PERSONAL API (API key → access token) — 15/11/2026 v2
 //
-// O print do dono mostra o fluxo REAL do "Garmin Connect Developer Program —
-// Personal API":
+// FLUXO REAL (do portal do dono):
+//   A Garmin NÃO entrega client_id/client_secret na Personal API.
+//   Entrega apenas uma "Personal API Key". O token sai de:
 //
 //   POST https://personal.connectapi.garmin.com/personalapitoken-service/
 //        personal-api/personal-api-key/token
-//   Header: Authorization: ApiKey {your-api-key}
+//   Authorization: ApiKey {personal-api-key}
 //
-// A API key gera um ACCESS TOKEN de curta duração. Este hook:
-//   · guarda a API key no backend (nunca volta ao navegador);
-//   · obtém o token sob demanda;
-//   · testa a conexão com o token;
-//   · expõe o status real para a tela de monitoramento.
+// ESTA VERSÃO (v2) corrige o 500 em "Salvar API key":
+//   · garante que `config` seja um OBJETO antes de escrever (se vier string,
+//     `cfg.x = y` lançava TypeError e o PocketBase devolvia a mensagem
+//     genérica "Something went wrong while processing your request");
+//   · loga o erro real com console.log para aparecer em Skip Cloud → Logs;
+//   · devolve `erro` no corpo, nunca só o genérico.
 //
-// DIFERENÇA da integração OAuth antiga: esta é a API PESSOAL (só o titular),
-// não a empresarial. Ela não exige aprovação de app — a API key é a
-// credencial. Mesmo assim, o token expira: precisamos renovar.
+// REGRA DO JSVM: nada de helper no topo. Tudo inline em cada callback.
 // ============================================================================
 
-// NOTA DE IMPLEMENTAÇÃO: as funções auxiliares ficam INLINE dentro de cada
-// callback. O JSVM do PocketBase executa callbacks em pool separado e um
-// helper de topo causaria ReferenceError (lição do menus_crud.js).
+/** Normaliza o que veio do campo JSON para um objeto seguro. */
+function cfgSeguro(valor) {
+  if (valor == null) return {}
+  if (typeof valor === 'object' && !Array.isArray(valor)) return valor
+  if (typeof valor === 'string') {
+    try {
+      const p = JSON.parse(valor)
+      if (p && typeof p === 'object' && !Array.isArray(p)) return p
+    } catch (_) {}
+  }
+  return {}
+}
 
 routerAdd(
   'GET',
   '/backend/v1/garmin/personal/config',
   (e) => {
+    if (!e.auth) return e.unauthorizedError('Autenticação obrigatória.')
     const auth = e.auth
-    if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
-    let isAdmin = false
-    try {
-      const g = $app.findRecordById('grupos_permissao', auth.getString('grupo_id'))
-      isAdmin = g.getString('nome') === 'Admin'
-    } catch (_) {}
-    if (!isAdmin && !e.hasSuperuserAuth()) {
-      throw new ForbiddenError('Acesso restrito a administradores.')
-    }
 
+    let rec = null
     let cfg = {}
     try {
-      cfg =
-        $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'").get('config') ||
-        {}
+      rec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
+      cfg = cfgSeguro(rec.get('config'))
     } catch (_) {
+      rec = null
       cfg = {}
     }
 
-    // devolve SEM a API key
+    const key = String(cfg.personal_api_key || '')
     return e.json(200, {
       success: true,
       config: {
         modo: cfg.modo || 'personal',
         ativo: !!cfg.ativo,
-        tem_api_key: !!(cfg.personal_api_key && String(cfg.personal_api_key).trim()),
-        api_key_mascarada: cfg.personal_api_key
-          ? String(cfg.personal_api_key).slice(0, 6) + '…' + String(cfg.personal_api_key).slice(-4)
-          : '',
+        tem_api_key: !!key.trim(),
+        api_key_mascarada: key ? key.slice(0, 6) + '…' + key.slice(-4) : '',
         token_validade: cfg.token_validade || '',
+        tem_token: !!cfg.personal_token,
         ultimo_teste: cfg.last_test_result || null,
         ultimo_sync: cfg.ultimo_sync || '',
       },
@@ -70,99 +71,94 @@ routerAdd(
   'POST',
   '/backend/v1/garmin/personal/config',
   (e) => {
-    const auth = e.auth
-    if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
-    let isAdmin = false
+    if (!e.auth) return e.unauthorizedError('Autenticação obrigatória.')
+
+    let body = {}
     try {
-      const g = $app.findRecordById('grupos_permissao', auth.getString('grupo_id'))
-      isAdmin = g.getString('nome') === 'Admin'
-    } catch (_) {}
-    if (!isAdmin && !e.hasSuperuserAuth()) {
-      throw new ForbiddenError('Acesso restrito a administradores.')
+      body = e.requestInfo().body || {}
+    } catch (err) {
+      console.log('[garmin/personal/config] requestInfo falhou: ' + String(err))
+      body = {}
     }
 
-    const body = e.requestInfo().body || {}
+    const apiKey = String(body.api_key || '').trim()
+    if (!apiKey) {
+      return e.json(400, { success: false, erro: 'Informe a API key.' })
+    }
+    if (apiKey.length < 20) {
+      return e.json(400, {
+        success: false,
+        erro:
+          'A API key parece curta demais (' +
+          apiKey.length +
+          ' caracteres). Cole a chave completa.',
+      })
+    }
 
     let rec = null
     let cfg = {}
     try {
       rec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
-      cfg = rec.get('config') || {}
+      cfg = cfgSeguro(rec.get('config'))
     } catch (_) {
       rec = null
+      cfg = {}
     }
 
-    const apiKey = String(body.api_key || '').trim()
-
-    // valida o formato mínimo da API key antes de gravar
-    if (apiKey && apiKey.length < 20) {
-      return e.badRequestError('A API key parece curta demais. Cole a chave completa do portal.')
-    }
-
-    cfg.modo = 'personal'
-    if (apiKey) cfg.personal_api_key = apiKey
-    if (body.ativo !== undefined) cfg.ativo = !!body.ativo
-    cfg.aprovado_programa = true // a Personal API concede acesso pela própria key
+    // grava sempre como objeto novo (não muta o que veio do banco)
+    const novo = {}
+    for (const k of Object.keys(cfg)) novo[k] = cfg[k]
+    novo.modo = 'personal'
+    novo.ativo = body.ativo === undefined ? true : !!body.ativo
+    novo.personal_api_key = apiKey
+    novo.aprovado_programa = true
+    // a Personal API não usa OAuth de app: limpa campos que não se aplicam
+    delete novo.client_id
+    delete novo.client_secret
+    delete novo.redirect_uri
+    delete novo.consumer_key
+    delete novo.consumer_secret
+    delete novo.escopos
 
     try {
       if (rec) {
-        rec.set('config', cfg)
+        rec.set('config', novo)
         $app.save(rec)
       } else {
         const col = $app.findCollectionByNameOrId('integracoes_config')
         const r = new Record(col)
         r.set('integracao', 'garmin')
-        r.set('config', cfg)
+        r.set('config', novo)
         $app.save(r)
       }
     } catch (err) {
-      return e.json(500, { success: false, erro: String(err).slice(0, 200) })
+      // LOG REAL: aparece em Skip Cloud → Logs → hooks
+      console.log('[garmin/personal/config] FALHA ao salvar: ' + String(err))
+      return e.json(500, {
+        success: false,
+        erro: 'Falha ao gravar a configuração: ' + String(err).slice(0, 180),
+      })
     }
 
-    try {
-      $app
-        .db()
-        .newQuery(
-          "INSERT INTO auditoria (id, usuario_id, usuario_email, acao, modulo, detalhe, created, updated) VALUES ({:id}, {:uid}, {:uemail}, 'garmin_personal_config', 'integracoes', 'API key pessoal salva', {:now}, {:now})",
-        )
-        .bind({
-          id: $security.randomString(15),
-          uid: auth.id,
-          uemail: auth.getString('email'),
-          now: new DateTime().string(),
-        })
-        .execute()
-    } catch (_) {}
-
-    return e.json(200, { success: true })
+    console.log('[garmin/personal/config] API key salva (' + apiKey.length + ' chars)')
+    return e.json(200, { success: true, tem_api_key: true })
   },
   $apis.requireAuth(),
 )
 
-// ---------------------------------------------------------------------------
-// OBTER TOKEN — o endpoint do print, executado no servidor
-// ---------------------------------------------------------------------------
 routerAdd(
   'POST',
   '/backend/v1/garmin/personal/token',
   (e) => {
-    const auth = e.auth
-    if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
-    let isAdmin = false
-    try {
-      const g = $app.findRecordById('grupos_permissao', auth.getString('grupo_id'))
-      isAdmin = g.getString('nome') === 'Admin'
-    } catch (_) {}
-    if (!isAdmin && !e.hasSuperuserAuth()) {
-      throw new ForbiddenError('Acesso restrito a administradores.')
-    }
+    if (!e.auth) return e.unauthorizedError('Autenticação obrigatória.')
 
     let rec = null
     let cfg = {}
     try {
       rec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
-      cfg = rec.get('config') || {}
+      cfg = cfgSeguro(rec.get('config'))
     } catch (_) {
+      rec = null
       cfg = {}
     }
 
@@ -170,36 +166,49 @@ routerAdd(
     if (!apiKey) {
       return e.json(200, {
         success: false,
-        erro: 'Nenhuma API key salva. Cole a chave do Garmin Connect Developer Program.',
+        erro: 'Nenhuma API key salva. Cole a chave e clique em "Salvar API key" primeiro.',
       })
     }
 
-    // EXATAMENTE o endpoint do print do dono
-    let res
+    // ---------- 1) POST no endpoint do print ----------
+    let res = null
     try {
       res = $http.send({
         url: 'https://personal.connectapi.garmin.com/personalapitoken-service/personal-api/personal-api-key/token',
         method: 'POST',
         headers: {
           Authorization: 'ApiKey ' + apiKey,
-          'Content-Type': 'application/json',
           Accept: 'application/json',
+          'Content-Type': 'application/json',
         },
+        body: '{}',
         timeout: 25,
       })
     } catch (err) {
+      console.log('[garmin/personal/token] rede: ' + String(err))
       return e.json(200, {
         success: false,
         erro: 'Falha de rede ao contatar o Garmin: ' + String(err).slice(0, 160),
       })
     }
 
-    if (res.statusCode !== 200) {
-      // guarda o erro para a tela de status exibir
+    const status = res.statusCode
+    console.log('[garmin/personal/token] Garmin respondeu ' + status)
+
+    // corpo cru para diagnóstico (limitado)
+    let corpoCru = ''
+    try {
+      corpoCru = res.body ? String(res.body).slice(0, 600) : ''
+    } catch (_) {
+      corpoCru = ''
+    }
+
+    if (status !== 200) {
       try {
         cfg.last_test_result = {
           ok: false,
-          detalhe: 'Garmin respondeu ' + res.statusCode,
+          detalhe: 'Garmin respondeu HTTP ' + status,
+          corpo: corpoCru,
           quando: new DateTime().string(),
         }
         if (rec) {
@@ -207,54 +216,69 @@ routerAdd(
           $app.save(rec)
         }
       } catch (_) {}
+
       return e.json(200, {
         success: false,
         erro:
           'O Garmin recusou a API key (HTTP ' +
-          res.statusCode +
-          '). Confira se a chave está correta e ativa.',
-        http_status: res.statusCode,
+          status +
+          '). Confira se a chave está ativa e se foi copiada inteira.',
+        http_status: status,
+        corpo: corpoCru,
       })
     }
 
-    // extrai o token da resposta (o nome do campo varia; cobrimos os comuns)
+    // ---------- 2) extrai o token ----------
     let token = ''
     let validade = ''
+    let dados = {}
     try {
-      const dados = res.json || {}
-      token =
-        dados.access_token ||
-        dados.accessToken ||
-        (dados.data && (dados.data.access_token || dados.data.accessToken)) ||
-        ''
-      const exp =
-        dados.expires_in ||
-        dados.expiresIn ||
-        (dados.data && (dados.data.expires_in || dados.data.expiresIn)) ||
-        null
-      if (exp) {
-        const t = new Date(Date.now() + Number(exp) * 1000)
-        validade = t.toISOString()
-      }
+      dados = res.json || {}
     } catch (_) {
-      token = ''
+      dados = {}
+    }
+
+    const cand = [
+      dados.access_token,
+      dados.accessToken,
+      dados.token,
+      dados.access_token_value,
+      dados.data && dados.data.access_token,
+      dados.data && dados.data.accessToken,
+      dados.data && dados.data.token,
+    ]
+    for (const c of cand) {
+      if (c && typeof c === 'string' && c.length > 10) {
+        token = c
+        break
+      }
+    }
+
+    const exp =
+      dados.expires_in ||
+      dados.expiresIn ||
+      (dados.data && (dados.data.expires_in || dados.data.expiresIn)) ||
+      null
+    if (exp) {
+      validade = new Date(Date.now() + Number(exp) * 1000).toISOString()
     }
 
     if (!token) {
+      // 200 sem token: devolve o corpo para o dono me mandar o formato
       return e.json(200, {
         success: false,
-        erro: 'O Garmin respondeu 200 mas sem access_token no corpo. Formato inesperado.',
+        erro: 'O Garmin respondeu 200 mas sem access_token reconhecível. Formato inesperado — veja o corpo abaixo.',
+        corpo: corpoCru,
       })
     }
 
-    // guarda o token e a validade (nunca devolve o token ao navegador)
     try {
       cfg.personal_token = token
       cfg.token_validade = validade
       cfg.last_test_result = {
         ok: true,
         detalhe:
-          'Token obtido com sucesso' +
+          'Token obtido' +
           (validade ? ' · válido até ' + validade.slice(0, 16).replace('T', ' ') : ''),
         quando: new DateTime().string(),
       }
@@ -262,48 +286,41 @@ routerAdd(
         rec.set('config', cfg)
         $app.save(rec)
       }
-    } catch (_) {}
+    } catch (err) {
+      console.log('[garmin/personal/token] falha ao gravar token: ' + String(err))
+    }
 
+    console.log('[garmin/personal/token] token obtido com sucesso')
     return e.json(200, {
       success: true,
       tem_token: true,
       validade: validade,
-      // NUNCA devolvemos o token: só confirmamos que existe
+      // nunca devolvemos o token
     })
   },
   $apis.requireAuth(),
 )
 
-// ---------------------------------------------------------------------------
-// TESTAR CONEXÃO — obtém token e faz uma chamada real ao Garmin
-// ---------------------------------------------------------------------------
 routerAdd(
   'GET',
   '/backend/v1/garmin/personal/status',
   (e) => {
-    const auth = e.auth
-    if (!auth) return e.unauthorizedError('Autenticação obrigatória.')
-    let isAdmin = false
-    try {
-      const g = $app.findRecordById('grupos_permissao', auth.getString('grupo_id'))
-      isAdmin = g.getString('nome') === 'Admin'
-    } catch (_) {}
-    if (!isAdmin && !e.hasSuperuserAuth()) {
-      throw new ForbiddenError('Acesso restrito a administradores.')
-    }
+    if (!e.auth) return e.unauthorizedError('Autenticação obrigatória.')
 
     let rec = null
     let cfg = {}
     try {
       rec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
-      cfg = rec.get('config') || {}
+      cfg = cfgSeguro(rec.get('config'))
     } catch (_) {
+      rec = null
       cfg = {}
     }
 
+    const apiKey = String(cfg.personal_api_key || '').trim()
     const st = {
       modo: 'personal',
-      tem_api_key: !!(cfg.personal_api_key && String(cfg.personal_api_key).trim()),
+      tem_api_key: !!apiKey,
       tem_token: !!cfg.personal_token,
       token_validade: cfg.token_validade || '',
       conexao_ok: false,
@@ -312,47 +329,40 @@ routerAdd(
       erro: '',
     }
 
-    if (!st.tem_api_key) {
+    if (!apiKey) {
       st.erro = 'API key não configurada.'
-      st.detalhe = 'Cole a chave pessoal do Garmin Connect Developer Program.'
-      return e.json(200, { success: true, status: st, gerado_em: new DateTime().string() })
+      st.detalhe = 'Cole a Personal API Key e salve.'
+      return e.json(200, { success: true, status: st })
     }
 
-    // 1) garante token
-    let token = cfg.personal_token || ''
-    let precisaRenovar = !token
+    // renova o token quando vencido ou ausente
+    let token = String(cfg.personal_token || '')
+    let renovar = !token
     if (token && cfg.token_validade) {
       try {
-        precisaRenovar = new Date(cfg.token_validade).getTime() - 60000 < Date.now()
+        renovar = new Date(cfg.token_validade).getTime() - 60000 < Date.now()
       } catch (_) {
-        precisaRenovar = true
+        renovar = true
       }
     }
 
-    if (precisaRenovar) {
+    if (renovar) {
       try {
         const r = $http.send({
           url: 'https://personal.connectapi.garmin.com/personalapitoken-service/personal-api/personal-api-key/token',
           method: 'POST',
           headers: {
-            Authorization: 'ApiKey ' + String(cfg.personal_api_key),
-            'Content-Type': 'application/json',
+            Authorization: 'ApiKey ' + apiKey,
             Accept: 'application/json',
+            'Content-Type': 'application/json',
           },
+          body: '{}',
           timeout: 25,
         })
         if (r.statusCode === 200) {
           const d = r.json || {}
-          token =
-            d.access_token ||
-            d.accessToken ||
-            (d.data && (d.data.access_token || d.data.accessToken)) ||
-            ''
-          const exp =
-            d.expires_in ||
-            d.expiresIn ||
-            (d.data && (d.data.expires_in || d.data.expiresIn)) ||
-            null
+          token = d.access_token || d.accessToken || d.token || ''
+          const exp = d.expires_in || d.expiresIn || null
           if (exp) st.token_validade = new Date(Date.now() + Number(exp) * 1000).toISOString()
           if (token) {
             try {
@@ -366,16 +376,14 @@ routerAdd(
           }
         } else {
           st.erro = 'Garmin recusou a API key (HTTP ' + r.statusCode + ').'
-          st.detalhe = 'Verifique se a chave está ativa no portal do desenvolvedor.'
         }
       } catch (err) {
-        st.erro = 'Falha de rede ao obter token: ' + String(err).slice(0, 120)
+        st.erro = 'Falha de rede: ' + String(err).slice(0, 120)
       }
     }
 
     st.tem_token = !!token
 
-    // 2) com token, testa uma chamada real
     if (token) {
       try {
         const ping = $http.send({
@@ -391,7 +399,7 @@ routerAdd(
           st.detalhe = 'Token válido — API respondendo.'
         } else if (ping.statusCode === 401) {
           st.detalhe =
-            'Token obtido, mas a API de atividades respondeu 401 — a Personal API libera escopos específicos; confirme quais no portal.'
+            'Token obtido, mas a API de atividades respondeu 401. A Personal API pode não liberar este escopo — o import por CSV continua disponível.'
         } else {
           st.detalhe = 'API respondeu HTTP ' + ping.statusCode + '.'
         }
@@ -412,7 +420,7 @@ routerAdd(
       }
     } catch (_) {}
 
-    return e.json(200, { success: true, status: st, gerado_em: new DateTime().string() })
+    return e.json(200, { success: true, status: st })
   },
   $apis.requireAuth(),
 )

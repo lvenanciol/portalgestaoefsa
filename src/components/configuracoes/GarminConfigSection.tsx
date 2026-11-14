@@ -9,8 +9,6 @@ import {
   AlertTriangle,
   ExternalLink,
   Info,
-  Eye,
-  EyeOff,
   KeyRound,
 } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
@@ -19,134 +17,58 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
 // ============================================================================
-// GARMIN CONNECT — CONFIGURAÇÃO (15/11/2026)
+// GARMIN CONNECT — PERSONAL API (15/11/2026)
 //
-// Onde os parâmetros vivem: integracoes_config, registro integracao='garmin'.
-// Os segredos nunca voltam ao navegador — o GET devolve só `tem_client_secret`.
+// CORREÇÃO IMPORTANTE: a Personal API NÃO entrega client_id nem client_secret.
+// A única credencial é a **Personal API Key**, que o servidor troca por um
+// access token no endpoint:
 //
-// HONESTIDADE DA TELA: enquanto não houver aprovação no Garmin Connect
-// Developer Program + credenciais, o bloco de estado mostra exatamente o que
-// falta. Nenhum "conectado" falso.
+//   POST https://personal.connectapi.garmin.com/personalapitoken-service/
+//        personal-api/personal-api-key/token      (header: ApiKey <chave>)
+//
+// Os campos antigos (Client ID / Secret / Redirect / Escopos / Consumer Key)
+// foram REMOVIDOS desta tela — não existem nesse fluxo e confundiam.
 // ============================================================================
 
 interface ConfigGarmin {
+  modo: string
   ativo: boolean
-  ambiente: string
-  client_id: string
-  tem_client_secret: boolean
-  redirect_uri: string
-  escopos: string
-  aprovado_programa: boolean
-  data_aprovacao: string
-  consumer_key: string
-  tem_consumer_secret: boolean
+  tem_api_key: boolean
+  api_key_mascarada: string
+  token_validade: string
+  tem_token: boolean
+  ultimo_teste: any
   ultimo_sync: string
-  last_test_result: any
 }
 
 const vazio: ConfigGarmin = {
+  modo: 'personal',
   ativo: false,
-  ambiente: 'producao',
-  client_id: '',
-  tem_client_secret: false,
-  redirect_uri: '',
-  escopos: 'activity,training',
-  aprovado_programa: false,
-  data_aprovacao: '',
-  consumer_key: '',
-  tem_consumer_secret: false,
+  tem_api_key: false,
+  api_key_mascarada: '',
+  token_validade: '',
+  tem_token: false,
+  ultimo_teste: null,
   ultimo_sync: '',
-  last_test_result: null,
 }
 
 export function GarminConfigSection() {
   const [cfg, setCfg] = useState<ConfigGarmin>(vazio)
-  const [clientSecret, setClientSecret] = useState('')
-  const [consumerSecret, setConsumerSecret] = useState('')
-  const [mostrarSecret, setMostrarSecret] = useState(false)
+  const [status, setStatus] = useState<any>(null)
+  const [apiKey, setApiKey] = useState('')
   const [carregando, setCarregando] = useState(true)
   const [salvando, setSalvando] = useState(false)
-  const [testando, setTestando] = useState(false)
-  const [status, setStatus] = useState<any>(null)
-  const [erro, setErro] = useState('')
-  const [apiKey, setApiKey] = useState('')
   const [obtendoToken, setObtendoToken] = useState(false)
-
-  /** Salva só a API key pessoal (fluxo principal). */
-  const salvarApiKey = async () => {
-    const k = apiKey.trim()
-    if (!k) return
-    setSalvando(true)
-    try {
-      await pb.send('/backend/v1/garmin/personal/config', {
-        method: 'POST',
-        body: JSON.stringify({ api_key: k, ativo: true }),
-      })
-      toast({ title: 'API key salva', description: 'Agora clique em "Obter token".' })
-      setApiKey('')
-      await carregar()
-      await carregarStatus()
-    } catch (e: any) {
-      toast({
-        title: 'Falha ao salvar a API key',
-        description: e?.response?.data?.message || e?.message || String(e),
-        variant: 'destructive',
-      })
-    } finally {
-      setSalvando(false)
-    }
-  }
-
-  /** Troca a API key por um token no servidor (endpoint do fluxo oficial). */
-  const obterToken = async () => {
-    setObtendoToken(true)
-    try {
-      const r: any = await pb.send('/backend/v1/garmin/personal/token', {
-        method: 'POST',
-        body: '{}',
-      })
-      if (r.success) {
-        toast({
-          title: 'Token obtido',
-          description: r.validade
-            ? 'Válido até ' + String(r.validade).slice(0, 16).replace('T', ' ')
-            : 'Conexão estabelecida com o Garmin.',
-        })
-      } else {
-        toast({
-          title: 'O Garmin não autorizou',
-          description: r.erro || 'Verifique a API key.',
-          variant: 'destructive',
-        })
-      }
-      await carregar()
-      await carregarStatus()
-    } catch (e: any) {
-      toast({
-        title: 'Falha ao obter token',
-        description: e?.response?.data?.message || e?.message || String(e),
-        variant: 'destructive',
-      })
-    } finally {
-      setObtendoToken(false)
-    }
-  }
+  const [erro, setErro] = useState('')
 
   const carregar = async () => {
     setCarregando(true)
     try {
-      const r: any = await pb.send('/backend/v1/garmin/config', { method: 'GET' })
+      const r: any = await pb.send('/backend/v1/garmin/personal/config', { method: 'GET' })
       setCfg({ ...vazio, ...(r.config || {}) })
       setErro('')
     } catch (e: any) {
@@ -158,7 +80,7 @@ export function GarminConfigSection() {
 
   const carregarStatus = async () => {
     try {
-      const r: any = await pb.send('/backend/v1/garmin/status', { method: 'GET' })
+      const r: any = await pb.send('/backend/v1/garmin/personal/status', { method: 'GET' })
       setStatus(r.status || null)
     } catch (_) {
       setStatus(null)
@@ -167,61 +89,91 @@ export function GarminConfigSection() {
 
   useEffect(() => {
     carregar().then(carregarStatus)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const salvar = async () => {
+  /** Salva a API key (grava no servidor, nunca volta). */
+  const salvarApiKey = async () => {
+    const k = apiKey.trim()
+    if (!k) {
+      toast({ title: 'Cole a API key', variant: 'destructive' })
+      return
+    }
     setSalvando(true)
+    setErro('')
     try {
-      await pb.send('/backend/v1/garmin/config', {
+      const r: any = await pb.send('/backend/v1/garmin/personal/config', {
         method: 'POST',
-        body: JSON.stringify({
-          ativo: cfg.ativo,
-          ambiente: cfg.ambiente,
-          client_id: cfg.client_id,
-          client_secret: clientSecret || undefined,
-          redirect_uri: cfg.redirect_uri,
-          escopos: cfg.escopos,
-          aprovado_programa: cfg.aprovado_programa,
-          data_aprovacao: cfg.data_aprovacao,
-          consumer_key: cfg.consumer_key,
-          consumer_secret: consumerSecret || undefined,
-        }),
+        body: JSON.stringify({ api_key: k, ativo: true }),
       })
-      toast({ title: 'Configuração Garmin salva' })
-      setClientSecret('')
-      setConsumerSecret('')
+      if (r?.success === false) {
+        throw new Error(r.erro || 'O servidor recusou a chave.')
+      }
+      toast({ title: 'API key salva', description: 'Agora clique em "Obter token".' })
+      setApiKey('')
       await carregar()
-      await carregarStatus()
     } catch (e: any) {
-      toast({
-        title: 'Falha ao salvar',
-        description: e?.response?.data?.message || e?.message || String(e),
-        variant: 'destructive',
-      })
+      const detalhe =
+        e?.response?.data?.erro || e?.response?.data?.message || e?.message || String(e)
+      setErro('Falha ao salvar: ' + detalhe)
+      toast({ title: 'Falha ao salvar', description: detalhe, variant: 'destructive' })
     } finally {
       setSalvando(false)
     }
   }
 
-  const testar = async () => {
-    setTestando(true)
+  /** Troca a API key por um token no servidor. */
+  const obterToken = async () => {
+    setObtendoToken(true)
+    setErro('')
     try {
-      const r: any = await pb.send('/backend/v1/garmin/testar', { method: 'POST', body: '{}' })
-      toast({
-        title: r.ok ? 'Conexão validada' : 'Conexão não estabelecida',
-        description: r.detalhe,
-        variant: r.ok ? 'default' : 'destructive',
+      const r: any = await pb.send('/backend/v1/garmin/personal/token', {
+        method: 'POST',
+        body: '{}',
       })
+      if (r?.success) {
+        toast({
+          title: 'Token obtido',
+          description: r.validade
+            ? 'Válido até ' + String(r.validade).slice(0, 16).replace('T', ' ')
+            : 'Conexão com o Garmin estabelecida.',
+        })
+      } else {
+        const msg = r?.erro || 'O Garmin não autorizou a chave.'
+        setErro(msg + (r?.corpo ? ' · resposta: ' + String(r.corpo).slice(0, 200) : ''))
+        toast({ title: 'O Garmin não autorizou', description: msg, variant: 'destructive' })
+      }
       await carregar()
       await carregarStatus()
     } catch (e: any) {
-      toast({
-        title: 'Falha no teste',
-        description: e?.response?.data?.message || e?.message || String(e),
-        variant: 'destructive',
-      })
+      const detalhe =
+        e?.response?.data?.erro || e?.response?.data?.message || e?.message || String(e)
+      setErro('Falha ao obter token: ' + detalhe)
+      toast({ title: 'Falha ao obter token', description: detalhe, variant: 'destructive' })
     } finally {
-      setTestando(false)
+      setObtendoToken(false)
+    }
+  }
+
+  const testar = async () => {
+    await carregarStatus()
+    const ok = status?.conexao_ok
+    toast({
+      title: ok ? 'Conexão validada' : 'Conexão não estabelecida',
+      description: status?.detalhe || status?.erro || '—',
+      variant: ok ? 'default' : 'destructive',
+    })
+  }
+
+  const ativar = async (v: boolean) => {
+    setCfg({ ...cfg, ativo: v })
+    try {
+      await pb.send('/backend/v1/garmin/personal/config', {
+        method: 'POST',
+        body: JSON.stringify({ api_key: cfg.tem_api_key ? '__manter__' : undefined, ativo: v }),
+      })
+    } catch (_) {
+      // silencioso: o toggle é secundário
     }
   }
 
@@ -234,6 +186,9 @@ export function GarminConfigSection() {
   }
 
   const pronto = status?.conexao_ok
+  const validade = cfg.token_validade
+    ? String(cfg.token_validade).slice(0, 16).replace('T', ' ')
+    : ''
 
   return (
     <section className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs space-y-4">
@@ -242,9 +197,7 @@ export function GarminConfigSection() {
           <Footprints className="h-4 w-4 text-[#1B5E20]" />
           <div>
             <h2 className="text-sm font-bold text-gray-900">Garmin Connect</h2>
-            <p className="text-[11px] text-gray-500">
-              Atividades (Activity API) e envio de treinos (Training API)
-            </p>
+            <p className="text-[11px] text-gray-500">Personal API — API key → token de acesso</p>
           </div>
         </div>
         <Badge
@@ -253,33 +206,30 @@ export function GarminConfigSection() {
             'text-[10px] font-bold shrink-0',
             pronto
               ? 'border-emerald-300 text-emerald-700 bg-emerald-50'
-              : status?.aprovado_programa
+              : cfg.tem_api_key
                 ? 'border-amber-300 text-amber-700 bg-amber-50'
                 : 'border-gray-300 text-gray-600 bg-gray-50',
           )}
         >
-          {pronto
-            ? 'Conectado'
-            : status?.aprovado_programa
-              ? 'Aguardando credenciais'
-              : 'Não configurado'}
+          {pronto ? 'Conectado' : cfg.tem_api_key ? 'Chave salva' : 'Não configurado'}
         </Badge>
       </div>
 
       {erro && (
-        <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-[11.5px] text-red-700">
-          {erro}
+        <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-[11.5px] text-red-700 flex items-start gap-1.5">
+          <XCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <span className="break-words">{erro}</span>
         </div>
       )}
 
-      {/* diagnóstico — fluxo da API key pessoal */}
+      {/* como conectar */}
       <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-3">
         <p className="text-[11px] font-bold text-sky-900 flex items-center gap-1.5 mb-1">
-          <Info className="h-3.5 w-3.5" /> Como conectar (Personal API)
+          <Info className="h-3.5 w-3.5" /> Como conectar
         </p>
         <ol className="text-[11px] text-sky-900 leading-relaxed list-decimal pl-4 space-y-0.5">
           <li>
-            Gere a sua API key pessoal no{' '}
+            Gere a Personal API Key no{' '}
             <a
               href="https://developer.garmin.com/gc-developer-program/"
               target="_blank"
@@ -290,39 +240,43 @@ export function GarminConfigSection() {
               <ExternalLink className="h-2.5 w-2.5" />
             </a>
           </li>
-          <li>Cole a chave no campo abaixo e clique em Salvar.</li>
           <li>
-            Clique em <strong>Obter token</strong> — o servidor troca a API key por um token de
-            acesso e testa a conexão.
+            Cole a chave abaixo e clique em <strong>Salvar API key</strong>.
+          </li>
+          <li>
+            Clique em <strong>Obter token</strong> — o servidor troca a chave por um token e testa a
+            conexão.
           </li>
         </ol>
-        <p className="text-[10.5px] text-sky-800 mt-1.5">
-          A API key fica no servidor e <strong>nunca volta ao navegador</strong>. O endpoint usado é
-          o do fluxo oficial:{' '}
-          <code className="text-[9.5px] bg-white/70 px-1 rounded">
-            POST personal.connectapi.garmin.com/…/personal-api-key/token
-          </code>
+        <p className="text-[10.5px] text-sky-800 mt-1.5 leading-snug">
+          A Personal API autentica <strong>só pela API key</strong> — não há client_id nem secret. A
+          chave fica no servidor e nunca volta ao navegador.
         </p>
       </div>
 
-      {/* campo da API key — fluxo principal */}
+      {/* API key */}
       <div className="space-y-1.5 p-3 rounded-lg border border-emerald-200 bg-emerald-50/40">
         <Label className="text-[11px] font-bold text-gray-800 flex items-center gap-1.5">
-          API key pessoal do Garmin
-          {cfg.tem_client_secret && (
+          <KeyRound className="h-3 w-3" />
+          Personal API Key
+          {cfg.tem_api_key && (
             <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-300 rounded px-1">
-              salva
+              salva{cfg.api_key_mascarada ? ' · ' + cfg.api_key_mascarada : ''}
             </span>
           )}
         </Label>
         <Input
-          type={mostrarSecret ? 'text' : 'password'}
+          type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          placeholder="Cole a API key gerada no portal do desenvolvedor"
+          placeholder={
+            cfg.tem_api_key
+              ? 'Cole uma nova chave para substituir'
+              : 'Cole a API key gerada no portal'
+          }
           className="h-9 text-[12px] font-mono"
         />
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex items-center gap-2 pt-1 flex-wrap">
           <Button
             size="sm"
             onClick={salvarApiKey}
@@ -340,7 +294,7 @@ export function GarminConfigSection() {
             variant="outline"
             size="sm"
             onClick={obterToken}
-            disabled={obtendoToken || !cfg.tem_client_secret}
+            disabled={obtendoToken || !cfg.tem_api_key}
             className="h-8 text-[11.5px]"
           >
             {obtendoToken ? (
@@ -350,196 +304,107 @@ export function GarminConfigSection() {
             )}
             Obter token
           </Button>
+          <Button variant="outline" size="sm" onClick={testar} className="h-8 text-[11.5px]">
+            <RefreshCw className="h-3 w-3 mr-1" /> Testar conexão
+          </Button>
         </div>
       </div>
 
-      {/* parâmetros */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <Label className="text-[11px] font-semibold text-gray-600">Ambiente</Label>
-          <Select value={cfg.ambiente} onValueChange={(v) => setCfg({ ...cfg, ambiente: v })}>
-            <SelectTrigger className="h-9 text-[12px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-white z-[120]">
-              <SelectItem value="producao" className="text-[12px]">
-                Produção (apis.garmin.com)
-              </SelectItem>
-              <SelectItem value="sandbox" className="text-[12px]">
-                Sandbox
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1">
-          <Label className="text-[11px] font-semibold text-gray-600">Escopos</Label>
-          <Input
-            value={cfg.escopos}
-            onChange={(e) => setCfg({ ...cfg, escopos: e.target.value })}
-            placeholder="activity,training"
-            className="h-9 text-[12px]"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <Label className="text-[11px] font-semibold text-gray-600">Client ID</Label>
-          <Input
-            value={cfg.client_id}
-            onChange={(e) => setCfg({ ...cfg, client_id: e.target.value })}
-            placeholder="Ex.: fc1a2b3c-..."
-            className="h-9 text-[12px] font-mono"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <Label className="text-[11px] font-semibold text-gray-600 flex items-center gap-1.5">
-            Client Secret
-            {cfg.tem_client_secret && (
-              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1">
-                salvo
-              </span>
-            )}
-          </Label>
-          <div className="relative">
-            <Input
-              type={mostrarSecret ? 'text' : 'password'}
-              value={clientSecret}
-              onChange={(e) => setClientSecret(e.target.value)}
-              placeholder={
-                cfg.tem_client_secret ? '•••••••• (deixe vazio p/ manter)' : 'Cole o secret'
-              }
-              className="h-9 text-[12px] font-mono pr-9"
-            />
-            <button
-              type="button"
-              onClick={() => setMostrarSecret((v) => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+      {/* estado */}
+      <div className="rounded-lg border border-gray-200 bg-gray-50/60 p-3">
+        <p className="text-[10.5px] font-bold text-gray-700 uppercase tracking-wider mb-1.5">
+          Estado da integração
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-gray-500">API key</span>
+            <span
+              className={cn(
+                'font-semibold',
+                cfg.tem_api_key ? 'text-emerald-700' : 'text-gray-400',
+              )}
             >
-              {mostrarSecret ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-1">
-          <Label className="text-[11px] font-semibold text-gray-600">Redirect URI</Label>
-          <Input
-            value={cfg.redirect_uri}
-            onChange={(e) => setCfg({ ...cfg, redirect_uri: e.target.value })}
-            placeholder="https://seu-dominio/backend/v1/garmin/callback"
-            className="h-9 text-[12px] font-mono"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <Label className="text-[11px] font-semibold text-gray-600 flex items-center gap-1.5">
-            Consumer Key (OAuth 1.0a)
-            <span className="text-[9px] font-bold text-gray-500 bg-gray-100 rounded px-1">
-              opcional
+              {cfg.tem_api_key ? 'configurada' : 'ausente'}
             </span>
-          </Label>
-          <Input
-            value={cfg.consumer_key}
-            onChange={(e) => setCfg({ ...cfg, consumer_key: e.target.value })}
-            className="h-9 text-[12px] font-mono"
-          />
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-gray-500">Token de acesso</span>
+            <span
+              className={cn(
+                'font-semibold',
+                cfg.tem_token || status?.tem_token ? 'text-emerald-700' : 'text-gray-400',
+              )}
+            >
+              {cfg.tem_token || status?.tem_token
+                ? 'obtido' + (validade ? ' até ' + validade : '')
+                : 'não obtido'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-gray-500">Activity API</span>
+            <span
+              className={cn(
+                'font-semibold',
+                status?.recursos?.activities ? 'text-emerald-700' : 'text-gray-400',
+              )}
+            >
+              {status?.recursos?.activities ? 'disponível' : 'não validada'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-gray-500">Training API</span>
+            <span
+              className={cn(
+                'font-semibold',
+                status?.recursos?.workouts ? 'text-emerald-700' : 'text-gray-400',
+              )}
+            >
+              {status?.recursos?.workouts ? 'disponível' : 'não validada'}
+            </span>
+          </div>
         </div>
+        {status?.detalhe && (
+          <p className="text-[10.5px] text-gray-600 mt-2 leading-snug">{status.detalhe}</p>
+        )}
       </div>
 
-      {/* toggles */}
-      <div className="space-y-2 pt-1">
-        <div className="flex items-center justify-between p-2.5 rounded-lg bg-gray-50 border border-gray-100">
-          <div className="min-w-0">
-            <p className="text-[12px] font-semibold text-gray-800">
-              Aprovação no Garmin Connect Developer Program
-            </p>
-            <p className="text-[10.5px] text-gray-500">
-              Sem esta confirmação a API não responde — é pré-requisito da Garmin.
-            </p>
-          </div>
-          <Switch
-            checked={cfg.aprovado_programa}
-            onCheckedChange={(v) => setCfg({ ...cfg, aprovado_programa: v })}
-          />
-        </div>
-
-        <div className="flex items-center justify-between p-2.5 rounded-lg bg-gray-50 border border-gray-100">
-          <div className="min-w-0">
-            <p className="text-[12px] font-semibold text-gray-800">Integração ativa</p>
-            <p className="text-[10.5px] text-gray-500">
-              Permite baixar atividades e enviar treinos para o Garmin.
-            </p>
-          </div>
-          <Switch checked={cfg.ativo} onCheckedChange={(v) => setCfg({ ...cfg, ativo: v })} />
-        </div>
-      </div>
-
-      {/* resultado do último teste */}
-      {cfg.last_test_result?.detalhe && (
+      {/* último teste */}
+      {cfg.ultimo_teste?.detalhe && (
         <div
           className={cn(
             'rounded-lg p-2.5 border text-[11px] flex items-start gap-2',
-            cfg.last_test_result.ok
+            cfg.ultimo_teste.ok
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
               : 'bg-amber-50 border-amber-200 text-amber-900',
           )}
         >
-          {cfg.last_test_result.ok ? (
+          {cfg.ultimo_teste.ok ? (
             <CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />
           ) : (
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
           )}
-          <div>
+          <div className="min-w-0">
             <p className="font-semibold">Último teste</p>
-            <p>
-              {cfg.last_test_result.detalhe}
-              {cfg.last_test_result.quando && (
-                <span className="block text-[10px] opacity-70 mt-0.5">
-                  {String(cfg.last_test_result.quando).slice(0, 16).replace('T', ' ')}
-                </span>
-              )}
-            </p>
+            <p className="break-words">{cfg.ultimo_teste.detalhe}</p>
+            {cfg.ultimo_teste.quando && (
+              <span className="block text-[10px] opacity-70 mt-0.5">
+                {String(cfg.ultimo_teste.quando).slice(0, 16).replace('T', ' ')}
+              </span>
+            )}
           </div>
         </div>
       )}
 
-      {/* ações */}
-      <div className="flex items-center gap-2 pt-1">
-        <Button
-          size="sm"
-          onClick={salvar}
-          disabled={salvando}
-          className="h-9 text-[12px] bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
-        >
-          {salvando ? (
-            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-          ) : (
-            <Save className="h-3.5 w-3.5 mr-1.5" />
-          )}
-          Salvar configuração
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={testar}
-          disabled={testando}
-          className="h-9 text-[12px]"
-        >
-          {testando ? (
-            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-          ) : (
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-          )}
-          Testar conexão
-        </Button>
+      {/* toggle */}
+      <div className="flex items-center justify-between p-2.5 rounded-lg bg-gray-50 border border-gray-100">
+        <div className="min-w-0">
+          <p className="text-[12px] font-semibold text-gray-800">Integração ativa</p>
+          <p className="text-[10.5px] text-gray-500">
+            Permite usar a API do Garmin para atividades e treinos.
+          </p>
+        </div>
+        <Switch checked={cfg.ativo} onCheckedChange={ativar} />
       </div>
-
-      {status && !status.conexao_ok && status.detalhe && (
-        <p className="text-[10.5px] text-gray-500 flex items-start gap-1">
-          <XCircle className="h-3 w-3 shrink-0 mt-0.5 text-gray-400" />
-          {status.detalhe}
-        </p>
-      )}
     </section>
   )
 }
