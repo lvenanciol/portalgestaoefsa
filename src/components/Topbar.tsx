@@ -20,7 +20,7 @@ import {
   BellOff,
   ExternalLink,
 } from 'lucide-react'
-import { useApp } from '@/context/AppContext'
+import { useApp, rotuloPeriodo } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
 import { carregarDadosDoUsuario } from '@/services/alertas-service'
 import type { CriticalAlert } from '@/data/mockData'
@@ -223,7 +223,14 @@ const BUSCA_ACOES: BuscaItem[] = [
 ]
 
 export function Topbar() {
-  const { toggleSidebar, sidebarCollapsed, toggleSidebarCollapsed } = useApp()
+  const {
+    toggleSidebar,
+    sidebarCollapsed,
+    toggleSidebarCollapsed,
+    periodo,
+    setPeriodo,
+    periodosDisponiveis,
+  } = useApp()
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
   // 12/11/2026: permissões do grupo para a paleta de comandos (mesma fonte da
@@ -480,36 +487,49 @@ export function Topbar() {
 
         {/* T1 (20/10): caixa "empresa" REMOVIDA — identidade segue na logo da sidebar */}
 
-        {/* Filtro de período */}
+        {/*
+          15/11/2026 — CORRIGIDO: "no topo da home só aparecem 3 meses".
+          A lista era um array FIXO no código (Ago/Set/Out-2026), sem estado
+          e sem ação no clique. Agora:
+            · 18 meses gerados a partir do mês corrente
+            · seleção compartilhada via AppContext e persistida por usuário
+            · item ativo destacado
+        */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
               className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5E7EB] bg-white hover:bg-gray-50 text-[13px] font-semibold text-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/20"
+              title="Período de referência do portal"
             >
               <Calendar className="h-3.5 w-3.5 text-gray-500" />
-              <span>Out/2026</span>
+              <span>{rotuloPeriodo(periodo)}</span>
               <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="start"
-            className="w-40 p-1.5 bg-white rounded-xl shadow-lg border border-gray-200"
+            className="w-40 p-1.5 bg-white rounded-xl shadow-lg border border-gray-200 max-h-[320px] overflow-y-auto"
           >
             <DropdownMenuLabel className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
               Período
             </DropdownMenuLabel>
-            {['Ago/2026', 'Set/2026', 'Out/2026'].map((p) => (
-              <DropdownMenuItem
-                key={p}
-                className={cn(
-                  'px-2.5 py-2 rounded-lg cursor-pointer text-[13px] font-medium',
-                  p === 'Out/2026' ? 'bg-emerald-50 text-[#1B5E20]' : 'text-gray-700',
-                )}
-              >
-                {p}
-              </DropdownMenuItem>
-            ))}
+            {periodosDisponiveis.map((p) => {
+              const rotulo = rotuloPeriodo(p)
+              const ativo = p.mes === periodo.mes && p.ano === periodo.ano
+              return (
+                <DropdownMenuItem
+                  key={rotulo}
+                  onClick={() => setPeriodo(p)}
+                  className={cn(
+                    'px-2.5 py-2 rounded-lg cursor-pointer text-[13px] font-medium',
+                    ativo ? 'bg-emerald-50 text-[#1B5E20] font-bold' : 'text-gray-700',
+                  )}
+                >
+                  {rotulo}
+                </DropdownMenuItem>
+              )
+            })}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
