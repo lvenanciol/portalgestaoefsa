@@ -33,7 +33,7 @@ const PT: Dict = {
   desempenho: 'Desempenho por Unidade',
   indicadores: 'Indicadores',
   documentos: 'Documentos',
-  tarefas: 'Tarefas & Agenda',
+  tarefas: 'Tarefas',
   projetos: 'Projetos',
   atas: 'Atas & Reuniões',
   emails: 'E-mails',

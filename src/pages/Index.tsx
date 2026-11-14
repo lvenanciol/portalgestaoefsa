@@ -150,7 +150,7 @@ export default function Index() {
         als.push({
           id: 'alt-tar',
           title: `${atrasadas.length} tarefa(s) atrasada(s)`,
-          description: 'Módulo Tarefas & Agenda',
+          description: 'Módulo Tarefas',
           detail: 'Ação imediata',
           severity: 'critical',
         })
