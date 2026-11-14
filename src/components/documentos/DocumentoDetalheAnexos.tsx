@@ -151,7 +151,9 @@ export function DocumentoDetalheAnexos({
           }
           if (partes.length) detalhe = partes.join(' | ')
         }
-      } catch (_) {}
+      } catch (_) {
+        // sem detalhes estruturados: mantém a mensagem original
+      }
 
       let dica = ''
       const baixo = String(detalhe).toLowerCase()
