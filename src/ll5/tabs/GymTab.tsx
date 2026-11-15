@@ -127,11 +127,18 @@ export default function GymTab({ aba }: { aba: any }) {
       carga_proxy: a.carga_proxy,
       titulo: a.titulo,
     }))
-    const todas = [...manuais, ...importados].sort(
+    return [...manuais, ...importados].sort(
       (x, y) => new Date(y.data).getTime() - new Date(x.data).getTime(),
     )
+  }, [sessoes, importadas])
 
-    // GYM 2 — filtro pela semana clicada no gráfico
+  /**
+   * GYM 2 — quando há semana selecionada no gráfico, a TABELA filtra.
+   * Os CARDS (kpis) usam `todasSessoes`, que é a lista completa.
+   */
+  const sessoesFiltradas = useMemo(() => {
+    const todas = todasSessoes
+
     if (!semanaFiltro) return todas
     const [dia, mes] = semanaFiltro.split('/').map((n) => Number(n))
     const ano = new Date().getFullYear()
@@ -148,6 +155,9 @@ export default function GymTab({ aba }: { aba: any }) {
   const kpis = useMemo(() => {
     const corte = new Date()
     corte.setDate(corte.getDate() - 30)
+    // GYM 1a (15/11/2026) — os cards calculavam sobre `todasSessoes`, que
+    // agora pode estar FILTRADA pela semana clicada no gráfico. Card tem de
+    // ser o retrato do período completo (30d), não do filtro da tabela.
     const janela = todasSessoes.filter((s) => new Date(s.data) >= corte)
 
     // Volume e RPE só consideram sessões COM detalhe de exercício.
@@ -375,7 +385,7 @@ export default function GymTab({ aba }: { aba: any }) {
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
-              {todasSessoes.map((s) => {
+              {sessoesFiltradas.map((s) => {
                 const exs = exercicios.filter((e) => e.sessao_id === s.id)
                 const expandida = aberta === s.id
                 return (

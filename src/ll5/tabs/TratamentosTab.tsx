@@ -180,6 +180,10 @@ export default function TratamentosTab({ aba }: { aba: any }) {
   // sessões editáveis antes de salvar (b4 rodapé)
   const [sessoesManuais, setSessoesManuais] = useState<string[] | null>(null)
 
+  // b) sessão aberta na edição — o status exibido no diálogo é o DELA,
+  // o mesmo que a lista mostra na linha.
+  const [sessaoEmEdicao, setSessaoEmEdicao] = useState<string | null>(null)
+
   const carregar = async () => {
     setCarregando(true)
     try {
@@ -415,6 +419,10 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     // precisa do TRATAMENTO: resolve pelo id.
     const t = tratamentos.find((x) => x.id === linha.id) || linha
     setEditando(t)
+    // b) — guarda a SESSÃO que está sendo editada, para o status exibido ser
+    // o MESMO da linha clicada (antes a lista mostrava o status da sessão e o
+    // diálogo mostrava o status do tratamento).
+    setSessaoEmEdicao(linha._sessao || null)
     const sessoes: string[] = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
     setSessoesManuais(sessoes.length ? [...sessoes] : null)
     const f = FREQUENCIAS.find((x) => x.label === t.frequencia)
@@ -1520,15 +1528,17 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                     />
                   </div>
                 </div>
-
                 {/* a) fonte e tamanho iguais ao campo "Profissional" (h-9 text-[12px]) */}
+                {/* b) status da SESSÃO em edição, igual ao da linha na lista */}
                 <div className="space-y-1">
-                  <Label className="text-[11px] font-semibold text-gray-600">Status</Label>
+                  <Label className="text-[10.5px] font-semibold text-gray-600">
+                    Status{sessaoEmEdicao ? ' da sessão ' + dataBR(sessaoEmEdicao) : ''}
+                  </Label>
                   <Select
                     value={form.status}
                     onValueChange={(v) => setForm({ ...form, status: v })}
                   >
-                    <SelectTrigger className="h-9 text-[12px]">
+                    <SelectTrigger className="h-9 !text-[12px] [&>span]:!text-[12px] [&>span]:!font-normal">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white z-[130]">
@@ -1539,7 +1549,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
+                </div>{' '}
                 <div className="space-y-1">
                   <Label className="text-[10.5px] font-semibold text-gray-600">Observações</Label>
                   <Input

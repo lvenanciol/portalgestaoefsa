@@ -225,13 +225,34 @@ export default function RunningTab({ aba }: { aba: any }) {
     }
   })()
 
+  // a) (15/11/2026) — barra de progresso visível SÓ durante a sincronização
+  const [sincronizando, setSincronizando] = useState(false)
+
   const sincronizar = async (nome: string, adapter: any) => {
-    const r = await adapter.sync()
-    toast({
-      title: r.ok ? 'Sincronização concluída' : 'Sincronização indisponível',
-      description: r.mensagem,
-      variant: r.ok ? 'default' : 'destructive',
-    })
+    if (sincronizando) return
+    setSincronizando(true)
+    try {
+      const r = await adapter.sync()
+      toast({
+        title: r.ok ? 'Sincronização concluída' : 'Sincronização indisponível',
+        description: r.mensagem,
+        variant: r.ok ? 'default' : 'destructive',
+      })
+      // recarrega a lista depois de sincronizar
+      if (r.ok) {
+        try {
+          const l = await listar('ll5_activity', ator, {
+            ownerEscolhido: ownerAtual,
+            sort: '-data_hora_inicio',
+          })
+          setAtividades(l)
+        } catch (_e) {
+          // a lista se atualiza no próximo acesso
+        }
+      }
+    } finally {
+      setSincronizando(false)
+    }
   }
 
   const enviarTreino = async () => {
@@ -416,6 +437,60 @@ export default function RunningTab({ aba }: { aba: any }) {
           server-side (requer app iOS). Nenhum dispositivo está conectado.
         </p>
       </Card>
+
+      {/* a) barra de progresso — visível SÓ durante a sincronização */}
+      {sincronizando && (
+        <Card className="p-3 rounded-xl border-sky-200 bg-sky-50/60 shadow-sm">
+          <div className="flex items-center gap-2 mb-1.5">
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-[#1b5e20]" />
+            <span className="text-[12px] font-semibold text-gray-800">
+              Sincronizando com o Garmin…
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-white overflow-hidden">
+            <div className="h-full w-1/3 bg-[#1b5e20] animate-pulse rounded-full" />
+          </div>
+          <p className="text-[10.5px] text-gray-500 mt-1">
+            Buscando atividades na Personal API e atualizando o banco.
+          </p>
+        </Card>
+      )}
+
+      {/* d/e — caixas acima dos cards, sob clique */}
+      {treinosAberto && (
+        <Card className="rounded-xl border-gray-200 shadow-sm p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <TrendingUp className="h-4 w-4 text-[#1b5e20]" />
+            <h3 className="text-[13px] font-bold text-gray-900">Sugestão de treino da semana</h3>
+          </div>
+          <p className="text-[12px] text-gray-600 leading-relaxed">
+            Baseado nas últimas {kpis.n} atividades, a carga está estável. Sugestão: 1 rodagem leve
+            em Z2 (8 km) + 1 treino de tiros (6×800 m) + 1 longão progressivo de 14 km.
+          </p>
+          <div className="mt-3 flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={enviarTreino}
+              className="h-8 text-[11.5px]"
+            >
+              <Upload className="h-3.5 w-3.5 mr-1.5" /> Enviar para o Garmin
+            </Button>
+            <span className="text-[10px] text-amber-700 flex items-center gap-1">
+              <AlertTriangle className="h-3 w-3" /> Requer Garmin configurado
+            </span>
+          </div>
+        </Card>
+      )}
+
+      {parecerAberto && (
+        <ParecerIaCard
+          scope="running"
+          titulo="Parecer IA — Running"
+          resumo="Analise a progressão de volume e pace, sinalize risco de overtraining e sugira ajustes de carga semanal."
+          dados={{ kpis, atividades: todasCorridas.length }}
+        />
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -931,50 +1006,6 @@ export default function RunningTab({ aba }: { aba: any }) {
           />
         </Card>
       )}
-
-      <div
-        className={cn(
-          'grid gap-3',
-          treinosAberto && parecerAberto ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1',
-        )}
-      >
-        {/* d) sugestão — só quando o botão "Treinos" está ativo */}
-        {treinosAberto && (
-          <Card className="rounded-xl border-gray-200 shadow-sm p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <TrendingUp className="h-4 w-4 text-[#1b5e20]" />
-              <h3 className="text-[13px] font-bold text-gray-900">Sugestão de treino da semana</h3>
-            </div>
-            <p className="text-[12px] text-gray-600 leading-relaxed">
-              Baseado nas últimas {kpis.n} atividades, a carga está estável. Sugestão: 1 rodagem
-              leve em Z2 (8 km) + 1 treino de tiros (6×800 m) + 1 longão progressivo de 14 km.
-            </p>
-            <div className="mt-3 flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={enviarTreino}
-                className="h-8 text-[11.5px]"
-              >
-                <Upload className="h-3.5 w-3.5 mr-1.5" /> Enviar para o Garmin
-              </Button>
-              <span className="text-[10px] text-amber-700 flex items-center gap-1">
-                <AlertTriangle className="h-3 w-3" /> Requer Garmin configurado
-              </span>
-            </div>
-          </Card>
-        )}
-
-        {/* e) parecer IA — só quando o botão "Parecer" está ativo */}
-        {parecerAberto && (
-          <ParecerIaCard
-            scope="running"
-            titulo="Parecer IA — Running"
-            resumo="Analise a progressão de volume e pace, sinalize risco de overtraining e sugira ajustes de carga semanal."
-            dados={{ kpis, atividades: todasCorridas.length }}
-          />
-        )}
-      </div>
 
       <ImportarCsvDialog
         open={importarCsvOpen}
