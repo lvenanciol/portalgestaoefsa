@@ -278,8 +278,35 @@ routerAdd(
     let token = ''
 
     // 1) corpo CRU primeiro (caso real)
-    const cru = String(corpoCru || '').trim()
-    if (/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\./.test(cru)) {
+    //
+    // 15/11/2026 — BUG DO TRUNCAMENTO: corpoCru era cortado em 500 chars, mas
+    // o JWT tem ~900. Sem o SEGUNDO ponto dentro dos 500, o regex de validação
+    // falhava e a tela dizia "não reconheci o formato" mesmo com 200 OK.
+    // Aqui reconstruímos o corpo INTEIRO (sem corte) só para extrair o token.
+    let corpoInteiro = ''
+    try {
+      const b2 = res.body
+      if (typeof b2 === 'string') {
+        corpoInteiro = b2
+      } else if (b2 && b2.length !== undefined) {
+        let s2 = ''
+        for (let i = 0; i < b2.length; i++) {
+          const c = Number(b2[i])
+          if (c > 0) s2 += String.fromCharCode(c)
+        }
+        corpoInteiro = s2
+      } else {
+        corpoInteiro = String(b2 || '')
+      }
+    } catch (_) {
+      corpoInteiro = corpoCru
+    }
+
+    const cru = String(corpoInteiro || corpoCru || '').trim()
+
+    // JWT válido: três partes separadas por ponto (header.payload.signature)
+    const partesJwt = cru.split('.')
+    if (partesJwt.length === 3 && cru.length > 100) {
       token = cru
     }
 

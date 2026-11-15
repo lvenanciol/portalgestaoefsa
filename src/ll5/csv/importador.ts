@@ -31,7 +31,17 @@ import {
 // CORREÇÃO: usar `pb.createBatch()`, que envia tudo em UMA requisição HTTP
 // (limite de 100 operações por batch). Lote de 100 cabe exatamente.
 const LOTE = 100
-const LIMITE_FALHAS_PCT = 5
+// 15/11/2026 — LIMITE REVISTO (causa do "só 99 atividades").
+//
+// A regra de abortar com >5% de erro matava o job na PRIMEIRA leva: com o bug
+// de enum, 99 de 100 falhavam (99%) e o job parava em 100 de 1.189 linhas —
+// exatamente o que o dono viu ("99 atividades").
+//
+// Agora:
+//   · erros são ISOLADOS (bloco de 25 → um a um), não derrubam o lote;
+//   · o job SÓ aborta em falha realmente sistêmica (>50%);
+//   · entre 5% e 50%, conclui como 'parcial' e reporta os erros.
+const LIMITE_FALHAS_PCT = 50
 /** Espera entre lotes para não encostar no rate limit. */
 const PAUSA_MS = 150
 
@@ -482,8 +492,15 @@ export async function processarLoteCsv(
   const pctFalha = processados > 0 ? (totalErros / processados) * 100 : 0
 
   // validação bloqueante 2: >5% de erro aborta
+  // falha sistêmica (>50%) aborta; do contrário segue e conclui
   const status =
-    pctFalha > LIMITE_FALHAS_PCT ? 'falhou' : fim >= fila.length ? 'concluido' : 'processando'
+    pctFalha > LIMITE_FALHAS_PCT
+      ? 'falhou'
+      : fim >= fila.length
+        ? totalErros > 0
+          ? 'parcial'
+          : 'concluido'
+        : 'processando'
 
   const atualizado = await pb.collection('ll5_fit_jobs').update(jobId, {
     status,
@@ -500,11 +517,14 @@ export async function processarLoteCsv(
     finalizado_em: status === 'concluido' || status === 'falhou' ? new Date().toISOString() : null,
   })
 
-  if (status === 'concluido' || status === 'falhou') {
+  if (status === 'concluido' || status === 'parcial' || status === 'falhou') {
     await finalizar(jobId, { ...job, ...atualizado }, status)
   }
 
-  return { concluido: status === 'concluido' || status === 'falhou', job: atualizado }
+  return {
+    concluido: status === 'concluido' || status === 'parcial' || status === 'falhou',
+    job: atualizado,
+  }
 }
 
 /** Auditoria + limpeza da fila ao terminar. */

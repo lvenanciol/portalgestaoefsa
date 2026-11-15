@@ -146,7 +146,8 @@ export default function ImportarCsvDialog({
   }
 
   const pct = job?.total_arquivos ? (job.processados / job.total_arquivos) * 100 : 0
-  const concluido = job?.status === 'concluido' || job?.status === 'falhou'
+  const concluido =
+    job?.status === 'concluido' || job?.status === 'parcial' || job?.status === 'falhou'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

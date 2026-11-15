@@ -300,6 +300,8 @@ export default function Ll5SaudePage() {
 
         {isAdmin && (
           <div className="flex items-center gap-1.5 shrink-0 pb-1">
+            {/* a) (15/11/2026): o botão "+ Aba" foi REMOVIDO — criar aba já
+                funciona dentro de "Gerenciar abas" (botão "Nova aba"). */}
             <Button
               variant="outline"
               size="sm"
@@ -307,14 +309,6 @@ export default function Ll5SaudePage() {
               className="h-8 text-[12px]"
             >
               <Settings className="h-3.5 w-3.5 mr-1.5" /> Gerenciar abas
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setGerenciarOpen(true)}
-              className="h-8 text-[12px]"
-            >
-              <Plus className="h-3.5 w-3.5 mr-1" /> Aba
             </Button>
           </div>
         )}

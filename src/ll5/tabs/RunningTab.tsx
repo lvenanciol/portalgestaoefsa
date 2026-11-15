@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Upload,
+  ChevronDown,
+  FileSpreadsheet,
   Plus,
   Footprints,
   Timer,
@@ -17,6 +20,12 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -219,38 +228,7 @@ export default function RunningTab({ aba }: { aba: any }) {
   return (
     <div className="space-y-3">
       {/* cabeçalho */}
-      <div className="flex items-center justify-end">
-        <Button
-          size="sm"
-          onClick={() =>
-            toast({
-              title: 'Registro manual',
-              description: 'Em breve: formulário de nova corrida.',
-            })
-          }
-          className="h-9 bg-[#1b5e20] hover:bg-[#0F3D13] text-white text-xs"
-        >
-          <Plus className="h-3.5 w-3.5 mr-1.5" /> Nova corrida
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setImportarCsvOpen(true)}
-          className="h-9 text-xs"
-        >
-          <FileArchive className="h-3.5 w-3.5 mr-1.5" /> Importar CSV do Garmin
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => setImportarOpen(true)}
-          className="h-9 text-xs"
-        >
-          <FileArchive className="h-3.5 w-3.5 mr-1.5" /> Importar arquivos .FIT
-        </Button>
-      </div>
-
-      {/* barra de integração — estado REAL */}
+      {/* barra de integração — estado REAL (o botão "Importar" vive aqui) */}
       <Card className="p-3 rounded-xl border-gray-200 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white">
@@ -276,6 +254,38 @@ export default function RunningTab({ aba }: { aba: any }) {
           </div>
 
           <div className="ml-auto flex items-center gap-1.5">
+            {/* c) (15/11/2026): o botão "Importar" fica à ESQUERDA de "Baixar treinos" */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 text-[11.5px]">
+                  <Upload className="h-3.5 w-3.5 mr-1.5" /> Importar
+                  <ChevronDown className="h-3 w-3 ml-1 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-60 bg-white border-gray-200 z-[120]">
+                <DropdownMenuItem
+                  onClick={() => setImportarCsvOpen(true)}
+                  className="cursor-pointer text-[12px] gap-2"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-[#1b5e20] shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-800">CSV do Garmin</p>
+                    <p className="text-[10.5px] text-gray-500">Export de atividades .csv</p>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setImportarOpen(true)}
+                  className="cursor-pointer text-[12px] gap-2"
+                >
+                  <FileArchive className="h-3.5 w-3.5 text-[#1b5e20] shrink-0" />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-800">Arquivos .FIT</p>
+                    <p className="text-[10.5px] text-gray-500">Pacote ZIP ou .FIT avulso</p>
+                  </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button
               variant="outline"
               size="sm"
@@ -356,9 +366,11 @@ export default function RunningTab({ aba }: { aba: any }) {
       {/* b2 (15/11/2026) — BARRA HORIZONTAL DE ZONAS acima da tabela.
           Era um card lateral que ocupava 1/3 da largura sem necessidade.
           Como barra horizontal, funciona como legenda/progressão da tabela. */}
-      <Card className="rounded-xl border-gray-200 shadow-sm px-4 py-3">
+      {/* d) (15/11/2026): o DONUT foi REMOVIDO. Fica só a barra empilhada com
+          a legenda das zonas — é o que serve de progressão/legenda da tabela. */}
+      <Card className="rounded-xl border-gray-200 shadow-sm px-4 py-2.5">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <h3 className="text-[13px] font-bold text-gray-900 shrink-0">Estatísticas de treino</h3>
+          <h3 className="text-[13px] font-bold text-gray-900 shrink-0">Zonas de FC</h3>
           <DonutZonas corridas={todasCorridas} horizontal />
         </div>
       </Card>
@@ -618,30 +630,8 @@ function DonutZonas({ corridas, horizontal = false }: { corridas: any[]; horizon
   // modo horizontal: donut pequeno + zonas em linha, ocupando a largura toda
   if (horizontal) {
     return (
-      <div className="flex-1 flex items-center gap-4 min-w-0">
-        <svg viewBox="0 0 100 100" className="w-[52px] h-[52px] shrink-0 -rotate-90">
-          {ZONAS.map((k) => {
-            const v = totais[k.k] || 0
-            if (!v) return null
-            const dash = (v / soma) * circ
-            const el = (
-              <circle
-                key={k.k}
-                cx="50"
-                cy="50"
-                r={raio}
-                fill="none"
-                stroke={k.c}
-                strokeWidth="16"
-                strokeDasharray={`${dash} ${circ - dash}`}
-                strokeDashoffset={-acumulado}
-              />
-            )
-            acumulado += dash
-            return el
-          })}
-        </svg>
-        {/* barra empilhada + legenda em linha */}
+      <div className="flex-1 min-w-0">
+        {/* d) sem donut: apenas barra empilhada + legenda */}
         <div className="flex-1 min-w-0 space-y-1.5">
           <div className="flex h-2.5 w-full rounded-full overflow-hidden">
             {ZONAS.map((k) => {
