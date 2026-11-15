@@ -68,10 +68,10 @@ migrate(
 
     // ---------- 3) settings da plataforma (fallback do hook) ----------
     try {
-      const s = $app.settings()
+      const s = app.settings()
       s.meta.senderAddress = ENDERECO
       s.meta.senderName = NOME
-      $app.save(s)
+      app.save(s)
       console.log('[remetente2] settings da plataforma atualizados')
     } catch (err) {
       console.log('[remetente2] settings: ' + String(err).slice(0, 160))

@@ -36,13 +36,13 @@ migrate(
     console.log('[smtp2] usuario=' + (usuario || 'AUSENTE'))
     console.log('[smtp2] senha=' + (senha ? 'definida' : 'AUSENTE'))
 
-    const s = $app.settings()
+    const s = app.settings()
 
     // remetente SEMPRE (mesmo sem SMTP próprio, para o fallback)
     try {
       s.meta.senderAddress = ENDERECO
       s.meta.senderName = NOME
-      $app.save(s)
+      app.save(s)
       console.log('[smtp2] remetente gravado: ' + ENDERECO)
     } catch (err) {
       console.log('[smtp2] remetente: ' + String(err).slice(0, 160))
@@ -55,7 +55,7 @@ migrate(
 
     // aplica o servidor próprio
     try {
-      const s2 = $app.settings()
+      const s2 = app.settings()
       s2.smtp.enabled = true
       s2.smtp.host = host
       s2.smtp.port = Number(porta)
@@ -64,7 +64,7 @@ migrate(
       s2.smtp.tls = true
       s2.smtp.authMethod = 'PLAIN'
       s2.smtp.localName = 'extrafruti.com.br'
-      $app.save(s2)
+      app.save(s2)
       console.log('[smtp2] SMTP próprio ATIVADO: ' + host + ':' + porta)
     } catch (err) {
       console.log('[smtp2] ativar SMTP: ' + String(err).slice(0, 220))
@@ -72,7 +72,7 @@ migrate(
 
     // conferência (sem expor a senha)
     try {
-      const c = $app.settings()
+      const c = app.settings()
       console.log(
         '[smtp2] CONFERÊNCIA enabled=' +
           String(c.smtp.enabled) +
