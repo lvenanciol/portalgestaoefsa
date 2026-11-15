@@ -281,10 +281,32 @@ export default function TratamentosTab({ aba }: { aba: any }) {
 
   const kpis = useMemo(() => {
     const ativos = tratamentos.filter((t) => t.status === 'em_andamento').length
-    const proxima = tratamentos
-      .map((t) => t.proxima_sessao)
-      .filter(Boolean)
-      .sort()[0]
+
+    // b) (15/11/2026) — BUG: `.sort()[0]` devolve a data MAIS ANTIGA, então o
+    // card "Próxima sessão" mostrava sessão do PASSADO. O correto é a menor
+    // data que ainda não passou E que não esteja concluída.
+    const hoje = new Date()
+    hoje.setHours(0, 0, 0, 0)
+
+    const futuras: string[] = []
+    for (const t of tratamentos) {
+      const sessoes: string[] = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
+      const concluidas: string[] = Array.isArray(t.sessoes_concluidas)
+        ? t.sessoes_concluidas.map((x: any) => String(x).slice(0, 10))
+        : []
+      for (const s of sessoes) {
+        const dia = String(s).slice(0, 10)
+        if (!dia) continue
+        if (concluidas.indexOf(dia) >= 0) continue
+        const d = new Date(dia + 'T12:00:00')
+        if (isNaN(d.getTime())) continue
+        if (d < hoje) continue
+        futuras.push(dia)
+      }
+    }
+    futuras.sort()
+    const proxima = futuras[0] || null
+
     return {
       ativos,
       anexos: anexos.length,
