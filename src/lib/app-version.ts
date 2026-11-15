@@ -20,5 +20,10 @@
 
 // 14/11/2026 — versão sincronizada manualmente a cada publicação.
 // A sidebar mostrava 0.0.409 enquanto o app já estava em 0.0.436.
-export const APP_VERSION = '0.0.441'
-export const APP_BUILD = '34feebc'
+// 15/11/2026 — SINCRONIZADO com o build atual.
+// O número estava congelado em 0.0.441 há 46 versões: a cada build a sidebar
+// continuava mostrando 0.0.441, o que fazia o dono concluir (corretamente)
+// que o navegador estava servindo bundle antigo — quando na verdade o código
+// novo estava no ar. Este era o único ponto que não acompanhava o pipe.
+export const APP_VERSION = '0.0.487'
+export const APP_BUILD = '6158b53'
