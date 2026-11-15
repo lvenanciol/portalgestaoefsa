@@ -61,9 +61,13 @@ export default function GymTab({ aba }: { aba: any }) {
         // 15/11/2026 — sessões de FORÇA vindas do CSV/.FIT, gravadas em
         // ll5_activity. Antes a aba só lia ll5_gym_sessions e as 172 sessões
         // importadas ficavam invisíveis.
+        // SCHEMA REAL: o campo `tipo` só aceita rua|esteira|trail|outro.
+        // A classificação "musculação" vive em `origem_aba = "gym"`, que é
+        // select próprio e aceita esse valor. Filtrar por tipo='forca' nunca
+        // retornaria nada.
         listar('ll5_activity', ator, {
           ownerEscolhido: ownerAtual,
-          filtroExtra: 'tipo = "forca"',
+          filtroExtra: 'origem_aba = "gym"',
           sort: '-data_hora_inicio',
         }),
       ])

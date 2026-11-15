@@ -324,22 +324,26 @@ export async function processarLoteCsv(
     // Aqui garantimos que só vão valores ACEITOS pelo schema atual, com o
     // valor original preservado em `origem_aba`/título para não perder dado.
     // ----------------------------------------------------------------
-    const TIPOS_OK = [
-      'rua',
-      'esteira',
-      'trail',
-      'indoor',
-      'forca',
-      'caminhada',
-      'natacao',
-      'ciclismo',
-      'outro',
-    ]
-    const QUAL_OK = ['completo', 'resumo', 'parcial', 'limitado', 'incompleto']
-    const tipoSeguro = TIPOS_OK.includes(String(a.tipo || '')) ? a.tipo : 'outro'
+    const TIPOS_OK = ['rua', 'esteira', 'trail', 'outro']
+    const QUAL_OK = ['completo', 'resumo', 'parcial']
+    // SCHEMA REAL (confirmado em produção): tipo aceita apenas
+    // ['rua','esteira','trail','outro'] e qualidade_dados apenas
+    // ['completo','resumo','parcial']. As migrações 024/025 tentaram ampliar
+    // e o PocketBase NÃO persistiu a mudança do enum.
+    // Solução: gravar valor ACEITO e preservar a classificação real em
+    // `origem_aba` (aceita running|gym) + `tem_detalhe_exercicio` (booleano).
+    const mapaTipo: Record<string, string> = {
+      forca: 'outro',
+      indoor: 'esteira',
+      caminhada: 'outro',
+      natacao: 'outro',
+      ciclismo: 'outro',
+    }
+    const tipoBruto = String(a.tipo || '')
+    const tipoSeguro = TIPOS_OK.includes(tipoBruto) ? tipoBruto : mapaTipo[tipoBruto] || 'outro'
     const qualSegura = QUAL_OK.includes(String(a.qualidade_dados || ''))
       ? a.qualidade_dados
-      : 'resumo'
+      : 'parcial'
 
     const base: any = {
       owner_id: ownerId,
