@@ -264,44 +264,94 @@ routerAdd(
       })
     }
 
-    let dados = {}
-    try {
-      dados = res.json || {}
-    } catch (_) {
-      dados = {}
+    // ------------------------------------------------------------------
+    // O TOKEN É O PRÓPRIO CORPO (JWT cru), NÃO UM JSON com access_token.
+    //
+    // PROVA (log de produção):
+    //   corpo: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImRpLW9hdXRo...
+    //   header decodificado: {"alg":"RS256","typ":"JWT",
+    //                         "kid":"di-oauth-signer-personal-api-prod-2026-q3"}
+    //
+    // O endpoint devolve o JWT como texto. Meu código procurava JSON
+    // (`dados.access_token`) e por isso dizia "200 sem token reconhecível".
+    // ------------------------------------------------------------------
+    let token = ''
+
+    // 1) corpo CRU primeiro (caso real)
+    const cru = String(corpoCru || '').trim()
+    if (/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\./.test(cru)) {
+      token = cru
     }
 
-    let token = ''
-    const cand = [
-      dados.access_token,
-      dados.accessToken,
-      dados.token,
-      dados.data && dados.data.access_token,
-      dados.data && dados.data.accessToken,
-      dados.data && dados.data.token,
-    ]
-    for (const c of cand) {
-      if (c && typeof c === 'string' && c.length > 10) {
-        token = c
-        break
-      }
+    // 2) fallback: corpo é JSON com o token dentro
+    if (!token && cru.indexOf('{') === 0) {
+      try {
+        const j = JSON.parse(cru)
+        const cand = [
+          j.access_token,
+          j.accessToken,
+          j.token,
+          j.data && j.data.access_token,
+          j.data && j.data.token,
+        ]
+        for (let i = 0; i < cand.length; i++) {
+          const c = cand[i]
+          if (c && typeof c === 'string' && c.length > 10) {
+            token = c
+            break
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 3) fallback: res.json já parseado pelo PocketBase
+    if (!token) {
+      try {
+        const d = res.json || {}
+        const cand2 = [
+          d.access_token,
+          d.accessToken,
+          d.token,
+          d.data && d.data.access_token,
+          d.data && d.data.token,
+        ]
+        for (let i = 0; i < cand2.length; i++) {
+          const c = cand2[i]
+          if (c && typeof c === 'string' && c.length > 10) {
+            token = c
+            break
+          }
+        }
+      } catch (_) {}
     }
 
     if (!token) {
       return e.json(200, {
         success: false,
-        erro: 'Respondeu 200 sem token reconhecível. Veja o corpo.',
-        corpo: corpoCru,
+        erro:
+          'Respondeu 200 mas não reconheci o formato. Primeiros 120 caracteres: ' +
+          cru.slice(0, 120),
+        corpo: corpoCru.slice(0, 300),
       })
     }
 
-    let validade = ''
-    const exp =
-      dados.expires_in ||
-      dados.expiresIn ||
-      (dados.data && (dados.data.expires_in || dados.data.expiresIn)) ||
-      null
-    if (exp) validade = new Date(Date.now() + Number(exp) * 1000).toISOString()
+    // expiração: o JWT tem `exp` no payload
+    let validadeJwt = ''
+    try {
+      const partes = token.split('.')
+      if (partes.length >= 2) {
+        let s = partes[1].replace(/-/g, '+').replace(/_/g, '/')
+        while (s.length % 4 !== 0) s += '='
+        const payload = JSON.parse(atob(s))
+        if (payload.exp) validadeJwt = new Date(Number(payload.exp) * 1000).toISOString()
+      }
+    } catch (_) {
+      validadeJwt = ''
+    }
+
+    // validade: do JWT (exp) ou 1 h de folga
+    let validade = validadeJwt
+    if (!validade) validade = new Date(Date.now() + 3600 * 1000).toISOString()
 
     try {
       if (rec) {

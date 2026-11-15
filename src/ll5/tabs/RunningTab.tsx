@@ -352,11 +352,24 @@ export default function RunningTab({ aba }: { aba: any }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+      {/* b2 (15/11/2026) — BARRA HORIZONTAL DE ZONAS acima da tabela.
+          Era um card lateral que ocupava 1/3 da largura sem necessidade.
+          Como barra horizontal, funciona como legenda/progressão da tabela. */}
+      <Card className="rounded-xl border-gray-200 shadow-sm px-4 py-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <h3 className="text-[13px] font-bold text-gray-900 shrink-0">Estatísticas de treino</h3>
+          <DonutZonas corridas={todasCorridas} horizontal />
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-1 gap-3">
         {/* tabela */}
-        <Card className="lg:col-span-2 rounded-xl border-gray-200 shadow-sm overflow-hidden">
+        <Card className="rounded-xl border-gray-200 shadow-sm overflow-hidden">
           <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
             <h3 className="text-[13px] font-bold text-gray-900">Atividades recentes</h3>
+            <Badge variant="outline" className="text-[9px] border-gray-200 text-gray-500">
+              últimas 5
+            </Badge>
           </div>
 
           {todasCorridas.length === 0 ? (
@@ -382,7 +395,7 @@ export default function RunningTab({ aba }: { aba: any }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {todasCorridas.slice(0, 25).map((c) => {
+                  {todasCorridas.slice(0, 5).map((c) => {
                     const z = c.zonas_fc || {}
                     const total = ZONAS.reduce((a, k) => a + Number(z[k.k] || 0), 0) || 1
                     return (
@@ -440,12 +453,6 @@ export default function RunningTab({ aba }: { aba: any }) {
               </table>
             </div>
           )}
-        </Card>
-
-        {/* estatísticas */}
-        <Card className="rounded-xl border-gray-200 shadow-sm p-4">
-          <h3 className="text-[13px] font-bold text-gray-900 mb-3">Estatísticas de treino</h3>
-          <DonutZonas corridas={todasCorridas} />
         </Card>
       </div>
 
@@ -585,7 +592,7 @@ export default function RunningTab({ aba }: { aba: any }) {
   )
 }
 
-function DonutZonas({ corridas }: { corridas: any[] }) {
+function DonutZonas({ corridas, horizontal = false }: { corridas: any[]; horizontal?: boolean }) {
   const totais: Record<string, number> = {}
   for (const c of corridas) {
     const z = c.zonas_fc || {}
@@ -604,6 +611,63 @@ function DonutZonas({ corridas }: { corridas: any[] }) {
   let acumulado = 0
   const raio = 42
   const circ = 2 * Math.PI * raio
+
+  // modo horizontal: donut pequeno + zonas em linha, ocupando a largura toda
+  if (horizontal) {
+    return (
+      <div className="flex-1 flex items-center gap-4 min-w-0">
+        <svg viewBox="0 0 100 100" className="w-[52px] h-[52px] shrink-0 -rotate-90">
+          {ZONAS.map((k) => {
+            const v = totais[k.k] || 0
+            if (!v) return null
+            const dash = (v / soma) * circ
+            const el = (
+              <circle
+                key={k.k}
+                cx="50"
+                cy="50"
+                r={raio}
+                fill="none"
+                stroke={k.c}
+                strokeWidth="16"
+                strokeDasharray={`${dash} ${circ - dash}`}
+                strokeDashoffset={-acumulado}
+              />
+            )
+            acumulado += dash
+            return el
+          })}
+        </svg>
+        {/* barra empilhada + legenda em linha */}
+        <div className="flex-1 min-w-0 space-y-1.5">
+          <div className="flex h-2.5 w-full rounded-full overflow-hidden">
+            {ZONAS.map((k) => {
+              const v = totais[k.k] || 0
+              if (!v) return null
+              return (
+                <div
+                  key={k.k}
+                  style={{ width: (v / soma) * 100 + '%', backgroundColor: k.c }}
+                  title={`${k.l}: ${Math.round(v / 60)} min`}
+                />
+              )
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-0.5">
+            {ZONAS.map((k) => (
+              <span key={k.k} className="inline-flex items-center gap-1 text-[10.5px]">
+                <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: k.c }} />
+                <span className="text-gray-500">{k.l}</span>
+                <span className="font-semibold text-gray-800 tabular-nums">
+                  {Math.round((totais[k.k] || 0) / 60)} min
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-center gap-4">
