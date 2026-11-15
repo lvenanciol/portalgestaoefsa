@@ -46,6 +46,8 @@ interface Props {
   /** máximo de linhas (0 = todas) */
   limite?: number
   vazio?: React.ReactNode
+  /** f) clique na linha (15/11/2026) — abre o detalhe do registro */
+  onLinhaClique?: (row: any) => void
 }
 
 // 15/11/2026 — mínimo por coluna calculado do RÓTULO, não um valor fixo.
@@ -53,7 +55,14 @@ interface Props {
 // valor "50:42" cortava para "42". Agora o piso é o que o rótulo ocupa.
 const LARGURA_MIN = 78
 
-export default function TabelaInterativa({ id, colunas, dados, limite, vazio }: Props) {
+export default function TabelaInterativa({
+  id,
+  colunas,
+  dados,
+  limite,
+  vazio,
+  onLinhaClique,
+}: Props) {
   const STORAGE = 'll5_tabela_' + id
 
   // ordem das colunas + larguras, persistidas
@@ -325,11 +334,14 @@ export default function TabelaInterativa({ id, colunas, dados, limite, vazio }: 
             {ordenados.map((row, i) => (
               <tr
                 key={row.id || i}
+                onClick={() => onLinhaClique?.(row)}
                 className={cn(
                   'hover:bg-gray-50/50',
                   // b (15/11/2026) — linha com cor diferente quando a sessão
                   // está concluída: leitura imediata do andamento do tratamento.
                   row._concluida && 'bg-emerald-50/40',
+                  // f) linha clicável abre o detalhe
+                  onLinhaClique && 'cursor-pointer',
                 )}
               >
                 {visiveis.map((c) => (

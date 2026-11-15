@@ -90,6 +90,9 @@ export default function RunningTab({ aba }: { aba: any }) {
   const [apple, setApple] = useState<any>(null)
   const [importarOpen, setImportarOpen] = useState(false)
   const [importarCsvOpen, setImportarCsvOpen] = useState(false)
+  // d/e (15/11/2026): "Sugestão de treino" e "Parecer IA" só ao clicar
+  const [treinosAberto, setTreinosAberto] = useState(false)
+  const [parecerAberto, setParecerAberto] = useState(false)
   const [atividades, setAtividades] = useState<any[]>([])
 
   useEffect(() => {
@@ -296,7 +299,19 @@ export default function RunningTab({ aba }: { aba: any }) {
           </div>
 
           <div className="ml-auto flex items-center gap-1.5">
-            {/* c) (15/11/2026): o botão "Importar" fica à ESQUERDA de "Baixar treinos" */}
+            {/* d/e (15/11/2026) — "Importar" fica entre "Treinos" e "Baixar treinos",
+                conforme o pedido: Treinos à ESQUERDA de Importar, Parecer à direita. */}
+            <Button
+              variant={treinosAberto ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTreinosAberto((v) => !v)}
+              className={cn(
+                'h-8 text-[11.5px]',
+                treinosAberto && 'bg-[#1b5e20] hover:bg-[#0F3D13] text-white',
+              )}
+            >
+              <TrendingUp className="h-3.5 w-3.5 mr-1.5" /> Treinos
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 text-[11.5px]">
@@ -361,6 +376,20 @@ export default function RunningTab({ aba }: { aba: any }) {
               }
             >
               <Download className="h-3.5 w-3.5 mr-1.5" /> Baixar treinos
+            </Button>
+
+            {/* e) "Parecer" à DIREITA de "Importar" — a caixa do parecer IA
+                só aparece quando clicado. */}
+            <Button
+              variant={parecerAberto ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setParecerAberto((v) => !v)}
+              className={cn(
+                'h-8 text-[11.5px]',
+                parecerAberto && 'bg-[#1b5e20] hover:bg-[#0F3D13] text-white',
+              )}
+            >
+              <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Parecer
             </Button>
 
             <Button
@@ -461,6 +490,23 @@ export default function RunningTab({ aba }: { aba: any }) {
               id="running.recentes"
               dados={todasCorridas}
               limite={5}
+              onLinhaClique={(r) => {
+                // f) clique abre o detalhe: mostra a sessão + zonas
+                const z = zonasDaAtividade(r) || {}
+                const tot = ZONAS.reduce((a, k) => a + Number(z[k.k] || 0), 0)
+                toast({
+                  title: `${r.titulo || r.tipo} · ${dataBR(r.data)}`,
+                  description:
+                    `${Number(r.distancia_km || 0)
+                      .toFixed(2)
+                      .replace('.', ',')} km · ` +
+                    `${hms(r.duracao_s)} · ${pace(Number(r.pace_medio_s_km || 0))} · ` +
+                    `FC méd ${r.fc_media ?? '—'} bpm · ` +
+                    (tot
+                      ? `zonas: Z1 ${Math.round((z.z1 || 0) / 60)}m · Z2 ${Math.round((z.z2 || 0) / 60)}m · Z3 ${Math.round((z.z3 || 0) / 60)}m · Z4 ${Math.round((z.z4 || 0) / 60)}m · Z5 ${Math.round((z.z5 || 0) / 60)}m`
+                      : 'sem zonas'),
+                })
+              }}
               colunas={[
                 {
                   key: 'data',
@@ -886,39 +932,48 @@ export default function RunningTab({ aba }: { aba: any }) {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {/* sugestão */}
-        <Card className="rounded-xl border-gray-200 shadow-sm p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="h-4 w-4 text-[#1b5e20]" />
-            <h3 className="text-[13px] font-bold text-gray-900">Sugestão de treino da semana</h3>
-          </div>
-          <p className="text-[12px] text-gray-600 leading-relaxed">
-            Baseado nas últimas {kpis.n} atividades, a carga está estável. Sugestão: 1 rodagem leve
-            em Z2 (8 km) + 1 treino de tiros (6×800 m) + 1 longão progressivo de 14 km.
-          </p>
-          <div className="mt-3 flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={enviarTreino}
-              className="h-8 text-[11.5px]"
-            >
-              <Upload className="h-3.5 w-3.5 mr-1.5" /> Enviar para o Garmin
-            </Button>
-            <span className="text-[10px] text-amber-700 flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3" /> Requer Garmin configurado
-            </span>
-          </div>
-        </Card>
+      <div
+        className={cn(
+          'grid gap-3',
+          treinosAberto && parecerAberto ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1',
+        )}
+      >
+        {/* d) sugestão — só quando o botão "Treinos" está ativo */}
+        {treinosAberto && (
+          <Card className="rounded-xl border-gray-200 shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="h-4 w-4 text-[#1b5e20]" />
+              <h3 className="text-[13px] font-bold text-gray-900">Sugestão de treino da semana</h3>
+            </div>
+            <p className="text-[12px] text-gray-600 leading-relaxed">
+              Baseado nas últimas {kpis.n} atividades, a carga está estável. Sugestão: 1 rodagem
+              leve em Z2 (8 km) + 1 treino de tiros (6×800 m) + 1 longão progressivo de 14 km.
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={enviarTreino}
+                className="h-8 text-[11.5px]"
+              >
+                <Upload className="h-3.5 w-3.5 mr-1.5" /> Enviar para o Garmin
+              </Button>
+              <span className="text-[10px] text-amber-700 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" /> Requer Garmin configurado
+              </span>
+            </div>
+          </Card>
+        )}
 
-        {/* parecer IA */}
-        <ParecerIaCard
-          scope="running"
-          titulo="Parecer IA — Running"
-          resumo="Analise a progressão de volume e pace, sinalize risco de overtraining e sugira ajustes de carga semanal."
-          dados={{ kpis, atividades: todasCorridas.length }}
-        />
+        {/* e) parecer IA — só quando o botão "Parecer" está ativo */}
+        {parecerAberto && (
+          <ParecerIaCard
+            scope="running"
+            titulo="Parecer IA — Running"
+            resumo="Analise a progressão de volume e pace, sinalize risco de overtraining e sugira ajustes de carga semanal."
+            dados={{ kpis, atividades: todasCorridas.length }}
+          />
+        )}
       </div>
 
       <ImportarCsvDialog
