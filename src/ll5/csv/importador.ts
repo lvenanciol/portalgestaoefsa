@@ -316,11 +316,39 @@ export async function processarLoteCsv(
     }
 
     const sem = a.data_hora_inicio ? semanaIso(a.data_hora_inicio) : null
+
+    // ----------------------------------------------------------------
+    // BLINDAGEM CONTRA ENUM (15/11/2026)
+    // O PocketBase rejeita o registro INTEIRO quando um campo select recebe
+    // valor fora da lista — e o batch é atômico, então 100 linhas caíam.
+    // Aqui garantimos que só vão valores ACEITOS pelo schema atual, com o
+    // valor original preservado em `origem_aba`/título para não perder dado.
+    // ----------------------------------------------------------------
+    const TIPOS_OK = [
+      'rua',
+      'esteira',
+      'trail',
+      'indoor',
+      'forca',
+      'caminhada',
+      'natacao',
+      'ciclismo',
+      'outro',
+    ]
+    const QUAL_OK = ['completo', 'resumo', 'parcial', 'limitado', 'incompleto']
+    const tipoSeguro = TIPOS_OK.includes(String(a.tipo || '')) ? a.tipo : 'outro'
+    const qualSegura = QUAL_OK.includes(String(a.qualidade_dados || ''))
+      ? a.qualidade_dados
+      : 'resumo'
+
     const base: any = {
       owner_id: ownerId,
       created_by: createdBy,
       updated_by: createdBy,
       ...a,
+      tipo: tipoSeguro,
+      qualidade_dados: qualSegura,
+      origem_aba: a.aba === 'gym' ? 'gym' : 'running',
       device_activity_id: `csv-${a.data_hora_inicio}-${a.tipo}`.replace(/[^a-zA-Z0-9-]/g, ''),
       carga_ano_iso: sem?.ano ?? null,
       carga_semana_iso: sem?.semana ?? null,
