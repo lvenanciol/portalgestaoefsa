@@ -86,9 +86,14 @@ export default function Ll5SaudePage() {
   const carregarAbas = async () => {
     setCarregando(true)
     try {
+      // 15/11/2026 — ABAS SÃO ESTRUTURA, NÃO DADO DE DEMONSTRAÇÃO.
+      // O filtro global `demo != true` do repositório escondia as abas, porque
+      // elas nasceram do seed com demo=true. Aba é configuração da tela: deve
+      // aparecer SEMPRE, mesmo que o conteúdo esteja vazio.
       const todas = await listar('ll5_tabs', ator, {
         ownerEscolhido: ownerAtual,
         sort: 'ordem',
+        incluirDemo: true,
       })
       const ativas = todas.filter((t) => t.ativo && !t.deletado_em)
       setAbas(ativas)
@@ -311,7 +316,12 @@ function GerenciarAbasDialog({
   const carregar = async () => {
     setCarregando(true)
     try {
-      const todas = await listar('ll5_tabs', ator, { ownerEscolhido: ownerAtual, sort: 'ordem' })
+      // abas = estrutura: incluir sempre (ver nota em Ll5SaudePage)
+      const todas = await listar('ll5_tabs', ator, {
+        ownerEscolhido: ownerAtual,
+        sort: 'ordem',
+        incluirDemo: true,
+      })
       setAbas(todas)
       const c: Record<string, number> = {}
       for (const t of todas) {
