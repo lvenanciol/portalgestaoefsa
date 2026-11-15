@@ -176,6 +176,7 @@ export default function RunningTab({ aba }: { aba: any }) {
       confiabilidade_fc: a.confiabilidade_fc || 'alta',
       qualidade_dados: a.qualidade_dados || 'resumo',
       carga_proxy: a.carga_proxy,
+      origem_aba: a.origem_aba,
     }))
 
     // 15/11/2026 — REMOÇÃO DAS CORRIDAS COM 0 km.
@@ -187,9 +188,13 @@ export default function RunningTab({ aba }: { aba: any }) {
     // Critério: distância > 0 E tipo de corrida (rua/esteira/trail/indoor).
     // Sessões de força (origem_aba='gym') NÃO entram aqui — elas vivem na
     // aba GYM.
+    // a) (15/11/2026) — A ABA RUNNING NÃO EXIBE FORÇA.
+    // Sessões de força têm `origem_aba='gym'`; elas vivem SÓ na aba GYM.
+    // Filtro em duas camadas: origem_aba e tipo.
     const TIPOS_CORRIDA = ['rua', 'esteira', 'trail', 'indoor']
     return [...doRunning, ...daActivity]
       .filter((c) => !!c.data)
+      .filter((c) => c.origem !== 'activity' || c.origem_aba !== 'gym')
       .filter((c) => Number(c.distancia_km || 0) > 0)
       .filter((c) => TIPOS_CORRIDA.includes(String(c.tipo || '')))
       .sort((x, y) => new Date(y.data).getTime() - new Date(x.data).getTime())

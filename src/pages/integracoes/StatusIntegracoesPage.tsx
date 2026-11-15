@@ -371,27 +371,31 @@ export default function StatusIntegracoesPage() {
             ) : (
               <div className="space-y-2.5 text-xs">
                 <Linha
-                  label="Developer Program"
+                  label="Personal API key"
                   valor={
-                    gr.aprovado_programa ? (
-                      <span className="text-emerald-700">Aprovado</span>
+                    gr.tem_api_key ? (
+                      <span className="text-emerald-700">salva</span>
                     ) : (
-                      <span className="text-amber-700">Sem aprovação</span>
+                      <span className="text-amber-700">ausente</span>
                     )
                   }
                 />
                 <Linha
-                  label="Credenciais"
+                  label="Token de acesso"
                   valor={
-                    gr.tem_credenciais ? (
-                      <span className="text-emerald-700">OK</span>
+                    gr.tem_token ? (
+                      <span className="text-emerald-700">
+                        obtido
+                        {gr.token_validade
+                          ? ' até ' + String(gr.token_validade).slice(0, 16).replace('T', ' ')
+                          : ''}
+                      </span>
                     ) : (
-                      <span className="text-gray-400">Incompletas</span>
+                      <span className="text-gray-400">não obtido</span>
                     )
                   }
                 />
                 <Linha label="Ativa" valor={gr.ativo ? 'Sim' : 'Não'} />
-                <Linha label="Ambiente" valor={gr.ambiente || 'producao'} />
                 <Linha
                   label="Activity API"
                   valor={gr.recursos?.activity_api ? 'OK' : 'Indisponível'}

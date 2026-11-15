@@ -244,6 +244,12 @@ export async function lerJob(id: string): Promise<any> {
  *   1. busca os existentes do lote numa consulta só;
  *   2. separa em inserir / atualizar / enriquecer.
  */
+/**
+ * Cache de existentes por job — carregado UMA vez e reaproveitado em todos os
+ * lotes. Sem isso, cada lote refazia dezenas de consultas.
+ */
+const existentesPorJob: Record<string, Map<string, any>> = {}
+
 export async function processarLoteCsv(
   jobId: string,
   ownerId: string,
@@ -254,6 +260,7 @@ export async function processarLoteCsv(
   const job = await lerJob(jobId)
   const fila: any[] = filaMemoria || job.fila || []
   const inicio = Number(job.indice_retomada || 0)
+  let existentesCache = existentesPorJob[jobId] || null
 
   if (inicio >= fila.length) {
     await finalizar(jobId, job, 'concluido')
@@ -272,40 +279,48 @@ export async function processarLoteCsv(
   let distanciaLote = 0
   const log: any[] = [...(job.log || [])]
 
-  // 1) busca existentes do lote — UMA requisição por dia distinto,
-  //    com retry. Antes era um único filtro com centenas de "||" que o
-  //    PocketBase rejeitava por tamanho, e a falha era silenciosa.
-  const datas = lote
-    .map((i) => i.dados?.data_hora_inicio)
-    .filter(Boolean)
-    .map((d: string) => d.slice(0, 10))
-  const unicas = Array.from(new Set(datas))
-  const existentes: any[] = []
-  for (const dia of unicas) {
+  // 1) busca existentes do lote.
+  //
+  // 15/11/2026 — CAUSA DO "para em 99": a versão anterior fazia UMA consulta
+  // por DIA distinto do lote. Um lote de 100 linhas de 10 anos de histórico
+  // tem ~100 dias diferentes → 100 requisições por lote, com `esperar(150)`
+  // entre elas. Isso levava ~15 s por lote só na busca, e qualquer erro numa
+  // única consulta derrubava o lote inteiro.
+  //
+  // AGORA: uma ÚNICA consulta por owner, com paginação, UMA vez por job.
+  // O conjunto de existentes é reaproveitado por todos os lotes.
+  if (!existentesCache) {
+    existentesCache = new Map<string, any>()
     try {
-      const r = await comRetry(() =>
-        pb.collection('ll5_activity').getFullList({
-          filter: `data_hora_inicio ~ "${dia}"`,
-        }),
-      )
-      existentes.push(...(r as any[]))
+      let pagina = 1
+      for (;;) {
+        const r = await comRetry(() =>
+          pb.collection('ll5_activity').getList(pagina, 500, {
+            filter: `owner_id = "${ownerId}"`,
+            fields: 'id,owner_id,data_hora_inicio,tipo,distancia_m,tem_streams',
+          }),
+        )
+        const itens = (r as any).items || []
+        for (const e of itens) {
+          const chave = [
+            e.owner_id,
+            String(e.data_hora_inicio || '').slice(0, 19),
+            e.tipo || '',
+            e.distancia_m ?? '',
+          ].join('|')
+          existentesCache.set(chave, e)
+        }
+        if (itens.length < 500 || pagina >= 40) break
+        pagina++
+        await esperar(80)
+      }
+      console.log('[ll5/csv] existentes carregados: ' + existentesCache.size)
     } catch (e) {
-      // sem o índice do dia, o UPSERT por chave ainda protege contra duplicata
-      console.warn('[ll5/csv] falha ao buscar existentes de ' + dia, e)
+      console.warn('[ll5/csv] falha ao carregar existentes', e)
     }
-    await esperar(PAUSA_MS)
   }
-
-  const porChave = new Map<string, any>()
-  for (const e of existentes) {
-    const chave = [
-      e.owner_id,
-      String(e.data_hora_inicio || '').slice(0, 19),
-      e.tipo || '',
-      e.distancia_m ?? '',
-    ].join('|')
-    porChave.set(chave, e)
-  }
+  existentesPorJob[jobId] = existentesCache
+  const porChave = existentesCache
 
   const paraInserir: any[] = []
   const paraAtualizar: Array<{ id: string; dados: any }> = []
@@ -587,8 +602,12 @@ export async function processarLoteCsv(
     sinalizados: Number(job.sinalizados || 0) + sinalizados,
     distancia_total_m: Number(job.distancia_total_m || 0) + distanciaLote,
     indice_retomada: fim,
-    log: log.slice(-600),
-    finalizado_em: status === 'concluido' || status === 'falhou' ? new Date().toISOString() : null,
+    // log enxuto: centenas de linhas faziam o update do job estourar o limite
+    log: log.filter((l) => l && l.status === 'erro').slice(-40),
+    finalizado_em:
+      status === 'concluido' || status === 'parcial' || status === 'falhou'
+        ? new Date().toISOString()
+        : null,
   })
 
   if (status === 'concluido' || status === 'parcial' || status === 'falhou') {

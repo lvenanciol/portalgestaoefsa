@@ -116,50 +116,57 @@ routerAdd(
     // 15/11/2026 — monitoramento real: só é "ok" quando aprovado no Developer
     // Program, credenciais completas, integração ativa E o host responde.
     try {
-      let gcfg = {}
+      // 15/11/2026 — LÊ OS CAMPOS TEXTO, não o JSON `config`.
+      // A tela mostrava "Não configurado / Sem aprovação / Credenciais
+      // incompletas" mesmo com a API key salva e o token obtido, porque este
+      // hook ainda procurava tudo em `config` (JSON), que o JSVM não persiste.
+      let grec = null
       try {
-        gcfg =
-          $app
-            .findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
-            .get('config') || {}
+        grec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
       } catch (_) {
-        gcfg = {}
+        grec = null
       }
 
+      const gApiKey = grec ? String(grec.getString('garmin_personal_api_key') || '') : ''
+      const gToken = grec ? String(grec.getString('garmin_personal_token') || '') : ''
+      const gValidade = grec ? String(grec.getString('garmin_token_validade') || '') : ''
+      const gTeste = grec ? String(grec.getString('garmin_ultimo_teste') || '') : ''
+      const gAtivo = grec ? !!grec.getBool('garmin_ativo') : false
+
       const st = {
-        ativo: !!gcfg.ativo,
-        aprovado_programa: !!gcfg.aprovado_programa,
-        tem_credenciais: !!(gcfg.client_id && gcfg.client_secret),
-        ambiente: gcfg.ambiente || 'producao',
-        ultimo_sync: gcfg.ultimo_sync || '',
-        last_test_result: gcfg.last_test_result || null,
+        modo: 'personal',
+        ativo: gAtivo,
+        aprovado_programa: !!gApiKey,
+        tem_credenciais: !!gApiKey,
+        tem_api_key: !!gApiKey,
+        tem_token: !!gToken,
+        token_validade: gValidade,
+        ambiente: 'producao',
+        ultimo_sync: '',
+        last_test_result: gTeste ? { ok: true, detalhe: gTeste } : null,
         conexao_ok: false,
         recursos: { activity_api: false, training_api: false, health_api: false },
       }
 
-      if (!st.aprovado_programa) {
-        st.detalhe = 'Requer aprovação no Garmin Connect Developer Program'
-      } else if (!st.tem_credenciais) {
-        st.detalhe = 'Credenciais incompletas — configure client_id e client_secret'
-      } else if (!st.ativo) {
-        st.detalhe = 'Integração desativada na configuração'
+      if (!gApiKey) {
+        st.detalhe = 'Personal API key não configurada — cole a chave em Configurações'
+      } else if (!gToken) {
+        st.detalhe = 'API key salva — clique em "Obter token" para conectar'
       } else {
-        // testa o host oficial; 401 = credenciais presentes, token de usuário pendente
+        // testa o endpoint CORRETO da Personal API com o token salvo
         try {
           const res = $http.send({
-            url: 'https://apis.garmin.com/wellness-api/rest/user/id',
+            url: 'https://personal.connectapi.garmin.com/activitylist-service/activities/search/activities?start=0&limit=1',
             method: 'GET',
-            headers: {
-              Authorization: 'Bearer ' + String(gcfg.client_secret).slice(0, 8) + '...',
-            },
-            timeout: 12,
+            headers: { Authorization: 'Bearer ' + gToken, Accept: '*/*' },
+            timeout: 20,
           })
-          st.conexao_ok = res.statusCode === 200
-          if (res.statusCode === 200) {
+          st.conexao_ok = res.statusCode === 200 || res.statusCode === 204
+          if (st.conexao_ok) {
             st.recursos = { activity_api: true, training_api: true, health_api: false }
-            st.detalhe = 'Conectado ao Garmin'
+            st.detalhe = 'Conectado — lista de atividades acessível'
           } else if (res.statusCode === 401) {
-            st.detalhe = 'Credenciais OK — falta concluir o OAuth do usuário'
+            st.detalhe = 'Token expirado — clique em "Obter token" novamente'
           } else {
             st.detalhe = 'Garmin respondeu ' + res.statusCode
           }
