@@ -61,26 +61,70 @@ routerAdd('GET', '/backend/v1/logo/:chave', (e) => {
   const arquivo = rec.getString('logo') || rec.getString('emblema')
   if (!arquivo) return e.notFoundError('registro sem arquivo de logo')
 
-  // devolve os bytes do arquivo
+  // ------------------------------------------------------------------
+  // 15/11/2026 — LER O ARQUIVO PELA ROTA INTERNA DO POCKETBASE.
+  //
+  // A tentativa anterior montou o caminho em disco com $os.readFile e falhou
+  // (404) — o layout do storage não é garantido e o $os nem sempre está
+  // exposto no JSVM.
+  //
+  // Aqui o próprio PocketBase serve o arquivo pela rota padrão
+  // /api/files/<colecao>/<id>/<arquivo>, que é a única forma estável. Como o
+  // domínio PÚBLICO entrega a SPA em /api/*, chamamos o host INTERNO.
+  // ------------------------------------------------------------------
+  const ext = String(arquivo).toLowerCase().split('.').pop()
+  let mime = 'image/png'
+  if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg'
+  else if (ext === 'gif') mime = 'image/gif'
+  else if (ext === 'webp') mime = 'image/webp'
+  else if (ext === 'svg') mime = 'image/svg+xml'
+
+  let urlInterna = ''
   try {
-    const fs = $os ? null : null // placeholder: usamos a API de arquivos
-    const caminho = $filepath.join($app.dataDir(), 'storage', rec.collection().id, rec.id, arquivo)
-    const bytes = $os.readFile(caminho)
-
-    // content-type pela extensão
-    const ext = String(arquivo).toLowerCase().split('.').pop()
-    let mime = 'image/png'
-    if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg'
-    else if (ext === 'gif') mime = 'image/gif'
-    else if (ext === 'webp') mime = 'image/webp'
-    else if (ext === 'svg') mime = 'image/svg+xml'
-
-    e.response.header().set('Content-Type', mime)
-    e.response.header().set('Cache-Control', 'public, max-age=86400')
-    e.response.header().set('Access-Control-Allow-Origin', '*')
-    return e.blob(200, bytes, mime)
-  } catch (err) {
-    console.log('[logo] falha ao ler arquivo: ' + String(err).slice(0, 140))
-    return e.notFoundError('arquivo do logo indisponível')
+    urlInterna = String($secrets.get('PB_INSTANCE_URL') || '').trim()
+  } catch (_) {
+    urlInterna = ''
   }
+  if (!urlInterna) {
+    try {
+      urlInterna = String($app.settings().meta.appURL || '').trim()
+    } catch (_) {}
+  }
+  if (!urlInterna) return e.notFoundError('URL interna indisponível')
+
+  const alvo =
+    urlInterna.replace(/\/+$/, '') +
+    '/api/files/' +
+    rec.collection().id +
+    '/' +
+    rec.id +
+    '/' +
+    encodeURIComponent(arquivo)
+
+  let res = null
+  try {
+    res = $http.send({ url: alvo, method: 'GET', timeout: 20 })
+  } catch (err) {
+    console.log('[logo] rede: ' + String(err).slice(0, 140))
+    return e.notFoundError('falha ao buscar o arquivo')
+  }
+
+  if (res.statusCode !== 200) {
+    console.log('[logo] arquivo respondeu ' + res.statusCode + ' em ' + alvo)
+    return e.notFoundError('arquivo respondeu ' + res.statusCode)
+  }
+
+  // corpo pode vir como bytes
+  let bytes = res.body
+  if (typeof bytes === 'string') {
+    // converte string em bytes
+    const arr = []
+    for (let i = 0; i < bytes.length; i++) arr.push(bytes.charCodeAt(i) & 0xff)
+    bytes = arr
+  }
+
+  e.response.header().set('Content-Type', mime)
+  e.response.header().set('Cache-Control', 'public, max-age=86400')
+  e.response.header().set('Access-Control-Allow-Origin', '*')
+  return e.blob(200, bytes, mime)
 })
