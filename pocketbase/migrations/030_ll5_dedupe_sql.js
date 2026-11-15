@@ -1,99 +1,141 @@
 /// <reference path="../pb_data/types.d.ts" />
 // ============================================================================
-// LL5 — DEDUPE POR SQL (v2, 15/11/2026)
+// LL5 — DEDUPE (v3, 15/11/2026)
 //
-// A migração 094 (via API de records) NÃO removeu nada: o print ainda mostra
-// 2.350 atividades com linhas idênticas repetidas (13/11 e 10/11 duas vezes).
+// v2 falhou com "nil pointer dereference": `db.newQuery(...).one()` devolveu
+// nil no JSVM e o `.get('n')` estourou. Nesta versão:
+//   · usamos `app.findRecordsByFilter` para LER (API segura do PocketBase);
+//   · agrupamos e apagamos pelo modelo de records, sem SQL bruto;
+//   · toleramos os getters que podem devolver valores inesperados.
 //
-// Motivo provável: `r.getFloat()`/`r.getDateTime()` no JSVM podem devolver
-// valores que não convertem, zerando a chave e deixando todo mundo em grupos
-// distintos. E `app.delete()` dentro de um laço grande pode falhar calado.
-//
-// Esta versão faz o trabalho em SQL, que é atômico e verificável:
-//   · agrupa por (data até o minuto, tipo, distância arredondada em 100 m);
-//   · mantém o registro de MELHOR qualidade;
-//   · apaga os demais;
-//   · recria a chave canônica já limpa.
-//
-// PocketBase usa SQLite — strftime e ROW_NUMBER funcionam.
+// Regra de dedupe: mesma data (minuto), mesmo tipo e mesma distância (100 m)
+// = mesma atividade. Mantém a de melhor qualidade.
 // ============================================================================
 migrate(
   (app) => {
-    const db = app.db()
-
-    // ---- 1) quantas existem antes ----
-    let antes = 0
+    let todas = []
     try {
-      const r = db.newQuery('SELECT COUNT(*) AS n FROM ll5_activity').one()
-      antes = Number(r.get('n') || 0)
+      todas = app.findRecordsByFilter('ll5_activity', "id != ''", 'created', 0, 0)
     } catch (err) {
-      console.log('[dedupe-sql] falha ao contar: ' + String(err).slice(0, 160))
-    }
-    console.log('[dedupe-sql] atividades antes: ' + antes)
-
-    if (antes === 0) {
-      console.log('[dedupe-sql] nada a fazer')
+      console.log('[dedupe-v3] falha ao listar: ' + String(err).slice(0, 160))
       return
     }
 
-    // ---- 2) normaliza a chave canônica em SQL ----
-    // data até o minuto (UTC), tipo e distância arredondada em 100m
-    try {
-      db.newQuery(
-        'UPDATE ll5_activity SET chave_canonica = ' +
-          "COALESCE(strftime('%s', data_hora_inicio), '0') / 60 || '|' || " +
-          "COALESCE(tipo, 'outro') || '|' || " +
-          'CAST(ROUND(COALESCE(distancia_m, 0) / 100) AS INTEGER)',
-      ).execute()
-      console.log('[dedupe-sql] chave_canonica recalculada')
-    } catch (err) {
-      console.log('[dedupe-sql] falha no update da chave: ' + String(err).slice(0, 160))
+    console.log('[dedupe-v3] lidas: ' + todas.length)
+    if (todas.length === 0) return
+
+    // ---------- monta os grupos ----------
+    const grupos = {}
+    for (const r of todas) {
+      let dataStr = ''
+      try {
+        dataStr = String(r.get('data_hora_inicio') || '')
+      } catch (_) {
+        dataStr = ''
+      }
+
+      // normaliza para minutos: aceita "2026-11-13 09:11:57.000Z" ou ISO
+      let minuto = '0'
+      try {
+        const ms = new Date(dataStr.replace(' ', 'T')).getTime()
+        if (isFinite(ms) && ms > 0) minuto = String(Math.floor(ms / 60000))
+      } catch (_) {
+        minuto = '0'
+      }
+
+      let tipo = 'outro'
+      try {
+        tipo = String(r.get('tipo') || 'outro')
+      } catch (_) {}
+
+      let dist = 0
+      try {
+        const d = r.get('distancia_m')
+        if (d != null) dist = Math.round(Number(d) / 100)
+      } catch (_) {}
+
+      const chave = minuto + '|' + tipo + '|' + dist
+
+      if (!grupos[chave]) grupos[chave] = []
+      grupos[chave].push(r)
     }
 
-    // ---- 3) apaga duplicatas mantendo o melhor registro ----
-    // critério de qualidade: tem zonas > tem streams > fonte csv > fc_media > mais antigo
-    try {
-      db.newQuery(
-        'DELETE FROM ll5_activity WHERE id NOT IN (' +
-          '  SELECT id FROM (' +
-          '    SELECT id, ROW_NUMBER() OVER (' +
-          '      PARTITION BY chave_canonica' +
-          '      ORDER BY' +
-          "        CASE WHEN zonas_fc_seg IS NOT NULL AND zonas_fc_seg != '' AND zonas_fc_seg != '{}' THEN 0 ELSE 1 END," +
-          '        CASE WHEN tem_streams = 1 THEN 0 ELSE 1 END,' +
-          "        CASE WHEN fonte LIKE '%csv%' THEN 0 ELSE 1 END," +
-          '        CASE WHEN fc_media > 0 THEN 0 ELSE 1 END,' +
-          '        created ASC' +
-          '    ) AS rn' +
-          '    FROM ll5_activity' +
-          '  ) WHERE rn = 1' +
-          ')',
-      ).execute()
-      console.log('[dedupe-sql] duplicatas removidas')
-    } catch (err) {
-      console.log('[dedupe-sql] falha no delete: ' + String(err).slice(0, 200))
+    // ---------- pontuação de qualidade ----------
+    const pontuar = (r) => {
+      let p = 0
+      try {
+        const z = r.get('zonas_fc_seg')
+        if (z) {
+          if (typeof z === 'object' && Object.keys(z).length > 0) p += 100
+          else if (typeof z === 'string' && z.length > 5 && z !== '{}') p += 100
+        }
+      } catch (_) {}
+      try {
+        if (r.get('tem_streams') === true) p += 50
+      } catch (_) {}
+      try {
+        if (String(r.get('fonte') || '').indexOf('csv') >= 0) p += 30
+      } catch (_) {}
+      try {
+        const fc = r.get('fc_media')
+        if (fc != null && Number(fc) > 0) p += 10
+      } catch (_) {}
+      try {
+        const cad = r.get('cadencia_spm')
+        if (cad != null && Number(cad) > 0) p += 5
+      } catch (_) {}
+      return p
     }
 
-    // ---- 4) quantas sobraram ----
+    // ---------- apaga os excedentes ----------
+    let removidas = 0
+    const chaves = Object.keys(grupos)
+    for (const k of chaves) {
+      const lista = grupos[k]
+      if (!lista || lista.length < 2) continue
+
+      lista.sort((a, b) => {
+        const pa = pontuar(a)
+        const pb = pontuar(b)
+        if (pa !== pb) return pb - pa
+        // empate: mantém o mais antigo
+        return String(a.id).localeCompare(String(b.id))
+      })
+
+      for (let i = 1; i < lista.length; i++) {
+        try {
+          app.delete(lista[i])
+          removidas++
+        } catch (err) {
+          console.log('[dedupe-v3] falha ao apagar ' + lista[i].id)
+        }
+      }
+    }
+
+    console.log('[dedupe-v3] grupos=' + chaves.length + ' removidas=' + removidas)
+
+    // ---------- grava a chave canônica nos sobreviventes ----------
+    let marcados = 0
     try {
-      const r2 = db.newQuery('SELECT COUNT(*) AS n FROM ll5_activity').one()
-      const depois = Number(r2.get('n') || 0)
-      console.log(
-        '[dedupe-sql] atividades depois: ' + depois + ' (removidas: ' + (antes - depois) + ')',
-      )
+      const restantes = app.findRecordsByFilter('ll5_activity', "id != ''", 'created', 0, 0)
+      for (const r of restantes) {
+        try {
+          const dataStr = String(r.get('data_hora_inicio') || '')
+          const ms = new Date(dataStr.replace(' ', 'T')).getTime()
+          const minuto = isFinite(ms) && ms > 0 ? Math.floor(ms / 60000) : 0
+          const tipo = String(r.get('tipo') || 'outro')
+          const d = r.get('distancia_m')
+          const dist = d != null ? Math.round(Number(d) / 100) : 0
+          r.set('chave_canonica', minuto + '|' + tipo + '|' + dist)
+          app.save(r)
+          marcados++
+        } catch (_) {}
+      }
     } catch (_) {}
 
-    // ---- 5) garante o índice único ----
-    try {
-      db.newQuery(
-        'CREATE UNIQUE INDEX IF NOT EXISTS idx_ll5_activity_canonica ON ll5_activity (chave_canonica)',
-      ).execute()
-      console.log('[dedupe-sql] índice único garantido')
-    } catch (err) {
-      console.log('[dedupe-sql] índice: ' + String(err).slice(0, 160))
-    }
+    console.log('[dedupe-v3] sobreviventes marcados: ' + marcados)
   },
   (app) => {
-    console.log('[dedupe-sql] rollback: duplicatas não são recriadas')
+    console.log('[dedupe-v3] rollback: duplicatas não são recriadas')
   },
 )
