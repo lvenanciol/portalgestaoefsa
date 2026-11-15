@@ -90,35 +90,6 @@ export default function RunningTab({ aba }: { aba: any }) {
   const [apple, setApple] = useState<any>(null)
   const [importarOpen, setImportarOpen] = useState(false)
   const [importarCsvOpen, setImportarCsvOpen] = useState(false)
-  const [limpando, setLimpando] = useState(false)
-
-  /** Apaga CSV/.FIT e mantém só a API (fonte única). */
-  const limparCsv = async () => {
-    setLimpando(true)
-    try {
-      const r: any = await pb.send('/backend/v1/ll5/limpar-csv', {
-        method: 'POST',
-        body: '{}',
-      })
-      toast({
-        title: 'Limpeza concluída',
-        description:
-          `${r.apagadas || 0} removida(s) · ${r.mantidas_api || 0} mantida(s) da API.` +
-          (r.falhas ? ` · ${r.falhas} falha(s).` : '') +
-          ` Fontes: ${Object.keys(r.fontes || {}).join(', ')}`,
-      })
-      const l = await listar('ll5_activity', ator, {
-        ownerEscolhido: ownerAtual,
-        sort: '-data_hora_inicio',
-      })
-      setAtividades(l)
-    } catch (e: any) {
-      const detalhe = e?.response?.data?.erro || e?.message || String(e)
-      toast({ title: 'Falha na limpeza', description: detalhe, variant: 'destructive' })
-    } finally {
-      setLimpando(false)
-    }
-  }
   const [atividades, setAtividades] = useState<any[]>([])
 
   useEffect(() => {
@@ -392,25 +363,6 @@ export default function RunningTab({ aba }: { aba: any }) {
               <Download className="h-3.5 w-3.5 mr-1.5" /> Baixar treinos
             </Button>
 
-            {/* 15/11/2026 — mantém SOMENTE a fonte garmin_api.
-                Os pares CSV/API idênticos vinham de duas importações da mesma
-                corrida; nenhum dedupe funcionou porque o PocketBase normaliza
-                a data de forma diferente por origem. */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={limparCsv}
-              disabled={limpando}
-              className="h-8 text-[11.5px] text-red-600 border-red-200 hover:bg-red-50"
-              title="Remove todas as atividades importadas de CSV/.FIT — mantém só a API"
-            >
-              {limpando ? (
-                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-              ) : (
-                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-              )}
-              Limpar CSV/.FIT
-            </Button>
             <Button
               variant="outline"
               size="sm"
