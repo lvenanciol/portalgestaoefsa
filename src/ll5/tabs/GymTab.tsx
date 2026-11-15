@@ -1,16 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Plus,
-  Upload,
   Dumbbell,
   CalendarDays,
   Gauge,
   Trophy,
   Loader2,
-  RefreshCw,
-  Download,
   ChevronDown,
   ChevronRight,
+  TrendingUp,
+  Activity,
   Info,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -20,55 +18,61 @@ import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { useLl5 } from '@/ll5/Ll5Context'
 import { listar } from '@/ll5/repo'
-import { garminAdapter, appleHealthAdapter } from '@/ll5/adapters'
+import { garminAdapter } from '@/ll5/adapters'
 import ParecerIaCard from '@/ll5/ParecerIaCard'
+import TabelaInterativa from './TabelaInterativa'
 
 // ============================================================================
-// ABA GYM (mockup 3) — treino de força
+// ABA GYM (v3, 15/11/2026)
+//
+// 1a) Cards calculados sobre a lista COMPLETA (o filtro de semana age só na
+//     tabela).
+// 1b) "Exercícios recentes" virou TABELA: cabeçalho ordenável ao clique,
+//     redimensionável e reorganizável por arrasto (TabelaInterativa).
+// 1c) As caixas "Progressão de carga" e "Distribuição por grupo muscular"
+//     saíram do lado e viraram TAGS nas colunas ("Carga" e "Músculos"),
+//     à direita de "Registro de freq." — cada uma abre a sua caixa.
 // ============================================================================
 
 const DIV_LABEL: Record<string, string> = {
-  push: 'Push',
-  pull: 'Pull',
-  legs: 'Legs',
-  upper: 'Upper',
-  full: 'Full',
-  custom: 'Custom',
+  peito: 'Peito',
+  costas: 'Costas',
+  pernas: 'Pernas',
+  ombros: 'Ombros',
+  bracos: 'Braços',
+  core: 'Core',
+  custom: 'Livre',
+  outro: 'Outro',
 }
 
-function dataBR(iso?: string): string {
+function dataBR(iso?: string | null): string {
   if (!iso) return '—'
-  return iso.slice(0, 10).split('-').reverse().slice(0, 2).join('/')
+  return String(iso).slice(0, 10).split('-').reverse().join('/')
 }
 
 export default function GymTab({ aba }: { aba: any }) {
   const { ator, ownerAtual } = useLl5()
   const [sessoes, setSessoes] = useState<any[]>([])
   const [exercicios, setExercicios] = useState<any[]>([])
+  const [importadas, setImportadas] = useState<any[]>([])
   const [carregando, setCarregando] = useState(true)
   const [aberta, setAberta] = useState<string | null>(null)
   const [garmin, setGarmin] = useState<any>(null)
-  const [importadas, setImportadas] = useState<any[]>([])
-  // GYM 1: controla qual tag "Registro de frequência" está expandida
+
+  // tags da tabela
   const [tagAberta, setTagAberta] = useState<string | null>(null)
-  // GYM 2: semana selecionada no gráfico (funciona como filtro)
   const [semanaFiltro, setSemanaFiltro] = useState<string | null>(null)
+  // 1c: qual caixa lateral está aberta ('carga' | 'musculos' | null)
+  const [caixaLateral, setCaixaLateral] = useState<string | null>(null)
 
   useEffect(() => {
     let vivo = true
     ;(async () => {
       setCarregando(true)
-      const [s, e, g, importadas] = await Promise.all([
+      const [s, e, g, imp] = await Promise.all([
         listar('ll5_gym_sessions', ator, { ownerEscolhido: ownerAtual, sort: '-data' }),
         listar('ll5_gym_exercises', ator, { ownerEscolhido: ownerAtual }),
         garminAdapter.status(),
-        // 15/11/2026 — sessões de FORÇA vindas do CSV/.FIT, gravadas em
-        // ll5_activity. Antes a aba só lia ll5_gym_sessions e as 172 sessões
-        // importadas ficavam invisíveis.
-        // SCHEMA REAL: o campo `tipo` só aceita rua|esteira|trail|outro.
-        // A classificação "musculação" vive em `origem_aba = "gym"`, que é
-        // select próprio e aceita esse valor. Filtrar por tipo='forca' nunca
-        // retornaria nada.
         listar('ll5_activity', ator, {
           ownerEscolhido: ownerAtual,
           filtroExtra: 'origem_aba = "gym"',
@@ -79,7 +83,7 @@ export default function GymTab({ aba }: { aba: any }) {
       setSessoes(s)
       setExercicios(e)
       setGarmin(g)
-      setImportadas(importadas || [])
+      setImportadas(imp || [])
       setCarregando(false)
     })()
     return () => {
@@ -87,11 +91,7 @@ export default function GymTab({ aba }: { aba: any }) {
     }
   }, [ator, ownerAtual])
 
-  /**
-   * Unifica as duas origens em um formato só.
-   * `origem_registro='importado'` marca o que veio do Garmin (CSV/.FIT) e
-   * habilita o badge "Registro de frequência — sem detalhe de exercício".
-   */
+  /** Lista COMPLETA (manuais + importadas). Base dos cards. */
   const todasSessoes = useMemo(() => {
     const manuais = sessoes.map((s) => ({
       id: s.id,
@@ -132,44 +132,18 @@ export default function GymTab({ aba }: { aba: any }) {
     )
   }, [sessoes, importadas])
 
-  /**
-   * GYM 2 — quando há semana selecionada no gráfico, a TABELA filtra.
-   * Os CARDS (kpis) usam `todasSessoes`, que é a lista completa.
-   */
-  const sessoesFiltradas = useMemo(() => {
-    const todas = todasSessoes
-
-    if (!semanaFiltro) return todas
-    const [dia, mes] = semanaFiltro.split('/').map((n) => Number(n))
-    const ano = new Date().getFullYear()
-    const inicioSemana = new Date(ano, mes - 1, dia)
-    const fimSemana = new Date(inicioSemana)
-    fimSemana.setDate(fimSemana.getDate() + 7)
-
-    return todas.filter((s) => {
-      const d = new Date(s.data)
-      return d >= inicioSemana && d < fimSemana
-    })
-  }, [sessoes, importadas, semanaFiltro])
-
+  /** 1a — os CARDS usam a lista completa; só a TABELA filtra pela semana. */
   const kpis = useMemo(() => {
     const corte = new Date()
     corte.setDate(corte.getDate() - 30)
-    // GYM 1a (15/11/2026) — os cards calculavam sobre `todasSessoes`, que
-    // agora pode estar FILTRADA pela semana clicada no gráfico. Card tem de
-    // ser o retrato do período completo (30d), não do filtro da tabela.
     const janela = todasSessoes.filter((s) => new Date(s.data) >= corte)
 
-    // Volume e RPE só consideram sessões COM detalhe de exercício.
-    // As 172 importadas do Garmin são "registro de frequência": não têm
-    // exercício, série nem carga — somá-las daria volume zero ou falso.
     const comDetalhe = janela.filter((s) => s.tem_detalhe_exercicio)
     const volume = comDetalhe.reduce((a, s) => a + Number(s.volume_total_kg || 0), 0)
     const rpe = comDetalhe.length
       ? comDetalhe.reduce((a, s) => a + Number(s.rpe_medio || 0), 0) / comDetalhe.length
       : 0
 
-    // PR: maior carga registrada (só existe onde há exercício detalhado)
     let pr = 0
     let prEx = '—'
     for (const e of exercicios) {
@@ -182,10 +156,7 @@ export default function GymTab({ aba }: { aba: any }) {
       }
     }
 
-    // Sessões = TODAS (inclusive as de frequência): é a métrica que elas
-    // alimentam legitimamente.
     const semDetalhe = janela.length - comDetalhe.length
-
     return {
       volume,
       sessoes: janela.length,
@@ -213,6 +184,20 @@ export default function GymTab({ aba }: { aba: any }) {
       .sort((a, b) => b.valor - a.valor)
   }, [exercicios])
 
+  /** Filtro de semana — aplicado SÓ na tabela. */
+  const sessoesFiltradas = useMemo(() => {
+    if (!semanaFiltro) return todasSessoes
+    const [dia, mes] = semanaFiltro.split('/').map((n) => Number(n))
+    const ano = new Date().getFullYear()
+    const inicioSemana = new Date(ano, mes - 1, dia)
+    const fimSemana = new Date(inicioSemana)
+    fimSemana.setDate(fimSemana.getDate() + 7)
+    return todasSessoes.filter((s) => {
+      const d = new Date(s.data)
+      return d >= inicioSemana && d < fimSemana
+    })
+  }, [todasSessoes, semanaFiltro])
+
   if (carregando) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -223,71 +208,7 @@ export default function GymTab({ aba }: { aba: any }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-end gap-2">
-        <Button
-          size="sm"
-          onClick={() =>
-            toast({ title: 'Registrar treino', description: 'Em breve: formulário de sessão.' })
-          }
-          className="h-9 bg-[#1b5e20] hover:bg-[#0F3D13] text-white text-xs"
-        >
-          <Plus className="h-3.5 w-3.5 mr-1.5" /> Registrar treino
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            toast({
-              title: 'Importar do dispositivo',
-              description: garmin?.detalhe || 'Garmin não configurado.',
-              variant: 'destructive',
-            })
-          }
-          className="h-9 text-xs"
-        >
-          <Upload className="h-3.5 w-3.5 mr-1.5" /> Importar do dispositivo
-        </Button>
-      </div>
-
-      {/* integração — estado real */}
-      <Card className="p-3 rounded-xl border-gray-200 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white">
-            <Dumbbell className="h-3.5 w-3.5 text-gray-600" />
-            <span className="text-[12px] font-semibold text-gray-800">Garmin</span>
-            <Badge
-              variant="outline"
-              className="text-[9px] font-bold uppercase border-amber-300 text-amber-700 bg-amber-50"
-            >
-              Não configurado
-            </Badge>
-          </div>
-          <div className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white">
-            <Gauge className="h-3.5 w-3.5 text-gray-600" />
-            <span className="text-[12px] font-semibold text-gray-800">Apple Watch</span>
-            <Badge
-              variant="outline"
-              className="text-[9px] font-bold uppercase border-gray-300 text-gray-600 bg-gray-50"
-            >
-              Indisponível
-            </Badge>
-          </div>
-          <div className="ml-auto flex gap-1.5">
-            <Button variant="outline" size="sm" className="h-8 text-[11.5px]">
-              <Download className="h-3.5 w-3.5 mr-1.5" /> Baixar treinos
-            </Button>
-            <Button variant="outline" size="sm" className="h-8 text-[11.5px]">
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Sincronizar agora
-            </Button>
-          </div>
-        </div>
-        <p className="text-[10.5px] text-gray-400 mt-2 flex items-center gap-1">
-          <Info className="h-3 w-3" />
-          Nenhum dispositivo conectado — os dados vêm do lançamento manual.
-        </p>
-      </Card>
-
-      {/* KPIs */}
+      {/* KPIs — sobre a lista completa (1a) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           {
@@ -332,7 +253,7 @@ export default function GymTab({ aba }: { aba: any }) {
         ))}
       </div>
 
-      {/* Frequência semanal — métrica que as sessões importadas ALIMENTAM */}
+      {/* Frequência semanal — clicar filtra a tabela (GYM 2) */}
       {todasSessoes.length > 0 && (
         <Card className="rounded-xl border-gray-200 shadow-sm p-4">
           <div className="flex items-center justify-between mb-2">
@@ -352,7 +273,6 @@ export default function GymTab({ aba }: { aba: any }) {
               </span>
             </div>
           </div>
-          {/* GYM 2 — clicar numa coluna do gráfico filtra a lista pela semana */}
           <FrequenciaSemanal
             sessoes={todasSessoes}
             selecionada={semanaFiltro}
@@ -361,231 +281,343 @@ export default function GymTab({ aba }: { aba: any }) {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <Card className="lg:col-span-2 rounded-xl border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
-            <h3 className="text-[13px] font-bold text-gray-900">Exercícios recentes</h3>
-            {kpis.semDetalhe > 0 && (
-              <Badge
-                variant="outline"
-                className="text-[8.5px] font-bold border-amber-300 text-amber-800 bg-amber-50"
-              >
-                {kpis.semDetalhe} de frequência
-              </Badge>
-            )}
+      {/* Caixas que abrem pelas tags da tabela (1c) */}
+      {caixaLateral === 'carga' && (
+        <Card className="rounded-xl border-gray-200 shadow-sm p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[13px] font-bold text-gray-900">Progressão de carga</h3>
+            <button
+              type="button"
+              onClick={() => setCaixaLateral(null)}
+              className="text-[10px] font-semibold text-gray-500 hover:text-red-600"
+            >
+              fechar
+            </button>
           </div>
-
-          {todasSessoes.length === 0 ? (
-            <div className="py-12 text-center">
-              <Dumbbell className="h-7 w-7 text-gray-300 mx-auto mb-2" />
-              <p className="text-[12px] font-semibold text-gray-700">Nenhuma sessão registrada</p>
-              <p className="text-[11px] text-gray-500 mt-0.5">
-                Registre um treino ou importe do dispositivo.
-              </p>
-            </div>
+          {exercicios.length === 0 ? (
+            <p className="text-[11px] text-gray-500 py-3 leading-snug">
+              Sem exercício detalhado. As sessões importadas do Garmin são registro de frequência —
+              não trazem carga por exercício.
+            </p>
           ) : (
-            <div className="divide-y divide-gray-50">
-              {sessoesFiltradas.map((s) => {
-                const exs = exercicios.filter((e) => e.sessao_id === s.id)
-                const expandida = aberta === s.id
-                return (
-                  <div key={s.id}>
-                    <button
-                      type="button"
-                      onClick={() => setAberta(expandida ? null : s.id)}
-                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left hover:bg-gray-50/60"
-                    >
-                      {expandida ? (
-                        <ChevronDown className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                      ) : (
-                        <ChevronRight className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-                      )}
-                      <span className="text-[12px] font-semibold text-gray-800 tabular-nums w-10 shrink-0">
-                        {dataBR(s.data)}
-                      </span>
-                      <span className="text-[12px] text-gray-700 w-14 shrink-0">
-                        {DIV_LABEL[s.divisao] || s.divisao}
-                      </span>
-                      <span className="text-[11.5px] text-gray-500 flex-1 min-w-0 truncate">
-                        {s.origem_registro === 'importado'
-                          ? s.titulo || 'Sessão importada'
-                          : `${exs.length} exercício(s)`}
-                      </span>
-                      {/* GYM 1 (15/11/2026) — os dados da sessão viraram
-                          COLUNAS FIXAS (Duração, FC méd, FC máx, Calorias,
-                          Carga), não mais texto solto na linha. */}
-                      <span className="text-[11.5px] text-gray-700 tabular-nums shrink-0 w-14 text-right">
-                        {s.duracao_min != null ? `${s.duracao_min} min` : '—'}
-                      </span>
-                      <span className="text-[11.5px] text-gray-600 tabular-nums shrink-0 w-16 text-right">
-                        {s.fc_media != null ? `${s.fc_media} bpm` : '—'}
-                      </span>
-                      <span className="text-[11.5px] text-gray-600 tabular-nums shrink-0 w-16 text-right">
-                        {s.fc_max != null ? `${s.fc_max} bpm` : '—'}
-                      </span>
-                      <span className="text-[11.5px] text-gray-600 tabular-nums shrink-0 w-14 text-right">
-                        {s.calorias != null ? s.calorias : '—'}
-                      </span>
-                      <span className="text-[11.5px] text-gray-600 tabular-nums shrink-0 w-14 text-right">
-                        {s.carga_proxy != null ? String(s.carga_proxy).replace('.', ',') : '—'}
-                      </span>
-                      {s.rpe_medio != null ? (
-                        <span className="text-[11px] text-gray-500 shrink-0">
-                          RPE {s.rpe_medio}
-                        </span>
-                      ) : s.fc_media != null ? (
-                        <span className="text-[11px] text-gray-500 shrink-0 tabular-nums">
-                          {s.fc_media} bpm
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-gray-400 shrink-0">—</span>
-                      )}
-                      {s.origem_registro === 'importado' && !s.tem_detalhe_exercicio && (
-                        <button
-                          type="button"
-                          onClick={(ev) => {
-                            ev.stopPropagation()
-                            setTagAberta(tagAberta === s.id ? null : s.id)
-                          }}
-                          className="shrink-0"
-                          title="Clique para ver a explicação"
-                        >
-                          <Badge
-                            variant="outline"
-                            className="text-[8.5px] font-bold border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 cursor-pointer"
-                          >
-                            Registro de frequência
-                          </Badge>
-                        </button>
-                      )}
-                      <Badge
-                        variant="outline"
-                        className="text-[9px] border-gray-200 text-gray-600 shrink-0"
-                      >
-                        {s.fonte === 'garmin_csv'
-                          ? 'CSV'
-                          : s.fonte === 'garmin_fit'
-                            ? '.FIT'
-                            : s.fonte === 'garmin'
-                              ? 'Garmin'
-                              : s.fonte === 'apple'
-                                ? 'Apple'
-                                : 'Manual'}
-                      </Badge>
-                    </button>
+            <ProgressaoCarga exercicios={exercicios} />
+          )}
+        </Card>
+      )}
 
-                    {/* GYM 1 — o TEXTO explicativo só aparece ao clicar na tag
-    "Registro de frequência". Antes ele abria junto com a
-    linha, mesmo sem o dono pedir. */}
-                    {expandida && tagAberta === s.id && s.origem_registro === 'importado' && (
-                      <div className="px-4 pb-3 pl-10">
-                        <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-2.5">
-                          <p className="text-[10.5px] font-bold text-amber-900 mb-1">
-                            Registro de frequência — sem detalhe de exercício
-                          </p>
-                          <p className="text-[10.5px] text-amber-800 leading-snug">
-                            O Garmin não envia exercício, série ou carga desta sessão. Ela conta
-                            para frequência semanal e sessões, mas fica fora de "Volume" e
-                            "Progressão de carga".
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    {expandida && exs.length > 0 && (
-                      <div className="px-4 pb-3 pl-10">
-                        <div className="rounded-lg border border-gray-200 overflow-hidden">
-                          <table className="w-full text-[11px]">
-                            <thead className="bg-gray-50/70">
-                              <tr className="text-[9.5px] font-bold uppercase tracking-wider text-gray-500">
-                                <th className="text-left px-2 py-1.5">Exercício</th>
-                                <th className="text-left px-2 py-1.5">Séries × Reps</th>
-                                <th className="text-right px-2 py-1.5">Carga</th>
-                                <th className="text-right px-2 py-1.5">RPE</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                              {exs.map((e) => {
-                                const series = Array.isArray(e.series) ? e.series : []
-                                const reps = series[0]?.reps || 0
-                                const carga = series[0]?.carga_kg || 0
-                                const rpe = series[0]?.rpe || '—'
-                                return (
-                                  <tr key={e.id}>
-                                    <td className="px-2 py-1.5 text-gray-800 font-medium">
-                                      {e.exercicio_nome}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-gray-600 tabular-nums">
-                                      {series.length}×{reps}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-right tabular-nums text-gray-700">
-                                      {carga > 0 ? carga + ' kg' : 'peso corporal'}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-right tabular-nums text-gray-600">
-                                      {rpe}
-                                    </td>
-                                  </tr>
-                                )
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
+      {caixaLateral === 'musculos' && (
+        <Card className="rounded-xl border-gray-200 shadow-sm p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-[13px] font-bold text-gray-900">Distribuição por grupo muscular</h3>
+            <button
+              type="button"
+              onClick={() => setCaixaLateral(null)}
+              className="text-[10px] font-semibold text-gray-500 hover:text-red-600"
+            >
+              fechar
+            </button>
+          </div>
+          {porGrupo.length === 0 ? (
+            <p className="text-[11.5px] text-gray-500 py-3 leading-snug">
+              Sem dados de exercícios. Sessões de frequência não informam grupo muscular.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {porGrupo.map((g) => (
+                <div key={g.grupo} className="flex items-center gap-2">
+                  <span className="text-[11px] text-gray-600 w-24 truncate">{g.grupo}</span>
+                  <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: g.pct + '%', backgroundColor: '#1b5e20' }}
+                    />
                   </div>
-                )
-              })}
+                  <span className="text-[10.5px] font-semibold text-gray-700 tabular-nums w-8 text-right">
+                    {g.pct.toFixed(0)}%
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </Card>
+      )}
 
-        <div className="space-y-3">
-          <Card className="rounded-xl border-gray-200 shadow-sm p-4">
-            <h3 className="text-[13px] font-bold text-gray-900 mb-2">Progressão de carga</h3>
-            {exercicios.length === 0 ? (
-              <p className="text-[11px] text-gray-500 py-3 leading-snug">
-                Sem exercício detalhado. As sessões importadas do Garmin são registro de frequência
-                — não trazem carga por exercício.
-              </p>
-            ) : (
-              <ProgressaoCarga exercicios={exercicios} />
-            )}
-          </Card>
+      {/* 1b — tabela com cabeçalho interativo */}
+      <Card className="rounded-xl border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
+          <h3 className="text-[13px] font-bold text-gray-900">Exercícios recentes</h3>
+          {kpis.semDetalhe > 0 && (
+            <Badge
+              variant="outline"
+              className="text-[8.5px] font-bold border-amber-300 text-amber-800 bg-amber-50"
+            >
+              {kpis.semDetalhe} de frequência
+            </Badge>
+          )}
+          <span className="ml-auto text-[10px] text-gray-400">
+            clique ordena · arraste a borda redimensiona · arraste o cabeçalho reordena
+          </span>
+        </div>
 
-          <Card className="rounded-xl border-gray-200 shadow-sm p-4">
-            <h3 className="text-[13px] font-bold text-gray-900 mb-2">
-              Distribuição por grupo muscular
-            </h3>
-            {porGrupo.length === 0 ? (
-              <p className="text-[11.5px] text-gray-500 py-3 leading-snug">
-                Sem dados de exercícios. Sessões de frequência não informam grupo muscular.
-              </p>
-            ) : (
-              <div className="space-y-1.5">
-                {porGrupo.map((g) => (
-                  <div key={g.grupo} className="flex items-center gap-2">
-                    <span className="text-[11px] text-gray-600 w-24 truncate">{g.grupo}</span>
-                    <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full"
-                        style={{ width: g.pct + '%', backgroundColor: '#1b5e20' }}
-                      />
-                    </div>
-                    <span className="text-[10.5px] font-semibold text-gray-700 tabular-nums w-8 text-right">
-                      {g.pct.toFixed(0)}%
+        {todasSessoes.length === 0 ? (
+          <div className="py-12 text-center">
+            <Dumbbell className="h-7 w-7 text-gray-300 mx-auto mb-2" />
+            <p className="text-[12px] font-semibold text-gray-700">Nenhuma sessão registrada</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              Registre um treino ou sincronize o Garmin.
+            </p>
+          </div>
+        ) : (
+          <TabelaInterativa
+            id="gym.sessoes"
+            dados={sessoesFiltradas}
+            onLinhaClique={(r) => setAberta(aberta === r.id ? null : r.id)}
+            colunas={[
+              {
+                key: 'data',
+                label: 'Data',
+                largura: 100,
+                valor: (r: any) => new Date(r.data).getTime(),
+                render: (r: any) => (
+                  <span className="font-semibold text-gray-800 tabular-nums">{dataBR(r.data)}</span>
+                ),
+              },
+              {
+                key: 'divisao',
+                label: 'Divisão',
+                largura: 110,
+                render: (r: any) => (
+                  <span className="text-gray-700">{DIV_LABEL[r.divisao] || r.divisao}</span>
+                ),
+              },
+              {
+                key: 'titulo',
+                label: 'Sessão',
+                largura: 190,
+                render: (r: any) => (
+                  <span className="text-gray-600 block truncate">
+                    {r.origem_registro === 'importado'
+                      ? r.titulo || 'Sessão importada'
+                      : `${exercicios.filter((e) => e.sessao_id === r.id).length} exercício(s)`}
+                  </span>
+                ),
+              },
+              {
+                key: 'duracao_min',
+                label: 'Duração',
+                largura: 90,
+                align: 'right',
+                valor: (r: any) => Number(r.duracao_min || 0),
+                render: (r: any) => (
+                  <span className="text-gray-700 tabular-nums whitespace-nowrap">
+                    {r.duracao_min != null ? `${r.duracao_min} min` : '—'}
+                  </span>
+                ),
+              },
+              {
+                key: 'fc_media',
+                label: 'FC méd',
+                largura: 85,
+                align: 'right',
+                valor: (r: any) => Number(r.fc_media || 0),
+                render: (r: any) => (
+                  <span className="text-gray-600 tabular-nums whitespace-nowrap">
+                    {r.fc_media != null ? `${r.fc_media} bpm` : '—'}
+                  </span>
+                ),
+              },
+              {
+                key: 'fc_max',
+                label: 'FC máx',
+                largura: 85,
+                align: 'right',
+                valor: (r: any) => Number(r.fc_max || 0),
+                render: (r: any) => (
+                  <span className="text-gray-600 tabular-nums whitespace-nowrap">
+                    {r.fc_max != null ? `${r.fc_max} bpm` : '—'}
+                  </span>
+                ),
+              },
+              {
+                key: 'calorias',
+                label: 'Calorias',
+                largura: 80,
+                align: 'right',
+                valor: (r: any) => Number(r.calorias || 0),
+                render: (r: any) => (
+                  <span className="text-gray-600 tabular-nums">{r.calorias ?? '—'}</span>
+                ),
+              },
+              {
+                key: 'volume_total_kg',
+                label: 'Volume kg',
+                largura: 95,
+                align: 'right',
+                valor: (r: any) => Number(r.volume_total_kg || 0),
+                render: (r: any) =>
+                  r.tem_detalhe_exercicio ? (
+                    <span className="text-gray-700 tabular-nums">
+                      {Number(r.volume_total_kg || 0).toLocaleString('pt-BR')}
                     </span>
+                  ) : (
+                    <span className="text-gray-400">—</span>
+                  ),
+              },
+              {
+                key: 'fonte',
+                label: 'Origem',
+                largura: 90,
+                align: 'center',
+                render: (r: any) => (
+                  <Badge variant="outline" className="text-[9px] border-gray-200 text-gray-600">
+                    {r.fonte === 'garmin_api'
+                      ? 'API'
+                      : r.fonte === 'garmin_csv'
+                        ? 'CSV'
+                        : r.fonte === 'garmin_fit'
+                          ? '.FIT'
+                          : r.fonte === 'garmin'
+                            ? 'Garmin'
+                            : 'Manual'}
+                  </Badge>
+                ),
+              },
+              {
+                // 1c — TAGS à direita de "Registro de freq."
+                key: 'tags',
+                label: 'Registro de freq.',
+                largura: 220,
+                render: (r: any) => (
+                  <div className="flex items-center gap-1">
+                    {r.origem_registro === 'importado' && !r.tem_detalhe_exercicio && (
+                      <button
+                        type="button"
+                        onClick={(ev) => {
+                          ev.stopPropagation()
+                          setTagAberta(tagAberta === r.id ? null : r.id)
+                        }}
+                        title="Clique para ver a explicação"
+                      >
+                        <Badge
+                          variant="outline"
+                          className="text-[8.5px] font-bold border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 cursor-pointer whitespace-nowrap"
+                        >
+                          Frequência
+                        </Badge>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(ev) => {
+                        ev.stopPropagation()
+                        setCaixaLateral(caixaLateral === 'carga' ? null : 'carga')
+                      }}
+                      title="Abrir Progressão de carga"
+                    >
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'text-[8.5px] font-bold cursor-pointer whitespace-nowrap',
+                          caixaLateral === 'carga'
+                            ? 'border-[#1b5e20] text-white bg-[#1b5e20]'
+                            : 'border-gray-300 text-gray-600 bg-gray-50 hover:bg-gray-100',
+                        )}
+                      >
+                        Carga
+                      </Badge>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(ev) => {
+                        ev.stopPropagation()
+                        setCaixaLateral(caixaLateral === 'musculos' ? null : 'musculos')
+                      }}
+                      title="Abrir Distribuição por grupo muscular"
+                    >
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          'text-[8.5px] font-bold cursor-pointer whitespace-nowrap',
+                          caixaLateral === 'musculos'
+                            ? 'border-[#1b5e20] text-white bg-[#1b5e20]'
+                            : 'border-gray-300 text-gray-600 bg-gray-50 hover:bg-gray-100',
+                        )}
+                      >
+                        Músculos
+                      </Badge>
+                    </button>
                   </div>
-                ))}
+                ),
+              },
+            ]}
+          />
+        )}
+
+        {/* detalhe da linha: explicação da tag + exercícios */}
+        {aberta && (
+          <div className="px-4 pb-3 border-t border-gray-100 pt-2.5 space-y-2">
+            {tagAberta === aberta && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-2.5">
+                <p className="text-[10.5px] font-bold text-amber-900 mb-1">
+                  Registro de frequência — sem detalhe de exercício
+                </p>
+                <p className="text-[10.5px] text-amber-800 leading-snug">
+                  O Garmin não envia exercício, série ou carga desta sessão. Ela conta para
+                  frequência semanal e sessões, mas fica fora de "Volume" e "Progressão de carga".
+                </p>
               </div>
             )}
-          </Card>
-        </div>
-      </div>
+
+            {(() => {
+              const exs = exercicios.filter((e) => e.sessao_id === aberta)
+              if (!exs.length) return null
+              return (
+                <div className="rounded-lg border border-gray-200 overflow-hidden">
+                  <table className="w-full text-[11px]">
+                    <thead className="bg-gray-50/70">
+                      <tr className="text-[9.5px] font-bold uppercase tracking-wider text-gray-500">
+                        <th className="text-left px-2 py-1.5">Exercício</th>
+                        <th className="text-left px-2 py-1.5">Séries × Reps</th>
+                        <th className="text-right px-2 py-1.5">Carga</th>
+                        <th className="text-right px-2 py-1.5">RPE</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {exs.map((e) => {
+                        const series = Array.isArray(e.series) ? e.series : []
+                        const reps = series[0]?.reps || 0
+                        const carga = series[0]?.carga_kg || 0
+                        const rpe = series[0]?.rpe || '—'
+                        return (
+                          <tr key={e.id}>
+                            <td className="px-2 py-1.5 text-gray-800 font-medium">
+                              {e.exercicio_nome}
+                            </td>
+                            <td className="px-2 py-1.5 text-gray-600 tabular-nums">
+                              {series.length}×{reps}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums text-gray-700">
+                              {carga > 0 ? carga + ' kg' : 'peso corporal'}
+                            </td>
+                            <td className="px-2 py-1.5 text-right tabular-nums text-gray-600">
+                              {rpe}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
+          </div>
+        )}
+      </Card>
 
       <ParecerIaCard
         scope="gym"
-        titulo="Parecer IA — Especialista"
-        resumo="Os dados mostram bom progresso de força e volume. Mantenha a hidratação e o sono adequados para otimizar a recuperação e evitar platôs."
+        titulo="Parecer IA — GYM"
+        resumo="Avalie volume, progressão de carga e equilíbrio entre grupos musculares."
         dados={{ volume_30d: kpis.volume, sessoes: kpis.sessoes, rpe_medio: kpis.rpe, pr: kpis.pr }}
       />
     </div>
@@ -594,8 +626,7 @@ export default function GymTab({ aba }: { aba: any }) {
 
 /**
  * Barras de frequência por semana (últimas 12).
- * Conta TODAS as sessões — inclusive as de frequência, que é exatamente
- * a métrica que elas podem alimentar.
+ * Clicar numa semana filtra a tabela (GYM 2).
  */
 function FrequenciaSemanal({
   sessoes,
@@ -677,85 +708,52 @@ function FrequenciaSemanal({
 }
 
 function ProgressaoCarga({ exercicios }: { exercicios: any[] }) {
-  const [selecionado, setSelecionado] = useState('')
-
-  const nomes = useMemo(
-    () => Array.from(new Set(exercicios.map((e) => e.exercicio_nome))).filter(Boolean),
-    [exercicios],
-  )
-
-  useEffect(() => {
-    if (!selecionado && nomes.length > 0) {
-      // prioriza o composto mais pesado
-      setSelecionado(nomes[0])
+  // agrupa por exercício e mostra a evolução da maior carga
+  const porExercicio: Record<string, number[]> = {}
+  for (const e of exercicios) {
+    const nome = e.exercicio_nome || 'Exercício'
+    const series = Array.isArray(e.series) ? e.series : []
+    const maior = Math.max(...series.map((s: any) => Number(s.carga_kg || 0)), 0)
+    if (maior > 0) {
+      if (!porExercicio[nome]) porExercicio[nome] = []
+      porExercicio[nome].push(maior)
     }
-  }, [nomes, selecionado])
-
-  const serie = useMemo(() => {
-    const alvo = exercicios.filter((e) => e.exercicio_nome === selecionado)
-    return alvo
-      .map((e) => {
-        const s = Array.isArray(e.series) ? e.series : []
-        return {
-          id: e.id,
-          carga: Math.max(...s.map((x: any) => Number(x.carga_kg || 0)), 0),
-        }
-      })
-      .slice(0, 12)
-  }, [exercicios, selecionado])
-
-  if (nomes.length === 0) {
-    return <p className="text-[11.5px] text-gray-500 py-3">Sem exercícios registrados.</p>
   }
 
-  const maxCarga = Math.max(...serie.map((s) => s.carga), 1)
+  const entradas = Object.entries(porExercicio)
+    .filter(([, v]) => v.length > 1)
+    .slice(0, 6)
+
+  if (!entradas.length) {
+    return (
+      <p className="text-[11px] text-gray-500 py-3 leading-snug">
+        Sem histórico suficiente para mostrar progressão (mínimo 2 registros por exercício).
+      </p>
+    )
+  }
+
+  const maxGlobal = Math.max(...entradas.flatMap(([, v]) => v), 1)
 
   return (
-    <div>
-      <select
-        value={selecionado}
-        onChange={(e) => setSelecionado(e.target.value)}
-        className="w-full h-8 mb-2 rounded border border-gray-200 text-[11.5px] px-2"
-      >
-        {nomes.map((n) => (
-          <option key={n} value={n}>
-            {n}
-          </option>
-        ))}
-      </select>
-
-      {serie.length < 3 ? (
-        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
-          Série insuficiente para tendência (n={serie.length}). São necessários 3 pontos.
-        </p>
-      ) : (
-        <svg viewBox="0 0 200 60" className="w-full h-[60px]">
-          <polyline
-            fill="none"
-            stroke="#1b5e20"
-            strokeWidth="2"
-            points={serie
-              .map((s, i) => {
-                const x = (i / (serie.length - 1)) * 190 + 5
-                const y = 55 - (s.carga / maxCarga) * 45
-                return `${x},${y}`
-              })
-              .join(' ')}
-          />
-          {serie.map((s, i) => {
-            const x = (i / (serie.length - 1)) * 190 + 5
-            const y = 55 - (s.carga / maxCarga) * 45
-            return <circle key={s.id} cx={x} cy={y} r="2.5" fill="#1b5e20" />
-          })}
-        </svg>
-      )}
-
-      {serie.length > 0 && (
-        <div className="flex items-center justify-between text-[10.5px] text-gray-500 mt-1">
-          <span>{serie.length} registro(s)</span>
-          <span className="font-semibold text-gray-800">máx {maxCarga} kg</span>
+    <div className="space-y-2">
+      {entradas.map(([nome, valores]) => (
+        <div key={nome} className="flex items-center gap-2">
+          <span className="text-[11px] text-gray-700 w-32 truncate">{nome}</span>
+          <div className="flex-1 flex items-end gap-0.5 h-6">
+            {valores.slice(-8).map((v, i) => (
+              <div
+                key={i}
+                className="flex-1 bg-[#1b5e20]/70 rounded-t"
+                style={{ height: `${(v / maxGlobal) * 24}px`, minHeight: 2 }}
+                title={`${v} kg`}
+              />
+            ))}
+          </div>
+          <span className="text-[10px] text-gray-500 tabular-nums w-12 text-right">
+            {valores[valores.length - 1]} kg
+          </span>
         </div>
-      )}
+      ))}
     </div>
   )
 }

@@ -419,10 +419,23 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     // precisa do TRATAMENTO: resolve pelo id.
     const t = tratamentos.find((x) => x.id === linha.id) || linha
     setEditando(t)
-    // b) — guarda a SESSÃO que está sendo editada, para o status exibido ser
-    // o MESMO da linha clicada (antes a lista mostrava o status da sessão e o
-    // diálogo mostrava o status do tratamento).
-    setSessaoEmEdicao(linha._sessao || null)
+
+    // b) — o status exibido no diálogo é o da SESSÃO clicada, exatamente o
+    // mesmo que a coluna Status da lista mostra.
+    const sessao = linha._sessao || null
+    setSessaoEmEdicao(sessao)
+
+    // deriva o status da sessão: concluída / agendada / não agendada
+    const concluidas: string[] = Array.isArray(t.sessoes_concluidas)
+      ? t.sessoes_concluidas.map((x: any) => String(x).slice(0, 10))
+      : []
+    const diaSessao = sessao ? String(sessao).slice(0, 10) : null
+    const statusDaSessao = diaSessao
+      ? concluidas.indexOf(diaSessao) >= 0
+        ? 'concluido'
+        : 'agendado'
+      : t.status || 'em_andamento'
+
     const sessoes: string[] = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
     setSessoesManuais(sessoes.length ? [...sessoes] : null)
     const f = FREQUENCIAS.find((x) => x.label === t.frequencia)
@@ -438,7 +451,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       frequencia: t.frequencia || 'Semanal',
       intervalo_dias: Number(t.intervalo_dias) || f?.dias || 7,
       repetir: sessoes.length || 8,
-      status: t.status || 'em_andamento',
+      status: statusDaSessao,
       observacoes: t.observacoes || '',
     })
     setNovoOpen(true)
@@ -473,7 +486,32 @@ export default function TratamentosTab({ aba }: { aba: any }) {
 
       let id = editando?.id
       if (editando) {
+        // b) — o status salvo vale para a SESSÃO em edição, não para o
+        // tratamento inteiro. O status do tratamento é derivado das sessões.
+        if (sessaoEmEdicao) {
+          // não grava o status no tratamento quando editamos uma sessão
+          delete dados.status
+        }
         await atualizar('ll5_treatments', ator, editando.id, dados)
+
+        // aplica o status escolhido à sessão
+        if (sessaoEmEdicao) {
+          const dia = String(sessaoEmEdicao).slice(0, 10)
+          const concluidas: string[] = Array.isArray(editando.sessoes_concluidas)
+            ? [...editando.sessoes_concluidas]
+            : []
+
+          if (form.status === 'concluido' && concluidas.indexOf(dia) < 0) {
+            concluidas.push(dia)
+          } else if (form.status !== 'concluido') {
+            const idx = concluidas.indexOf(dia)
+            if (idx >= 0) concluidas.splice(idx, 1)
+          }
+
+          await atualizar('ll5_treatments', ator, editando.id, {
+            sessoes_concluidas: concluidas,
+          })
+        }
       } else {
         const rec = await criar('ll5_treatments', ator, dados, ownerAtual)
         id = rec.id
@@ -1045,6 +1083,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
           <TabelaInterativa
             id="tratamentos.sessoes"
             dados={linhas}
+            onLinhaClique={(r) => abrirEdicao(r)}
             colunas={[
               {
                 key: '_dataSessao',
@@ -1106,9 +1145,10 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               {
                 key: 'status',
                 label: 'Status',
-                largura: 110,
-                // b1: status POR SESSÃO (o tratamento é único, a sessão é individual)
-                valor: (r: any) => (r._concluida ? 'concluido' : 'em_andamento'),
+                largura: 120,
+                // b) — MESMA derivação usada no diálogo de edição:
+                //     concluída → 'concluido' · sessão futura → 'agendado'
+                valor: (r: any) => (r._concluida ? 'concluido' : 'agendado'),
                 render: (r: any) =>
                   r._concluida ? (
                     <Badge
@@ -1120,9 +1160,9 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                   ) : (
                     <Badge
                       variant="outline"
-                      className="text-[9.5px] font-bold border-emerald-300 text-emerald-700 bg-emerald-50"
+                      className="text-[9.5px] font-bold border-sky-300 text-sky-700 bg-sky-50"
                     >
-                      Em andamento
+                      Agendada
                     </Badge>
                   ),
               },
