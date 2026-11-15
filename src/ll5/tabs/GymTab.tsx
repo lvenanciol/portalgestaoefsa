@@ -49,6 +49,10 @@ export default function GymTab({ aba }: { aba: any }) {
   const [aberta, setAberta] = useState<string | null>(null)
   const [garmin, setGarmin] = useState<any>(null)
   const [importadas, setImportadas] = useState<any[]>([])
+  // GYM 1: controla qual tag "Registro de frequência" está expandida
+  const [tagAberta, setTagAberta] = useState<string | null>(null)
+  // GYM 2: semana selecionada no gráfico (funciona como filtro)
+  const [semanaFiltro, setSemanaFiltro] = useState<string | null>(null)
 
   useEffect(() => {
     let vivo = true
@@ -123,10 +127,23 @@ export default function GymTab({ aba }: { aba: any }) {
       carga_proxy: a.carga_proxy,
       titulo: a.titulo,
     }))
-    return [...manuais, ...importados].sort(
+    const todas = [...manuais, ...importados].sort(
       (x, y) => new Date(y.data).getTime() - new Date(x.data).getTime(),
     )
-  }, [sessoes, importadas])
+
+    // GYM 2 — filtro pela semana clicada no gráfico
+    if (!semanaFiltro) return todas
+    const [dia, mes] = semanaFiltro.split('/').map((n) => Number(n))
+    const ano = new Date().getFullYear()
+    const inicioSemana = new Date(ano, mes - 1, dia)
+    const fimSemana = new Date(inicioSemana)
+    fimSemana.setDate(fimSemana.getDate() + 7)
+
+    return todas.filter((s) => {
+      const d = new Date(s.data)
+      return d >= inicioSemana && d < fimSemana
+    })
+  }, [sessoes, importadas, semanaFiltro])
 
   const kpis = useMemo(() => {
     const corte = new Date()
@@ -310,16 +327,34 @@ export default function GymTab({ aba }: { aba: any }) {
         <Card className="rounded-xl border-gray-200 shadow-sm p-4">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-[13px] font-bold text-gray-900">Frequência semanal</h3>
-            <span className="text-[10px] text-gray-400">últimas 12 semanas</span>
+            <div className="flex items-center gap-2">
+              {semanaFiltro && (
+                <button
+                  type="button"
+                  onClick={() => setSemanaFiltro(null)}
+                  className="text-[10px] font-semibold text-red-600 hover:underline"
+                >
+                  limpar filtro
+                </button>
+              )}
+              <span className="text-[10px] text-gray-400">
+                {semanaFiltro ? `semana de ${semanaFiltro}` : 'últimas 12 semanas · clique filtra'}
+              </span>
+            </div>
           </div>
-          <FrequenciaSemanal sessoes={todasSessoes} />
+          {/* GYM 2 — clicar numa coluna do gráfico filtra a lista pela semana */}
+          <FrequenciaSemanal
+            sessoes={todasSessoes}
+            selecionada={semanaFiltro}
+            onSelecionar={(rotulo) => setSemanaFiltro(semanaFiltro === rotulo ? null : rotulo)}
+          />
         </Card>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <Card className="lg:col-span-2 rounded-xl border-gray-200 shadow-sm overflow-hidden">
           <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
-            <h3 className="text-[13px] font-bold text-gray-900">Sessões recentes</h3>
+            <h3 className="text-[13px] font-bold text-gray-900">Exercícios recentes</h3>
             {kpis.semDetalhe > 0 && (
               <Badge
                 variant="outline"
@@ -366,14 +401,24 @@ export default function GymTab({ aba }: { aba: any }) {
                           ? s.titulo || 'Sessão importada'
                           : `${exs.length} exercício(s)`}
                       </span>
-                      {/* Volume só quando há detalhe de exercício */}
-                      {s.tem_detalhe_exercicio ? (
-                        <span className="text-[11.5px] text-gray-700 tabular-nums shrink-0">
-                          {Number(s.volume_total_kg || 0).toLocaleString('pt-BR')} kg
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-gray-400 shrink-0">—</span>
-                      )}
+                      {/* GYM 1 (15/11/2026) — os dados da sessão viraram
+                          COLUNAS FIXAS (Duração, FC méd, FC máx, Calorias,
+                          Carga), não mais texto solto na linha. */}
+                      <span className="text-[11.5px] text-gray-700 tabular-nums shrink-0 w-14 text-right">
+                        {s.duracao_min != null ? `${s.duracao_min} min` : '—'}
+                      </span>
+                      <span className="text-[11.5px] text-gray-600 tabular-nums shrink-0 w-16 text-right">
+                        {s.fc_media != null ? `${s.fc_media} bpm` : '—'}
+                      </span>
+                      <span className="text-[11.5px] text-gray-600 tabular-nums shrink-0 w-16 text-right">
+                        {s.fc_max != null ? `${s.fc_max} bpm` : '—'}
+                      </span>
+                      <span className="text-[11.5px] text-gray-600 tabular-nums shrink-0 w-14 text-right">
+                        {s.calorias != null ? s.calorias : '—'}
+                      </span>
+                      <span className="text-[11.5px] text-gray-600 tabular-nums shrink-0 w-14 text-right">
+                        {s.carga_proxy != null ? String(s.carga_proxy).replace('.', ',') : '—'}
+                      </span>
                       {s.rpe_medio != null ? (
                         <span className="text-[11px] text-gray-500 shrink-0">
                           RPE {s.rpe_medio}
@@ -386,13 +431,22 @@ export default function GymTab({ aba }: { aba: any }) {
                         <span className="text-[11px] text-gray-400 shrink-0">—</span>
                       )}
                       {s.origem_registro === 'importado' && !s.tem_detalhe_exercicio && (
-                        <Badge
-                          variant="outline"
-                          className="text-[8.5px] font-bold border-amber-300 text-amber-800 bg-amber-50 shrink-0"
-                          title="Sessão importada do Garmin: registra frequência, duração, FC e calorias — sem exercício, série ou carga individuais."
+                        <button
+                          type="button"
+                          onClick={(ev) => {
+                            ev.stopPropagation()
+                            setTagAberta(tagAberta === s.id ? null : s.id)
+                          }}
+                          className="shrink-0"
+                          title="Clique para ver a explicação"
                         >
-                          Registro de frequência
-                        </Badge>
+                          <Badge
+                            variant="outline"
+                            className="text-[8.5px] font-bold border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 cursor-pointer"
+                          >
+                            Registro de frequência
+                          </Badge>
+                        </button>
                       )}
                       <Badge
                         variant="outline"
@@ -410,45 +464,20 @@ export default function GymTab({ aba }: { aba: any }) {
                       </Badge>
                     </button>
 
-                    {/* painel de detalhe de uma sessão importada */}
-                    {expandida && s.origem_registro === 'importado' && (
+                    {/* GYM 1 — o TEXTO explicativo só aparece ao clicar na tag
+    "Registro de frequência". Antes ele abria junto com a
+    linha, mesmo sem o dono pedir. */}
+                    {expandida && tagAberta === s.id && s.origem_registro === 'importado' && (
                       <div className="px-4 pb-3 pl-10">
                         <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-2.5">
                           <p className="text-[10.5px] font-bold text-amber-900 mb-1">
                             Registro de frequência — sem detalhe de exercício
                           </p>
                           <p className="text-[10.5px] text-amber-800 leading-snug">
-                            O export do Garmin não traz exercício, série ou carga desta sessão. Ela
-                            conta para frequência semanal e sessões, mas fica fora de "Volume" e
+                            O Garmin não envia exercício, série ou carga desta sessão. Ela conta
+                            para frequência semanal e sessões, mas fica fora de "Volume" e
                             "Progressão de carga".
                           </p>
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10.5px] text-gray-700">
-                            {s.duracao_min != null && (
-                              <span>
-                                Duração: <strong>{s.duracao_min} min</strong>
-                              </span>
-                            )}
-                            {s.fc_media != null && (
-                              <span>
-                                FC média: <strong>{s.fc_media} bpm</strong>
-                              </span>
-                            )}
-                            {s.fc_max != null && (
-                              <span>
-                                FC máx: <strong>{s.fc_max} bpm</strong>
-                              </span>
-                            )}
-                            {s.calorias != null && (
-                              <span>
-                                Calorias: <strong>{s.calorias}</strong>
-                              </span>
-                            )}
-                            {s.carga_proxy != null && (
-                              <span>
-                                Carga (proxy): <strong>{s.carga_proxy}</strong>
-                              </span>
-                            )}
-                          </div>
                         </div>
                       </div>
                     )}
@@ -558,7 +587,15 @@ export default function GymTab({ aba }: { aba: any }) {
  * Conta TODAS as sessões — inclusive as de frequência, que é exatamente
  * a métrica que elas podem alimentar.
  */
-function FrequenciaSemanal({ sessoes }: { sessoes: any[] }) {
+function FrequenciaSemanal({
+  sessoes,
+  selecionada,
+  onSelecionar,
+}: {
+  sessoes: any[]
+  selecionada?: string | null
+  onSelecionar?: (rotulo: string) => void
+}) {
   const semanas = useMemo(() => {
     const hoje = new Date()
     const out: Array<{ rotulo: string; total: number; comDetalhe: number; inicio: Date }> = []
@@ -590,22 +627,33 @@ function FrequenciaSemanal({ sessoes }: { sessoes: any[] }) {
   return (
     <div>
       <div className="flex items-end gap-1 h-[80px]">
-        {semanas.map((s, i) => (
-          <div key={i} className="flex-1 flex flex-col items-center justify-end gap-0.5">
-            <span className="text-[9px] font-bold text-gray-600 tabular-nums">
-              {s.total > 0 ? s.total : ''}
-            </span>
-            <div
-              className="w-full rounded-t"
-              style={{
-                height: `${(s.total / maximo) * 58}px`,
-                minHeight: s.total > 0 ? 4 : 1,
-                backgroundColor: s.total > 0 ? '#1b5e20' : '#f3f4f6',
-              }}
-              title={`Semana de ${s.rotulo}: ${s.total} sessão(ões) — ${s.comDetalhe} com detalhe`}
-            />
-          </div>
-        ))}
+        {semanas.map((s, i) => {
+          const ativa = selecionada === s.rotulo
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onSelecionar?.(s.rotulo)}
+              className={cn(
+                'flex-1 flex flex-col items-center justify-end gap-0.5 rounded-t transition-colors',
+                ativa ? 'bg-emerald-50' : 'hover:bg-gray-50',
+              )}
+              title={`Semana de ${s.rotulo}: ${s.total} sessão(ões) — ${s.comDetalhe} com detalhe. Clique para filtrar.`}
+            >
+              <span className="text-[9px] font-bold text-gray-600 tabular-nums">
+                {s.total > 0 ? s.total : ''}
+              </span>
+              <div
+                className="w-full rounded-t"
+                style={{
+                  height: `${(s.total / maximo) * 58}px`,
+                  minHeight: s.total > 0 ? 4 : 1,
+                  backgroundColor: s.total > 0 ? (ativa ? '#0F3D13' : '#1b5e20') : '#f3f4f6',
+                }}
+              />
+            </button>
+          )
+        })}
       </div>
       <div className="flex gap-1 mt-1">
         {semanas.map((s, i) => (
