@@ -109,23 +109,25 @@ export function GarminConfigSection() {
         method: 'POST',
         body: JSON.stringify({ api_key: k, ativo: true }),
       })
+      // O POST agora RELEIA o registro e devolve o estado real gravado.
+      // Se `success:false`, a persistência falhou de verdade — não mascaramos.
       if (r?.success === false) {
         throw new Error(r.erro || 'O servidor recusou a chave.')
       }
-      // ATUALIZAÇÃO OTIMISTA: o log do servidor confirma que a chave foi
-      // gravada (133 chars), mas o GET de retorno não estava refletindo.
-      // Liberamos o botão "Obter token" imediatamente, sem depender do
-      // round-trip de leitura.
+
       setCfg((c) => ({
         ...c,
         tem_api_key: true,
         tem_client_secret: true,
-        api_key_mascarada: k.slice(0, 6) + '…' + k.slice(-4),
+        api_key_mascarada: r?.api_key_mascarada || k.slice(0, 6) + '…' + k.slice(-4),
         ativo: true,
       }))
-      toast({ title: 'API key salva', description: 'Agora clique em "Obter token".' })
+      toast({
+        title: 'API key salva e verificada',
+        description: 'Agora clique em "Obter token".',
+      })
       setApiKey('')
-      // confirma no servidor em segundo plano (não bloqueia a UI)
+      // revalida o estado em segundo plano (não bloqueia a UI)
       carregar().catch(() => {})
     } catch (e: any) {
       const detalhe =

@@ -353,54 +353,67 @@ export async function processarLoteCsv(
   }
 
   // 2) insere em BATCH REAL (uma requisição HTTP para o lote inteiro).
-  //    `create(array)` NÃO existe no SDK — era isso que disparava o
-  //    fallback de 100 inserts e estourava o rate limit.
-  if (paraInserir.length) {
-    try {
-      const batch = pb.createBatch()
-      let noBatch = 0
-      for (const row of paraInserir) {
-        // o limite do PocketBase é 100 operações por batch
-        if (noBatch >= LOTE) break
-        batch.collection('ll5_activity').create(row)
-        noBatch++
-      }
-      await comRetry(() => batch.send())
-      importados += noBatch
+  //
+  // 15/11/2026 — O lote inteiro falhava quando UM registro tinha valor
+  // inválido num select (`tipo='forca'` fora da lista, `qualidade_dados='limitado'`).
+  // O batch é atômico: um erro derruba os 100. Agora:
+  //   · o batch é dividido em blocos de 25;
+  //   · um bloco que falha é reprocessado UM A UM, isolando o registro ruim;
+  //   · o motivo REAL do PocketBase sobe para o relatório.
+  const BLOCOS = 25
+  const inserirBloco = async (rows: any[]) => {
+    const b = pb.createBatch()
+    for (const row of rows) b.collection('ll5_activity').create(row)
+    await comRetry(() => b.send())
+  }
 
-      // se sobrou algo (não deve, com LOTE=100), segundo batch
-      if (paraInserir.length > noBatch) {
-        await esperar(PAUSA_MS)
-        const b2 = pb.createBatch()
-        const resto = paraInserir.slice(noBatch)
-        for (const row of resto) {
-          b2.collection('ll5_activity').create(row)
-        }
-        await comRetry(() => b2.send())
-        importados += resto.length
-      }
-    } catch (eBatch: any) {
-      // batch é atômico: se falhar, insere individualmente com retry,
-      // mas em ritmo controlado para não repetir o rate limit
+  for (let i = 0; i < paraInserir.length; i += BLOCOS) {
+    const bloco = paraInserir.slice(i, i + BLOCOS)
+    try {
+      await inserirBloco(bloco)
+      importados += bloco.length
+    } catch (eBloco: any) {
+      // o bloco é atômico: isola o registro problemático
       log.push({
         status: 'aviso',
-        motivo: 'batch falhou (' + (eBatch?.message || 'erro') + '); inserindo um a um',
+        motivo:
+          'bloco de ' +
+          bloco.length +
+          ' falhou (' +
+          (eBloco?.response?.data?.message || eBloco?.message || 'erro') +
+          '); reprocessando um a um',
       })
-      for (const row of paraInserir) {
+      for (const row of bloco) {
         try {
-          await comRetry(() => pb.collection('ll5_activity').create(row))
+          await pb.collection('ll5_activity').create(row)
           importados++
         } catch (e: any) {
           errosLote++
+          // motivo real: campo e valor que o PocketBase recusou
+          let motivo = e?.response?.data?.message || e?.message || String(e)
+          try {
+            const det = e?.response?.data?.data
+            if (det && typeof det === 'object') {
+              const partes: string[] = []
+              for (const k of Object.keys(det)) {
+                const v: any = (det as any)[k]
+                partes.push(k + ': ' + (v?.message || String(v)))
+              }
+              if (partes.length) motivo = partes.join(' | ')
+            }
+          } catch (_) {
+            // mantém o motivo simples
+          }
           log.push({
             linha: row.titulo || row.device_activity_id || '?',
             status: 'erro',
-            motivo: e?.message || String(e),
+            motivo: motivo.slice(0, 180),
           })
         }
-        await esperar(60)
+        await esperar(40)
       }
     }
+    await esperar(PAUSA_MS)
   }
 
   // atualizações: batch também, quando houver mais de uma

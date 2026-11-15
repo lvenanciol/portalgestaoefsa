@@ -154,8 +154,63 @@ routerAdd(
       })
     }
 
-    console.log('[garmin/personal/config] API key salva (' + apiKey.length + ' chars)')
-    return e.json(200, { success: true, tem_api_key: true })
+    // ------------------------------------------------------------------
+    // VERIFICAÇÃO PÓS-GRAVAÇÃO (15/11/2026)
+    // O log confirmava "API key salva" mas o GET seguinte devolvia
+    // tem_api_key:false — a tela mostrava "ausente" e o botão "Obter token"
+    // não habilitava. Aqui RELEMOS o registro depois do save e devolvemos o
+    // estado REAL, para a UI não depender de um segundo request.
+    // ------------------------------------------------------------------
+    let verificado = false
+    let mascara = ''
+    let tamanho = 0
+    try {
+      const relido = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
+      let c2 = relido.get('config')
+      if (typeof c2 === 'string') {
+        try {
+          c2 = JSON.parse(c2)
+        } catch (_) {
+          c2 = {}
+        }
+      }
+      const k2 = c2 && typeof c2 === 'object' ? String(c2.personal_api_key || '') : ''
+      verificado = !!k2.trim()
+      tamanho = k2.length
+      mascara = k2 ? k2.slice(0, 6) + '…' + k2.slice(-4) : ''
+      if (!verificado) {
+        console.log(
+          '[garmin/personal/config] ATENÇÃO: save retornou OK mas a releitura não achou a chave',
+        )
+      }
+    } catch (err) {
+      console.log('[garmin/personal/config] falha na releitura: ' + String(err))
+    }
+
+    console.log(
+      '[garmin/personal/config] API key salva (' +
+        apiKey.length +
+        ' chars) · verificado=' +
+        verificado +
+        ' · relido=' +
+        tamanho +
+        ' chars',
+    )
+
+    if (!verificado) {
+      return e.json(200, {
+        success: false,
+        erro: 'A chave foi enviada mas não foi encontrada na releitura do banco. Isso indica falha de persistência do campo JSON.',
+      })
+    }
+
+    return e.json(200, {
+      success: true,
+      tem_api_key: true,
+      tem_client_secret: true,
+      api_key_mascarada: mascara,
+      ativo: true,
+    })
   },
   $apis.requireAuth(),
 )
