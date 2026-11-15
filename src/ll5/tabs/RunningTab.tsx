@@ -490,10 +490,12 @@ export default function RunningTab({ aba }: { aba: any }) {
                 {
                   key: 'duracao_s',
                   label: 'Duração',
-                  largura: 90,
+                  largura: 100,
                   align: 'right',
                   valor: (r: any) => Number(r.duracao_s || 0),
-                  render: (r: any) => <span className="text-gray-600">{hms(r.duracao_s)}</span>,
+                  render: (r: any) => (
+                    <span className="text-gray-600 whitespace-nowrap">{hms(r.duracao_s)}</span>
+                  ),
                 },
                 {
                   key: 'distancia_km',

@@ -268,14 +268,16 @@ export default function TabelaInterativa({ id, colunas, dados, limite, vazio }: 
                   onDrop={() => soltarEm(c.key)}
                   onClick={() => alternarSort(c.key)}
                   className={cn(
-                    'relative px-3 py-2 select-none cursor-pointer hover:bg-gray-100/70 transition-colors',
+                    'relative px-3 py-2 select-none cursor-pointer hover:bg-gray-100/70 transition-colors overflow-hidden',
                     c.align === 'right' && 'text-right',
                     c.align === 'center' && 'text-center',
                     arrastandoCol === c.key && 'opacity-40',
                   )}
-                  title="Clique para ordenar · arraste para reordenar"
+                  // 15/11/2026 — o rótulo completo no tooltip: com a coluna
+                  // estreita, "DURAÇÃO" aparecia cortado como "AÇÃO".
+                  title={c.label + ' — clique para ordenar · arraste para reordenar'}
                 >
-                  <span className="inline-flex items-center gap-1">
+                  <span className="inline-flex items-center gap-1 whitespace-nowrap">
                     {c.label}
                     {sort.key === c.key ? (
                       sort.dir === 'asc' ? (

@@ -271,6 +271,63 @@ routerAdd(
           demo: false,
         }
 
+        // ----------------------------------------------------------------
+        // 15/11/2026 — ZONAS DE FC TAMBÉM NA API.
+        //
+        // A API não devolve tempo por zona (exigiria streams segundo a
+        // segundo). O CSV estimava a distribuição a partir da FC média; aqui
+        // aplicamos a MESMA estimativa, com `zonas_estimadas = true`.
+        //
+        // Z1 109–131 · Z2 131–153 · Z3 153–174 · Z4 174–196 · Z5 196–218
+        // ----------------------------------------------------------------
+        try {
+          const fcM = dados.fc_media
+          const dur = dados.duracao_s
+          if (fcM && dur && fcM > 0 && dur > 0) {
+            const ZS = [
+              { id: 'z1', min: 109, max: 131 },
+              { id: 'z2', min: 131, max: 153 },
+              { id: 'z3', min: 153, max: 174 },
+              { id: 'z4', min: 174, max: 196 },
+              { id: 'z5', min: 196, max: 218 },
+            ]
+            const desvio = 8
+            const passos = 61
+            const zonas = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 }
+            let soma = 0
+            const pesos = []
+            for (let k = 0; k < passos; k++) {
+              const x = fcM - 30 + (60 * k) / (passos - 1)
+              const w = Math.exp(-0.5 * Math.pow((x - fcM) / desvio, 2))
+              pesos.push(w)
+              soma += w
+            }
+            for (let k = 0; k < passos; k++) {
+              const x = fcM - 30 + (60 * k) / (passos - 1)
+              for (let z = 0; z < ZS.length; z++) {
+                if (x >= ZS[z].min && x < ZS[z].max) {
+                  zonas[ZS[z].id] += (pesos[k] / soma) * dur
+                  break
+                }
+              }
+            }
+            let tot = 0
+            for (const kk of Object.keys(zonas)) {
+              zonas[kk] = Math.round(zonas[kk])
+              tot += zonas[kk]
+            }
+            if (tot > 0) {
+              dados.zonas_fc_seg = zonas
+              dados.zonas_estimadas = true
+              dados.fcmax_referencia = 218
+              dados.fcmax_validada = true
+              dados.fcmax_metodo_validacao = 'estatistico_164_atividades'
+            }
+          }
+        } catch (_z) {
+          // sem FC/duração: fica sem zona, nunca inventa
+        }
+
         // remove chaves nulas para não sobrescrever dado bom com null
         for (const k of Object.keys(dados)) {
           if (dados[k] === null || dados[k] === undefined) delete dados[k]
