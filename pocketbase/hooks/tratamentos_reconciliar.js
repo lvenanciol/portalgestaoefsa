@@ -92,11 +92,27 @@ routerAdd(
           continue
         }
 
-        const prazo = String(tarefa.getDateTime('prazo') || '').slice(0, 10)
+        // 15/11/2026 — prazo vazio NÃO é "válido": tarefas criadas pela
+        // versão antiga têm prazo em branco. Sem isso elas passavam no teste
+        // e o reconciliar criava outras por cima, acumulando.
+        let prazo = ''
+        try {
+          prazo = String(tarefa.getDateTime('prazo') || '').slice(0, 10)
+        } catch (_) {
+          prazo = ''
+        }
+
+        if (!prazo) {
+          try {
+            $app.delete(tarefa)
+            orfas++
+          } catch (_) {}
+          continue
+        }
 
         // se a data não está mais entre as sessões do tratamento, a tarefa
         // é órfã de agenda: remove
-        if (sessoes.length > 0 && prazo && sessoes.indexOf(prazo) < 0) {
+        if (sessoes.length > 0 && sessoes.indexOf(prazo) < 0) {
           try {
             $app.delete(tarefa)
             orfas++
@@ -129,8 +145,15 @@ routerAdd(
       let criadas = 0
       if (sessoes.length > 0) {
         for (const dia of sessoes) {
-          const d = String(dia).slice(0, 10)
-          if (!d) continue
+          // 15/11/2026 — VALIDAÇÃO DE DATA (causa das tarefas em massa).
+          // `proximas_sessoes` pode conter número, ISO com hora ou lixo.
+          // Antes, `String(dia).slice(0,10)` virava algo inválido, o `prazo`
+          // era gravado VAZIO (print mostrava "—") e o dedupe por prazo nunca
+          // achava a tarefa anterior → criava outra a cada execução.
+          const bruto = String(dia || '').trim()
+          const mData = /^(\d{4})-(\d{2})-(\d{2})/.exec(bruto)
+          if (!mData) continue // não é data válida: ignora
+          const d = mData[1] + '-' + mData[2] + '-' + mData[3]
           if (porData[d]) continue // já tem tarefa válida nesta data
 
           const tipoNome = String(t.get('tipo_nome') || 'Tratamento')
@@ -161,6 +184,22 @@ routerAdd(
             }
             nova.set('criado_por', String(t.getString('created_by') || 'reconciliar'))
             $app.save(nova)
+
+            // 15/11/2026 — confere se o prazo gravou. O print mostrava PRAZO
+            // vazio; sem data o dedupe nunca acha a tarefa e cria outra.
+            let gravou = ''
+            try {
+              gravou = String(nova.getDateTime('prazo') || '').slice(0, 10)
+            } catch (_) {
+              gravou = ''
+            }
+            if (gravou !== d) {
+              console.log('[reconciliar] prazo não gravou em ' + d + ' (ficou "' + gravou + '")')
+              try {
+                $app.delete(nova)
+              } catch (_) {}
+              continue
+            }
 
             validos.push(nova.id)
             porData[d] = nova.id
