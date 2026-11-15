@@ -121,14 +121,40 @@ export default function ImportarCsvDialog({
     try {
       const id = await criarJobCsv(ownerAtual, ator.email, inv)
 
+      // ----------------------------------------------------------------
+      // 15/11/2026 — CAUSA DO "só 99 atividades":
+      // o laço parava quando `processarLoteCsv` lançava exceção (ex.: falha
+      // ao atualizar o job por payload grande). O primeiro lote de 100
+      // importava 99 (1 walking ignorado) e o processo morria ali.
+      //
+      // Agora: cada lote tem try/catch próprio, o laço tem limite de
+      // segurança e o progresso é atualizado mesmo quando um lote falha.
+      // ----------------------------------------------------------------
       let concluido = false
       let atual: any = null
-      while (!concluido && !abortar.current) {
-        // a fila vem da MEMÓRIA (o registro no banco só guarda contadores)
-        const r = await processarLoteCsv(id, ownerAtual, ator.email, inv.itens)
-        concluido = r.concluido
-        atual = r.job
-        setJob({ ...atual })
+      let iteracoes = 0
+      const MAX_ITERACOES = Math.ceil(inv.itens.length / 50) + 10
+
+      while (!concluido && !abortar.current && iteracoes < MAX_ITERACOES) {
+        iteracoes++
+        try {
+          // a fila vem da MEMÓRIA (o registro no banco só guarda contadores)
+          const r = await processarLoteCsv(id, ownerAtual, ator.email, inv.itens)
+          concluido = r.concluido
+          atual = r.job
+          setJob({ ...atual })
+        } catch (eLote: any) {
+          console.error('[importar/csv] lote ' + iteracoes + ' falhou:', eLote)
+          // não mata o processo: mostra o erro e tenta continuar
+          setErro(
+            'Lote ' +
+              iteracoes +
+              ' falhou (' +
+              (eLote?.message || String(eLote)) +
+              '), continuando…',
+          )
+          await new Promise((r) => setTimeout(r, 400))
+        }
       }
       if (concluido) {
         toast({

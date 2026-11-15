@@ -486,26 +486,75 @@ routerAdd(
     st.tem_token = !!token
 
     if (token) {
+      // ----------------------------------------------------------------
+      // 15/11/2026 — ENDPOINT CORRIGIDO (era a causa do 401).
+      //
+      // Eu testava `apis.garmin.com/wellness-api/rest/user/id` — essa é a
+      // API EMPRESARIAL (Health API), que exige consentimento de usuário e
+      // não aceita token da Personal API. Daí o 401.
+      //
+      // A Personal API usa outro host e outro caminho (docs oficiais):
+      //   GET personal.connectapi.garmin.com/activitylist-service/
+      //       activities/search/activities?start=0&limit=1
+      //   Authorization: Bearer <token>
+      //   Accept: */*        ← `application/json` devolve HTTP 406
+      // ----------------------------------------------------------------
       try {
         const ping = $http.send({
-          url: 'https://apis.garmin.com/wellness-api/rest/user/id',
+          url: 'https://personal.connectapi.garmin.com/activitylist-service/activities/search/activities?start=0&limit=1',
           method: 'GET',
-          headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' },
-          timeout: 20,
+          headers: { Authorization: 'Bearer ' + token, Accept: '*/*' },
+          timeout: 25,
         })
-        st.conexao_ok = ping.statusCode === 200
-        if (ping.statusCode === 200) {
+        st.conexao_ok = ping.statusCode === 200 || ping.statusCode === 204
+        if (st.conexao_ok) {
           st.recursos.activities = true
           st.recursos.workouts = true
-          st.detalhe = 'Token válido — API respondendo.'
+          st.detalhe = 'Conectado — lista de atividades acessível.'
+          // conta as atividades para dar um número real ao dono
+          try {
+            const total = $http.send({
+              url: 'https://personal.connectapi.garmin.com/activitylist-service/activities/search/activities?start=0&limit=1000',
+              method: 'GET',
+              headers: { Authorization: 'Bearer ' + token, Accept: '*/*' },
+              timeout: 40,
+            })
+            if (total.statusCode === 200) {
+              let arr = total.json
+              if (!arr || !arr.length) {
+                // corpo pode vir como bytes
+                try {
+                  let s = ''
+                  const b = total.body
+                  if (typeof b === 'string') s = b
+                  else if (b && b.length) {
+                    for (let i = 0; i < b.length; i++) s += String.fromCharCode(Number(b[i]))
+                  }
+                  arr = JSON.parse(s)
+                } catch (_) {
+                  arr = []
+                }
+              }
+              if (arr && arr.length) {
+                st.detalhe =
+                  'Conectado — ' +
+                  arr.length +
+                  ' atividade(s) visível(is) na API' +
+                  (arr.length >= 1000 ? ' (limite da consulta)' : '') +
+                  '.'
+              }
+            }
+          } catch (_) {}
         } else if (ping.statusCode === 401) {
           st.detalhe =
-            'Token obtido, mas a API de atividades respondeu 401. A Personal API pode não liberar este escopo — o import por CSV continua disponível.'
+            'Token recusado pela API de atividades (401). Gere um novo token — o anterior pode ter expirado.'
+        } else if (ping.statusCode === 406) {
+          st.detalhe = 'API respondeu 406 — problema de Accept header.'
         } else {
           st.detalhe = 'API respondeu HTTP ' + ping.statusCode + '.'
         }
       } catch (err) {
-        st.detalhe = 'Token OK, mas a API não respondeu: ' + String(err).slice(0, 100)
+        st.detalhe = 'Token OK, mas a API não respondeu: ' + String(err).slice(0, 120)
       }
     }
 

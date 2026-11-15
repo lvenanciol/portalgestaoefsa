@@ -147,6 +147,17 @@ export default function RunningTab({ aba }: { aba: any }) {
       id: a.id,
       data: a.data_hora_inicio,
       tipo: a.tipo,
+      // campos completos para a tabela de recentes (b)
+      titulo: a.titulo,
+      duracao_s: Number(a.duracao_s || 0),
+      melhor_pace_s_km: a.melhor_pace_s_km,
+      gap_s_km: a.gap_s_km,
+      cadencia_spm: a.cadencia_spm,
+      ganho_elevacao_m: a.ganho_elevacao_m,
+      calorias: a.calorias,
+      te_aerobico: a.te_aerobico,
+      passos: a.passos,
+      fc_max: a.fc_max,
       distancia_km: Number(a.distancia_m || 0) / 1000,
       duracao_s: Number(a.duracao_s || 0),
       // o CSV traz pace pronto; o .FIT precisa calcular
@@ -421,10 +432,26 @@ export default function RunningTab({ aba }: { aba: any }) {
                   ),
                 },
                 {
+                  key: 'titulo',
+                  label: 'Título',
+                  largura: 180,
+                  render: (r: any) => (
+                    <span className="text-gray-700 block truncate">{r.titulo || '—'}</span>
+                  ),
+                },
+                {
                   key: 'tipo',
                   label: 'Tipo',
                   largura: 90,
                   render: (r: any) => <span className="capitalize text-gray-600">{r.tipo}</span>,
+                },
+                {
+                  key: 'duracao_s',
+                  label: 'Duração',
+                  largura: 90,
+                  align: 'right',
+                  valor: (r: any) => Number(r.duracao_s || 0),
+                  render: (r: any) => <span className="text-gray-600">{hms(r.duracao_s)}</span>,
                 },
                 {
                   key: 'distancia_km',
@@ -450,11 +477,89 @@ export default function RunningTab({ aba }: { aba: any }) {
                   ),
                 },
                 {
+                  key: 'melhor_pace_s_km',
+                  label: 'Best pace',
+                  largura: 90,
+                  align: 'right',
+                  valor: (r: any) => Number(r.melhor_pace_s_km || 0),
+                  render: (r: any) => (
+                    <span className="text-gray-600">{pace(Number(r.melhor_pace_s_km || 0))}</span>
+                  ),
+                },
+                {
+                  key: 'gap_s_km',
+                  label: 'GAP',
+                  largura: 75,
+                  align: 'right',
+                  valor: (r: any) => Number(r.gap_s_km || 0),
+                  render: (r: any) => (
+                    <span className="text-gray-600">{pace(Number(r.gap_s_km || 0))}</span>
+                  ),
+                },
+                {
                   key: 'fc_media',
                   label: 'FC média',
                   largura: 90,
                   align: 'right',
                   render: (r: any) => <span className="text-gray-600">{r.fc_media || '—'}</span>,
+                },
+                {
+                  key: 'fc_max',
+                  label: 'FC máx',
+                  largura: 80,
+                  align: 'right',
+                  valor: (r: any) => Number(r.fc_max || 0),
+                  render: (r: any) => <span className="text-gray-600">{r.fc_max ?? '—'}</span>,
+                },
+                {
+                  key: 'cadencia_spm',
+                  label: 'Cadência',
+                  largura: 85,
+                  align: 'right',
+                  valor: (r: any) => Number(r.cadencia_spm || 0),
+                  render: (r: any) => (
+                    <span className="text-gray-600">{r.cadencia_spm ?? '—'}</span>
+                  ),
+                },
+                {
+                  key: 'ganho_elevacao_m',
+                  label: 'Ganho alt.',
+                  largura: 90,
+                  align: 'right',
+                  valor: (r: any) => Number(r.ganho_elevacao_m || 0),
+                  render: (r: any) => (
+                    <span className="text-gray-600">
+                      {r.ganho_elevacao_m != null ? r.ganho_elevacao_m + ' m' : '—'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'calorias',
+                  label: 'Calorias',
+                  largura: 80,
+                  align: 'right',
+                  valor: (r: any) => Number(r.calorias || 0),
+                  render: (r: any) => <span className="text-gray-600">{r.calorias ?? '—'}</span>,
+                },
+                {
+                  key: 'te_aerobico',
+                  label: 'TE',
+                  largura: 60,
+                  align: 'right',
+                  valor: (r: any) => Number(r.te_aerobico || 0),
+                  render: (r: any) => (
+                    <span className="text-gray-600">
+                      {r.te_aerobico != null ? String(r.te_aerobico).replace('.', ',') : '—'}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'passos',
+                  label: 'Passos',
+                  largura: 80,
+                  align: 'right',
+                  valor: (r: any) => Number(r.passos || 0),
+                  render: (r: any) => <span className="text-gray-600">{r.passos ?? '—'}</span>,
                 },
                 {
                   key: 'zonas_fc',

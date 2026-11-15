@@ -1,5 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
-import { ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react'
+import { ArrowUp, ArrowDown, ChevronsUpDown, Columns3, Check } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
 // ============================================================================
@@ -77,16 +83,44 @@ export default function TabelaInterativa({ id, colunas, dados, limite, vazio }: 
     }
   }
 
+  // (e) colunas OCULTAS — persistidas junto com ordem/larguras
+  const [ocultas, setOcultas] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE + '_ocultas')
+      if (raw) {
+        const p = JSON.parse(raw)
+        if (Array.isArray(p)) return p
+      }
+    } catch (_) {
+      // sem preferência: todas visíveis
+    }
+    return []
+  })
+
+  const alternarColuna = (key: string) => {
+    setOcultas((prev) => {
+      const novo = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+      try {
+        localStorage.setItem(STORAGE + '_ocultas', JSON.stringify(novo))
+      } catch (_) {
+        // segue sem persistir
+      }
+      return novo
+    })
+  }
+
   // colunas na ordem escolhida (ignora chaves que não existem mais)
   const cols = useMemo(() => {
     const mapa = new Map(colunas.map((c) => [c.key, c]))
     const naOrdem = estado.ordem.map((k) => mapa.get(k)).filter(Boolean) as Coluna[]
-    // acrescenta colunas novas que ainda não estavam na preferência
     for (const c of colunas) {
       if (!naOrdem.some((x) => x.key === c.key)) naOrdem.push(c)
     }
     return naOrdem
   }, [colunas, estado.ordem])
+
+  // colunas efetivamente renderizadas
+  const visiveis = useMemo(() => cols.filter((c) => !ocultas.includes(c.key)), [cols, ocultas])
 
   const ordenados = useMemo(() => {
     let lista = [...dados]
@@ -169,77 +203,122 @@ export default function TabelaInterativa({ id, colunas, dados, limite, vazio }: 
   if (!dados.length && vazio) return <>{vazio}</>
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-[12px] table-fixed">
-        <colgroup>
-          {cols.map((c) => (
-            <col
-              key={c.key}
-              style={{ width: (estado.larguras[c.key] || c.largura || 120) + 'px' }}
-            />
-          ))}
-        </colgroup>
-        <thead className="bg-gray-50/70">
-          <tr className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-            {cols.map((c) => (
-              <th
-                key={c.key}
-                draggable
-                onDragStart={() => setArrastandoCol(c.key)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => soltarEm(c.key)}
-                onClick={() => alternarSort(c.key)}
-                className={cn(
-                  'relative px-3 py-2 select-none cursor-pointer hover:bg-gray-100/70 transition-colors',
-                  c.align === 'right' && 'text-right',
-                  c.align === 'center' && 'text-center',
-                  arrastandoCol === c.key && 'opacity-40',
-                )}
-                title="Clique para ordenar · arraste para reordenar"
-              >
-                <span className="inline-flex items-center gap-1">
-                  {c.label}
-                  {sort.key === c.key ? (
-                    sort.dir === 'asc' ? (
-                      <ArrowUp className="h-2.5 w-2.5" />
-                    ) : (
-                      <ArrowDown className="h-2.5 w-2.5" />
-                    )
-                  ) : (
-                    <ChevronsUpDown className="h-2.5 w-2.5 opacity-25" />
-                  )}
-                </span>
-                {/* alça de redimensionamento */}
-                <span
-                  onMouseDown={(e) => comecarLargura(e, c.key)}
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-[#1b5e20]/30"
-                  title="Arraste para redimensionar"
-                />
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          {ordenados.map((row, i) => (
-            <tr key={row.id || i} className="hover:bg-gray-50/50">
-              {cols.map((c) => (
-                <td
+    <div>
+      {/* (e) barra de exibir/ocultar colunas */}
+      <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-gray-500 hover:text-[#1b5e20] transition-colors"
+            >
+              <Columns3 className="h-3 w-3" />
+              Colunas ({visiveis.length}/{cols.length})
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-56 bg-white border-gray-200 z-[130] max-h-[320px] overflow-y-auto"
+          >
+            {cols.map((c) => {
+              const ativa = !ocultas.includes(c.key)
+              return (
+                <DropdownMenuItem
                   key={c.key}
-                  className={cn(
-                    'px-3 py-2 truncate',
-                    c.align === 'right' && 'text-right tabular-nums',
-                    c.align === 'center' && 'text-center',
-                    c.className,
-                  )}
+                  onClick={(ev) => {
+                    ev.preventDefault()
+                    alternarColuna(c.key)
+                  }}
+                  className="cursor-pointer text-[12px] gap-2"
                 >
-                  {c.render(row)}
-                </td>
+                  <span
+                    className={cn(
+                      'h-3.5 w-3.5 rounded border flex items-center justify-center shrink-0',
+                      ativa ? 'bg-[#1b5e20] border-[#1b5e20]' : 'border-gray-300 bg-white',
+                    )}
+                  >
+                    {ativa && <Check className="h-2.5 w-2.5 text-white" />}
+                  </span>
+                  <span className={cn(ativa ? 'text-gray-800' : 'text-gray-400')}>{c.label}</span>
+                </DropdownMenuItem>
+              )
+            })}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-[12px] table-fixed">
+          <colgroup>
+            {visiveis.map((c) => (
+              <col
+                key={c.key}
+                style={{ width: (estado.larguras[c.key] || c.largura || 120) + 'px' }}
+              />
+            ))}
+          </colgroup>
+          <thead className="bg-gray-50/70">
+            <tr className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+              {visiveis.map((c) => (
+                <th
+                  key={c.key}
+                  draggable
+                  onDragStart={() => setArrastandoCol(c.key)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => soltarEm(c.key)}
+                  onClick={() => alternarSort(c.key)}
+                  className={cn(
+                    'relative px-3 py-2 select-none cursor-pointer hover:bg-gray-100/70 transition-colors',
+                    c.align === 'right' && 'text-right',
+                    c.align === 'center' && 'text-center',
+                    arrastandoCol === c.key && 'opacity-40',
+                  )}
+                  title="Clique para ordenar · arraste para reordenar"
+                >
+                  <span className="inline-flex items-center gap-1">
+                    {c.label}
+                    {sort.key === c.key ? (
+                      sort.dir === 'asc' ? (
+                        <ArrowUp className="h-2.5 w-2.5" />
+                      ) : (
+                        <ArrowDown className="h-2.5 w-2.5" />
+                      )
+                    ) : (
+                      <ChevronsUpDown className="h-2.5 w-2.5 opacity-25" />
+                    )}
+                  </span>
+                  {/* alça de redimensionamento */}
+                  <span
+                    onMouseDown={(e) => comecarLargura(e, c.key)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-[#1b5e20]/30"
+                    title="Arraste para redimensionar"
+                  />
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {ordenados.map((row, i) => (
+              <tr key={row.id || i} className="hover:bg-gray-50/50">
+                {visiveis.map((c) => (
+                  <td
+                    key={c.key}
+                    className={cn(
+                      'px-3 py-2 truncate',
+                      c.align === 'right' && 'text-right tabular-nums',
+                      c.align === 'center' && 'text-center',
+                      c.className,
+                    )}
+                  >
+                    {c.render(row)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
