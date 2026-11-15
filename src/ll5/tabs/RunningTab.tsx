@@ -260,11 +260,25 @@ export default function RunningTab({ aba }: { aba: any }) {
           <div className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white">
             <Footprints className="h-3.5 w-3.5 text-gray-600" />
             <span className="text-[12px] font-semibold text-gray-800">Garmin</span>
+            {/* 15/11/2026 — o badge estava HARDCODED em "Não configurado".
+                Mostrava "Garmin não configurado" mesmo com a API conectada.
+                Agora reflete o estado real do adapter. */}
             <Badge
               variant="outline"
-              className="text-[9px] font-bold uppercase border-amber-300 text-amber-700 bg-amber-50"
+              className={cn(
+                'text-[9px] font-bold uppercase',
+                garmin?.estado === 'conectado'
+                  ? 'border-emerald-300 text-emerald-700 bg-emerald-50'
+                  : garmin?.estado === 'pendente'
+                    ? 'border-amber-300 text-amber-700 bg-amber-50'
+                    : 'border-gray-300 text-gray-600 bg-gray-50',
+              )}
             >
-              Não configurado
+              {garmin?.estado === 'conectado'
+                ? 'Conectado'
+                : garmin?.estado === 'pendente'
+                  ? 'Pendente'
+                  : 'Não configurado'}
             </Badge>
           </div>
 

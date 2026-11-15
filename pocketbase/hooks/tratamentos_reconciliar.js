@@ -42,21 +42,34 @@ routerAdd(
     let tratamentosAjustados = 0
 
     for (const t of tratamentos) {
+      // 15/11/2026 — CAUSA do "Something went wrong" ao reconciliar:
+      // `const sessoes = []` seguido de `sessoes = brutoS` lançava
+      // "Assignment to constant variable" — o JSVM não avisa, devolve o
+      // genérico. Agora usamos `let` e uma normalização tolerante (o campo
+      // JSON pode voltar como string, array ou objeto).
       let ids = []
       try {
         const bruto = t.get('tarefa_ids')
-        if (Array.isArray(bruto)) ids = bruto
-        else if (typeof bruto === 'string') ids = JSON.parse(bruto)
+        if (Array.isArray(bruto)) {
+          ids = bruto
+        } else if (typeof bruto === 'string') {
+          const p = JSON.parse(bruto)
+          ids = Array.isArray(p) ? p : []
+        }
       } catch (_) {
         ids = []
       }
       if (!Array.isArray(ids)) ids = []
 
-      const sessoes = []
+      let sessoes = []
       try {
         const brutoS = t.get('proximas_sessoes')
-        if (Array.isArray(brutoS)) sessoes = brutoS
-        else if (typeof brutoS === 'string') sessoes = JSON.parse(brutoS)
+        if (Array.isArray(brutoS)) {
+          sessoes = brutoS
+        } else if (typeof brutoS === 'string') {
+          const p2 = JSON.parse(brutoS)
+          sessoes = Array.isArray(p2) ? p2 : []
+        }
       } catch (_) {
         sessoes = []
       }

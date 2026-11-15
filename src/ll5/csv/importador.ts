@@ -322,6 +322,10 @@ export async function processarLoteCsv(
           if (e.device_activity_id) {
             existentesCache.set('dev:' + e.device_activity_id, e)
           }
+          // 15/11/2026 — chave canônica: cruza CSV, .FIT e API
+          if (e.chave_canonica) {
+            existentesCache.set('can:' + e.chave_canonica, e)
+          }
           const ts = e.data_hora_inicio ? new Date(e.data_hora_inicio).getTime() : null
           if (ts) {
             existentesCache.set(
@@ -407,6 +411,14 @@ export async function processarLoteCsv(
 
       // identificação
       device_activity_id: `csv-${a.data_hora_inicio}-${a.tipo}`.replace(/[^a-zA-Z0-9-]/g, ''),
+      // 15/11/2026 — chave CANÔNICA: igual para a mesma atividade venha do
+      // CSV, do .FIT ou da API. Evita a duplicação (2.350 para 1.189 linhas).
+      chave_canonica: (() => {
+        const ts = a.data_hora_inicio ? new Date(a.data_hora_inicio).getTime() : 0
+        const minuto = ts ? Math.floor(ts / 60000) : 0
+        const dist = Math.round(Number(a.distancia_m || 0) / 100)
+        return minuto + '|' + (a.tipo || 'outro') + '|' + dist
+      })(),
       fonte: 'garmin_csv',
       tipo: tipoSeguro,
       origem_aba: a.aba === 'gym' ? 'gym' : 'running',
@@ -482,7 +494,9 @@ export async function processarLoteCsv(
     // procura por device_activity_id (determinístico) e, se não achar,
     // pela chave normalizada em epoch
     const did = `csv-${a.data_hora_inicio}-${a.tipo}`.replace(/[^a-zA-Z0-9-]/g, '')
-    let existente = porChave.get('dev:' + did)
+    // busca pela chave canônica primeiro (cruza fontes), depois pela device_id
+    let existente = base.chave_canonica ? porChave.get('can:' + base.chave_canonica) : null
+    if (!existente) existente = porChave.get('dev:' + did)
     if (!existente) {
       const ts = a.data_hora_inicio ? new Date(a.data_hora_inicio).getTime() : null
       if (ts) {

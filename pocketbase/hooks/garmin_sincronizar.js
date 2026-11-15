@@ -202,6 +202,14 @@ routerAdd(
           created_by: e.auth.getString('email') || 'garmin-api',
           updated_by: e.auth.getString('email') || 'garmin-api',
           device_activity_id: 'garmin-' + actId,
+          // 15/11/2026 — chave CANÔNICA igual à do CSV: a mesma corrida não
+          // duplica quando vem por API e por CSV.
+          chave_canonica: (() => {
+            const ts = dataInicio ? new Date(dataInicio).getTime() : 0
+            const minuto = ts ? Math.floor(ts / 60000) : 0
+            const dist = Math.round(Number(a.distance || 0) / 100)
+            return minuto + '|' + tipo + '|' + dist
+          })(),
           fonte: 'garmin_api',
           tipo: tipo,
           origem_aba: ehForca ? 'gym' : 'running',
@@ -265,15 +273,25 @@ routerAdd(
           if (dados[k] === null || dados[k] === undefined) delete dados[k]
         }
 
-        // dedupe por device_activity_id
+        // dedupe: chave canônica primeiro (cruza CSV/.FIT/API), depois device_id
         let existente = null
         try {
           existente = $app.findFirstRecordByFilter(
             'll5_activity',
-            "device_activity_id = '" + dados.device_activity_id + "'",
+            "chave_canonica = '" + dados.chave_canonica + "'",
           )
         } catch (_) {
           existente = null
+        }
+        if (!existente) {
+          try {
+            existente = $app.findFirstRecordByFilter(
+              'll5_activity',
+              "device_activity_id = '" + dados.device_activity_id + "'",
+            )
+          } catch (_) {
+            existente = null
+          }
         }
 
         try {
