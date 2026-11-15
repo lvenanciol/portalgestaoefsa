@@ -530,6 +530,92 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     })
   }
 
+  /**
+   * b) CONCLUIR TRATAMENTO.
+   * Marca o tratamento como concluído E conclui a tarefa correspondente
+   * na tela Tarefas (status='concluida'). Uma tarefa por sessão executada.
+   */
+  const concluirTratamento = async (t: any, sessaoData?: string | null) => {
+    try {
+      const ids: string[] = Array.isArray(t.tarefa_ids) ? t.tarefa_ids : []
+      let concluidas = 0
+
+      for (const id of ids) {
+        try {
+          const tarefa: any = await pb.collection('tarefas').getOne(id)
+          const prazo = String(tarefa?.prazo || '').slice(0, 10)
+          // se veio uma sessão específica, conclui só ela
+          if (sessaoData && prazo && prazo !== sessaoData) continue
+          await pb.collection('tarefas').update(id, {
+            status: 'concluida',
+            concluida_em: new Date().toISOString(),
+          })
+          concluidas++
+        } catch (_e) {
+          // tarefa ausente: ignora
+        }
+      }
+
+      // se não havia sessão específica, conclui o tratamento inteiro
+      if (!sessaoData) {
+        await atualizar('ll5_treatments', ator, t.id, { status: 'concluido' })
+      }
+
+      toast({
+        title: sessaoData ? 'Sessão concluída' : 'Tratamento concluído',
+        description: `${concluidas} tarefa(s) marcada(s) como concluída(s) em Tarefas.`,
+      })
+      await carregar()
+    } catch (e: any) {
+      toast({ title: 'Falha ao concluir', description: e?.message, variant: 'destructive' })
+    }
+  }
+
+  /**
+   * b7) ANEXAR ARQUIVO pela coluna Anexos da linha.
+   * Cria o registro em ll5_attachments com os metadados do arquivo.
+   */
+  const anexarArquivo = async (t: any, file: File) => {
+    if (file.size > 50 * 1024 * 1024) {
+      toast({ title: 'Arquivo acima de 50 MB', variant: 'destructive' })
+      return
+    }
+    try {
+      const rec = await criar(
+        'll5_attachments',
+        ator,
+        {
+          tratamento_id: t.id,
+          tipo: 'exame',
+          nome_arquivo: file.name,
+          mime: file.type || 'application/pdf',
+          tamanho: file.size,
+          storage_key: 'll5/' + t.id + '/' + file.name,
+          confianca_extracao: null,
+          enviado_por: ator.email,
+          demo: false,
+        },
+        ownerAtual,
+      )
+      // tenta subir o binário no campo File (se o storage permitir)
+      try {
+        const fd = new FormData()
+        fd.append('arquivo', file)
+        await pb.collection('ll5_attachments').update(rec.id, fd)
+      } catch (_e) {
+        // sem storage: o metadado já registra o anexo
+      }
+      toast({ title: 'Anexo registrado', description: file.name })
+      await carregar()
+    } catch (e: any) {
+      toast({
+        title: 'Falha ao anexar',
+        description: e?.response?.data?.message || e?.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
   const confirmarExclusao = async () => {
     if (!excluir) return
     try {
@@ -826,23 +912,53 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               {
                 key: 'anexos',
                 label: 'Anexos',
-                largura: 75,
+                largura: 80,
                 align: 'center',
                 valor: (r: any) => anexos.filter((a) => a.tratamento_id === r.id).length,
-                render: (r: any) => (
-                  <span className="inline-flex items-center gap-0.5 text-[11px] text-gray-500">
-                    <Paperclip className="h-3 w-3" />
-                    {anexos.filter((a) => a.tratamento_id === r.id).length}
-                  </span>
-                ),
+                // b7) clicar na coluna abre o seletor de arquivo
+                render: (r: any) => {
+                  const n = anexos.filter((a) => a.tratamento_id === r.id).length
+                  return (
+                    <label
+                      className="inline-flex items-center gap-0.5 text-[11px] text-gray-600 cursor-pointer hover:text-[#1b5e20] px-1.5 py-0.5 rounded hover:bg-emerald-50"
+                      title="Clique para anexar um arquivo"
+                    >
+                      <Paperclip className="h-3 w-3" />
+                      {n}
+                      <input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png"
+                        className="hidden"
+                        onChange={(ev) => {
+                          const f = ev.target.files?.[0]
+                          if (f) anexarArquivo(r, f)
+                          ev.target.value = ''
+                        }}
+                      />
+                    </label>
+                  )
+                },
               },
               {
                 key: 'acoes',
                 label: 'Ações',
-                largura: 120,
+                largura: 150,
                 align: 'center',
                 render: (r: any) => (
                   <div className="flex items-center justify-center gap-0.5">
+                    {/* b) concluir a sessão desta linha (ou o tratamento todo) */}
+                    <button
+                      type="button"
+                      onClick={() => concluirTratamento(r, r._sessao)}
+                      className="p-1 rounded hover:bg-emerald-50 text-[#1b5e20]"
+                      title={
+                        r._sessao
+                          ? 'Marcar esta sessão como realizada (conclui a tarefa)'
+                          : 'Concluir tratamento'
+                      }
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => abrirEdicao(r)}
@@ -1196,8 +1312,9 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                   </div>
                 </div>
 
+                {/* a) fonte e tamanho iguais ao campo "Profissional" (h-9 text-[12px]) */}
                 <div className="space-y-1">
-                  <Label className="text-[10.5px] font-semibold text-gray-600">Status</Label>
+                  <Label className="text-[11px] font-semibold text-gray-600">Status</Label>
                   <Select
                     value={form.status}
                     onValueChange={(v) => setForm({ ...form, status: v })}
@@ -1214,7 +1331,6 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="space-y-1">
                   <Label className="text-[10.5px] font-semibold text-gray-600">Observações</Label>
                   <Input
@@ -1245,13 +1361,11 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               )}
             </div>
             <div className="flex flex-wrap gap-1 max-h-[86px] overflow-y-auto">
+              {/* b4) CORRIGIDO: o input date precisa ser CLICÁVEL.
+                  Antes ele ficava com opacity-0 sobre o texto mas sem área
+                  de clique efetiva — a data parecia clicável e não abria. */}
               {sessoesPreview.map((d, i) => (
-                <label
-                  key={i}
-                  className="relative px-1.5 py-0.5 rounded bg-white border border-sky-200 text-[10px] text-sky-900 tabular-nums cursor-pointer hover:border-[#1b5e20]"
-                  title="Clique para alterar esta data"
-                >
-                  {dataBR(d)}
+                <div key={i} className="relative">
                   <input
                     type="date"
                     value={d}
@@ -1268,14 +1382,30 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                         fim: lista[lista.length - 1],
                       }))
                     }}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
+                    className="px-1.5 py-0.5 rounded bg-white border border-sky-200 text-[10px] text-sky-900 tabular-nums cursor-pointer hover:border-[#1b5e20] focus:outline-none focus:border-[#1b5e20]"
+                    title="Clique para alterar esta data"
+                    style={{ width: '92px' }}
                   />
-                </label>
+                </div>
               ))}
             </div>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex-wrap gap-2">
+            {/* b) concluir o tratamento direto da tela de edição */}
+            {editando && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setNovoOpen(false)
+                  concluirTratamento(editando)
+                }}
+                className="h-9 text-[12px] text-[#1b5e20] border-emerald-300 hover:bg-emerald-50 mr-auto"
+              >
+                <Check className="h-3.5 w-3.5 mr-1.5" /> Marcar como realizado
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => setNovoOpen(false)}>
               Cancelar
             </Button>

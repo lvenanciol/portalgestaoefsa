@@ -111,17 +111,63 @@ export const garminAdapter: DeviceAdapter = {
     return {
       ok: false,
       mensagem:
-        'Garmin não configurado. O envio de treino exige as credenciais do Developer Program.',
+        'Envio de treino ao Garmin ainda não implementado. A Personal API é somente leitura.',
     }
   },
   async pullWorkouts() {
     return []
   },
+  /**
+   * 15/11/2026 — SINCRONIZAÇÃO REAL.
+   *
+   * A tela mostrava "Garmin não configurado — nenhum dado foi sincronizado"
+   * mesmo com a integração CONECTADA (o print comprova). O `sync()` estava
+   * fixo em falha desde o primeiro ciclo, quando o adapter era mock.
+   *
+   * Agora chama o backend, que busca as atividades na Personal API e faz
+   * UPSERT em ll5_activity.
+   */
   async sync() {
-    return {
-      ok: false,
-      mensagem: 'Garmin não configurado — nenhum dado foi sincronizado.',
-      novas: 0,
+    try {
+      const pb = (await import('@/lib/pocketbase/client')).default
+
+      // 1) confirma o estado antes de tentar
+      const st: any = await pb.send('/backend/v1/garmin/personal/status', { method: 'GET' })
+      if (!st?.status?.conexao_ok) {
+        return {
+          ok: false,
+          mensagem:
+            st?.status?.detalhe ||
+            st?.status?.erro ||
+            'Garmin não conectado. Obtenha o token em Configurações → Integrações.',
+          novas: 0,
+        }
+      }
+
+      // 2) pede ao servidor para importar as atividades
+      const r: any = await pb.send('/backend/v1/garmin/personal/sincronizar', {
+        method: 'POST',
+        body: '{}',
+      })
+
+      if (r?.success) {
+        return {
+          ok: true,
+          mensagem:
+            r.mensagem ||
+            `${r.importadas || 0} nova(s) · ${r.atualizadas || 0} atualizada(s) · ${r.total || 0} lida(s) da API.`,
+          novas: Number(r.importadas || 0),
+        }
+      }
+      return {
+        ok: false,
+        mensagem: r?.erro || 'O Garmin não retornou atividades.',
+        novas: 0,
+      }
+    } catch (e: any) {
+      const detalhe =
+        e?.response?.data?.erro || e?.response?.data?.message || e?.message || String(e)
+      return { ok: false, mensagem: 'Falha na sincronização: ' + detalhe, novas: 0 }
     }
   },
 }
