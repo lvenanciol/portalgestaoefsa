@@ -125,8 +125,45 @@ routerAdd(
           out.erro = 'Falha de rede ao validar token: ' + String(err).slice(0, 160)
         }
       }
+    } else if (alvo === 'garmin') {
+      // 15/11/2026 — Garmin passou a ser um alvo válido do testar.
+      // Antes caía no else e devolvia 400 "alvo inválido", que a tela de
+      // Configurações exibia como falha de conexão.
+      let grec = null
+      try {
+        grec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
+      } catch (_) {
+        grec = null
+      }
+      const gApiKey = grec ? String(grec.getString('garmin_personal_api_key') || '') : ''
+      const gToken = grec ? String(grec.getString('garmin_personal_token') || '') : ''
+
+      if (!gApiKey) {
+        out.ok = false
+        out.erro = 'Personal API key não configurada — cole a chave em Garmin Connect.'
+      } else if (!gToken) {
+        out.ok = false
+        out.erro = 'API key salva, mas ainda sem token — clique em "Obter token".'
+      } else {
+        try {
+          const res = $http.send({
+            url: 'https://personal.connectapi.garmin.com/activitylist-service/activities/search/activities?start=0&limit=1',
+            method: 'GET',
+            headers: { Authorization: 'Bearer ' + gToken, Accept: '*/*' },
+            timeout: 25,
+          })
+          out.ok = res.statusCode === 200 || res.statusCode === 204
+          out.erro = out.ok ? '' : 'Garmin respondeu HTTP ' + res.statusCode
+          out.detalhe = out.ok
+            ? 'Conectado — lista de atividades acessível.'
+            : 'Token pode ter expirado; clique em "Obter token" novamente.'
+        } catch (err) {
+          out.ok = false
+          out.erro = 'Falha de rede: ' + String(err).slice(0, 140)
+        }
+      }
     } else {
-      return e.badRequestError('alvo inválido (sankhya|gemini|email|powerbi)')
+      return e.badRequestError('alvo inválido (sankhya|gemini|email|powerbi|garmin)')
     }
 
     // auditoria

@@ -13,6 +13,7 @@ import {
   Check,
   X,
   Tag,
+  Building2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -36,15 +37,24 @@ import {
 } from '@/components/ui/dialog'
 import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+import pb from '@/lib/pocketbase/client'
 import { useLl5 } from '@/ll5/Ll5Context'
 import { listar, criar, atualizar, excluirLogico } from '@/ll5/repo'
 import ParecerIaCard from '@/ll5/ParecerIaCard'
 
 // ============================================================================
-// ABA TRATAMENTOS (mockup 2)
+// ABA TRATAMENTOS (v2, 15/11/2026)
 //
-// O CRUD de tipos precisa refletir no dropdown IMEDIATAMENTE, sem reload —
-// por isso os tipos vivem em estado local e cada alteração atualiza a lista.
+// Mudanças pedidas pelo dono:
+//   a) botão "+ Tipo de tratamento" REMOVIDO da barra
+//   b0) diálogo "Novo tratamento" 30% mais largo
+//   b1) a primeira opção do select de tipos é "＋ Criar novo tipo"
+//   b2) campo "Instituto" à esquerda de "Profissional"
+//   b3) Empresa + Responsável (o paciente) — para gerar tarefa
+//   b4) início + frequência → gera próximas sessões E tarefa no PGE
+//
+// O CRUD de tipos continua acessível pelo card "Tipos de tratamento"
+// (botão "Editar tipos"), então nada foi perdido.
 // ============================================================================
 
 const STATUS_LABEL: Record<string, string> = {
@@ -61,9 +71,33 @@ const STATUS_COR: Record<string, string> = {
   cancelado: 'border-red-300 text-red-700 bg-red-50',
 }
 
+/** Frequências → intervalo em dias. */
+const FREQUENCIAS: Array<{ label: string; dias: number }> = [
+  { label: 'Diária', dias: 1 },
+  { label: '2x por semana', dias: 3 },
+  { label: 'Semanal', dias: 7 },
+  { label: 'Quinzenal', dias: 15 },
+  { label: 'Mensal', dias: 30 },
+  { label: 'Bimestral', dias: 60 },
+  { label: 'Trimestral', dias: 90 },
+]
+
 function dataBR(iso?: string | null): string {
   if (!iso) return '—'
   return iso.slice(0, 10).split('-').reverse().join('/')
+}
+
+/** Gera N próximas datas a partir do início, no intervalo dado. */
+function gerarSessoes(inicio: string, intervaloDias: number, qtd = 8): string[] {
+  if (!inicio || !intervaloDias) return []
+  const out: string[] = []
+  const base = new Date(inicio + 'T12:00:00')
+  for (let i = 1; i <= qtd; i++) {
+    const d = new Date(base)
+    d.setDate(d.getDate() + intervaloDias * i)
+    out.push(d.toISOString().slice(0, 10))
+  }
+  return out
 }
 
 export default function TratamentosTab({ aba }: { aba: any }) {
@@ -71,30 +105,37 @@ export default function TratamentosTab({ aba }: { aba: any }) {
   const [tratamentos, setTratamentos] = useState<any[]>([])
   const [tipos, setTipos] = useState<any[]>([])
   const [anexos, setAnexos] = useState<any[]>([])
+  const [empresas, setEmpresas] = useState<any[]>([])
+  const [usuarios, setUsuarios] = useState<any[]>([])
   const [carregando, setCarregando] = useState(true)
 
-  // filtros
   const [busca, setBusca] = useState('')
   const [fTipo, setFTipo] = useState('todos')
   const [fStatus, setFStatus] = useState('todos')
-
-  // painel expandido
   const [aberto, setAberto] = useState<string | null>(null)
 
-  // dialogs
   const [novoOpen, setNovoOpen] = useState(false)
   const [tiposOpen, setTiposOpen] = useState(false)
   const [form, setForm] = useState({
     tipo_id: '',
+    instituto: '',
     profissional: '',
+    empresa: '',
+    responsavel_id: '',
+    paciente_nome: '',
     inicio: new Date().toISOString().slice(0, 10),
-    frequencia: 'mensal',
+    frequencia: 'Mensal',
+    intervalo_dias: 30,
     status: 'em_andamento',
     proxima_sessao: '',
     observacoes: '',
   })
 
-  // editor de tipo
+  // criação de tipo dentro do formulário (b1)
+  const [novoTipoAberto, setNovoTipoAberto] = useState(false)
+  const [novoTipoNome, setNovoTipoNome] = useState('')
+  const [novoTipoCor, setNovoTipoCor] = useState('#1b5e20')
+
   const [tipoEdit, setTipoEdit] = useState<any | null>(null)
   const [tipoNome, setTipoNome] = useState('')
   const [tipoCor, setTipoCor] = useState('#1b5e20')
@@ -117,6 +158,21 @@ export default function TratamentosTab({ aba }: { aba: any }) {
 
   useEffect(() => {
     carregar()
+    // empresas e usuários para os selects de tarefa
+    ;(async () => {
+      try {
+        const e = await pb.collection('empresas').getFullList({ sort: 'nome' })
+        setEmpresas(e as any[])
+      } catch (_e) {
+        setEmpresas([])
+      }
+      try {
+        const u = await pb.collection('users').getFullList({ sort: 'name' })
+        setUsuarios(u as any[])
+      } catch (_e) {
+        setUsuarios([])
+      }
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerAtual])
 
@@ -124,7 +180,9 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     return tratamentos.filter((t) => {
       if (busca) {
         const q = busca.toLowerCase()
-        const alvo = `${t.tipo_nome} ${t.profissional}`.toLowerCase()
+        const alvo = `${t.tipo_nome || ''} ${t.profissional || ''} ${t.instituto || ''} ${
+          t.paciente_nome || ''
+        }`.toLowerCase()
         if (!alvo.includes(q)) return false
       }
       if (fTipo !== 'todos' && t.tipo_id !== fTipo) return false
@@ -147,9 +205,94 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     }
   }, [tratamentos, anexos])
 
+  /** b1: cria um tipo novo sem sair do formulário. */
+  const criarTipoInline = async () => {
+    const nome = novoTipoNome.trim()
+    if (!nome) {
+      toast({ title: 'Informe o nome do tipo', variant: 'destructive' })
+      return
+    }
+    try {
+      const rec = await criar(
+        'll5_treatment_types',
+        ator,
+        {
+          nome,
+          cor: novoTipoCor,
+          icone: 'tag',
+          ordem: tipos.length + 1,
+          ativo: true,
+          demo: false,
+        },
+        ownerAtual,
+      )
+      const tp = await listar('ll5_treatment_types', ator, {
+        ownerEscolhido: ownerAtual,
+        sort: 'ordem',
+      })
+      const ativos = tp.filter((x) => x.ativo && !x.deletado_em)
+      setTipos(ativos)
+      setForm((f) => ({ ...f, tipo_id: rec.id }))
+      setNovoTipoAberto(false)
+      setNovoTipoNome('')
+      toast({ title: 'Tipo criado', description: `"${nome}" já está selecionado.` })
+    } catch (e: any) {
+      toast({ title: 'Falha ao criar tipo', description: e?.message, variant: 'destructive' })
+    }
+  }
+
+  /**
+   * b3/b4: cria as próximas sessões e as tarefas no PGE.
+   * Uma tarefa por sessão, com empresa e responsável informados.
+   */
+  const gerarAgenda = async (tratamentoId: string, dados: typeof form) => {
+    const sessoes = gerarSessoes(dados.inicio, Number(dados.intervalo_dias), 8)
+    if (!sessoes.length) return { sessoes: [], tarefas: 0 }
+
+    let tarefas = 0
+    const tarefaIds: string[] = []
+    const tipoNome = tipos.find((t) => t.id === dados.tipo_id)?.nome || 'Tratamento'
+
+    for (const dia of sessoes) {
+      try {
+        const tarefa = await pb.collection('tarefas').create({
+          titulo: `${tipoNome} — ${dados.paciente_nome || 'paciente'}`,
+          descricao:
+            (dados.instituto ? dados.instituto + ' · ' : '') +
+            (dados.profissional ? dados.profissional : '') +
+            (dados.observacoes ? ' · ' + dados.observacoes : ''),
+          prazo: dia + 'T12:00:00Z',
+          status: 'pendente',
+          prioridade: 'media',
+          empresa: dados.empresa || '',
+          responsaveis_ids: dados.responsavel_id ? [dados.responsavel_id] : [],
+          criado_por: ator.email,
+        })
+        tarefas++
+        tarefaIds.push((tarefa as any).id)
+      } catch (e) {
+        // uma tarefa que falha não impede as demais
+        console.warn('[tratamentos] falha ao criar tarefa em ' + dia, e)
+      }
+    }
+
+    // grava as sessões e os ids das tarefas no tratamento
+    try {
+      await atualizar('ll5_treatments', ator, tratamentoId, {
+        proximas_sessoes: sessoes,
+        tarefa_ids: tarefaIds,
+        proxima_sessao: sessoes[0] + 'T12:00:00Z',
+      })
+    } catch (_e) {
+      // segue: o tratamento já existe
+    }
+
+    return { sessoes, tarefas }
+  }
+
   const salvarNovo = async () => {
     if (!form.tipo_id) {
-      toast({ title: 'Selecione o tipo de tratamento', variant: 'destructive' })
+      toast({ title: 'Selecione ou crie o tipo de tratamento', variant: 'destructive' })
       return
     }
     if (!form.profissional.trim()) {
@@ -158,32 +301,58 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     }
     try {
       const tipo = tipos.find((t) => t.id === form.tipo_id)
-      await criar(
+      const rec = await criar(
         'll5_treatments',
         ator,
         {
           tipo_id: form.tipo_id,
           tipo_nome: tipo?.nome || '',
+          instituto: form.instituto.trim(),
           profissional: form.profissional.trim(),
+          empresa: form.empresa,
+          responsavel_id: form.responsavel_id,
+          paciente_nome: form.paciente_nome.trim(),
           inicio: form.inicio + 'T12:00:00Z',
           frequencia: form.frequencia,
+          intervalo_dias: Number(form.intervalo_dias),
           status: form.status,
           proxima_sessao: form.proxima_sessao ? form.proxima_sessao + 'T12:00:00Z' : null,
           observacoes: form.observacoes,
-          demo: true,
+          demo: false,
         },
         ownerAtual,
       )
-      toast({ title: 'Tratamento criado' })
+
+      // b4: gera as próximas sessões e as tarefas
+      const r = await gerarAgenda(rec.id, form)
+
+      toast({
+        title: 'Tratamento criado',
+        description:
+          r.sessoes.length > 0
+            ? `${r.sessoes.length} sessão(ões) agendada(s) · ${r.tarefas} tarefa(s) criada(s) no PGE.`
+            : 'Sem agenda gerada (verifique a frequência).',
+      })
       setNovoOpen(false)
-      setForm({ ...form, tipo_id: '', profissional: '', observacoes: '', proxima_sessao: '' })
+      setForm({
+        ...form,
+        tipo_id: '',
+        instituto: '',
+        profissional: '',
+        paciente_nome: '',
+        observacoes: '',
+        proxima_sessao: '',
+      })
       await carregar()
     } catch (e: any) {
-      toast({ title: 'Falha ao criar', description: e?.message, variant: 'destructive' })
+      toast({
+        title: 'Falha ao criar',
+        description: e?.response?.data?.message || e?.message,
+        variant: 'destructive',
+      })
     }
   }
 
-  // ---------------- CRUD de tipos (reflete sem reload) ----------------
   const salvarTipo = async () => {
     if (!tipoNome.trim()) {
       toast({ title: 'Informe o nome do tipo', variant: 'destructive' })
@@ -205,12 +374,11 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             icone: 'tag',
             ordem: tipos.length + 1,
             ativo: true,
-            demo: true,
+            demo: false,
           },
           ownerAtual,
         )
       }
-      // recarrega SÓ a lista de tipos — o dropdown atualiza na hora
       const tp = await listar('ll5_treatment_types', ator, {
         ownerEscolhido: ownerAtual,
         sort: 'ordem',
@@ -257,9 +425,12 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     )
   }
 
+  const sessoesPreview = gerarSessoes(form.inicio, Number(form.intervalo_dias), 8)
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-end gap-2">
+      {/* a) botão "+ Tipo de tratamento" REMOVIDO — o CRUD vive no card lateral */}
+      <div className="flex items-center justify-end">
         <Button
           size="sm"
           onClick={() => setNovoOpen(true)}
@@ -267,19 +438,8 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         >
           <Plus className="h-3.5 w-3.5 mr-1.5" /> Novo tratamento
         </Button>
-        {isAdmin && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setTiposOpen(true)}
-            className="h-9 text-xs"
-          >
-            <Plus className="h-3.5 w-3.5 mr-1.5" /> Tipo de tratamento
-          </Button>
-        )}
       </div>
 
-      {/* filtros */}
       <Card className="p-2.5 rounded-xl border-gray-200 shadow-sm">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[180px]">
@@ -287,12 +447,12 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             <Input
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar tratamento..."
+              placeholder="Buscar por tipo, instituto, profissional ou paciente..."
               className="h-8 pl-8 text-[12px]"
             />
           </div>
           <Select value={fTipo} onValueChange={setFTipo}>
-            <SelectTrigger className="h-8 w-[160px] text-[12px]">
+            <SelectTrigger className="h-8 w-[170px] text-[12px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-white z-[120]">
@@ -324,7 +484,6 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         </div>
       </Card>
 
-      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { l: 'Tratamentos ativos', v: String(kpis.ativos), ico: Activity },
@@ -374,6 +533,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               {filtrados.map((t) => {
                 const meusAnexos = anexos.filter((a) => a.tratamento_id === t.id)
                 const expandido = aberto === t.id
+                const sessoes = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
                 return (
                   <div key={t.id}>
                     <button
@@ -396,6 +556,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                         {t.tipo_nome}
                       </span>
                       <span className="text-[12px] text-gray-700 min-w-0 truncate flex-1">
+                        {t.instituto ? t.instituto + ' · ' : ''}
                         {t.profissional}
                       </span>
                       <span className="text-[11.5px] text-gray-500 tabular-nums shrink-0">
@@ -404,6 +565,15 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                       <span className="text-[11px] text-gray-500 shrink-0 hidden sm:inline">
                         {t.frequencia}
                       </span>
+                      {sessoes.length > 0 && (
+                        <Badge
+                          variant="outline"
+                          className="text-[8.5px] border-sky-300 text-sky-800 bg-sky-50 shrink-0"
+                          title="Sessões agendadas geradas a partir do início + frequência"
+                        >
+                          {sessoes.length} sessão(ões)
+                        </Badge>
+                      )}
                       <Badge
                         variant="outline"
                         className={cn(
@@ -417,19 +587,40 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                         <Paperclip className="h-3 w-3" />
                         {meusAnexos.length}
                       </span>
-                      <Sparkles className="h-3.5 w-3.5 text-[#1b5e20] shrink-0" />
                     </button>
 
                     {expandido && (
-                      <div className="px-4 pb-3 pl-10">
+                      <div className="px-4 pb-3 pl-10 space-y-2">
+                        {/* agenda gerada */}
+                        {sessoes.length > 0 && (
+                          <div className="rounded-lg border border-sky-200 bg-sky-50/50 p-2.5">
+                            <p className="text-[10.5px] font-bold text-sky-900 mb-1">
+                              Próximas sessões ({sessoes.length})
+                            </p>
+                            <div className="flex flex-wrap gap-1">
+                              {sessoes.map((d: string, i: number) => (
+                                <span
+                                  key={i}
+                                  className="px-1.5 py-0.5 rounded bg-white border border-sky-200 text-[10px] text-sky-900 tabular-nums"
+                                >
+                                  {dataBR(d)}
+                                </span>
+                              ))}
+                            </div>
+                            {Array.isArray(t.tarefa_ids) && t.tarefa_ids.length > 0 && (
+                              <p className="text-[10px] text-sky-800 mt-1.5">
+                                {t.tarefa_ids.length} tarefa(s) criada(s) no PGE
+                              </p>
+                            )}
+                          </div>
+                        )}
+
                         <div className="rounded-lg border border-gray-200 bg-gray-50/60 p-2.5">
                           <p className="text-[10.5px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
                             Anexos do tratamento
                           </p>
                           {meusAnexos.length === 0 ? (
-                            <p className="text-[11px] text-gray-500 mb-2">
-                              Nenhum exame anexado ainda.
-                            </p>
+                            <p className="text-[11px] text-gray-500 mb-2">Nenhum exame anexado.</p>
                           ) : (
                             <div className="flex flex-wrap gap-1.5 mb-2">
                               {meusAnexos.map((a) => (
@@ -513,23 +704,43 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         </div>
       </div>
 
-      {/* ---------------- dialog novo tratamento ---------------- */}
+      {/* ============ NOVO TRATAMENTO — b0: 30% mais largo ============ */}
       <Dialog open={novoOpen} onOpenChange={setNovoOpen}>
-        <DialogContent className="bg-white max-w-md">
+        <DialogContent className="bg-white w-[calc(100vw-2rem)] max-w-[793px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold">Novo tratamento</DialogTitle>
             <DialogDescription className="text-xs text-gray-600">
-              O dropdown de tipos reflete o cadastro em tempo real.
+              O agendamento gera as próximas sessões e as tarefas no PGE.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2.5 py-1">
+
+          <div className="space-y-3 py-1">
+            {/* b1: tipo com opção de criar novo */}
             <div className="space-y-1">
-              <Label className="text-[11px] font-semibold text-gray-600">Tipo *</Label>
-              <Select value={form.tipo_id} onValueChange={(v) => setForm({ ...form, tipo_id: v })}>
+              <Label className="text-[11px] font-semibold text-gray-600">
+                Tipo de tratamento *
+              </Label>
+              <Select
+                value={form.tipo_id}
+                onValueChange={(v) => {
+                  if (v === '__novo__') {
+                    setNovoTipoNome('')
+                    setNovoTipoAberto(true)
+                    return
+                  }
+                  setForm({ ...form, tipo_id: v })
+                }}
+              >
                 <SelectTrigger className="h-9 text-[12px]">
-                  <SelectValue placeholder="Selecione..." />
+                  <SelectValue placeholder="Selecione ou crie um tipo..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white z-[130]">
+                  <SelectItem
+                    value="__novo__"
+                    className="text-[12px] font-semibold text-[#1b5e20] border-b border-gray-100"
+                  >
+                    ＋ Criar novo tipo
+                  </SelectItem>
                   {tipos.map((t) => (
                     <SelectItem key={t.id} value={t.id} className="text-[12px]">
                       {t.nome}
@@ -537,17 +748,118 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                   ))}
                 </SelectContent>
               </Select>
+              {novoTipoAberto && (
+                <div className="mt-1 p-2 rounded-lg border border-emerald-200 bg-emerald-50/50 flex items-center gap-2">
+                  <Input
+                    value={novoTipoNome}
+                    onChange={(e) => setNovoTipoNome(e.target.value)}
+                    placeholder="Nome do novo tipo"
+                    className="h-8 text-[12px] flex-1"
+                    autoFocus
+                  />
+                  <input
+                    type="color"
+                    value={novoTipoCor}
+                    onChange={(e) => setNovoTipoCor(e.target.value)}
+                    className="h-8 w-9 rounded border border-gray-200 cursor-pointer"
+                    title="Cor"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={criarTipoInline}
+                    className="h-8 text-[11px] bg-[#1b5e20] hover:bg-[#0F3D13] text-white"
+                  >
+                    <Check className="h-3 w-3 mr-1" /> Criar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setNovoTipoAberto(false)}
+                    className="h-8 text-[11px]"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
             </div>
-            <div className="space-y-1">
-              <Label className="text-[11px] font-semibold text-gray-600">Profissional *</Label>
-              <Input
-                value={form.profissional}
-                onChange={(e) => setForm({ ...form, profissional: e.target.value })}
-                className="h-9 text-[12px]"
-                placeholder="Nome do profissional"
-              />
+
+            {/* b2: Instituto à ESQUERDA de Profissional */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[11px] font-semibold text-gray-600 flex items-center gap-1">
+                  <Building2 className="h-3 w-3" /> Instituto / Clínica
+                </Label>
+                <Input
+                  value={form.instituto}
+                  onChange={(e) => setForm({ ...form, instituto: e.target.value })}
+                  className="h-9 text-[12px]"
+                  placeholder="Ex.: Clínica Vida, Studio Corpo"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] font-semibold text-gray-600">Profissional *</Label>
+                <Input
+                  value={form.profissional}
+                  onChange={(e) => setForm({ ...form, profissional: e.target.value })}
+                  className="h-9 text-[12px]"
+                  placeholder="Nome do profissional"
+                />
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+
+            {/* b3: empresa + responsável (o paciente) */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[11px] font-semibold text-gray-600">
+                  Empresa (da tarefa)
+                </Label>
+                <Select
+                  value={form.empresa}
+                  onValueChange={(v) => setForm({ ...form, empresa: v })}
+                >
+                  <SelectTrigger className="h-9 text-[12px]">
+                    <SelectValue placeholder="Selecione..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white z-[130]">
+                    {empresas.map((e) => (
+                      <SelectItem key={e.id} value={e.nome} className="text-[12px]">
+                        {e.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] font-semibold text-gray-600">
+                  Responsável (paciente)
+                </Label>
+                <Select
+                  value={form.responsavel_id}
+                  onValueChange={(v) => {
+                    const u = usuarios.find((x) => x.id === v)
+                    setForm({
+                      ...form,
+                      responsavel_id: v,
+                      paciente_nome: u?.name || u?.email || form.paciente_nome,
+                    })
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-[12px]">
+                    <SelectValue placeholder="Quem recebe as tarefas" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white z-[130] max-h-[240px]">
+                    {usuarios.map((u) => (
+                      <SelectItem key={u.id} value={u.id} className="text-[12px]">
+                        {u.name || u.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* b4: início, frequência e prévia das sessões */}
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label className="text-[11px] font-semibold text-gray-600">Início</Label>
                 <Input
@@ -559,14 +871,25 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               </div>
               <div className="space-y-1">
                 <Label className="text-[11px] font-semibold text-gray-600">Frequência</Label>
-                <Input
+                <Select
                   value={form.frequencia}
-                  onChange={(e) => setForm({ ...form, frequencia: e.target.value })}
-                  className="h-9 text-[12px]"
-                />
+                  onValueChange={(v) => {
+                    const f = FREQUENCIAS.find((x) => x.label === v)
+                    setForm({ ...form, frequencia: v, intervalo_dias: f?.dias || 30 })
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-[12px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white z-[130]">
+                    {FREQUENCIAS.map((f) => (
+                      <SelectItem key={f.label} value={f.label} className="text-[12px]">
+                        {f.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Label className="text-[11px] font-semibold text-gray-600">Status</Label>
                 <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v })}>
@@ -582,17 +905,28 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-[11px] font-semibold text-gray-600">Próxima sessão</Label>
-                <Input
-                  type="date"
-                  value={form.proxima_sessao}
-                  onChange={(e) => setForm({ ...form, proxima_sessao: e.target.value })}
-                  className="h-9 text-[12px]"
-                />
-              </div>
             </div>
+
+            {/* prévia da agenda gerada */}
+            {sessoesPreview.length > 0 && (
+              <div className="rounded-lg border border-sky-200 bg-sky-50/50 p-2.5">
+                <p className="text-[10.5px] font-bold text-sky-900 mb-1">
+                  Serão criadas {sessoesPreview.length} sessões e {sessoesPreview.length} tarefas
+                </p>
+                <div className="flex flex-wrap gap-1">
+                  {sessoesPreview.map((d, i) => (
+                    <span
+                      key={i}
+                      className="px-1.5 py-0.5 rounded bg-white border border-sky-200 text-[10px] text-sky-900 tabular-nums"
+                    >
+                      {dataBR(d)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
+
           <DialogFooter>
             <Button variant="outline" size="sm" onClick={() => setNovoOpen(false)}>
               Cancelar
@@ -602,19 +936,19 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               onClick={salvarNovo}
               className="bg-[#1b5e20] hover:bg-[#0F3D13] text-white"
             >
-              Salvar
+              Criar tratamento e agendar
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* ---------------- dialog CRUD de tipos ---------------- */}
+      {/* CRUD de tipos (continua existindo pelo card) */}
       <Dialog open={tiposOpen} onOpenChange={setTiposOpen}>
         <DialogContent className="bg-white max-w-md">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold">Tipos de tratamento</DialogTitle>
             <DialogDescription className="text-xs text-gray-600">
-              Criar, renomear, recolorir e desativar. As mudanças aparecem na hora no dropdown.
+              Criar, renomear, recolorir e desativar. Reflete na hora no formulário.
             </DialogDescription>
           </DialogHeader>
 

@@ -292,6 +292,10 @@ export default function ComposicaoTab({ aba }: { aba: any }) {
           imc,
           rcq,
           tmb_calculada_kcal: tmbCalc,
+          // 15/11/2026 — CAUSA do "Failed to create record" ao salvar
+          // composição: o formulário enviava `tmb_calculada_kcal`, que NÃO
+          // existia no schema (migração 027 adiciona). O PocketBase rejeita o
+          // registro inteiro. Mantido o campo agora que ele existe.
           validacao_status:
             validacao.bloqueios.length > 0
               ? 'divergente'
