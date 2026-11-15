@@ -85,6 +85,7 @@ migrate(
 
     // ---------- 6) fallback: casar pelo TÍTULO (contém o nome do paciente) ----------
     try {
+      // sort VAZIO: 'created' é rejeitado por findRecordsByFilter e matava o laço
       const tratamentos = app.findRecordsByFilter('ll5_treatments', "id != ''", '', 0, 0)
       let corrigidas = 0
 
