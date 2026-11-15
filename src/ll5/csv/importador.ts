@@ -355,17 +355,91 @@ export async function processarLoteCsv(
       ? a.qualidade_dados
       : 'parcial'
 
+    // ----------------------------------------------------------------
+    // 15/11/2026 — CAUSA DO "Failed to create record" (definitiva):
+    // o spread `...a` levava o campo `aba` (que existe SÓ no objeto JS
+    // AtividadeCsv, NÃO no schema de ll5_activity). O PocketBase rejeita a
+    // gravação de campo inexistente, e como o batch é atômico, o lote todo
+    // caía — 99 erros em 100 linhas.
+    //
+    // Aqui montamos o payload CAMPO A CAMPO, com uma allowlist explícita.
+    // Nenhum campo desconhecido chega ao PocketBase.
+    // ----------------------------------------------------------------
     const base: any = {
       owner_id: ownerId,
       created_by: createdBy,
       updated_by: createdBy,
-      ...a,
-      tipo: tipoSeguro,
-      qualidade_dados: qualSegura,
-      origem_aba: a.aba === 'gym' ? 'gym' : 'running',
+
+      // identificação
       device_activity_id: `csv-${a.data_hora_inicio}-${a.tipo}`.replace(/[^a-zA-Z0-9-]/g, ''),
+      fonte: 'garmin_csv',
+      tipo: tipoSeguro,
+      origem_aba: a.aba === 'gym' ? 'gym' : 'running',
+      data_hora_inicio: a.data_hora_inicio,
+      titulo: a.titulo,
+
+      // tempos e distância
+      distancia_m: a.distancia_m,
+      duracao_s: a.duracao_s,
+      tempo_movimento_s: a.tempo_movimento_s,
+      tempo_decorrido_s: a.tempo_decorrido_s,
+      pace_medio_s_km: a.pace_medio_s_km,
+      melhor_pace_s_km: a.melhor_pace_s_km,
+      gap_s_km: a.gap_s_km,
+
+      // coração
+      fc_media: a.fc_media,
+      fc_max: a.fc_max,
+      zonas_fc_seg: a.zonas_fc_seg,
+      zonas_estimadas: a.zonas_estimadas,
+
+      // corpo
+      calorias: a.calorias,
+      passos: a.passos,
+      body_battery_drain: a.body_battery_drain,
+      num_voltas: a.num_voltas,
+      melhor_volta_s: a.melhor_volta_s,
+
+      // corrida
+      cadencia_spm: a.cadencia_spm,
+      cadencia_max_spm: a.cadencia_max_spm,
+      cadencia_invalida: a.cadencia_invalida,
+      ganho_elevacao_m: a.ganho_elevacao_m,
+      perda_elevacao_m: a.perda_elevacao_m,
+      elevacao_min_m: a.elevacao_min_m,
+      elevacao_max_m: a.elevacao_max_m,
+      comprimento_passada_m: a.comprimento_passada_m,
+      vertical_ratio_pct: a.vertical_ratio_pct,
+      vertical_oscillation_cm: a.vertical_oscillation_cm,
+      ground_contact_time_ms: a.ground_contact_time_ms,
+      tem_running_dynamics: a.tem_running_dynamics,
+
+      // força
+      total_reps: a.total_reps,
+      total_sets: a.total_sets,
+      volume_kg: a.volume_kg,
+      tem_detalhe_exercicio: a.tem_detalhe_exercicio,
+
+      // FCmax validada
+      fcmax_referencia: a.fcmax_referencia,
+      fcmax_validada: a.fcmax_validada,
+      fcmax_metodo_validacao: a.fcmax_metodo_validacao,
+
+      // carga
+      carga_proxy: a.carga_proxy,
+      carga_metodo: a.carga_metodo,
       carga_ano_iso: sem?.ano ?? null,
       carga_semana_iso: sem?.semana ?? null,
+
+      // sinalização e qualidade
+      sinalizar_intensidade_excessiva: a.sinalizar_intensidade_excessiva,
+      qualidade_dados: qualSegura,
+      demo: false,
+    }
+
+    // remove chaves com undefined (o PocketBase trata como "não enviar")
+    for (const k of Object.keys(base)) {
+      if (base[k] === undefined) delete base[k]
     }
     if (a.sinalizar_intensidade_excessiva) sinalizados++
     if (a.distancia_m) distanciaLote += a.distancia_m

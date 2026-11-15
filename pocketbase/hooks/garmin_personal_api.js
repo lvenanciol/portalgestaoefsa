@@ -275,14 +275,21 @@ routerAdd(
     // O endpoint devolve o JWT como texto. Meu código procurava JSON
     // (`dados.access_token`) e por isso dizia "200 sem token reconhecível".
     // ------------------------------------------------------------------
+    // ------------------------------------------------------------------
+    // O TOKEN É O PRÓPRIO CORPO (JWT cru), NÃO UM JSON com access_token.
+    //
+    // PROVA (log de produção, 15/11/2026 10:37):
+    //   corpo: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImRpLW9hdXRo...
+    //   header: {"alg":"RS256","typ":"JWT",
+    //            "kid":"di-oauth-signer-personal-api-prod-2026-q3"}
+    //
+    // CORREÇÃO DEFINITIVA: leio o corpo INTEIRO (sem o corte de 500 chars que
+    // quebrava o JWT no meio) e procuro o padrão JWT em QUALQUER posição com
+    // regex — não dependo de split('.').length === 3, que falhava quando o
+    // corpo vinha com prefixo/sufixo.
+    // ------------------------------------------------------------------
     let token = ''
 
-    // 1) corpo CRU primeiro (caso real)
-    //
-    // 15/11/2026 — BUG DO TRUNCAMENTO: corpoCru era cortado em 500 chars, mas
-    // o JWT tem ~900. Sem o SEGUNDO ponto dentro dos 500, o regex de validação
-    // falhava e a tela dizia "não reconheci o formato" mesmo com 200 OK.
-    // Aqui reconstruímos o corpo INTEIRO (sem corte) só para extrair o token.
     let corpoInteiro = ''
     try {
       const b2 = res.body
@@ -304,9 +311,12 @@ routerAdd(
 
     const cru = String(corpoInteiro || corpoCru || '').trim()
 
-    // JWT válido: três partes separadas por ponto (header.payload.signature)
-    const partesJwt = cru.split('.')
-    if (partesJwt.length === 3 && cru.length > 100) {
+    // procura um JWT em qualquer posição do corpo
+    const mJwt = /(eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,})/.exec(cru)
+    if (mJwt) token = mJwt[1]
+
+    // corpo inteiro também pode ser o token (sem pontos extras)
+    if (!token && cru.length > 100 && cru.indexOf('.') > 0) {
       token = cru
     }
 
