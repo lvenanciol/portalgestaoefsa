@@ -82,7 +82,10 @@ export async function listar(
   // reais (o KPI "51,7 km" era a soma exata das 5 corridas do seed). Agora
   // toda leitura exclui demo=true por padrão: a tela só mostra o que veio de
   // importação real (demo=false) ou lançamento manual.
-  if (!opts.incluirDemo) partes.push('(demo = false || demo = null)')
+  // 15/11/2026 — CORREÇÃO: `demo = null` NÃO é sintaxe válida no PocketBase
+  // para campo bool (retornava 400 "Something went wrong" e a lista vinha
+  // vazia). O operador correto é `!= true`, que cobre null e false.
+  if (!opts.incluirDemo) partes.push('demo != true')
 
   const filtro = partes.join(' && ')
 

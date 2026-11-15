@@ -297,18 +297,34 @@ export async function processarLoteCsv(
         const r = await comRetry(() =>
           pb.collection('ll5_activity').getList(pagina, 500, {
             filter: `owner_id = "${ownerId}"`,
-            fields: 'id,owner_id,data_hora_inicio,tipo,distancia_m,tem_streams',
+            fields: 'id,owner_id,data_hora_inicio,tipo,distancia_m,tem_streams,device_activity_id',
           }),
         )
         const itens = (r as any).items || []
         for (const e of itens) {
-          const chave = [
-            e.owner_id,
-            String(e.data_hora_inicio || '').slice(0, 19),
-            e.tipo || '',
-            e.distancia_m ?? '',
-          ].join('|')
-          existentesCache.set(chave, e)
+          // ------------------------------------------------------------------
+          // 15/11/2026 — CAUSA DO "Failed to create record" na REIMPORTAÇÃO.
+          //
+          // O PocketBase devolve `data_hora_inicio` normalizado em UTC
+          // ("2026-11-13 09:11:57.000Z"), enquanto o registro novo usa a string
+          // local do CSV ("2026-11-13T06:11:57-03:00"). Comparando as strings,
+          // as chaves NUNCA casavam — então o importador tentava inserir de
+          // novo e batia no índice único (fonte, device_activity_id).
+          //
+          // Agora indexo por `device_activity_id`, que é determinístico e não
+          // depende de fuso. Chave secundária por data normalizada em epoch
+          // continua como rede de segurança.
+          // ------------------------------------------------------------------
+          if (e.device_activity_id) {
+            existentesCache.set('dev:' + e.device_activity_id, e)
+          }
+          const ts = e.data_hora_inicio ? new Date(e.data_hora_inicio).getTime() : null
+          if (ts) {
+            existentesCache.set(
+              'key:' + [ts, e.tipo || '', Math.round(Number(e.distancia_m || 0) * 100)].join('|'),
+              e,
+            )
+          }
         }
         if (itens.length < 500 || pagina >= 40) break
         pagina++
@@ -459,14 +475,18 @@ export async function processarLoteCsv(
     if (a.sinalizar_intensidade_excessiva) sinalizados++
     if (a.distancia_m) distanciaLote += a.distancia_m
 
-    const chave = [
-      ownerId,
-      String(a.data_hora_inicio || '').slice(0, 19),
-      a.tipo || '',
-      a.distancia_m ?? '',
-    ].join('|')
-
-    const existente = porChave.get(chave)
+    // procura por device_activity_id (determinístico) e, se não achar,
+    // pela chave normalizada em epoch
+    const did = `csv-${a.data_hora_inicio}-${a.tipo}`.replace(/[^a-zA-Z0-9-]/g, '')
+    let existente = porChave.get('dev:' + did)
+    if (!existente) {
+      const ts = a.data_hora_inicio ? new Date(a.data_hora_inicio).getTime() : null
+      if (ts) {
+        const chave =
+          'key:' + [ts, a.tipo || '', Math.round(Number(a.distancia_m || 0) * 100)].join('|')
+        existente = porChave.get(chave)
+      }
+    }
     if (existente) {
       // já existe: atualiza (idempotente) — preserva owner/created_by
       delete base.owner_id
@@ -498,48 +518,98 @@ export async function processarLoteCsv(
     await comRetry(() => b.send())
   }
 
+  // ------------------------------------------------------------------------
+  // 15/11/2026 — INSERÇÃO RESILIENTE (corrige "Failed to create record").
+  //
+  // Estratégia em 3 níveis, do mais eficiente ao mais tolerante:
+  //   1. batch do bloco (rápido) — se passar, ótimo;
+  //   2. um a um com payload COMPLETO, capturando o motivo detalhado;
+  //   3. um a um com payload MÍNIMO (só obrigatórios + resumo) — garante que
+  //      a atividade entre mesmo se um campo opcional tiver formato recusado.
+  //
+  // Assim um campo problemático nunca derruba o lote nem perde a atividade.
+  // ------------------------------------------------------------------------
+  const camposMinimos = (row: any) => {
+    const min: any = {
+      device_activity_id: row.device_activity_id,
+      fonte: row.fonte,
+      owner_id: row.owner_id,
+      created_by: row.created_by,
+      updated_by: row.updated_by,
+      data_hora_inicio: row.data_hora_inicio,
+      tipo: row.tipo,
+      origem_aba: row.origem_aba,
+      distancia_m: row.distancia_m,
+      duracao_s: row.duracao_s,
+      fc_media: row.fc_media,
+      fc_max: row.fc_max,
+      calorias: row.calorias,
+      titulo: row.titulo,
+      qualidade_dados: row.qualidade_dados,
+      demo: false,
+    }
+    for (const k of Object.keys(min)) if (min[k] === undefined) delete min[k]
+    return min
+  }
+
+  const detalheErro = (e: any): string => {
+    let motivo = e?.response?.data?.message || e?.message || String(e)
+    try {
+      const det = e?.response?.data?.data
+      if (det && typeof det === 'object' && Object.keys(det).length) {
+        const partes: string[] = []
+        for (const k of Object.keys(det)) {
+          const v: any = (det as any)[k]
+          partes.push(k + ': ' + (v?.message || String(v)))
+        }
+        motivo = partes.join(' | ')
+      }
+    } catch (_e) {
+      // mantém o motivo simples
+    }
+    return motivo.slice(0, 200)
+  }
+
   for (let i = 0; i < paraInserir.length; i += BLOCOS) {
     const bloco = paraInserir.slice(i, i + BLOCOS)
     try {
       await inserirBloco(bloco)
       importados += bloco.length
     } catch (eBloco: any) {
-      // o bloco é atômico: isola o registro problemático
       log.push({
         status: 'aviso',
-        motivo:
-          'bloco de ' +
-          bloco.length +
-          ' falhou (' +
-          (eBloco?.response?.data?.message || eBloco?.message || 'erro') +
-          '); reprocessando um a um',
+        motivo: 'bloco de ' + bloco.length + ' falhou (' + detalheErro(eBloco) + '); um a um',
       })
       for (const row of bloco) {
+        let entrou = false
+        // tentativa 1: payload completo
         try {
           await pb.collection('ll5_activity').create(row)
           importados++
-        } catch (e: any) {
-          errosLote++
-          // motivo real: campo e valor que o PocketBase recusou
-          let motivo = e?.response?.data?.message || e?.message || String(e)
+          entrou = true
+        } catch (e1: any) {
+          const motivo1 = detalheErro(e1)
+          // tentativa 2: payload mínimo
           try {
-            const det = e?.response?.data?.data
-            if (det && typeof det === 'object') {
-              const partes: string[] = []
-              for (const k of Object.keys(det)) {
-                const v: any = (det as any)[k]
-                partes.push(k + ': ' + (v?.message || String(v)))
-              }
-              if (partes.length) motivo = partes.join(' | ')
-            }
-          } catch (_) {
-            // mantém o motivo simples
+            await pb.collection('ll5_activity').create(camposMinimos(row))
+            importados++
+            entrou = true
+            log.push({
+              linha: row.titulo || '?',
+              status: 'aviso',
+              motivo: 'importada com campos mínimos (' + motivo1 + ')',
+            })
+          } catch (e2: any) {
+            errosLote++
+            log.push({
+              linha: row.titulo || row.device_activity_id || '?',
+              status: 'erro',
+              motivo: detalheErro(e2),
+            })
           }
-          log.push({
-            linha: row.titulo || row.device_activity_id || '?',
-            status: 'erro',
-            motivo: motivo.slice(0, 180),
-          })
+        }
+        if (!entrou) {
+          // nada mais a tentar
         }
         await esperar(40)
       }
