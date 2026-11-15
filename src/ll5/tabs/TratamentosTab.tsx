@@ -227,11 +227,31 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       if (fStatus !== 'todos' && t.status !== fStatus) continue
 
       const sessoes: string[] = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
+      const concluidas: string[] = Array.isArray(t.sessoes_concluidas)
+        ? t.sessoes_concluidas.map((x: any) => String(x).slice(0, 10))
+        : []
+
       if (sessoes.length === 0) {
-        out.push({ ...t, _sessao: null, _idx: -1, _dataSessao: t.inicio, _id: t.id + '-0' })
+        out.push({
+          ...t,
+          _sessao: null,
+          _idx: -1,
+          _dataSessao: t.inicio,
+          _id: t.id + '-0',
+          _concluida: t.status === 'concluido',
+        })
       } else {
         sessoes.forEach((d, i) => {
-          out.push({ ...t, _sessao: d, _idx: i, _dataSessao: d, _id: t.id + '-' + i })
+          // b1: o status é da SESSÃO, não do tratamento
+          const dia = String(d).slice(0, 10)
+          out.push({
+            ...t,
+            _sessao: d,
+            _idx: i,
+            _dataSessao: d,
+            _id: t.id + '-' + i,
+            _concluida: concluidas.includes(dia),
+          })
         })
       }
     }
@@ -314,10 +334,17 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       }
     }
 
+    // b6: grava o mapa data → tarefa, garantindo 1 tarefa por data
+    const mapa: Record<string, string> = {}
+    for (let i = 0; i < datas.length && i < ids.length; i++) {
+      mapa[datas[i]] = ids[i]
+    }
+
     try {
       await atualizar('ll5_treatments', ator, tratamentoId, {
         proximas_sessoes: datas,
         tarefa_ids: ids,
+        tarefa_por_data: mapa,
         proxima_sessao: datas[0] + 'T12:00:00Z',
       })
     } catch (_e) {
@@ -559,16 +586,50 @@ export default function TratamentosTab({ aba }: { aba: any }) {
 
       const registro = tratamentos.find((x) => x.id === tratamentoId) || t
       const ids: string[] = Array.isArray(registro.tarefa_ids) ? registro.tarefa_ids : []
+      const mapaData: Record<string, string> = (() => {
+        const m = registro.tarefa_por_data
+        if (m && typeof m === 'object' && !Array.isArray(m)) return m
+        return {}
+      })()
 
       let concluidas = 0
 
       if (sessaoData) {
         // ---------- b2: conclui SOMENTE a sessão clicada ----------
-        for (const id of ids) {
+        //
+        // 15/11/2026 — BUSCA POR DATA, não por tarefa_ids.
+        // O array `tarefa_ids` pode estar vazio/desatualizado (tarefas criadas
+        // antes do controle). Consultamos as tarefas do PGE cujo título contém
+        // o tratamento e cujo prazo é a data alvo. Assim a tarefa de
+        // 13/09, 15/10 e 13/11 é encontrada e concluída de fato.
+        const alvo = sessaoData.slice(0, 10)
+        const idMapeado = mapaData[alvo]
+
+        const candidatos: string[] = []
+        if (idMapeado) candidatos.push(String(idMapeado))
+        for (const id of ids) if (!candidatos.includes(String(id))) candidatos.push(String(id))
+
+        // fallback: procura no PGE por prazo + nome do paciente/tipo
+        try {
+          const busca = await pb.collection('tarefas').getFullList({
+            filter: `prazo >= "${alvo} 00:00:00" && prazo <= "${alvo} 23:59:59"`,
+          })
+          for (const tr of busca as any[]) {
+            const titulo = String(tr.titulo || '')
+            const combina =
+              (registro.tipo_nome && titulo.includes(String(registro.tipo_nome))) ||
+              (registro.paciente_nome && titulo.includes(String(registro.paciente_nome)))
+            if (combina && !candidatos.includes(tr.id)) candidatos.push(tr.id)
+          }
+        } catch (_e) {
+          // sem permissão de busca ampla: segue com os candidatos conhecidos
+        }
+
+        for (const id of candidatos) {
           try {
             const tarefa: any = await pb.collection('tarefas').getOne(id)
             const prazo = String(tarefa?.prazo || '').slice(0, 10)
-            if (prazo !== sessaoData) continue
+            if (prazo && prazo !== alvo) continue
             await pb.collection('tarefas').update(id, {
               status: 'concluida',
               concluida_em: new Date().toISOString(),
@@ -583,15 +644,23 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         const jaConcluidas: string[] = Array.isArray(registro.sessoes_concluidas)
           ? [...registro.sessoes_concluidas]
           : []
-        if (!jaConcluidas.includes(sessaoData)) jaConcluidas.push(sessaoData)
+        if (!jaConcluidas.includes(alvo)) jaConcluidas.push(alvo)
+
+        // se TODAS as sessões estão concluídas, o tratamento fecha
+        const todas: string[] = Array.isArray(registro.proximas_sessoes)
+          ? registro.proximas_sessoes
+          : []
+        const fechou =
+          todas.length > 0 && todas.every((d) => jaConcluidas.includes(String(d).slice(0, 10)))
 
         await atualizar('ll5_treatments', ator, tratamentoId, {
           sessoes_concluidas: jaConcluidas,
+          ...(fechou ? { status: 'concluido' } : {}),
         })
 
         toast({
           title: 'Sessão concluída',
-          description: `${dataBR(sessaoData)} · ${concluidas} tarefa concluída.`,
+          description: `${dataBR(alvo)} · ${concluidas} tarefa(s) concluída(s).`,
         })
       } else {
         // ---------- b: conclui o tratamento INTEIRO ----------
@@ -995,17 +1064,24 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                 key: 'status',
                 label: 'Status',
                 largura: 110,
-                render: (r: any) => (
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      'text-[9.5px] font-bold',
-                      STATUS_COR[r.status] || 'border-gray-200 text-gray-600',
-                    )}
-                  >
-                    {STATUS_LABEL[r.status] || r.status}
-                  </Badge>
-                ),
+                // b1: status POR SESSÃO (o tratamento é único, a sessão é individual)
+                valor: (r: any) => (r._concluida ? 'concluido' : 'em_andamento'),
+                render: (r: any) =>
+                  r._concluida ? (
+                    <Badge
+                      variant="outline"
+                      className="text-[9.5px] font-bold border-gray-300 text-gray-600 bg-gray-50"
+                    >
+                      Concluída
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="text-[9.5px] font-bold border-emerald-300 text-emerald-700 bg-emerald-50"
+                    >
+                      Em andamento
+                    </Badge>
+                  ),
               },
               {
                 key: 'anexos',
