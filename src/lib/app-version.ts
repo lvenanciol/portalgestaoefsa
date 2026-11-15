@@ -25,5 +25,8 @@
 // continuava mostrando 0.0.441, o que fazia o dono concluir (corretamente)
 // que o navegador estava servindo bundle antigo — quando na verdade o código
 // novo estava no ar. Este era o único ponto que não acompanhava o pipe.
-export const APP_VERSION = '0.0.508'
-export const APP_BUILD = '34cc16a'
+// 15/11/2026 — REGRA (memorizada): escrever aqui o número que o build VAI
+// produzir (package.json + 1), não o atual. O apply_changes incrementa o
+// package.json a cada commit; escrever o atual deixa a sidebar 1 atrás.
+export const APP_VERSION = '0.0.515'
+export const APP_BUILD = '13e3eca'
