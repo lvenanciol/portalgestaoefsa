@@ -90,11 +90,63 @@ export default function Ll5SaudePage() {
       // O filtro global `demo != true` do repositório escondia as abas, porque
       // elas nasceram do seed com demo=true. Aba é configuração da tela: deve
       // aparecer SEMPRE, mesmo que o conteúdo esteja vazio.
-      const todas = await listar('ll5_tabs', ator, {
+      let todas = await listar('ll5_tabs', ator, {
         ownerEscolhido: ownerAtual,
         sort: 'ordem',
         incluirDemo: true,
       })
+
+      // BOOTSTRAP: se o proprietário não tem nenhuma aba, cria as 4
+      // estruturais pelo MESMO fluxo de CRUD (garante a navegação sempre).
+      if (todas.length === 0) {
+        const padrao = [
+          {
+            nome: 'Running',
+            icone: 'footprints',
+            cor: '#1b5e20',
+            ordem: 1,
+            template_type: 'running',
+            fonte: 'garmin',
+          },
+          {
+            nome: 'Tratamentos',
+            icone: 'briefcase-medical',
+            cor: '#dc2626',
+            ordem: 2,
+            template_type: 'tratamentos',
+            fonte: 'manual',
+          },
+          {
+            nome: 'GYM',
+            icone: 'dumbbell',
+            cor: '#111827',
+            ordem: 3,
+            template_type: 'gym',
+            fonte: 'garmin',
+          },
+          {
+            nome: 'Composição Corporal',
+            icone: 'scale',
+            cor: '#7c3aed',
+            ordem: 4,
+            template_type: 'composicao',
+            fonte: 'manual',
+          },
+        ]
+        for (const a of padrao) {
+          try {
+            await criarAba(ator, ownerAtual, { ...a, ia_habilitada: true })
+          } catch (_e) {
+            // se uma falhar, as outras seguem
+          }
+        }
+        todas = await listar('ll5_tabs', ator, {
+          ownerEscolhido: ownerAtual,
+          sort: 'ordem',
+          incluirDemo: true,
+        })
+      }
+
       const ativas = todas.filter((t) => t.ativo && !t.deletado_em)
       setAbas(ativas)
       setAbaAtiva((prev) => (ativas.some((a) => a.id === prev) ? prev : ativas[0]?.id || ''))
