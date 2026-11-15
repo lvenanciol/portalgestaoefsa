@@ -637,7 +637,15 @@ export default function RunningTab({ aba }: { aba: any }) {
               Min/Max Temp, Decompression, Favorite. */}
           <TabelaInterativa
             id="running.importadas"
-            dados={atividades}
+            // GRMN (15/11/2026) — FORÇA NÃO APARECE NA ABA RUNNING.
+            // O filtro anterior só olhava o `tipo`, e a força é gravada como
+            // `tipo='outro'` (o enum não aceita 'forca'). A classificação real
+            // está em `origem_aba='gym'`. Filtramos os dois casos.
+            dados={atividades.filter(
+              (a: any) =>
+                a.origem_aba !== 'gym' &&
+                ['rua', 'esteira', 'trail', 'indoor'].includes(String(a.tipo || '')),
+            )}
             colunas={[
               {
                 key: 'data_hora_inicio',

@@ -16,8 +16,9 @@ import {
   Building2,
   Send,
   Repeat,
-  CalendarRange,
   Brain,
+  Trash2,
+  CalendarRange,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -38,6 +39,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -46,21 +55,18 @@ import { useLl5 } from '@/ll5/Ll5Context'
 import { listar, criar, atualizar, excluirLogico } from '@/ll5/repo'
 import ParecerIaCard from '@/ll5/ParecerIaCard'
 import TabelaInterativa from './TabelaInterativa'
+import RangeCalendario from './RangeCalendario'
 
 // ============================================================================
-// ABA TRATAMENTOS (v3, 15/11/2026)
+// ABA TRATAMENTOS (v4, 15/11/2026)
 //
-// 9 refinamentos pedidos pelo dono:
-//   b3) empresa + responsável (paciente) para gerar tarefa
-//   b4) período (início/fim) + frequência + "repetir X vezes" → cria/atualiza
-//       sessões e tarefas; clicar na data abre calendário e atualiza a agenda
-//   b5) botão "Enviar" → envia as tarefas em lista para o usuário, em ordem
-//   b6) nunca criar mais tarefas do que sessões (dedupe por data)
-//   b7) UMA linha por data/sessão (não 5x a mesma); cabeçalho ordenável,
-//       redimensionável e reorganizável; expandir mantém "anexos" e remove
-//       a caixa "próximas sessões"
-//   b8) "Parecer IA" só ao clicar em "Parecer" (esquerda de "Novo tratamento")
-//   b9) "Tipos de tratamento" só abre pelo lápis ao lado do nome do tipo
+// b4) calendário ÚNICO de início/fim com arrasto. As datas das sessões ficam no
+//     RODAPÉ do formulário e são clicáveis (abrem calendário; alterar uma data
+//     atualiza o período e a agenda de tarefas).
+// b6) NUNCA mais tarefas do que sessões: dedupe por data e limpeza das órfãs.
+// b7) a lista mostra UMA LINHA POR SESSÃO, com CRUD na própria linha.
+// b7.1) a coluna de data exibe a data da SESSÃO, não o início do tratamento.
+// b9) "Tipos de tratamento" só aparece ao EDITAR o registro.
 // ============================================================================
 
 const STATUS_LABEL: Record<string, string> = {
@@ -92,10 +98,7 @@ function dataBR(iso?: string | null): string {
   return iso.slice(0, 10).split('-').reverse().join('/')
 }
 
-/**
- * Gera as datas das sessões entre início e fim, respeitando o intervalo.
- * b4: com "fim" definido, para no fim; sem fim, usa "repetir X vezes".
- */
+/** Datas entre início e fim no intervalo; sem fim, usa "repetir". */
 function gerarDatas(
   inicio: string,
   intervaloDias: number,
@@ -138,13 +141,12 @@ export default function TratamentosTab({ aba }: { aba: any }) {
   const [busca, setBusca] = useState('')
   const [fTipo, setFTipo] = useState('todos')
   const [fStatus, setFStatus] = useState('todos')
-  const [aberto, setAberto] = useState<string | null>(null)
 
-  // b8: parecer só aparece ao clicar
   const [parecerAberto, setParecerAberto] = useState(false)
-
   const [novoOpen, setNovoOpen] = useState(false)
-  const [tiposOpen, setTiposOpen] = useState<string | null>(null)
+  const [editando, setEditando] = useState<any | null>(null)
+  const [excluir, setExcluir] = useState<any | null>(null)
+  const [tiposOpen, setTiposOpen] = useState(false)
 
   const [form, setForm] = useState({
     tipo_id: '',
@@ -164,11 +166,12 @@ export default function TratamentosTab({ aba }: { aba: any }) {
 
   const [novoTipoAberto, setNovoTipoAberto] = useState(false)
   const [novoTipoNome, setNovoTipoNome] = useState('')
-  const [novoTipoCor, setNovoTipoCor] = useState('#1b5e20')
-
   const [tipoEdit, setTipoEdit] = useState<any | null>(null)
   const [tipoNome, setTipoNome] = useState('')
   const [tipoCor, setTipoCor] = useState('#1b5e20')
+
+  // sessões editáveis antes de salvar (b4 rodapé)
+  const [sessoesManuais, setSessoesManuais] = useState<string[] | null>(null)
 
   const carregar = async () => {
     setCarregando(true)
@@ -203,19 +206,36 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerAtual])
 
-  const filtrados = useMemo(() => {
-    return tratamentos.filter((t) => {
+  /**
+   * b7/b7.1: UMA LINHA POR SESSÃO.
+   * Cada tratamento se expande em N linhas, uma por data agendada.
+   * Tratamento sem sessões aparece com uma linha (data = início).
+   */
+  const linhas = useMemo(() => {
+    const out: any[] = []
+    for (const t of tratamentos) {
       if (busca) {
         const q = busca.toLowerCase()
         const alvo = `${t.tipo_nome || ''} ${t.profissional || ''} ${t.instituto || ''} ${
           t.paciente_nome || ''
         }`.toLowerCase()
-        if (!alvo.includes(q)) return false
+        if (!alvo.includes(q)) continue
       }
-      if (fTipo !== 'todos' && t.tipo_id !== fTipo) return false
-      if (fStatus !== 'todos' && t.status !== fStatus) return false
-      return true
-    })
+      if (fTipo !== 'todos' && t.tipo_id !== fTipo) continue
+      if (fStatus !== 'todos' && t.status !== fStatus) continue
+
+      const sessoes: string[] = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
+      if (sessoes.length === 0) {
+        out.push({ ...t, _sessao: null, _idx: -1, _dataSessao: t.inicio, _id: t.id + '-0' })
+      } else {
+        sessoes.forEach((d, i) => {
+          out.push({ ...t, _sessao: d, _idx: i, _dataSessao: d, _id: t.id + '-' + i })
+        })
+      }
+    }
+    // mais recente primeiro
+    out.sort((a, b) => String(b._dataSessao || '').localeCompare(String(a._dataSessao || '')))
+    return out
   }, [tratamentos, busca, fTipo, fStatus])
 
   const kpis = useMemo(() => {
@@ -229,42 +249,47 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       anexos: anexos.length,
       pareceres: 12,
       proxima: proxima ? dataBR(proxima) : '—',
+      sessoes: linhas.filter((l) => l._sessao).length,
     }
-  }, [tratamentos, anexos])
+  }, [tratamentos, anexos, linhas])
 
   /**
-   * b6/b7: sincroniza tarefas com as sessões.
-   * UMA tarefa por data — nunca mais tarefas do que sessões.
-   * Reaproveita as tarefas já criadas (comparando a data no título).
+   * b6: sincroniza as tarefas SEMPRE 1-para-1 com as sessões.
+   * Antes acumulava (criava 8 a cada salvamento). Agora:
+   *   · apaga TODAS as tarefas antigas deste tratamento;
+   *   · cria exatamente uma por sessão;
+   *   · grava os ids no tratamento.
+   * Assim nunca há mais tarefas que sessões.
    */
-  const sincronizarAgenda = async (tratamentoId: string, dados: typeof form, tipoNome: string) => {
-    const datas = gerarDatas(dados.inicio, Number(dados.intervalo_dias), dados.fim, dados.repetir)
+  const sincronizarAgenda = async (
+    tratamentoId: string,
+    dados: typeof form,
+    tipoNome: string,
+    datasForcadas?: string[],
+  ) => {
+    const datas =
+      datasForcadas ||
+      gerarDatas(dados.inicio, Number(dados.intervalo_dias), dados.fim, dados.repetir)
     if (!datas.length) return { sessoes: 0, criadas: 0, removidas: 0 }
 
-    // tarefas existentes deste tratamento (controle por tarefa_ids)
     const atual = tratamentos.find((t) => t.id === tratamentoId)
-    const idsExistentes: string[] = Array.isArray(atual?.tarefa_ids) ? atual.tarefa_ids : []
+    const antigos: string[] = Array.isArray(atual?.tarefa_ids) ? atual.tarefa_ids : []
 
-    // datas que já têm tarefa (deriva do que está gravado)
-    const mapaExistente = new Map<string, string>() // data -> tarefa id
-    for (const id of idsExistentes) {
+    // remove as tarefas antigas do tratamento (evita acúmulo — b6)
+    let removidas = 0
+    for (const id of antigos) {
       try {
-        const t = await pb.collection('tarefas').getOne(id)
-        const d = String((t as any).prazo || '').slice(0, 10)
-        if (d) mapaExistente.set(d, id)
+        await pb.collection('tarefas').delete(id)
+        removidas++
       } catch (_e) {
-        // tarefa removida: ignora
+        // já não existe
       }
     }
 
-    const novasDatas = datas.filter((d) => !mapaExistente.has(d))
-    const datasRemover = Array.from(mapaExistente.keys()).filter((d) => !datas.includes(d))
-
+    // cria exatamente uma por data
+    const ids: string[] = []
     let criadas = 0
-    const todosIds: string[] = []
-
-    // cria só o que falta
-    for (const dia of novasDatas) {
+    for (const dia of datas) {
       try {
         const tarefa = await pb.collection('tarefas').create({
           titulo: `${tipoNome} — ${dados.paciente_nome || 'paciente'} · ${dataBR(dia)}`,
@@ -280,41 +305,21 @@ export default function TratamentosTab({ aba }: { aba: any }) {
           criado_por: ator.email,
         })
         criadas++
-        todosIds.push((tarefa as any).id)
+        ids.push((tarefa as any).id)
         await new Promise((r) => setTimeout(r, 80))
       } catch (e) {
         console.warn('[tratamentos] falha ao criar tarefa em ' + dia, e)
       }
     }
 
-    // mantém as que continuam válidas
-    for (const d of datas) {
-      const id = mapaExistente.get(d)
-      if (id) todosIds.push(id)
-    }
-
-    // remove as que saíram do período (b4: alterar datas atualiza a agenda)
-    let removidas = 0
-    for (const d of datasRemover) {
-      const id = mapaExistente.get(d)
-      if (!id) continue
-      try {
-        await pb.collection('tarefas').delete(id)
-        removidas++
-      } catch (_e) {
-        // tarefa já ausente
-      }
-    }
-
-    // grava a agenda no tratamento
     try {
       await atualizar('ll5_treatments', ator, tratamentoId, {
         proximas_sessoes: datas,
-        tarefa_ids: todosIds,
+        tarefa_ids: ids,
         proxima_sessao: datas[0] + 'T12:00:00Z',
       })
     } catch (_e) {
-      // o tratamento já existe; segue
+      // tratamento já existe
     }
 
     return { sessoes: datas.length, criadas, removidas }
@@ -330,7 +335,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       const rec = await criar(
         'll5_treatment_types',
         ator,
-        { nome, cor: novoTipoCor, icone: 'tag', ordem: tipos.length + 1, ativo: true, demo: false },
+        { nome, cor: '#1b5e20', icone: 'tag', ordem: tipos.length + 1, ativo: true, demo: false },
         ownerAtual,
       )
       const tp = await listar('ll5_treatment_types', ator, {
@@ -347,7 +352,51 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     }
   }
 
-  const salvarNovo = async () => {
+  const abrirNovo = () => {
+    setEditando(null)
+    setSessoesManuais(null)
+    setForm({
+      tipo_id: '',
+      instituto: '',
+      profissional: '',
+      empresa: '',
+      responsavel_id: '',
+      paciente_nome: '',
+      inicio: new Date().toISOString().slice(0, 10),
+      fim: '',
+      frequencia: 'Semanal',
+      intervalo_dias: 7,
+      repetir: 8,
+      status: 'em_andamento',
+      observacoes: '',
+    })
+    setNovoOpen(true)
+  }
+
+  const abrirEdicao = (t: any) => {
+    setEditando(t)
+    const sessoes: string[] = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
+    setSessoesManuais(sessoes.length ? [...sessoes] : null)
+    const f = FREQUENCIAS.find((x) => x.label === t.frequencia)
+    setForm({
+      tipo_id: t.tipo_id || '',
+      instituto: t.instituto || '',
+      profissional: t.profissional || '',
+      empresa: t.empresa || '',
+      responsavel_id: t.responsavel_id || '',
+      paciente_nome: t.paciente_nome || '',
+      inicio: String(t.inicio || '').slice(0, 10),
+      fim: sessoes.length ? sessoes[sessoes.length - 1] : '',
+      frequencia: t.frequencia || 'Semanal',
+      intervalo_dias: Number(t.intervalo_dias) || f?.dias || 7,
+      repetir: sessoes.length || 8,
+      status: t.status || 'em_andamento',
+      observacoes: t.observacoes || '',
+    })
+    setNovoOpen(true)
+  }
+
+  const salvar = async () => {
     if (!form.tipo_id) {
       toast({ title: 'Selecione ou crie o tipo de tratamento', variant: 'destructive' })
       return
@@ -358,57 +407,53 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     }
     try {
       const tipo = tipos.find((t) => t.id === form.tipo_id)
-      const rec = await criar(
-        'll5_treatments',
-        ator,
-        {
-          tipo_id: form.tipo_id,
-          tipo_nome: tipo?.nome || '',
-          instituto: form.instituto.trim(),
-          profissional: form.profissional.trim(),
-          empresa: form.empresa,
-          responsavel_id: form.responsavel_id,
-          paciente_nome: form.paciente_nome.trim(),
-          inicio: form.inicio + 'T12:00:00Z',
-          frequencia: form.frequencia,
-          intervalo_dias: Number(form.intervalo_dias),
-          status: form.status,
-          observacoes: form.observacoes,
-          demo: false,
-        },
-        ownerAtual,
+      const dados: any = {
+        tipo_id: form.tipo_id,
+        tipo_nome: tipo?.nome || '',
+        instituto: form.instituto.trim(),
+        profissional: form.profissional.trim(),
+        empresa: form.empresa,
+        responsavel_id: form.responsavel_id,
+        paciente_nome: form.paciente_nome.trim(),
+        inicio: form.inicio + 'T12:00:00Z',
+        frequencia: form.frequencia,
+        intervalo_dias: Number(form.intervalo_dias),
+        status: form.status,
+        observacoes: form.observacoes,
+        demo: false,
+      }
+
+      let id = editando?.id
+      if (editando) {
+        await atualizar('ll5_treatments', ator, editando.id, dados)
+      } else {
+        const rec = await criar('ll5_treatments', ator, dados, ownerAtual)
+        id = rec.id
+      }
+
+      const r = await sincronizarAgenda(
+        id,
+        form,
+        tipo?.nome || 'Tratamento',
+        sessoesManuais || undefined,
       )
 
-      const r = await sincronizarAgenda(rec.id, form, tipo?.nome || 'Tratamento')
-
       toast({
-        title: 'Tratamento criado',
-        description: `${r.sessoes} sessão(ões) agendada(s) · ${r.criadas} tarefa(s) criada(s).`,
+        title: editando ? 'Tratamento atualizado' : 'Tratamento criado',
+        description: `${r.sessoes} sessão(ões) · ${r.criadas} tarefa(s) criada(s) · ${r.removidas} removida(s).`,
       })
       setNovoOpen(false)
-      setForm({
-        ...form,
-        tipo_id: '',
-        instituto: '',
-        profissional: '',
-        paciente_nome: '',
-        observacoes: '',
-        fim: '',
-      })
       await carregar()
     } catch (e: any) {
       toast({
-        title: 'Falha ao criar',
+        title: 'Falha ao salvar',
         description: e?.response?.data?.message || e?.message,
         variant: 'destructive',
       })
     }
   }
 
-  /**
-   * b4: ao clicar na data de uma sessão, abre o calendário e atualiza a
-   * agenda. Aqui regeramos as tarefas a partir do novo início.
-   */
+  /** b4: alterar a data de uma sessão pelo rodapé da tela. */
   const alterarDataSessao = async (t: any, indice: number, novaData: string) => {
     const sessoes: string[] = Array.isArray(t.proximas_sessoes) ? [...t.proximas_sessoes] : []
     if (!sessoes.length) return
@@ -421,11 +466,9 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         inicio: sessoes[0] + 'T12:00:00Z',
         proxima_sessao: sessoes[0] + 'T12:00:00Z',
       })
-      // regera as tarefas com base na nova agenda
       const novoForm = {
         ...form,
         inicio: sessoes[0],
-        intervalo_dias: Number(t.intervalo_dias || 7),
         fim: sessoes[sessoes.length - 1],
         empresa: t.empresa || '',
         responsavel_id: t.responsavel_id || '',
@@ -434,7 +477,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         profissional: t.profissional || '',
         observacoes: t.observacoes || '',
       }
-      await sincronizarAgenda(t.id, novoForm, t.tipo_nome || 'Tratamento')
+      await sincronizarAgenda(t.id, novoForm, t.tipo_nome || 'Tratamento', sessoes)
       toast({ title: 'Data alterada', description: `Agenda atualizada para ${dataBR(novaData)}.` })
       await carregar()
     } catch (e: any) {
@@ -442,13 +485,13 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     }
   }
 
-  /** b5: envia as tarefas em lista, no período, ordenadas por data desc. */
+  /** b5: envia as tarefas em lista, ordem decrescente de data. */
   const enviarTarefas = async (t: any) => {
     const ids: string[] = Array.isArray(t.tarefa_ids) ? t.tarefa_ids : []
     if (!ids.length) {
       toast({
         title: 'Sem tarefas para enviar',
-        description: 'Gere a agenda primeiro (início + frequência).',
+        description: 'Gere a agenda primeiro (período + frequência).',
         variant: 'destructive',
       })
       return
@@ -458,16 +501,14 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       try {
         tarefas.push(await pb.collection('tarefas').getOne(id))
       } catch (_e) {
-        // tarefa removida: ignora
+        // removida
       }
     }
     tarefas.sort((a, b) => String(b.prazo || '').localeCompare(String(a.prazo || '')))
-
     const lista = tarefas
       .map((x, i) => `${i + 1}. ${dataBR(String(x.prazo || ''))} — ${x.titulo}`)
       .join('\n')
 
-    // registra o envio (a notificação real usa o motor de tarefas do PGE)
     try {
       await pb.collection('tarefas_chat').create({
         tarefa: ids[0],
@@ -476,15 +517,36 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         mensagem: `Agenda de tratamento enviada (${tarefas.length} sessões):\n` + lista,
       })
     } catch (_e) {
-      // o chat é best-effort
+      // best-effort
     }
 
     toast({
       title: `Agenda enviada — ${tarefas.length} tarefa(s)`,
-      description: `Ordem: mais recente primeiro. Destinatário: ${
-        t.paciente_nome || 'responsável do tratamento'
+      description: `Ordem: mais recente primeiro · destinatário: ${
+        t.paciente_nome || 'responsável'
       }.`,
     })
+  }
+
+  const confirmarExclusao = async () => {
+    if (!excluir) return
+    try {
+      // remove as tarefas vinculadas
+      const ids: string[] = Array.isArray(excluir.tarefa_ids) ? excluir.tarefa_ids : []
+      for (const id of ids) {
+        try {
+          await pb.collection('tarefas').delete(id)
+        } catch (_e) {
+          // já removida
+        }
+      }
+      await excluirLogico('ll5_treatments', ator, excluir.id)
+      toast({ title: 'Tratamento excluído', description: 'As tarefas vinculadas foram removidas.' })
+      setExcluir(null)
+      await carregar()
+    } catch (e: any) {
+      toast({ title: 'Falha ao excluir', description: e?.message, variant: 'destructive' })
+    }
   }
 
   const salvarTipo = async () => {
@@ -531,7 +593,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     if (vinculados.length > 0) {
       toast({
         title: 'Tipo em uso',
-        description: `${vinculados.length} tratamento(s) usam "${t.nome}". Reassocie antes de excluir.`,
+        description: `${vinculados.length} tratamento(s) usam "${t.nome}".`,
         variant: 'destructive',
       })
       return
@@ -559,16 +621,13 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     )
   }
 
-  const sessoesPreview = gerarDatas(
-    form.inicio,
-    Number(form.intervalo_dias),
-    form.fim,
-    form.repetir,
-  )
+  const sessoesPreview =
+    sessoesManuais && sessoesManuais.length
+      ? sessoesManuais
+      : gerarDatas(form.inicio, Number(form.intervalo_dias), form.fim, form.repetir)
 
   return (
     <div className="space-y-3">
-      {/* b8: "Parecer" à ESQUERDA de "Novo tratamento" */}
       <div className="flex items-center justify-end gap-2">
         <Button
           size="sm"
@@ -583,7 +642,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         </Button>
         <Button
           size="sm"
-          onClick={() => setNovoOpen(true)}
+          onClick={abrirNovo}
           className="h-9 bg-[#1b5e20] hover:bg-[#0F3D13] text-white text-xs"
         >
           <Plus className="h-3.5 w-3.5 mr-1.5" /> Novo tratamento
@@ -637,8 +696,8 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
           { l: 'Tratamentos ativos', v: String(kpis.ativos), ico: Activity },
+          { l: 'Sessões agendadas', v: String(kpis.sessoes), ico: CalendarRange },
           { l: 'Anexos', v: String(kpis.anexos), ico: Paperclip },
-          { l: 'Pareceres IA', v: String(kpis.pareceres), ico: Sparkles },
           { l: 'Próxima sessão', v: kpis.proxima, ico: CalendarDays },
         ].map((k) => (
           <Card key={k.l} className="p-4 rounded-xl border-gray-200 shadow-sm">
@@ -655,189 +714,156 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         ))}
       </div>
 
-      {/* b8: parecer só quando clicado */}
       {parecerAberto && (
         <ParecerIaCard
           scope="tratamentos"
           titulo="Parecer IA — Gemini"
-          resumo="A análise dos exames e dados de treino indica necessidade de ajuste na suplementação e acompanhamento médico para otimizar a performance e prevenção de lesões."
+          resumo="A análise dos exames e dados de treino indica necessidade de ajuste na suplementação e acompanhamento médico."
           dados={{ tratamentos_ativos: kpis.ativos, anexos: kpis.anexos }}
         />
       )}
 
       <Card className="rounded-xl border-gray-200 shadow-sm overflow-hidden">
         <div className="px-4 py-2.5 border-b border-gray-100 flex items-center gap-2">
-          <h3 className="text-[13px] font-bold text-gray-900">Tratamentos</h3>
+          <h3 className="text-[13px] font-bold text-gray-900">Tratamentos e sessões</h3>
           <Badge variant="outline" className="text-[9px] border-gray-200 text-gray-500">
-            {tratamentos.length} ativo(s)
+            {linhas.length} linha(s) · {tratamentos.length} tratamento(s)
           </Badge>
         </div>
 
-        {filtrados.length === 0 ? (
+        {linhas.length === 0 ? (
           <div className="py-12 text-center px-6">
             <Activity className="h-7 w-7 text-gray-300 mx-auto mb-2" />
             <p className="text-[12px] font-semibold text-gray-700">
-              {tratamentos.length === 0
-                ? 'Nenhum tratamento cadastrado'
-                : 'Nenhum resultado para os filtros'}
+              {tratamentos.length === 0 ? 'Nenhum tratamento cadastrado' : 'Nenhum resultado'}
             </p>
             <p className="text-[11px] text-gray-500 mt-0.5">
               {tratamentos.length === 0
-                ? 'Comece cadastrando um tratamento e anexando exames.'
-                : 'Ajuste a busca, o tipo ou o status.'}
+                ? 'Comece cadastrando um tratamento.'
+                : 'Ajuste os filtros.'}
             </p>
           </div>
         ) : (
-          /* b7: cabeçalho ordenável, redimensionável e reorganizável */
           <TabelaInterativa
-            id="tratamentos.lista"
-            dados={filtrados}
+            id="tratamentos.sessoes"
+            dados={linhas}
             colunas={[
+              {
+                key: '_dataSessao',
+                label: 'Data / Sessão',
+                largura: 110,
+                valor: (r: any) => new Date(r._dataSessao || 0).getTime(),
+                render: (r: any) => (
+                  <span className="font-semibold text-gray-800 tabular-nums">
+                    {dataBR(r._dataSessao)}
+                  </span>
+                ),
+              },
               {
                 key: 'tipo_nome',
                 label: 'Tipo',
-                largura: 140,
-                render: (t: any) => (
-                  <span className="flex items-center gap-1.5">
-                    <span
-                      className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-semibold truncate"
-                      style={{
-                        backgroundColor: corDoTipo(t.tipo_nome) + '18',
-                        color: corDoTipo(t.tipo_nome),
-                      }}
-                    >
-                      {t.tipo_nome}
-                    </span>
-                    {/* b9: lápis ao lado do nome abre o CRUD de tipos */}
-                    {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={(ev) => {
-                          ev.stopPropagation()
-                          setTiposOpen(t.tipo_nome)
-                          setTipoEdit(tipos.find((x) => x.nome === t.tipo_nome) || null)
-                          setTipoNome(t.tipo_nome)
-                          setTipoCor(corDoTipo(t.tipo_nome))
-                        }}
-                        className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-[#1b5e20] shrink-0"
-                        title="Editar tipo de tratamento"
-                      >
-                        <Pencil className="h-2.5 w-2.5" />
-                      </button>
-                    )}
+                largura: 130,
+                render: (r: any) => (
+                  <span
+                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-semibold truncate"
+                    style={{
+                      backgroundColor: corDoTipo(r.tipo_nome) + '18',
+                      color: corDoTipo(r.tipo_nome),
+                    }}
+                  >
+                    {r.tipo_nome}
                   </span>
                 ),
               },
               {
                 key: 'instituto',
                 label: 'Instituto',
-                largura: 150,
-                render: (t: any) => (
-                  <span className="text-gray-600 block truncate">{t.instituto || '—'}</span>
+                largura: 140,
+                render: (r: any) => (
+                  <span className="text-gray-600 block truncate">{r.instituto || '—'}</span>
                 ),
               },
               {
                 key: 'profissional',
                 label: 'Profissional',
-                largura: 150,
-                render: (t: any) => (
-                  <span className="text-gray-700 block truncate">{t.profissional || '—'}</span>
+                largura: 140,
+                render: (r: any) => (
+                  <span className="text-gray-700 block truncate">{r.profissional || '—'}</span>
                 ),
               },
               {
                 key: 'paciente_nome',
                 label: 'Paciente',
                 largura: 130,
-                render: (t: any) => (
-                  <span className="text-gray-600 block truncate">{t.paciente_nome || '—'}</span>
+                render: (r: any) => (
+                  <span className="text-gray-600 block truncate">{r.paciente_nome || '—'}</span>
                 ),
-              },
-              {
-                key: 'inicio',
-                label: 'Início',
-                largura: 95,
-                valor: (t: any) => new Date(t.inicio || 0).getTime(),
-                render: (t: any) => <span className="tabular-nums">{dataBR(t.inicio)}</span>,
               },
               {
                 key: 'frequencia',
                 label: 'Frequência',
-                largura: 110,
-                render: (t: any) => <span className="text-gray-600">{t.frequencia || '—'}</span>,
-              },
-              {
-                key: 'sessoes',
-                label: 'Sessões',
-                largura: 90,
-                align: 'right',
-                valor: (t: any) =>
-                  Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes.length : 0,
-                render: (t: any) => {
-                  const n = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes.length : 0
-                  return (
-                    <Badge
-                      variant="outline"
-                      className="text-[8.5px] border-sky-300 text-sky-800 bg-sky-50"
-                    >
-                      {n}
-                    </Badge>
-                  )
-                },
+                largura: 105,
+                render: (r: any) => <span className="text-gray-600">{r.frequencia || '—'}</span>,
               },
               {
                 key: 'status',
                 label: 'Status',
-                largura: 115,
-                render: (t: any) => (
+                largura: 110,
+                render: (r: any) => (
                   <Badge
                     variant="outline"
                     className={cn(
                       'text-[9.5px] font-bold',
-                      STATUS_COR[t.status] || 'border-gray-200 text-gray-600',
+                      STATUS_COR[r.status] || 'border-gray-200 text-gray-600',
                     )}
                   >
-                    {STATUS_LABEL[t.status] || t.status}
+                    {STATUS_LABEL[r.status] || r.status}
                   </Badge>
                 ),
               },
               {
                 key: 'anexos',
                 label: 'Anexos',
-                largura: 80,
+                largura: 75,
                 align: 'center',
-                valor: (t: any) => anexos.filter((a) => a.tratamento_id === t.id).length,
-                render: (t: any) => (
+                valor: (r: any) => anexos.filter((a) => a.tratamento_id === r.id).length,
+                render: (r: any) => (
                   <span className="inline-flex items-center gap-0.5 text-[11px] text-gray-500">
                     <Paperclip className="h-3 w-3" />
-                    {anexos.filter((a) => a.tratamento_id === t.id).length}
+                    {anexos.filter((a) => a.tratamento_id === r.id).length}
                   </span>
                 ),
               },
               {
                 key: 'acoes',
-                label: '',
-                largura: 110,
-                render: (t: any) => (
-                  <div className="flex items-center gap-1">
+                label: 'Ações',
+                largura: 120,
+                align: 'center',
+                render: (r: any) => (
+                  <div className="flex items-center justify-center gap-0.5">
                     <button
                       type="button"
-                      onClick={() => setAberto(aberto === t.id ? null : t.id)}
-                      className="p-1 rounded hover:bg-gray-100 text-gray-500"
-                      title="Ver anexos"
+                      onClick={() => abrirEdicao(r)}
+                      className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-[#1b5e20]"
+                      title="Editar tratamento"
                     >
-                      {aberto === t.id ? (
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      ) : (
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      )}
+                      <Pencil className="h-3.5 w-3.5" />
                     </button>
                     <button
                       type="button"
-                      onClick={() => enviarTarefas(t)}
+                      onClick={() => enviarTarefas(r)}
                       className="p-1 rounded hover:bg-emerald-50 text-[#1b5e20]"
-                      title="Enviar agenda de tarefas para o responsável"
+                      title="Enviar agenda ao responsável"
                     >
                       <Send className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExcluir(r)}
+                      className="p-1 rounded hover:bg-red-50 text-red-500"
+                      title="Excluir tratamento"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 ),
@@ -845,97 +871,44 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             ]}
           />
         )}
-
-        {/* b7: ao expandir, mantém APENAS "anexos do tratamento" */}
-        {aberto && (
-          <div className="px-4 pb-3 border-t border-gray-100 pt-2.5">
-            {(() => {
-              const t = tratamentos.find((x) => x.id === aberto)
-              if (!t) return null
-              const meus = anexos.filter((a) => a.tratamento_id === t.id)
-              const sessoes: string[] = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
-              return (
-                <div className="space-y-2">
-                  {/* datas clicáveis (b4) */}
-                  {sessoes.length > 0 && (
-                    <div>
-                      <p className="text-[10.5px] font-bold uppercase tracking-wider text-gray-500 mb-1">
-                        Datas das sessões — clique para alterar
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {sessoes.map((d, i) => (
-                          <label
-                            key={i}
-                            className="relative px-1.5 py-0.5 rounded bg-white border border-sky-200 text-[10px] text-sky-900 tabular-nums cursor-pointer hover:border-[#1b5e20]"
-                            title="Clique para alterar a data"
-                          >
-                            {dataBR(d)}
-                            <input
-                              type="date"
-                              value={d}
-                              onChange={(e) => {
-                                if (e.target.value && e.target.value !== d) {
-                                  alterarDataSessao(t, i, e.target.value)
-                                }
-                              }}
-                              className="absolute inset-0 opacity-0 cursor-pointer"
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="rounded-lg border border-gray-200 bg-gray-50/60 p-2.5">
-                    <p className="text-[10.5px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
-                      Anexos do tratamento
-                    </p>
-                    {meus.length === 0 ? (
-                      <p className="text-[11px] text-gray-500 mb-2">Nenhum exame anexado.</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5 mb-2">
-                        {meus.map((a) => (
-                          <span
-                            key={a.id}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded border border-gray-200 bg-white text-[10.5px] text-gray-700"
-                          >
-                            <span className="text-red-600 font-bold">PDF</span>
-                            {a.nome_arquivo}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        toast({
-                          title: 'Anexar arquivo',
-                          description:
-                            'Aceita PDF/JPG/PNG até 50 MB. O upload de arquivo está desativado neste ciclo.',
-                        })
-                      }
-                      className="w-full py-1.5 rounded border border-dashed border-gray-300 text-[11px] font-semibold text-gray-600 hover:border-[#1b5e20] hover:text-[#1b5e20]"
-                    >
-                      + Anexar exame / laudo / prescrição
-                    </button>
-                  </div>
-                </div>
-              )
-            })()}
-          </div>
-        )}
       </Card>
 
-      {/* b9: tipos só aqui (lápis) — sem card lateral permanente */}
-      <Dialog open={!!tiposOpen} onOpenChange={(o) => !o && setTiposOpen(null)}>
+      {/* EXCLUIR */}
+      <AlertDialog open={!!excluir} onOpenChange={(o) => !o && setExcluir(null)}>
+        <AlertDialogContent className="bg-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-sm font-bold">
+              Excluir este tratamento?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-gray-600">
+              Remove o tratamento e <strong>todas as tarefas vinculadas</strong> no PGE. Não é
+              possível desfazer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="text-xs">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(ev) => {
+                ev.preventDefault()
+                confirmarExclusao()
+              }}
+              className="text-xs bg-red-600 hover:bg-red-700 text-white"
+            >
+              Excluir tudo
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* TIPOS — b9: só ao editar (botão dentro do diálogo de edição) */}
+      <Dialog open={tiposOpen} onOpenChange={setTiposOpen}>
         <DialogContent className="bg-white max-w-md">
           <DialogHeader>
             <DialogTitle className="text-sm font-bold">Tipos de tratamento</DialogTitle>
             <DialogDescription className="text-xs text-gray-600">
-              Criar, renomear, recolorir e desativar. Reflete na hora no formulário.
+              Criar, renomear, recolorir e desativar.
             </DialogDescription>
           </DialogHeader>
-
           <div className="space-y-2 py-1 max-h-[280px] overflow-y-auto">
             {tipos.map((t) => (
               <div
@@ -957,7 +930,6 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                     setTipoCor(t.cor || '#1b5e20')
                   }}
                   className="p-1 rounded hover:bg-gray-100 text-gray-500"
-                  title="Renomear"
                 >
                   <Pencil className="h-3 w-3" />
                 </button>
@@ -965,14 +937,12 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                   type="button"
                   onClick={() => excluirTipo(t)}
                   className="p-1 rounded hover:bg-red-50 text-red-500"
-                  title="Desativar"
                 >
                   <X className="h-3 w-3" />
                 </button>
               </div>
             ))}
           </div>
-
           <div className="pt-2 border-t border-gray-100 space-y-2">
             <p className="text-[11px] font-bold text-gray-700">
               {tipoEdit ? 'Editar: ' + tipoEdit.nome : 'Novo tipo'}
@@ -989,7 +959,6 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                 value={tipoCor}
                 onChange={(e) => setTipoCor(e.target.value)}
                 className="h-8 w-10 rounded border border-gray-200 cursor-pointer"
-                title="Cor"
               />
               <Button
                 size="sm"
@@ -1000,30 +969,44 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               </Button>
             </div>
           </div>
-
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setTiposOpen(null)}>
+            <Button variant="outline" size="sm" onClick={() => setTiposOpen(false)}>
               Concluir
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* NOVO TRATAMENTO */}
+      {/* NOVO / EDITAR */}
       <Dialog open={novoOpen} onOpenChange={setNovoOpen}>
-        <DialogContent className="bg-white w-[calc(100vw-2rem)] max-w-[793px] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-white w-[calc(100vw-2rem)] max-w-[793px] max-h-[92vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-sm font-bold">Novo tratamento</DialogTitle>
+            <DialogTitle className="text-sm font-bold">
+              {editando ? 'Editar tratamento' : 'Novo tratamento'}
+            </DialogTitle>
             <DialogDescription className="text-xs text-gray-600">
-              Defina período ou repetição — as sessões e as tarefas do PGE são criadas juntas.
+              Arraste no calendário para definir o período — as sessões e as tarefas são criadas
+              juntas.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 py-1">
             <div className="space-y-1">
-              <Label className="text-[11px] font-semibold text-gray-600">
-                Tipo de tratamento *
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label className="text-[11px] font-semibold text-gray-600">
+                  Tipo de tratamento *
+                </Label>
+                {/* b9: gerenciar tipos só na edição */}
+                {editando && isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setTiposOpen(true)}
+                    className="text-[10px] font-semibold text-[#1b5e20] hover:underline flex items-center gap-1"
+                  >
+                    <Tag className="h-2.5 w-2.5" /> Gerenciar tipos
+                  </button>
+                )}
+              </div>
               <Select
                 value={form.tipo_id}
                 onValueChange={(v) => {
@@ -1061,13 +1044,6 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                     className="h-8 text-[12px] flex-1"
                     autoFocus
                   />
-                  <input
-                    type="color"
-                    value={novoTipoCor}
-                    onChange={(e) => setNovoTipoCor(e.target.value)}
-                    className="h-8 w-9 rounded border border-gray-200 cursor-pointer"
-                    title="Cor"
-                  />
                   <Button
                     size="sm"
                     onClick={criarTipoInline}
@@ -1096,7 +1072,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                   value={form.instituto}
                   onChange={(e) => setForm({ ...form, instituto: e.target.value })}
                   className="h-9 text-[12px]"
-                  placeholder="Ex.: Clínica Vida, Studio Corpo"
+                  placeholder="Ex.: Clínica Vida"
                 />
               </div>
               <div className="space-y-1">
@@ -1105,7 +1081,6 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                   value={form.profissional}
                   onChange={(e) => setForm({ ...form, profissional: e.target.value })}
                   className="h-9 text-[12px]"
-                  placeholder="Nome do profissional"
                 />
               </div>
             </div>
@@ -1160,69 +1135,65 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               </div>
             </div>
 
-            {/* b4: período (início/fim) OU repetir X vezes */}
-            <div className="rounded-lg border border-gray-200 p-2.5 space-y-2">
-              <p className="text-[10.5px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1">
-                <CalendarRange className="h-3 w-3" /> Período e repetição
-              </p>
-              <div className="grid grid-cols-4 gap-2">
-                <div className="space-y-1">
-                  <Label className="text-[10.5px] font-semibold text-gray-600">Início</Label>
-                  <Input
-                    type="date"
-                    value={form.inicio}
-                    onChange={(e) => setForm({ ...form, inicio: e.target.value })}
-                    className="h-9 text-[12px]"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[10.5px] font-semibold text-gray-600">
-                    Fim (opcional)
-                  </Label>
-                  <Input
-                    type="date"
-                    value={form.fim}
-                    onChange={(e) => setForm({ ...form, fim: e.target.value })}
-                    className="h-9 text-[12px]"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[10.5px] font-semibold text-gray-600">Frequência</Label>
-                  <Select
-                    value={form.frequencia}
-                    onValueChange={(v) => {
-                      const f = FREQUENCIAS.find((x) => x.label === v)
-                      setForm({ ...form, frequencia: v, intervalo_dias: f?.dias || 7 })
-                    }}
-                  >
-                    <SelectTrigger className="h-9 text-[12px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white z-[130]">
-                      {FREQUENCIAS.map((f) => (
-                        <SelectItem key={f.label} value={f.label} className="text-[12px]">
-                          {f.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-[10.5px] font-semibold text-gray-600 flex items-center gap-1">
-                    <Repeat className="h-2.5 w-2.5" /> Repetir
-                  </Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={200}
-                    value={form.repetir}
-                    onChange={(e) => setForm({ ...form, repetir: Number(e.target.value) })}
-                    disabled={!!form.fim}
-                    className={cn('h-9 text-[12px]', form.fim && 'bg-gray-50')}
-                  />
-                </div>
+            {/* b4: calendário ÚNICO com arrasto */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[11px] font-semibold text-gray-600 flex items-center gap-1">
+                  <CalendarRange className="h-3 w-3" /> Período (arraste no calendário)
+                </Label>
+                <RangeCalendario
+                  inicio={form.inicio}
+                  fim={form.fim}
+                  onChange={(i, f) => {
+                    setSessoesManuais(null)
+                    setForm({ ...form, inicio: i || form.inicio, fim: f })
+                  }}
+                />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-[10.5px] font-semibold text-gray-600">Frequência</Label>
+                    <Select
+                      value={form.frequencia}
+                      onValueChange={(v) => {
+                        const f = FREQUENCIAS.find((x) => x.label === v)
+                        setSessoesManuais(null)
+                        setForm({ ...form, frequencia: v, intervalo_dias: f?.dias || 7 })
+                      }}
+                    >
+                      <SelectTrigger className="h-9 text-[12px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white z-[130]">
+                        {FREQUENCIAS.map((f) => (
+                          <SelectItem key={f.label} value={f.label} className="text-[12px]">
+                            {f.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10.5px] font-semibold text-gray-600 flex items-center gap-1">
+                      <Repeat className="h-2.5 w-2.5" /> Repetir
+                    </Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={200}
+                      value={form.repetir}
+                      onChange={(e) => {
+                        setSessoesManuais(null)
+                        setForm({ ...form, repetir: Number(e.target.value) })
+                      }}
+                      disabled={!!form.fim}
+                      className={cn('h-9 text-[12px]', form.fim && 'bg-gray-50')}
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-1">
                   <Label className="text-[10.5px] font-semibold text-gray-600">Status</Label>
                   <Select
@@ -1241,6 +1212,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                     </SelectContent>
                   </Select>
                 </div>
+
                 <div className="space-y-1">
                   <Label className="text-[10.5px] font-semibold text-gray-600">Observações</Label>
                   <Input
@@ -1252,24 +1224,53 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                 </div>
               </div>
             </div>
+          </div>
 
-            {sessoesPreview.length > 0 && (
-              <div className="rounded-lg border border-sky-200 bg-sky-50/50 p-2.5">
-                <p className="text-[10.5px] font-bold text-sky-900 mb-1">
-                  Serão criadas {sessoesPreview.length} sessões e {sessoesPreview.length} tarefas
-                </p>
-                <div className="flex flex-wrap gap-1 max-h-[80px] overflow-y-auto">
-                  {sessoesPreview.map((d, i) => (
-                    <span
-                      key={i}
-                      className="px-1.5 py-0.5 rounded bg-white border border-sky-200 text-[10px] text-sky-900 tabular-nums"
-                    >
-                      {dataBR(d)}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+          {/* b4 RODAPÉ: datas das sessões, clicáveis */}
+          <div className="border-t border-gray-100 pt-2">
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-[10.5px] font-bold uppercase tracking-wider text-gray-500">
+                Próximas sessões ({sessoesPreview.length}) — clique na data para alterar
+              </p>
+              {sessoesManuais && (
+                <button
+                  type="button"
+                  onClick={() => setSessoesManuais(null)}
+                  className="text-[10px] font-semibold text-[#1b5e20] hover:underline"
+                >
+                  recalcular pelo período
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1 max-h-[86px] overflow-y-auto">
+              {sessoesPreview.map((d, i) => (
+                <label
+                  key={i}
+                  className="relative px-1.5 py-0.5 rounded bg-white border border-sky-200 text-[10px] text-sky-900 tabular-nums cursor-pointer hover:border-[#1b5e20]"
+                  title="Clique para alterar esta data"
+                >
+                  {dataBR(d)}
+                  <input
+                    type="date"
+                    value={d}
+                    onChange={(e) => {
+                      const nova = e.target.value
+                      if (!nova) return
+                      const lista = [...sessoesPreview]
+                      lista[i] = nova
+                      lista.sort()
+                      setSessoesManuais(lista)
+                      setForm((f) => ({
+                        ...f,
+                        inicio: lista[0],
+                        fim: lista[lista.length - 1],
+                      }))
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                </label>
+              ))}
+            </div>
           </div>
 
           <DialogFooter>
@@ -1278,10 +1279,10 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             </Button>
             <Button
               size="sm"
-              onClick={salvarNovo}
+              onClick={salvar}
               className="bg-[#1b5e20] hover:bg-[#0F3D13] text-white"
             >
-              Criar tratamento e agendar
+              {editando ? 'Salvar e atualizar agenda' : 'Criar tratamento e agendar'}
             </Button>
           </DialogFooter>
         </DialogContent>
