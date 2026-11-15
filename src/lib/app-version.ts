@@ -25,5 +25,5 @@
 // continuava mostrando 0.0.441, o que fazia o dono concluir (corretamente)
 // que o navegador estava servindo bundle antigo — quando na verdade o código
 // novo estava no ar. Este era o único ponto que não acompanhava o pipe.
-export const APP_VERSION = '0.0.488'
-export const APP_BUILD = '2f9d4c2'
+export const APP_VERSION = '0.0.489'
+export const APP_BUILD = 'cf0669e'
