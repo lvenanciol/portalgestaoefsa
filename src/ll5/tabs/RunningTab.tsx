@@ -24,6 +24,7 @@ import { useLl5 } from '@/ll5/Ll5Context'
 import { listar, registrarLog } from '@/ll5/repo'
 import { garminAdapter, appleHealthAdapter } from '@/ll5/adapters'
 import ParecerIaCard from '@/ll5/ParecerIaCard'
+import TabelaInterativa from './TabelaInterativa'
 import ImportarFitDialog from '@/ll5/fit/ImportarFitDialog'
 import ImportarCsvDialog from '@/ll5/csv/ImportarCsvDialog'
 
@@ -465,7 +466,7 @@ export default function RunningTab({ aba }: { aba: any }) {
               variant="outline"
               className="text-[9px] border-emerald-200 text-emerald-700 bg-emerald-50"
             >
-              {atividades.length} arquivo(s) .FIT
+              {atividades.length} atividade(s) importada(s)
             </Badge>
           </div>
           <div className="overflow-x-auto">
@@ -482,7 +483,9 @@ export default function RunningTab({ aba }: { aba: any }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {atividades.slice(0, 30).map((a) => {
+                {/* b2 (15/11/2026): exibe TODAS as importadas (CSV + .FIT + API),
+                    sem o corte de 30 que existia antes. */}
+                {atividades.map((a) => {
                   const dist = Number(a.distancia_m || 0) / 1000
                   const pace = a.pace_medio_s_km
                   const paceTxt = pace

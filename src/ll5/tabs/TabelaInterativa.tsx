@@ -141,7 +141,9 @@ export default function TabelaInterativa({ id, colunas, dados, limite, vazio }: 
       setEstado((prev) => {
         try {
           localStorage.setItem(STORAGE, JSON.stringify(prev))
-        } catch (_) {}
+        } catch (_e) {
+          // localStorage indisponível: a largura vale só nesta sessão
+        }
         return prev
       })
     }
