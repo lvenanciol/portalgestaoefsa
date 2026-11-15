@@ -323,7 +323,15 @@ export default function TabelaInterativa({ id, colunas, dados, limite, vazio }: 
           </thead>
           <tbody className="divide-y divide-gray-50">
             {ordenados.map((row, i) => (
-              <tr key={row.id || i} className="hover:bg-gray-50/50">
+              <tr
+                key={row.id || i}
+                className={cn(
+                  'hover:bg-gray-50/50',
+                  // b (15/11/2026) — linha com cor diferente quando a sessão
+                  // está concluída: leitura imediata do andamento do tratamento.
+                  row._concluida && 'bg-emerald-50/40',
+                )}
+              >
                 {visiveis.map((c) => (
                   <td
                     key={c.key}

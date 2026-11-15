@@ -71,7 +71,10 @@ import RangeCalendario from './RangeCalendario'
 // b9) "Tipos de tratamento" só aparece ao EDITAR o registro.
 // ============================================================================
 
+// b0 (15/11/2026) — "agendado" e "não agendado" no dropdown de status.
 const STATUS_LABEL: Record<string, string> = {
+  agendado: 'Agendado',
+  nao_agendado: 'Não agendado',
   em_andamento: 'Em andamento',
   concluido: 'Concluído',
   suspenso: 'Suspenso',
@@ -79,6 +82,8 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 const STATUS_COR: Record<string, string> = {
+  agendado: 'border-sky-300 text-sky-700 bg-sky-50',
+  nao_agendado: 'border-gray-300 text-gray-500 bg-gray-50',
   em_andamento: 'border-emerald-300 text-emerald-700 bg-emerald-50',
   concluido: 'border-gray-300 text-gray-600 bg-gray-50',
   suspenso: 'border-amber-300 text-amber-700 bg-amber-50',
@@ -1548,52 +1553,8 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             </div>
           </div>
 
-          {/* b4 RODAPÉ: datas das sessões, clicáveis */}
-          <div className="border-t border-gray-100 pt-2">
-            <div className="flex items-center justify-between mb-1">
-              <p className="text-[10.5px] font-bold uppercase tracking-wider text-gray-500">
-                Próximas sessões ({sessoesPreview.length}) — clique na data para alterar
-              </p>
-              {sessoesManuais && (
-                <button
-                  type="button"
-                  onClick={() => setSessoesManuais(null)}
-                  className="text-[10px] font-semibold text-[#1b5e20] hover:underline"
-                >
-                  recalcular pelo período
-                </button>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-1 max-h-[86px] overflow-y-auto">
-              {/* b4) CORRIGIDO: o input date precisa ser CLICÁVEL.
-                  Antes ele ficava com opacity-0 sobre o texto mas sem área
-                  de clique efetiva — a data parecia clicável e não abria. */}
-              {sessoesPreview.map((d, i) => (
-                <div key={i} className="relative">
-                  <input
-                    type="date"
-                    value={d}
-                    onChange={(e) => {
-                      const nova = e.target.value
-                      if (!nova) return
-                      const lista = [...sessoesPreview]
-                      lista[i] = nova
-                      lista.sort()
-                      setSessoesManuais(lista)
-                      setForm((f) => ({
-                        ...f,
-                        inicio: lista[0],
-                        fim: lista[lista.length - 1],
-                      }))
-                    }}
-                    className="px-1.5 py-0.5 rounded bg-white border border-sky-200 text-[10px] text-sky-900 tabular-nums cursor-pointer hover:border-[#1b5e20] focus:outline-none focus:border-[#1b5e20]"
-                    title="Clique para alterar esta data"
-                    style={{ width: '92px' }}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* b1 (15/11/2026) — CAIXA "PRÓXIMAS SESSÕES" REMOVIDA do rodapé.
+              As datas são gerenciadas pelo calendário de período, acima. */}
 
           <DialogFooter className="flex-wrap gap-2">
             {/* b) concluir o tratamento direto da tela de edição */}
