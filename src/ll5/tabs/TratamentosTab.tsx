@@ -745,6 +745,32 @@ export default function TratamentosTab({ aba }: { aba: any }) {
   }
 
   const [reconciliando, setReconciliando] = useState(false)
+  const [corrigindo, setCorrigindo] = useState(false)
+
+  /** Corrige as tarefas JÁ existentes (título e responsável). */
+  const corrigirTarefas = async () => {
+    setCorrigindo(true)
+    try {
+      const r: any = await pb.send('/backend/v1/ll5/corrigir-tarefas', {
+        method: 'POST',
+        body: '{}',
+      })
+      toast({
+        title: 'Tarefas corrigidas',
+        description:
+          `${r.tarefas_corrigidas || 0} tarefa(s): título sem o paciente e responsável preenchido.` +
+          (r.tratamentos_sem_paciente
+            ? ` · ${r.tratamentos_sem_paciente} tratamento(s) sem paciente cadastrado.`
+            : ''),
+      })
+      await carregar()
+    } catch (e: any) {
+      const detalhe = e?.response?.data?.erro || e?.message || String(e)
+      toast({ title: 'Falha ao corrigir', description: detalhe, variant: 'destructive' })
+    } finally {
+      setCorrigindo(false)
+    }
+  }
 
   /** b6: chama o endpoint que remove tarefas órfãs e duplicadas. */
   const reconciliar = async () => {
@@ -886,6 +912,22 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             <Repeat className="h-3.5 w-3.5 mr-1.5" />
           )}
           Reconciliar tarefas
+        </Button>
+        {/* corrige as tarefas JÁ existentes: título sem paciente + responsável */}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={corrigirTarefas}
+          disabled={corrigindo}
+          className="h-9 text-xs"
+          title="Corrige o título das tarefas existentes e preenche o responsável"
+        >
+          {corrigindo ? (
+            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+          ) : (
+            <Pencil className="h-3.5 w-3.5 mr-1.5" />
+          )}
+          Corrigir tarefas
         </Button>
         <Button
           size="sm"
