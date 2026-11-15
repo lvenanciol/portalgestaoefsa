@@ -58,6 +58,8 @@ routerAdd(
         modo: cfg.modo || 'personal',
         ativo: !!cfg.ativo,
         tem_api_key: !!key.trim(),
+        // alias mantido: a UI lê os dois nomes
+        tem_client_secret: !!key.trim(),
         api_key_mascarada: key ? key.slice(0, 6) + '…' + key.slice(-4) : '',
         token_validade: cfg.token_validade || '',
         tem_token: !!cfg.personal_token,

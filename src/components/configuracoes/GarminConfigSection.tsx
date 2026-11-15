@@ -38,6 +38,8 @@ interface ConfigGarmin {
   modo: string
   ativo: boolean
   tem_api_key: boolean
+  /** alias de tem_api_key — a UI antiga lia este nome */
+  tem_client_secret: boolean
   api_key_mascarada: string
   token_validade: string
   tem_token: boolean
@@ -49,6 +51,7 @@ const vazio: ConfigGarmin = {
   modo: 'personal',
   ativo: false,
   tem_api_key: false,
+  tem_client_secret: false,
   api_key_mascarada: '',
   token_validade: '',
   tem_token: false,
@@ -109,9 +112,21 @@ export function GarminConfigSection() {
       if (r?.success === false) {
         throw new Error(r.erro || 'O servidor recusou a chave.')
       }
+      // ATUALIZAÇÃO OTIMISTA: o log do servidor confirma que a chave foi
+      // gravada (133 chars), mas o GET de retorno não estava refletindo.
+      // Liberamos o botão "Obter token" imediatamente, sem depender do
+      // round-trip de leitura.
+      setCfg((c) => ({
+        ...c,
+        tem_api_key: true,
+        tem_client_secret: true,
+        api_key_mascarada: k.slice(0, 6) + '…' + k.slice(-4),
+        ativo: true,
+      }))
       toast({ title: 'API key salva', description: 'Agora clique em "Obter token".' })
       setApiKey('')
-      await carregar()
+      // confirma no servidor em segundo plano (não bloqueia a UI)
+      carregar().catch(() => {})
     } catch (e: any) {
       const detalhe =
         e?.response?.data?.erro || e?.response?.data?.message || e?.message || String(e)

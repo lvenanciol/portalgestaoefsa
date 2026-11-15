@@ -69,12 +69,20 @@ export async function listar(
     filtroExtra?: string
     sort?: string
     expand?: string
+    /** true = traz também registros com demo=true (padrão: exclui) */
+    incluirDemo?: boolean
   } = {},
 ): Promise<any[]> {
   const partes: string[] = []
   const fOwner = filtroOwner(ator, opts.ownerEscolhido)
   if (fOwner) partes.push(fOwner)
   if (opts.filtroExtra) partes.push('(' + opts.filtroExtra + ')')
+  // 15/11/2026 — DADOS DE DEMONSTRAÇÃO FORA DA TELA.
+  // O seed criava registros com demo=true e eles apareciam como se fossem
+  // reais (o KPI "51,7 km" era a soma exata das 5 corridas do seed). Agora
+  // toda leitura exclui demo=true por padrão: a tela só mostra o que veio de
+  // importação real (demo=false) ou lançamento manual.
+  if (!opts.incluirDemo) partes.push('(demo = false || demo = null)')
 
   const filtro = partes.join(' && ')
 

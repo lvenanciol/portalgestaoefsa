@@ -42,7 +42,7 @@ import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { useLl5 } from '@/ll5/Ll5Context'
 import { listar, criar, atualizar, excluirLogico } from '@/ll5/repo'
-import { criarAba, executarSeed, contarRegistros } from '@/ll5/seed'
+import { criarAba, contarRegistros } from '@/ll5/seed'
 import RunningTab from '@/ll5/tabs/RunningTab'
 import TratamentosTab from '@/ll5/tabs/TratamentosTab'
 import GymTab from '@/ll5/tabs/GymTab'
@@ -82,7 +82,6 @@ export default function Ll5SaudePage() {
   const [abaAtiva, setAbaAtiva] = useState<string>('')
   const [carregando, setCarregando] = useState(true)
   const [gerenciarOpen, setGerenciarOpen] = useState(false)
-  const [semeando, setSemeando] = useState(false)
 
   const carregarAbas = async () => {
     setCarregando(true)
@@ -107,25 +106,9 @@ export default function Ll5SaudePage() {
 
   const aba = useMemo(() => abas.find((a) => a.id === abaAtiva), [abas, abaAtiva])
 
-  const rodarSeed = async () => {
-    setSemeando(true)
-    try {
-      const r = await executarSeed(ator, ownerAtual)
-      toast({
-        title: r.pulado ? 'Seed já aplicado' : 'Dados carregados',
-        description: r.mensagem,
-      })
-      await carregarAbas()
-    } catch (e: any) {
-      toast({
-        title: 'Falha no seed',
-        description: e?.message || String(e),
-        variant: 'destructive',
-      })
-    } finally {
-      setSemeando(false)
-    }
-  }
+  // 15/11/2026 — função de seed REMOVIDA junto com o botão.
+  // Os dados de demonstração não aparecem mais na tela (migração 022 apaga
+  // os registros demo=true e o repositório os exclui por padrão).
 
   // ---------------------------------------------------------------- render
   const renderConteudo = () => {
@@ -148,18 +131,10 @@ export default function Ll5SaudePage() {
             primeira aba manualmente.
           </p>
           <div className="flex items-center justify-center gap-2 mt-4">
-            <Button
-              onClick={rodarSeed}
-              disabled={semeando}
-              className="h-9 bg-[#1b5e20] hover:bg-[#0F3D13] text-white text-xs"
-            >
-              {semeando ? (
-                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-              )}
-              Carregar base inicial
-            </Button>
+            {/* 15/11/2026 — BOTÃO DE DEMONSTRAÇÃO REMOVIDO.
+                O seed criava 5 corridas e 5 sessões fictícias que apareciam
+                como reais na tela (o KPI "51,7 km" era a soma exata delas).
+                A tela agora só mostra o que for importado de verdade. */}
             {isAdmin && (
               <Button
                 variant="outline"
