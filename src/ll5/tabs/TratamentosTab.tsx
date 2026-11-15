@@ -39,6 +39,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+} from '@/components/ui/dialog'
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -47,7 +49,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/dialog'
+} from '@/components/ui/alert-dialog'
 import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
