@@ -147,8 +147,20 @@ export default function RunningTab({ aba }: { aba: any }) {
       carga_proxy: a.carga_proxy,
     }))
 
+    // 15/11/2026 — REMOÇÃO DAS CORRIDAS COM 0 km.
+    // O print mostrava linhas "Outro / 0,00 km / —" misturadas com corridas
+    // reais. Elas vêm de sessões de força (forca→outro) e de registros sem
+    // distância. Não são corrida: não devem aparecer nesta tabela nem
+    // alimentar os KPIs de distância/pace.
+    //
+    // Critério: distância > 0 E tipo de corrida (rua/esteira/trail/indoor).
+    // Sessões de força (origem_aba='gym') NÃO entram aqui — elas vivem na
+    // aba GYM.
+    const TIPOS_CORRIDA = ['rua', 'esteira', 'trail', 'indoor']
     return [...doRunning, ...daActivity]
       .filter((c) => !!c.data)
+      .filter((c) => Number(c.distancia_km || 0) > 0)
+      .filter((c) => TIPOS_CORRIDA.includes(String(c.tipo || '')))
       .sort((x, y) => new Date(y.data).getTime() - new Date(x.data).getTime())
   }, [corridas, atividades])
 

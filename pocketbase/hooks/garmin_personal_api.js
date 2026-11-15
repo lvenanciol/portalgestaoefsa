@@ -160,31 +160,83 @@ routerAdd(
       })
     }
 
-    let res = null
-    try {
-      res = $http.send({
-        url: 'https://personal.connectapi.garmin.com/personalapitoken-service/personal-api/personal-api-key/token',
-        method: 'POST',
+    // 15/11/2026 — o Garmin respondeu HTTP 406 com {"cl":{"error":"invalid_key"}}.
+    // 406 é "Not Acceptable": pode ser o header Accept OU a chave. Testamos as
+    // variações em ordem, parando na primeira que devolver 200 — assim
+    // descobrimos o que o endpoint aceita em vez de chutar.
+    const URL_TOKEN =
+      'https://personal.connectapi.garmin.com/personalapitoken-service/personal-api/personal-api-key/token'
+    const variacoes = [
+      {
+        nome: 'só ApiKey (sem Accept/body)',
+        headers: { Authorization: 'ApiKey ' + apiKey },
+        body: null,
+      },
+      {
+        nome: 'ApiKey + Accept */*',
+        headers: { Authorization: 'ApiKey ' + apiKey, Accept: '*/*' },
+        body: null,
+      },
+      { nome: 'ApiKey + body {}', headers: { Authorization: 'ApiKey ' + apiKey }, body: '{}' },
+      {
+        nome: 'ApiKey + json completo',
         headers: {
           Authorization: 'ApiKey ' + apiKey,
           Accept: 'application/json',
           'Content-Type': 'application/json',
         },
         body: '{}',
-        timeout: 25,
-      })
-    } catch (err) {
-      console.log('[garmin/token] rede: ' + String(err))
+      },
+      { nome: 'Authorization cru (sem prefixo)', headers: { Authorization: apiKey }, body: null },
+    ]
+
+    let res = null
+    const log = []
+    for (const v of variacoes) {
+      try {
+        const opts = { url: URL_TOKEN, method: 'POST', headers: v.headers, timeout: 25 }
+        if (v.body != null) opts.body = v.body
+        const r = $http.send(opts)
+        log.push(v.nome + '→' + r.statusCode)
+        if (r.statusCode === 200) {
+          res = r
+          break
+        }
+        if (!res) res = r
+      } catch (err) {
+        log.push(v.nome + '→erro')
+      }
+    }
+
+    console.log('[garmin/token] variações testadas: ' + log.join(' · '))
+
+    if (!res) {
       return e.json(200, {
         success: false,
-        erro: 'Falha de rede: ' + String(err).slice(0, 150),
+        erro: 'Nenhuma variação de requisição funcionou: ' + log.join(' · '),
       })
     }
 
     const status = res.statusCode
+    // 15/11/2026 — `res.body` no JSVM vem como ARRAY DE BYTES, não string.
+    // O print mostrava "123,34,99,108,..." em vez de `{"cl":{"error":"invalid_key"}}`.
+    // Aqui convertemos os bytes em texto para ler o motivo REAL do Garmin.
     let corpoCru = ''
     try {
-      corpoCru = res.body ? String(res.body).slice(0, 500) : ''
+      const b = res.body
+      if (typeof b === 'string') {
+        corpoCru = b.slice(0, 500)
+      } else if (b && b.length !== undefined) {
+        // array de bytes
+        let s = ''
+        for (let i = 0; i < b.length && i < 500; i++) {
+          const c = Number(b[i])
+          if (c > 0) s += String.fromCharCode(c)
+        }
+        corpoCru = s
+      } else {
+        corpoCru = String(b || '').slice(0, 500)
+      }
     } catch (_) {
       corpoCru = ''
     }
