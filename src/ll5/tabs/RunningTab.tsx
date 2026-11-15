@@ -56,6 +56,17 @@ function dur(s: number): string {
   return h > 0 ? `${h}h ${String(m).padStart(2, '0')}min` : `${m}min`
 }
 
+/** segundos → "1:23:45" ou "23:45" */
+function hms(s: number | null | undefined): string {
+  const t = Number(s || 0)
+  if (!t) return '—'
+  const h = Math.floor(t / 3600)
+  const m = Math.floor((t % 3600) / 60)
+  const seg = Math.round(t % 60)
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(seg).padStart(2, '0')}`
+  return `${m}:${String(seg).padStart(2, '0')}`
+}
+
 function dataBR(iso: string): string {
   if (!iso) return '—'
   return iso.slice(0, 10).split('-').reverse().slice(0, 2).join('/')
@@ -393,77 +404,106 @@ export default function RunningTab({ aba }: { aba: any }) {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-[12px]">
-                <thead className="bg-gray-50/70">
-                  <tr className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                    <th className="text-left px-3 py-2">Data</th>
-                    <th className="text-left px-3 py-2">Tipo</th>
-                    <th className="text-right px-3 py-2">Distância</th>
-                    <th className="text-right px-3 py-2">Pace</th>
-                    <th className="text-right px-3 py-2">FC média</th>
-                    <th className="text-left px-3 py-2 w-[120px]">Zonas</th>
-                    <th className="text-center px-3 py-2">Origem</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {todasCorridas.slice(0, 5).map((c) => {
-                    const z = c.zonas_fc || {}
+            <TabelaInterativa
+              id="running.recentes"
+              dados={todasCorridas}
+              limite={5}
+              colunas={[
+                {
+                  key: 'data',
+                  label: 'Data',
+                  largura: 90,
+                  valor: (r: any) => new Date(r.data).getTime(),
+                  render: (r: any) => (
+                    <span className="font-semibold text-gray-800 tabular-nums">
+                      {dataBR(r.data)}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'tipo',
+                  label: 'Tipo',
+                  largura: 90,
+                  render: (r: any) => <span className="capitalize text-gray-600">{r.tipo}</span>,
+                },
+                {
+                  key: 'distancia_km',
+                  label: 'Distância',
+                  largura: 105,
+                  align: 'right',
+                  render: (r: any) => (
+                    <span>
+                      {Number(r.distancia_km || 0)
+                        .toFixed(2)
+                        .replace('.', ',')}{' '}
+                      km
+                    </span>
+                  ),
+                },
+                {
+                  key: 'pace_medio_s_km',
+                  label: 'Pace',
+                  largura: 85,
+                  align: 'right',
+                  render: (r: any) => (
+                    <span className="text-gray-600">{pace(Number(r.pace_medio_s_km || 0))}</span>
+                  ),
+                },
+                {
+                  key: 'fc_media',
+                  label: 'FC média',
+                  largura: 90,
+                  align: 'right',
+                  render: (r: any) => <span className="text-gray-600">{r.fc_media || '—'}</span>,
+                },
+                {
+                  key: 'zonas_fc',
+                  label: 'Zonas',
+                  largura: 150,
+                  valor: (r: any) =>
+                    ZONAS.reduce((a, k) => a + Number((r.zonas_fc || {})[k.k] || 0), 0),
+                  render: (r: any) => {
+                    const z = r.zonas_fc || {}
                     const total = ZONAS.reduce((a, k) => a + Number(z[k.k] || 0), 0) || 1
                     return (
-                      <tr key={c.id} className="hover:bg-gray-50/50">
-                        <td className="px-3 py-2 font-semibold text-gray-800 tabular-nums">
-                          {dataBR(c.data)}
-                        </td>
-                        <td className="px-3 py-2 capitalize text-gray-600">{c.tipo}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {Number(c.distancia_km || 0)
-                            .toFixed(2)
-                            .replace('.', ',')}{' '}
-                          km
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-gray-600">
-                          {pace(Number(c.pace_medio_s_km || 0))}
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums text-gray-600">
-                          {c.fc_media || '—'}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="flex h-3 w-full rounded-sm overflow-hidden">
-                            {ZONAS.map((k) => {
-                              const v = Number(z[k.k] || 0)
-                              if (!v) return null
-                              return (
-                                <div
-                                  key={k.k}
-                                  style={{
-                                    width: (v / total) * 100 + '%',
-                                    backgroundColor: k.c,
-                                  }}
-                                  title={`${k.l}: ${Math.round(v / 60)} min`}
-                                />
-                              )
-                            })}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 text-center">
-                          <Badge
-                            variant="outline"
-                            className="text-[9px] font-semibold border-gray-200 text-gray-600"
-                          >
-                            {c.fonte === 'garmin'
-                              ? 'Garmin'
-                              : c.fonte === 'apple'
-                                ? 'Apple'
-                                : 'Manual'}
-                          </Badge>
-                        </td>
-                      </tr>
+                      <div className="flex h-3 w-full rounded-sm overflow-hidden">
+                        {ZONAS.map((k) => {
+                          const v = Number(z[k.k] || 0)
+                          if (!v) return null
+                          return (
+                            <div
+                              key={k.k}
+                              style={{ width: (v / total) * 100 + '%', backgroundColor: k.c }}
+                              title={`${k.l}: ${Math.round(v / 60)} min`}
+                            />
+                          )
+                        })}
+                      </div>
                     )
-                  })}
-                </tbody>
-              </table>
-            </div>
+                  },
+                },
+                {
+                  key: 'fonte',
+                  label: 'Origem',
+                  largura: 95,
+                  align: 'center',
+                  render: (r: any) => (
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] font-semibold border-gray-200 text-gray-600"
+                    >
+                      {r.origem === 'activity'
+                        ? r.fonte === 'garmin_csv'
+                          ? 'CSV'
+                          : '.FIT'
+                        : r.fonte === 'garmin'
+                          ? 'Garmin'
+                          : 'Manual'}
+                    </Badge>
+                  ),
+                },
+              ]}
+            />
           )}
         </Card>
       </div>
@@ -480,70 +520,206 @@ export default function RunningTab({ aba }: { aba: any }) {
               {atividades.length} atividade(s) importada(s)
             </Badge>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-[12px]">
-              <thead className="bg-gray-50/70">
-                <tr className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                  <th className="text-left px-3 py-2">Data</th>
-                  <th className="text-left px-3 py-2">Tipo</th>
-                  <th className="text-right px-3 py-2">Distância</th>
-                  <th className="text-right px-3 py-2">Pace</th>
-                  <th className="text-right px-3 py-2">FC média</th>
-                  <th className="text-center px-3 py-2">Confiab. FC</th>
-                  <th className="text-center px-3 py-2">Dados</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {/* b2 (15/11/2026): exibe TODAS as importadas (CSV + .FIT + API),
-                    sem o corte de 30 que existia antes. */}
-                {atividades.map((a) => {
-                  const dist = Number(a.distancia_m || 0) / 1000
-                  const pace = a.pace_medio_s_km
-                  const paceTxt = pace
-                    ? `${Math.floor(pace / 60)}'${String(Math.round(pace % 60)).padStart(2, '0')}"`
-                    : '—'
-                  return (
-                    <tr key={a.id} className="hover:bg-gray-50/50">
-                      <td className="px-3 py-2 font-semibold text-gray-800 tabular-nums">
-                        {String(a.data_hora_inicio || '')
-                          .slice(0, 10)
-                          .split('-')
-                          .reverse()
-                          .join('/')}
-                      </td>
-                      <td className="px-3 py-2 capitalize text-gray-600">{a.tipo || '—'}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {dist.toFixed(2).replace('.', ',')} km
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-gray-600">{paceTxt}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-gray-600">
-                        {a.fc_media || '—'}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        {a.confiabilidade_fc === 'alta' ? (
-                          <span className="text-[9px] font-bold text-emerald-700">alta</span>
-                        ) : (
-                          <span
-                            className="text-[9px] font-bold text-gray-500 bg-gray-100 rounded px-1.5 py-0.5"
-                            title="FC não confiável (pulso óptico) — fora do cálculo de TSS e carga"
-                          >
-                            {a.confiabilidade_fc === 'insuficiente'
-                              ? 'insuficiente'
-                              : 'não confiável'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <span className="text-[9.5px] font-semibold text-gray-500">
-                          {a.qualidade_dados || '—'}
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          {/* b3 (15/11/2026) — TODAS as colunas do CSV, com ordenação por
+              clique, redimensionamento e reordenação por arrasto.
+              As colunas marcadas (ignoradas no CSV) NÃO aparecem por decisão
+              de parsing: TSS (100% zerado), Total Strokes, Swolf, Stroke Rate,
+              Min/Max Temp, Decompression, Favorite. */}
+          <TabelaInterativa
+            id="running.importadas"
+            dados={atividades}
+            colunas={[
+              {
+                key: 'data_hora_inicio',
+                label: 'Data',
+                largura: 95,
+                valor: (r: any) => new Date(r.data_hora_inicio).getTime(),
+                render: (r: any) => (
+                  <span className="font-semibold text-gray-800 tabular-nums">
+                    {String(r.data_hora_inicio || '')
+                      .slice(0, 10)
+                      .split('-')
+                      .reverse()
+                      .join('/')}
+                  </span>
+                ),
+              },
+              {
+                key: 'titulo',
+                label: 'Título',
+                largura: 190,
+                render: (r: any) => (
+                  <span className="text-gray-700 block truncate">{r.titulo || '—'}</span>
+                ),
+              },
+              {
+                key: 'tipo',
+                label: 'Tipo',
+                largura: 80,
+                render: (r: any) => (
+                  <span className="capitalize text-gray-600">
+                    {r.origem_aba === 'gym' ? 'força' : r.tipo || '—'}
+                  </span>
+                ),
+              },
+              {
+                key: 'distancia_m',
+                label: 'Distância km',
+                largura: 105,
+                align: 'right',
+                valor: (r: any) => Number(r.distancia_m || 0),
+                render: (r: any) => (
+                  <span>{(Number(r.distancia_m || 0) / 1000).toFixed(2).replace('.', ',')}</span>
+                ),
+              },
+              {
+                key: 'duracao_s',
+                label: 'Duração',
+                largura: 90,
+                align: 'right',
+                valor: (r: any) => Number(r.duracao_s || 0),
+                render: (r: any) => <span className="text-gray-600">{hms(r.duracao_s)}</span>,
+              },
+              {
+                key: 'pace_medio_s_km',
+                label: 'Pace',
+                largura: 80,
+                align: 'right',
+                valor: (r: any) => Number(r.pace_medio_s_km || 0),
+                render: (r: any) => (
+                  <span className="text-gray-600">{pace(Number(r.pace_medio_s_km || 0))}</span>
+                ),
+              },
+              {
+                key: 'melhor_pace_s_km',
+                label: 'Best pace',
+                largura: 90,
+                align: 'right',
+                valor: (r: any) => Number(r.melhor_pace_s_km || 0),
+                render: (r: any) => (
+                  <span className="text-gray-600">{pace(Number(r.melhor_pace_s_km || 0))}</span>
+                ),
+              },
+              {
+                key: 'gap_s_km',
+                label: 'GAP',
+                largura: 75,
+                align: 'right',
+                valor: (r: any) => Number(r.gap_s_km || 0),
+                render: (r: any) => (
+                  <span className="text-gray-600">{pace(Number(r.gap_s_km || 0))}</span>
+                ),
+              },
+              {
+                key: 'fc_media',
+                label: 'FC méd',
+                largura: 75,
+                align: 'right',
+                valor: (r: any) => Number(r.fc_media || 0),
+                render: (r: any) => <span className="text-gray-600">{r.fc_media ?? '—'}</span>,
+              },
+              {
+                key: 'fc_max',
+                label: 'FC máx',
+                largura: 75,
+                align: 'right',
+                valor: (r: any) => Number(r.fc_max || 0),
+                render: (r: any) => <span className="text-gray-600">{r.fc_max ?? '—'}</span>,
+              },
+              {
+                key: 'cadencia_spm',
+                label: 'Cadência',
+                largura: 85,
+                align: 'right',
+                valor: (r: any) => Number(r.cadencia_spm || 0),
+                render: (r: any) => (
+                  <span className="text-gray-600">
+                    {r.cadencia_spm ?? (r.cadencia_invalida ? 'inválida' : '—')}
+                  </span>
+                ),
+              },
+              {
+                key: 'ganho_elevacao_m',
+                label: 'Ganho alt.',
+                largura: 90,
+                align: 'right',
+                valor: (r: any) => Number(r.ganho_elevacao_m || 0),
+                render: (r: any) => (
+                  <span className="text-gray-600">
+                    {r.ganho_elevacao_m != null ? r.ganho_elevacao_m + ' m' : '—'}
+                  </span>
+                ),
+              },
+              {
+                key: 'calorias',
+                label: 'Calorias',
+                largura: 80,
+                align: 'right',
+                valor: (r: any) => Number(r.calorias || 0),
+                render: (r: any) => <span className="text-gray-600">{r.calorias ?? '—'}</span>,
+              },
+              {
+                key: 'te_aerobico',
+                label: 'TE',
+                largura: 60,
+                align: 'right',
+                valor: (r: any) => Number(r.te_aerobico || 0),
+                render: (r: any) => (
+                  <span className="text-gray-600">
+                    {r.te_aerobico != null ? String(r.te_aerobico).replace('.', ',') : '—'}
+                  </span>
+                ),
+              },
+              {
+                key: 'carga_proxy',
+                label: 'Carga',
+                largura: 70,
+                align: 'right',
+                valor: (r: any) => Number(r.carga_proxy || 0),
+                render: (r: any) => (
+                  <span className="text-gray-600">
+                    {r.carga_proxy != null ? String(r.carga_proxy).replace('.', ',') : '—'}
+                  </span>
+                ),
+              },
+              {
+                key: 'passos',
+                label: 'Passos',
+                largura: 80,
+                align: 'right',
+                valor: (r: any) => Number(r.passos || 0),
+                render: (r: any) => <span className="text-gray-600">{r.passos ?? '—'}</span>,
+              },
+              {
+                key: 'confiabilidade_fc',
+                label: 'Confiab. FC',
+                largura: 95,
+                align: 'center',
+                render: (r: any) =>
+                  r.confiabilidade_fc === 'alta' ? (
+                    <span className="text-[9px] font-bold text-emerald-700">alta</span>
+                  ) : (
+                    <span
+                      className="text-[9px] font-bold text-gray-500 bg-gray-100 rounded px-1.5 py-0.5"
+                      title="FC não confiável (pulso óptico) — fora do cálculo de TSS e carga"
+                    >
+                      {r.confiabilidade_fc === 'insuficiente' ? 'insuficiente' : 'não confiável'}
+                    </span>
+                  ),
+              },
+              {
+                key: 'qualidade_dados',
+                label: 'Dados',
+                largura: 80,
+                align: 'center',
+                render: (r: any) => (
+                  <span className="text-[9.5px] font-semibold text-gray-500">
+                    {r.qualidade_dados || '—'}
+                  </span>
+                ),
+              },
+            ]}
+          />
         </Card>
       )}
 
