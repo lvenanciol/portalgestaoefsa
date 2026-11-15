@@ -240,6 +240,13 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         ? t.sessoes_concluidas.map((x: any) => String(x).slice(0, 10))
         : []
 
+      // b) mapa de status por data (escolha do usuário)
+      const mapaStatus: Record<string, string> = (() => {
+        const m = t.sessoes_status
+        if (m && typeof m === 'object' && !Array.isArray(m)) return m
+        return {}
+      })()
+
       if (sessoes.length === 0) {
         out.push({
           ...t,
@@ -248,18 +255,21 @@ export default function TratamentosTab({ aba }: { aba: any }) {
           _dataSessao: t.inicio,
           _id: t.id + '-0',
           _concluida: t.status === 'concluido',
+          _statusSessao: t.status || 'em_andamento',
         })
       } else {
         sessoes.forEach((d, i) => {
-          // b1: o status é da SESSÃO, não do tratamento
           const dia = String(d).slice(0, 10)
+          const concluida = concluidas.includes(dia)
           out.push({
             ...t,
             _sessao: d,
             _idx: i,
             _dataSessao: d,
             _id: t.id + '-' + i,
-            _concluida: concluidas.includes(dia),
+            _concluida: concluida,
+            // concluída manda; senão o que o usuário escolheu; senão agendado
+            _statusSessao: concluida ? 'concluido' : mapaStatus[dia] || 'agendado',
           })
         })
       }
@@ -425,15 +435,22 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     const sessao = linha._sessao || null
     setSessaoEmEdicao(sessao)
 
-    // deriva o status da sessão: concluída / agendada / não agendada
+    // b) — o status vem de `sessoes_status[data]`, que guarda a ESCOLHA do
+    // usuário. `sessoes_concluidas` continua mandando quando a data está nele.
     const concluidas: string[] = Array.isArray(t.sessoes_concluidas)
       ? t.sessoes_concluidas.map((x: any) => String(x).slice(0, 10))
       : []
+    const mapaStatus: Record<string, string> = (() => {
+      const m = t.sessoes_status
+      if (m && typeof m === 'object' && !Array.isArray(m)) return m
+      return {}
+    })()
+
     const diaSessao = sessao ? String(sessao).slice(0, 10) : null
     const statusDaSessao = diaSessao
       ? concluidas.indexOf(diaSessao) >= 0
         ? 'concluido'
-        : 'agendado'
+        : mapaStatus[diaSessao] || 'agendado'
       : t.status || 'em_andamento'
 
     const sessoes: string[] = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
@@ -494,13 +511,16 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         }
         await atualizar('ll5_treatments', ator, editando.id, dados)
 
-        // aplica o status escolhido à sessão
+        // b) aplica o status escolhido à SESSÃO em edição.
+        // Precisa gravar em `sessoes_status[data]` — senão "não agendado"
+        // era perdido e a lista voltava a mostrar "agendada".
         if (sessaoEmEdicao) {
           const dia = String(sessaoEmEdicao).slice(0, 10)
           const concluidas: string[] = Array.isArray(editando.sessoes_concluidas)
             ? [...editando.sessoes_concluidas]
             : []
 
+          // concluído entra/sai do array de concluídas
           if (form.status === 'concluido' && concluidas.indexOf(dia) < 0) {
             concluidas.push(dia)
           } else if (form.status !== 'concluido') {
@@ -508,8 +528,17 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             if (idx >= 0) concluidas.splice(idx, 1)
           }
 
+          // o status textual fica no mapa por data
+          const mapa: Record<string, string> = (() => {
+            const m = editando.sessoes_status
+            if (m && typeof m === 'object' && !Array.isArray(m)) return { ...m }
+            return {}
+          })()
+          mapa[dia] = form.status
+
           await atualizar('ll5_treatments', ator, editando.id, {
             sessoes_concluidas: concluidas,
+            sessoes_status: mapa,
           })
         }
       } else {
@@ -1145,26 +1174,35 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               {
                 key: 'status',
                 label: 'Status',
-                largura: 120,
-                // b) — MESMA derivação usada no diálogo de edição:
-                //     concluída → 'concluido' · sessão futura → 'agendado'
-                valor: (r: any) => (r._concluida ? 'concluido' : 'agendado'),
-                render: (r: any) =>
-                  r._concluida ? (
+                largura: 125,
+                // b) — EXATAMENTE o mesmo valor que o diálogo mostra e grava
+                valor: (r: any) => r._statusSessao,
+                render: (r: any) => {
+                  const st = String(r._statusSessao || 'agendado')
+                  const rotulo =
+                    st === 'concluido'
+                      ? 'Concluída'
+                      : st === 'nao_agendado'
+                        ? 'Não agendada'
+                        : st === 'agendado'
+                          ? 'Agendada'
+                          : st === 'suspenso'
+                            ? 'Suspensa'
+                            : st === 'cancelado'
+                              ? 'Cancelada'
+                              : 'Em andamento'
+                  return (
                     <Badge
                       variant="outline"
-                      className="text-[9.5px] font-bold border-gray-300 text-gray-600 bg-gray-50"
+                      className={cn(
+                        'text-[9.5px] font-bold whitespace-nowrap',
+                        STATUS_COR[st] || 'border-gray-200 text-gray-600',
+                      )}
                     >
-                      Concluída
+                      {rotulo}
                     </Badge>
-                  ) : (
-                    <Badge
-                      variant="outline"
-                      className="text-[9.5px] font-bold border-sky-300 text-sky-700 bg-sky-50"
-                    >
-                      Agendada
-                    </Badge>
-                  ),
+                  )
+                },
               },
               {
                 key: 'anexos',

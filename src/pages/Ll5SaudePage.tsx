@@ -82,6 +82,8 @@ export default function Ll5SaudePage() {
   const [abaAtiva, setAbaAtiva] = useState<string>('')
   const [carregando, setCarregando] = useState(true)
   const [gerenciarOpen, setGerenciarOpen] = useState(false)
+  // GYM 1a: caixa "Parecer IA — GYM" só aparece após clicar em "Parecer GYM"
+  const [parecerGym, setParecerGym] = useState(false)
 
   const carregarAbas = async () => {
     setCarregando(true)
@@ -213,7 +215,7 @@ export default function Ll5SaudePage() {
       case 'tratamentos':
         return <TratamentosTab aba={aba} />
       case 'gym':
-        return <GymTab aba={aba} />
+        return <GymTab aba={aba} parecerVisivel={parecerGym} />
       case 'composicao':
         return <ComposicaoTab aba={aba} />
       default:
@@ -300,8 +302,22 @@ export default function Ll5SaudePage() {
 
         {isAdmin && (
           <div className="flex items-center gap-1.5 shrink-0 pb-1">
-            {/* a) (15/11/2026): o botão "+ Aba" foi REMOVIDO — criar aba já
-                funciona dentro de "Gerenciar abas" (botão "Nova aba"). */}
+            {/* GYM 1a (15/11/2026) — "Parecer GYM" à ESQUERDA de "Gerenciar
+                abas", visível SÓ quando a aba ativa é GYM. Revela a caixa
+                "Parecer IA — GYM". */}
+            {aba?.template_type === 'gym' && (
+              <Button
+                variant={parecerGym ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setParecerGym((v) => !v)}
+                className={cn(
+                  'h-8 text-[12px]',
+                  parecerGym && 'bg-[#1b5e20] hover:bg-[#0F3D13] text-white',
+                )}
+              >
+                <Sparkles className="h-3.5 w-3.5 mr-1.5" /> Parecer GYM
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"

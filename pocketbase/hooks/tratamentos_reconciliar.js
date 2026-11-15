@@ -83,7 +83,22 @@ routerAdd(
         const dia = m[1] + '-' + m[2] + '-' + m[3]
         if (porData[dia]) continue
 
+        // ------------------------------------------------------------------
+        // 15/11/2026 — CAUSA DAS 32 TAREFAS NOVAS (b6)
+        //
+        // A busca por JANELA DE PRAZO falha por fuso: uma tarefa gravada em
+        // "17/12 00:00:00.000Z" equivale a 16/12 21:00 no horário local, e cai
+        // FORA de "17/12 00:00Z ~ 17/12 23:59Z". O reconciliar não encontrava
+        // a tarefa existente e criava outra em 'triagem' — a cada clique.
+        //
+        // Correção: buscar TAMBÉM pelo TÍTULO contendo dd/mm/aaaa, que é o
+        // formato usado por todos os caminhos que criam tarefa de sessão.
+        // Junta os dois resultados e deduplica por id.
+        // ------------------------------------------------------------------
+        const diaBR = dia.split('-').reverse().join('/')
         let encontradas = []
+        let porTitulo = []
+
         try {
           encontradas = $app.findRecordsByFilter(
             'tarefas',
@@ -93,9 +108,29 @@ routerAdd(
             0,
           )
         } catch (err) {
-          console.log('[reconciliar] busca ' + dia + ': ' + String(err).slice(0, 100))
+          console.log('[reconciliar] busca prazo ' + dia + ': ' + String(err).slice(0, 100))
           encontradas = []
         }
+
+        try {
+          porTitulo = $app.findRecordsByFilter('tarefas', "titulo ~ '" + diaBR + "'", '', 20, 0)
+        } catch (err) {
+          console.log('[reconciliar] busca título ' + diaBR + ': ' + String(err).slice(0, 100))
+          porTitulo = []
+        }
+
+        // mescla sem duplicar id
+        const vistos = {}
+        const todasDoDia = []
+        for (const lote of [encontradas, porTitulo]) {
+          for (const r of lote) {
+            const idr = String(r.id)
+            if (vistos[idr]) continue
+            vistos[idr] = true
+            todasDoDia.push(r)
+          }
+        }
+        encontradas = todasDoDia
 
         // prefere a que NÃO está em triagem (já foi trabalhada)
         let escolhida = null

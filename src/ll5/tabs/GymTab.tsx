@@ -50,7 +50,13 @@ function dataBR(iso?: string | null): string {
   return String(iso).slice(0, 10).split('-').reverse().join('/')
 }
 
-export default function GymTab({ aba }: { aba: any }) {
+export default function GymTab({
+  aba,
+  parecerVisivel = false,
+}: {
+  aba: any
+  parecerVisivel?: boolean
+}) {
   const { ator, ownerAtual } = useLl5()
   const [sessoes, setSessoes] = useState<any[]>([])
   const [exercicios, setExercicios] = useState<any[]>([])
@@ -208,6 +214,21 @@ export default function GymTab({ aba }: { aba: any }) {
 
   return (
     <div className="space-y-3">
+      {/* GYM 1a — "Parecer IA — GYM" ACIMA dos cards, só sob clique */}
+      {parecerVisivel && (
+        <ParecerIaCard
+          scope="gym"
+          titulo="Parecer IA — GYM"
+          resumo="Avalie volume, progressão de carga e equilíbrio entre grupos musculares."
+          dados={{
+            volume_30d: kpis.volume,
+            sessoes: kpis.sessoes,
+            rpe_medio: kpis.rpe,
+            pr: kpis.pr,
+          }}
+        />
+      )}
+
       {/* KPIs — sobre a lista completa (1a) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
@@ -613,13 +634,6 @@ export default function GymTab({ aba }: { aba: any }) {
           </div>
         )}
       </Card>
-
-      <ParecerIaCard
-        scope="gym"
-        titulo="Parecer IA — GYM"
-        resumo="Avalie volume, progressão de carga e equilíbrio entre grupos musculares."
-        dados={{ volume_30d: kpis.volume, sessoes: kpis.sessoes, rpe_medio: kpis.rpe, pr: kpis.pr }}
-      />
     </div>
   )
 }
