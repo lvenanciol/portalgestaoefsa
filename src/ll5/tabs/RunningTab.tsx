@@ -303,24 +303,44 @@ export default function RunningTab({ aba }: { aba: any }) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-60 bg-white border-gray-200 z-[120]">
+                {/* 15/11/2026 — A API É A FONTE ÚNICA.
+                    Importar CSV/FIT junto com a API gerava a mesma corrida em
+                    2-3 versões (o PocketBase normaliza data de forma diferente
+                    por origem, então nenhum dedupe funcionou).
+                    As opções continuam aqui como RESERVA, desativadas, para o
+                    caso de a API ficar indisponível. */}
                 <DropdownMenuItem
-                  onClick={() => setImportarCsvOpen(true)}
-                  className="cursor-pointer text-[12px] gap-2"
+                  onClick={() => {
+                    toast({
+                      title: 'Use a API como fonte única',
+                      description:
+                        'A sincronização traz tudo do Garmin. Importar CSV ou .FIT junto geraria a mesma corrida em duplicata. Para usar o arquivo como reserva, fale comigo.',
+                      variant: 'destructive',
+                    })
+                  }}
+                  className="cursor-pointer text-[12px] gap-2 opacity-50"
                 >
-                  <FileSpreadsheet className="h-3.5 w-3.5 text-[#1b5e20] shrink-0" />
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                   <div className="min-w-0">
-                    <p className="font-semibold text-gray-800">CSV do Garmin</p>
-                    <p className="text-[10.5px] text-gray-500">Export de atividades .csv</p>
+                    <p className="font-semibold text-gray-500">CSV do Garmin</p>
+                    <p className="text-[10.5px] text-gray-400">Desativado — a API é a fonte</p>
                   </div>
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => setImportarOpen(true)}
-                  className="cursor-pointer text-[12px] gap-2"
+                  onClick={() => {
+                    toast({
+                      title: 'Use a API como fonte única',
+                      description:
+                        'A sincronização traz tudo do Garmin. Importar .FIT junto geraria a mesma corrida em duplicata.',
+                      variant: 'destructive',
+                    })
+                  }}
+                  className="cursor-pointer text-[12px] gap-2 opacity-50"
                 >
-                  <FileArchive className="h-3.5 w-3.5 text-[#1b5e20] shrink-0" />
+                  <FileArchive className="h-3.5 w-3.5 text-gray-400 shrink-0" />
                   <div className="min-w-0">
-                    <p className="font-semibold text-gray-800">Arquivos .FIT</p>
-                    <p className="text-[10.5px] text-gray-500">Pacote ZIP ou .FIT avulso</p>
+                    <p className="font-semibold text-gray-500">Arquivos .FIT</p>
+                    <p className="text-[10.5px] text-gray-400">Desativado — a API é a fonte</p>
                   </div>
                 </DropdownMenuItem>
               </DropdownMenuContent>
