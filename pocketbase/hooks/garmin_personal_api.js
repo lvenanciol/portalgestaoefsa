@@ -1,70 +1,52 @@
 // ============================================================================
-// GARMIN CONNECT — PERSONAL API (API key → access token) — 15/11/2026 v2
+// GARMIN CONNECT — PERSONAL API (v3, 15/11/2026)
 //
-// FLUXO REAL (do portal do dono):
-//   A Garmin NÃO entrega client_id/client_secret na Personal API.
-//   Entrega apenas uma "Personal API Key". O token sai de:
+// MUDANÇA ESTRUTURAL: os dados do Garmin passam a viver em CAMPOS TEXT
+// DEDICADOS de `integracoes_config`, não no campo JSON `config`.
 //
-//   POST https://personal.connectapi.garmin.com/personalapitoken-service/
-//        personal-api/personal-api-key/token
-//   Authorization: ApiKey {personal-api-key}
+// MOTIVO (confirmado em produção): `rec.set('config', objeto)` + `$app.save()`
+// no JSVM não persistia o JSON — o save não dava erro, mas a releitura vinha
+// vazia. Texto grava de forma confiável.
 //
-// ESTA VERSÃO (v2) corrige o 500 em "Salvar API key":
-//   · garante que `config` seja um OBJETO antes de escrever (se vier string,
-//     `cfg.x = y` lançava TypeError e o PocketBase devolvia a mensagem
-//     genérica "Something went wrong while processing your request");
-//   · loga o erro real com console.log para aparecer em Skip Cloud → Logs;
-//   · devolve `erro` no corpo, nunca só o genérico.
+//   garmin_personal_api_key  · garmin_personal_token
+//   garmin_token_validade    · garmin_ativo
+//   garmin_ultimo_teste      · garmin_ultimo_sync
 //
-// REGRA DO JSVM: nada de helper no topo. Tudo inline em cada callback.
+// REGRA DO JSVM: nada de helper no topo — tudo inline em cada callback.
 // ============================================================================
 
-// NOTA: NÃO existe função no topo deste arquivo. O JSVM executa callbacks em
-// pool separado e um helper de topo causa ReferenceError em runtime (o
-// pipeline de QA detecta e bloqueia o build). A normalização do JSON está
-// INLINE em cada callback.
-
+/** Registro único da integração; cria se não existir. */
 routerAdd(
   'GET',
   '/backend/v1/garmin/personal/config',
   (e) => {
     if (!e.auth) return e.unauthorizedError('Autenticação obrigatória.')
-    const auth = e.auth
 
     let rec = null
-    let cfg = {}
     try {
       rec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
-      const bruto = rec.get('config')
-      if (bruto && typeof bruto === 'object' && !Array.isArray(bruto)) {
-        cfg = bruto
-      } else if (typeof bruto === 'string') {
-        try {
-          const p = JSON.parse(bruto)
-          cfg = p && typeof p === 'object' ? p : {}
-        } catch (_) {
-          cfg = {}
-        }
-      }
     } catch (_) {
       rec = null
-      cfg = {}
     }
 
-    const key = String(cfg.personal_api_key || '')
+    const key = rec ? String(rec.getString('garmin_personal_api_key') || '') : ''
+    const token = rec ? String(rec.getString('garmin_personal_token') || '') : ''
+    const validade = rec ? String(rec.getString('garmin_token_validade') || '') : ''
+    const ultimoTeste = rec ? String(rec.getString('garmin_ultimo_teste') || '') : ''
+    const ultimoSync = rec ? String(rec.getString('garmin_ultimo_sync') || '') : ''
+
     return e.json(200, {
       success: true,
       config: {
-        modo: cfg.modo || 'personal',
-        ativo: !!cfg.ativo,
+        modo: 'personal',
+        ativo: rec ? !!rec.getBool('garmin_ativo') : false,
         tem_api_key: !!key.trim(),
-        // alias mantido: a UI lê os dois nomes
         tem_client_secret: !!key.trim(),
         api_key_mascarada: key ? key.slice(0, 6) + '…' + key.slice(-4) : '',
-        token_validade: cfg.token_validade || '',
-        tem_token: !!cfg.personal_token,
-        ultimo_teste: cfg.last_test_result || null,
-        ultimo_sync: cfg.ultimo_sync || '',
+        tem_token: !!token.trim(),
+        token_validade: validade,
+        ultimo_teste: ultimoTeste ? { ok: true, detalhe: ultimoTeste } : null,
+        ultimo_sync: ultimoSync,
       },
     })
   },
@@ -80,127 +62,69 @@ routerAdd(
     let body = {}
     try {
       body = e.requestInfo().body || {}
-    } catch (err) {
-      console.log('[garmin/personal/config] requestInfo falhou: ' + String(err))
+    } catch (_) {
       body = {}
     }
 
     const apiKey = String(body.api_key || '').trim()
-    if (!apiKey) {
-      return e.json(400, { success: false, erro: 'Informe a API key.' })
-    }
+    if (!apiKey) return e.json(400, { success: false, erro: 'Informe a API key.' })
     if (apiKey.length < 20) {
       return e.json(400, {
         success: false,
-        erro:
-          'A API key parece curta demais (' +
-          apiKey.length +
-          ' caracteres). Cole a chave completa.',
+        erro: 'A API key parece curta (' + apiKey.length + ' caracteres).',
       })
     }
 
     let rec = null
-    let cfg = {}
     try {
       rec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
-      const bruto = rec.get('config')
-      if (bruto && typeof bruto === 'object' && !Array.isArray(bruto)) {
-        cfg = bruto
-      } else if (typeof bruto === 'string') {
-        try {
-          const p = JSON.parse(bruto)
-          cfg = p && typeof p === 'object' ? p : {}
-        } catch (_) {
-          cfg = {}
-        }
-      }
     } catch (_) {
       rec = null
-      cfg = {}
     }
 
-    // grava sempre como objeto novo (não muta o que veio do banco)
-    const novo = {}
-    for (const k of Object.keys(cfg)) novo[k] = cfg[k]
-    novo.modo = 'personal'
-    novo.ativo = body.ativo === undefined ? true : !!body.ativo
-    novo.personal_api_key = apiKey
-    novo.aprovado_programa = true
-    // a Personal API não usa OAuth de app: limpa campos que não se aplicam
-    delete novo.client_id
-    delete novo.client_secret
-    delete novo.redirect_uri
-    delete novo.consumer_key
-    delete novo.consumer_secret
-    delete novo.escopos
-
     try {
-      if (rec) {
-        rec.set('config', novo)
-        $app.save(rec)
-      } else {
+      if (!rec) {
         const col = $app.findCollectionByNameOrId('integracoes_config')
-        const r = new Record(col)
-        r.set('integracao', 'garmin')
-        r.set('config', novo)
-        $app.save(r)
+        rec = new Record(col)
+        rec.set('integracao', 'garmin')
       }
+      // CAMPOS TEXT — gravam de forma confiável no JSVM
+      rec.set('garmin_personal_api_key', apiKey)
+      rec.set('garmin_ativo', true)
+      $app.save(rec)
     } catch (err) {
-      // LOG REAL: aparece em Skip Cloud → Logs → hooks
-      console.log('[garmin/personal/config] FALHA ao salvar: ' + String(err))
+      console.log('[garmin/config] FALHA no save: ' + String(err))
       return e.json(500, {
         success: false,
-        erro: 'Falha ao gravar a configuração: ' + String(err).slice(0, 180),
+        erro: 'Falha ao gravar: ' + String(err).slice(0, 160),
       })
     }
 
-    // ------------------------------------------------------------------
-    // VERIFICAÇÃO PÓS-GRAVAÇÃO (15/11/2026)
-    // O log confirmava "API key salva" mas o GET seguinte devolvia
-    // tem_api_key:false — a tela mostrava "ausente" e o botão "Obter token"
-    // não habilitava. Aqui RELEMOS o registro depois do save e devolvemos o
-    // estado REAL, para a UI não depender de um segundo request.
-    // ------------------------------------------------------------------
+    // RELEITURA de verificação
     let verificado = false
-    let mascara = ''
-    let tamanho = 0
+    let relido = 0
     try {
-      const relido = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
-      let c2 = relido.get('config')
-      if (typeof c2 === 'string') {
-        try {
-          c2 = JSON.parse(c2)
-        } catch (_) {
-          c2 = {}
-        }
-      }
-      const k2 = c2 && typeof c2 === 'object' ? String(c2.personal_api_key || '') : ''
-      verificado = !!k2.trim()
-      tamanho = k2.length
-      mascara = k2 ? k2.slice(0, 6) + '…' + k2.slice(-4) : ''
-      if (!verificado) {
-        console.log(
-          '[garmin/personal/config] ATENÇÃO: save retornou OK mas a releitura não achou a chave',
-        )
-      }
+      const conf = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
+      const k = String(conf.getString('garmin_personal_api_key') || '')
+      verificado = !!k.trim()
+      relido = k.length
     } catch (err) {
-      console.log('[garmin/personal/config] falha na releitura: ' + String(err))
+      console.log('[garmin/config] releitura falhou: ' + String(err))
     }
 
     console.log(
-      '[garmin/personal/config] API key salva (' +
+      '[garmin/config] chave ' +
         apiKey.length +
-        ' chars) · verificado=' +
+        ' chars · verificado=' +
         verificado +
         ' · relido=' +
-        tamanho +
-        ' chars',
+        relido,
     )
 
     if (!verificado) {
       return e.json(200, {
         success: false,
-        erro: 'A chave foi enviada mas não foi encontrada na releitura do banco. Isso indica falha de persistência do campo JSON.',
+        erro: 'A chave não foi encontrada na releitura do banco (campo texto).',
       })
     }
 
@@ -208,7 +132,7 @@ routerAdd(
       success: true,
       tem_api_key: true,
       tem_client_secret: true,
-      api_key_mascarada: mascara,
+      api_key_mascarada: apiKey.slice(0, 6) + '…' + apiKey.slice(-4),
       ativo: true,
     })
   },
@@ -222,34 +146,20 @@ routerAdd(
     if (!e.auth) return e.unauthorizedError('Autenticação obrigatória.')
 
     let rec = null
-    let cfg = {}
     try {
       rec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
-      const bruto = rec.get('config')
-      if (bruto && typeof bruto === 'object' && !Array.isArray(bruto)) {
-        cfg = bruto
-      } else if (typeof bruto === 'string') {
-        try {
-          const p = JSON.parse(bruto)
-          cfg = p && typeof p === 'object' ? p : {}
-        } catch (_) {
-          cfg = {}
-        }
-      }
     } catch (_) {
       rec = null
-      cfg = {}
     }
 
-    const apiKey = String(cfg.personal_api_key || '').trim()
+    const apiKey = rec ? String(rec.getString('garmin_personal_api_key') || '').trim() : ''
     if (!apiKey) {
       return e.json(200, {
         success: false,
-        erro: 'Nenhuma API key salva. Cole a chave e clique em "Salvar API key" primeiro.',
+        erro: 'Nenhuma API key salva. Cole a chave e clique em "Salvar API key".',
       })
     }
 
-    // ---------- 1) POST no endpoint do print ----------
     let res = null
     try {
       res = $http.send({
@@ -264,52 +174,44 @@ routerAdd(
         timeout: 25,
       })
     } catch (err) {
-      console.log('[garmin/personal/token] rede: ' + String(err))
+      console.log('[garmin/token] rede: ' + String(err))
       return e.json(200, {
         success: false,
-        erro: 'Falha de rede ao contatar o Garmin: ' + String(err).slice(0, 160),
+        erro: 'Falha de rede: ' + String(err).slice(0, 150),
       })
     }
 
     const status = res.statusCode
-    console.log('[garmin/personal/token] Garmin respondeu ' + status)
-
-    // corpo cru para diagnóstico (limitado)
     let corpoCru = ''
     try {
-      corpoCru = res.body ? String(res.body).slice(0, 600) : ''
+      corpoCru = res.body ? String(res.body).slice(0, 500) : ''
     } catch (_) {
       corpoCru = ''
     }
+    console.log('[garmin/token] Garmin respondeu ' + status + ' · corpo: ' + corpoCru.slice(0, 200))
+
+    // guarda o resultado do teste (campo texto)
+    try {
+      if (rec) {
+        rec.set(
+          'garmin_ultimo_teste',
+          status === 200
+            ? 'Token obtido com sucesso'
+            : 'Garmin respondeu HTTP ' + status + ' · ' + corpoCru.slice(0, 200),
+        )
+        $app.save(rec)
+      }
+    } catch (_) {}
 
     if (status !== 200) {
-      try {
-        cfg.last_test_result = {
-          ok: false,
-          detalhe: 'Garmin respondeu HTTP ' + status,
-          corpo: corpoCru,
-          quando: new DateTime().string(),
-        }
-        if (rec) {
-          rec.set('config', cfg)
-          $app.save(rec)
-        }
-      } catch (_) {}
-
       return e.json(200, {
         success: false,
-        erro:
-          'O Garmin recusou a API key (HTTP ' +
-          status +
-          '). Confira se a chave está ativa e se foi copiada inteira.',
+        erro: 'O Garmin recusou a API key (HTTP ' + status + ').',
         http_status: status,
         corpo: corpoCru,
       })
     }
 
-    // ---------- 2) extrai o token ----------
-    let token = ''
-    let validade = ''
     let dados = {}
     try {
       dados = res.json || {}
@@ -317,11 +219,11 @@ routerAdd(
       dados = {}
     }
 
+    let token = ''
     const cand = [
       dados.access_token,
       dados.accessToken,
       dados.token,
-      dados.access_token_value,
       dados.data && dados.data.access_token,
       dados.data && dados.data.accessToken,
       dados.data && dados.data.token,
@@ -333,49 +235,34 @@ routerAdd(
       }
     }
 
+    if (!token) {
+      return e.json(200, {
+        success: false,
+        erro: 'Respondeu 200 sem token reconhecível. Veja o corpo.',
+        corpo: corpoCru,
+      })
+    }
+
+    let validade = ''
     const exp =
       dados.expires_in ||
       dados.expiresIn ||
       (dados.data && (dados.data.expires_in || dados.data.expiresIn)) ||
       null
-    if (exp) {
-      validade = new Date(Date.now() + Number(exp) * 1000).toISOString()
-    }
-
-    if (!token) {
-      // 200 sem token: devolve o corpo para o dono me mandar o formato
-      return e.json(200, {
-        success: false,
-        erro: 'O Garmin respondeu 200 mas sem access_token reconhecível. Formato inesperado — veja o corpo abaixo.',
-        corpo: corpoCru,
-      })
-    }
+    if (exp) validade = new Date(Date.now() + Number(exp) * 1000).toISOString()
 
     try {
-      cfg.personal_token = token
-      cfg.token_validade = validade
-      cfg.last_test_result = {
-        ok: true,
-        detalhe:
-          'Token obtido' +
-          (validade ? ' · válido até ' + validade.slice(0, 16).replace('T', ' ') : ''),
-        quando: new DateTime().string(),
-      }
       if (rec) {
-        rec.set('config', cfg)
+        rec.set('garmin_personal_token', token)
+        rec.set('garmin_token_validade', validade)
         $app.save(rec)
       }
     } catch (err) {
-      console.log('[garmin/personal/token] falha ao gravar token: ' + String(err))
+      console.log('[garmin/token] falha ao gravar token: ' + String(err))
     }
 
-    console.log('[garmin/personal/token] token obtido com sucesso')
-    return e.json(200, {
-      success: true,
-      tem_token: true,
-      validade: validade,
-      // nunca devolvemos o token
-    })
+    console.log('[garmin/token] token obtido (' + token.length + ' chars)')
+    return e.json(200, { success: true, tem_token: true, validade: validade })
   },
   $apis.requireAuth(),
 )
@@ -387,31 +274,21 @@ routerAdd(
     if (!e.auth) return e.unauthorizedError('Autenticação obrigatória.')
 
     let rec = null
-    let cfg = {}
     try {
       rec = $app.findFirstRecordByFilter('integracoes_config', "integracao = 'garmin'")
-      const bruto = rec.get('config')
-      if (bruto && typeof bruto === 'object' && !Array.isArray(bruto)) {
-        cfg = bruto
-      } else if (typeof bruto === 'string') {
-        try {
-          const p = JSON.parse(bruto)
-          cfg = p && typeof p === 'object' ? p : {}
-        } catch (_) {
-          cfg = {}
-        }
-      }
     } catch (_) {
       rec = null
-      cfg = {}
     }
 
-    const apiKey = String(cfg.personal_api_key || '').trim()
+    const apiKey = rec ? String(rec.getString('garmin_personal_api_key') || '').trim() : ''
+    const tokenSalvo = rec ? String(rec.getString('garmin_personal_token') || '') : ''
+    const validadeSalva = rec ? String(rec.getString('garmin_token_validade') || '') : ''
+
     const st = {
       modo: 'personal',
       tem_api_key: !!apiKey,
-      tem_token: !!cfg.personal_token,
-      token_validade: cfg.token_validade || '',
+      tem_token: !!tokenSalvo,
+      token_validade: validadeSalva,
       conexao_ok: false,
       recursos: { activities: false, workouts: false },
       detalhe: '',
@@ -424,12 +301,11 @@ routerAdd(
       return e.json(200, { success: true, status: st })
     }
 
-    // renova o token quando vencido ou ausente
-    let token = String(cfg.personal_token || '')
+    let token = tokenSalvo
     let renovar = !token
-    if (token && cfg.token_validade) {
+    if (token && validadeSalva) {
       try {
-        renovar = new Date(cfg.token_validade).getTime() - 60000 < Date.now()
+        renovar = new Date(validadeSalva).getTime() - 60000 < Date.now()
       } catch (_) {
         renovar = true
       }
@@ -453,14 +329,11 @@ routerAdd(
           token = d.access_token || d.accessToken || d.token || ''
           const exp = d.expires_in || d.expiresIn || null
           if (exp) st.token_validade = new Date(Date.now() + Number(exp) * 1000).toISOString()
-          if (token) {
+          if (token && rec) {
             try {
-              cfg.personal_token = token
-              cfg.token_validade = st.token_validade
-              if (rec) {
-                rec.set('config', cfg)
-                $app.save(rec)
-              }
+              rec.set('garmin_personal_token', token)
+              rec.set('garmin_token_validade', st.token_validade)
+              $app.save(rec)
             } catch (_) {}
           }
         } else {
@@ -496,18 +369,6 @@ routerAdd(
         st.detalhe = 'Token OK, mas a API não respondeu: ' + String(err).slice(0, 100)
       }
     }
-
-    try {
-      cfg.last_test_result = {
-        ok: st.conexao_ok,
-        detalhe: st.detalhe || st.erro,
-        quando: new DateTime().string(),
-      }
-      if (rec) {
-        rec.set('config', cfg)
-        $app.save(rec)
-      }
-    } catch (_) {}
 
     return e.json(200, { success: true, status: st })
   },

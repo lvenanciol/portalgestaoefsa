@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Plus,
   Footprints,
@@ -94,11 +94,69 @@ export default function RunningTab({ aba }: { aba: any }) {
     }
   }, [ator, ownerAtual])
 
-  // KPIs dos últimos 30 dias
+  /**
+   * 15/11/2026 — UNIFICAÇÃO DAS FONTES.
+   * A tela tinha DOIS bancos de dados na mesma página: `ll5_running` (seed/
+   * manual) alimentava os KPIs e a tabela "Atividades recentes", enquanto
+   * `ll5_activity` (importado) só aparecia na tabela de baixo. Resultado: o
+   * KPI mostrava 0,0 km mesmo com 99 atividades importadas na tela.
+   *
+   * `todasCorridas` mescla as duas origens em um formato único, com os campos
+   * que o KPI precisa (data, distancia_km, duracao_s, pace, fc, zonas).
+   */
+  const todasCorridas = useMemo(() => {
+    const doRunning = corridas.map((c) => ({
+      id: c.id,
+      data: c.data,
+      tipo: c.tipo,
+      distancia_km: Number(c.distancia_km || 0),
+      duracao_s: Number(c.duracao_s || 0),
+      pace_medio_s_km: Number(c.pace_medio_s_km || 0),
+      fc_media: c.fc_media,
+      fc_max: c.fc_max,
+      zonas_fc: c.zonas_fc || null,
+      fonte: c.fonte || 'manual',
+      origem: 'running' as const,
+      titulo: c.titulo,
+      confiabilidade_fc: 'alta',
+      qualidade_dados: 'completo',
+      carga_proxy: null,
+    }))
+
+    const daActivity = atividades.map((a) => ({
+      id: a.id,
+      data: a.data_hora_inicio,
+      tipo: a.tipo,
+      distancia_km: Number(a.distancia_m || 0) / 1000,
+      duracao_s: Number(a.duracao_s || 0),
+      // o CSV traz pace pronto; o .FIT precisa calcular
+      pace_medio_s_km:
+        a.pace_medio_s_km != null
+          ? Number(a.pace_medio_s_km)
+          : a.duracao_s && a.distancia_m
+            ? Math.round(Number(a.duracao_s) / (Number(a.distancia_m) / 1000))
+            : 0,
+      fc_media: a.fc_media,
+      fc_max: a.fc_max,
+      zonas_fc: a.zonas_fc_seg || null,
+      fonte: a.fonte || 'garmin_csv',
+      origem: 'activity' as const,
+      titulo: a.titulo,
+      confiabilidade_fc: a.confiabilidade_fc || 'alta',
+      qualidade_dados: a.qualidade_dados || 'resumo',
+      carga_proxy: a.carga_proxy,
+    }))
+
+    return [...doRunning, ...daActivity]
+      .filter((c) => !!c.data)
+      .sort((x, y) => new Date(y.data).getTime() - new Date(x.data).getTime())
+  }, [corridas, atividades])
+
+  // KPIs dos últimos 30 dias — sobre a lista UNIFICADA
   const kpis = (() => {
     const corte = new Date()
     corte.setDate(corte.getDate() - 30)
-    const janela = corridas.filter((c) => new Date(c.data) >= corte)
+    const janela = todasCorridas.filter((c) => new Date(c.data) >= corte)
     const dist = janela.reduce((a, c) => a + Number(c.distancia_km || 0), 0)
     const durTotal = janela.reduce((a, c) => a + Number(c.duracao_s || 0), 0)
     const fc = janela.length
@@ -289,7 +347,7 @@ export default function RunningTab({ aba }: { aba: any }) {
             <h3 className="text-[13px] font-bold text-gray-900">Atividades recentes</h3>
           </div>
 
-          {corridas.length === 0 ? (
+          {todasCorridas.length === 0 ? (
             <div className="py-12 text-center">
               <Footprints className="h-7 w-7 text-gray-300 mx-auto mb-2" />
               <p className="text-[12px] font-semibold text-gray-700">Nenhuma corrida registrada</p>
@@ -312,7 +370,7 @@ export default function RunningTab({ aba }: { aba: any }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {corridas.map((c) => {
+                  {todasCorridas.slice(0, 25).map((c) => {
                     const z = c.zonas_fc || {}
                     const total = ZONAS.reduce((a, k) => a + Number(z[k.k] || 0), 0) || 1
                     return (
@@ -375,7 +433,7 @@ export default function RunningTab({ aba }: { aba: any }) {
         {/* estatísticas */}
         <Card className="rounded-xl border-gray-200 shadow-sm p-4">
           <h3 className="text-[13px] font-bold text-gray-900 mb-3">Estatísticas de treino</h3>
-          <DonutZonas corridas={corridas} />
+          <DonutZonas corridas={todasCorridas} />
         </Card>
       </div>
 
@@ -487,7 +545,7 @@ export default function RunningTab({ aba }: { aba: any }) {
           scope="running"
           titulo="Parecer IA — Running"
           resumo="Analise a progressão de volume e pace, sinalize risco de overtraining e sugira ajustes de carga semanal."
-          dados={{ kpis, atividades: corridas.length }}
+          dados={{ kpis, atividades: todasCorridas.length }}
         />
       </div>
 
