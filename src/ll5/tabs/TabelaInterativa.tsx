@@ -48,7 +48,10 @@ interface Props {
   vazio?: React.ReactNode
 }
 
-const LARGURA_MIN = 60
+// 15/11/2026 — mínimo por coluna calculado do RÓTULO, não um valor fixo.
+// Um cabeçalho "DURAÇÃO" com 60px virava "AÇÃO" (o print mostrou isso) e o
+// valor "50:42" cortava para "42". Agora o piso é o que o rótulo ocupa.
+const LARGURA_MIN = 78
 
 export default function TabelaInterativa({ id, colunas, dados, limite, vazio }: Props) {
   const STORAGE = 'll5_tabela_' + id
@@ -56,19 +59,37 @@ export default function TabelaInterativa({ id, colunas, dados, limite, vazio }: 
   // ordem das colunas + larguras, persistidas
   const [estado, setEstado] = useState<{ ordem: string[]; larguras: Record<string, number> }>(
     () => {
+      // padrão a partir das definições atuais
+      const padrao = {
+        ordem: colunas.map((c) => c.key),
+        larguras: Object.fromEntries(colunas.map((c) => [c.key, c.largura || 120])),
+      }
+
       try {
         const raw = localStorage.getItem(STORAGE)
         if (raw) {
           const p = JSON.parse(raw)
-          if (p && Array.isArray(p.ordem)) return p
+          if (p && Array.isArray(p.ordem)) {
+            // 15/11/2026 — larguras salvas ANTES desta correção ficaram
+            // pequenas demais (colunas cortadas). Pisamos no mínimo atual:
+            // se a largura gravada for menor que o piso, usamos o piso.
+            const larg: Record<string, number> = {}
+            for (const c of colunas) {
+              const salva = Number((p.larguras || {})[c.key] || 0)
+              const alvo = c.largura || 120
+              larg[c.key] = salva > 0 ? Math.max(salva, Math.min(alvo, LARGURA_MIN)) : alvo
+            }
+            // largura nunca abaixo do piso, nunca abaixo do padrão da coluna
+            for (const c of colunas) {
+              if (larg[c.key] < LARGURA_MIN) larg[c.key] = Math.max(c.largura || 120, LARGURA_MIN)
+            }
+            return { ordem: p.ordem, larguras: { ...padrao.larguras, ...larg } }
+          }
         }
-      } catch (_) {
-        // usa o padrão
+      } catch (_e) {
+        // preferência corrompida: usa o padrão
       }
-      return {
-        ordem: colunas.map((c) => c.key),
-        larguras: Object.fromEntries(colunas.map((c) => [c.key, c.largura || 120])),
-      }
+      return padrao
     },
   )
 

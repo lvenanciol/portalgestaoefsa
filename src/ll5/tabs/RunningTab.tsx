@@ -612,8 +612,10 @@ export default function RunningTab({ aba }: { aba: any }) {
                   valor: (r: any) =>
                     ZONAS.reduce((a, k) => a + Number((r.zonas_fc || {})[k.k] || 0), 0),
                   render: (r: any) => {
-                    const z = r.zonas_fc || {}
-                    const total = ZONAS.reduce((a, k) => a + Number(z[k.k] || 0), 0) || 1
+                    // 15/11/2026 — zona gravada OU estimada pela FC média
+                    const z = zonasDaAtividade(r) || {}
+                    const total = ZONAS.reduce((a, k) => a + Number(z[k.k] || 0), 0)
+                    if (!total) return <span className="text-gray-300">—</span>
                     return (
                       <div className="flex h-3 w-full rounded-sm overflow-hidden">
                         {ZONAS.map((k) => {
@@ -943,10 +945,82 @@ export default function RunningTab({ aba }: { aba: any }) {
   )
 }
 
+/**
+ * 15/11/2026 — ESTIMATIVA DE ZONAS NO CLIENTE.
+ *
+ * POR QUE AQUI E NÃO NO SERVIDOR: o JSVM do PocketBase NÃO persiste campo JSON
+ * quando fazemos `rec.set('campo', objeto)` + `$app.save()` — o save não dá
+ * erro e a releitura vem vazia (mesmo comportamento que já documentei para o
+ * `config` da integração). Por isso a migração 101 rodou e as zonas
+ * continuaram vazias.
+ *
+ * O cálculo aqui é o MESMO do CSV: gaussiana de desvio 8 bpm centrada na FC
+ * média, sobre FCmax 218. Usa `fc_media` e `duracao_s`, que a API traz.
+ * Só é aplicado quando a atividade NÃO tem zonas gravadas — nunca sobrescreve
+ * dado real vindo do dispositivo.
+ */
+const ZONAS_FC = [
+  { id: 'z1', min: 109, max: 131 },
+  { id: 'z2', min: 131, max: 153 },
+  { id: 'z3', min: 153, max: 174 },
+  { id: 'z4', min: 174, max: 196 },
+  { id: 'z5', min: 196, max: 218 },
+]
+
+function estimarZonas(fcMedia: any, duracao: any): Record<string, number> | null {
+  const fc = Number(fcMedia || 0)
+  const dur = Number(duracao || 0)
+  if (!fc || !dur) return null
+
+  const desvio = 8
+  const passos = 61
+  const zonas: Record<string, number> = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 }
+  let soma = 0
+  const pesos: number[] = []
+
+  for (let i = 0; i < passos; i++) {
+    const x = fc - 30 + (60 * i) / (passos - 1)
+    const w = Math.exp(-0.5 * Math.pow((x - fc) / desvio, 2))
+    pesos.push(w)
+    soma += w
+  }
+  for (let i = 0; i < passos; i++) {
+    const x = fc - 30 + (60 * i) / (passos - 1)
+    const z = ZONAS_FC.find((zz) => x >= zz.min && x < zz.max)
+    if (z) zonas[z.id] += (pesos[i] / soma) * dur
+  }
+
+  let total = 0
+  for (const k of Object.keys(zonas)) {
+    zonas[k] = Math.round(zonas[k])
+    total += zonas[k]
+  }
+  return total > 0 ? zonas : null
+}
+
+/** Zonas da atividade: usa o gravado; se vazio, estima pela FC média. */
+function zonasDaAtividade(c: any): Record<string, number> | null {
+  const z = c.zonas_fc
+  if (z && typeof z === 'object' && Object.keys(z).length > 0) {
+    const soma = Object.values(z).reduce((a: number, b: any) => a + Number(b || 0), 0)
+    if (soma > 0) return z as Record<string, number>
+  }
+  if (typeof z === 'string' && z.length > 5 && z !== '{}') {
+    try {
+      const p = JSON.parse(z)
+      if (p && Object.keys(p).length > 0) return p
+    } catch (_e) {
+      // não é JSON válido
+    }
+  }
+  return estimarZonas(c.fc_media, c.duracao_s)
+}
+
 function DonutZonas({ corridas, horizontal = false }: { corridas: any[]; horizontal?: boolean }) {
   const totais: Record<string, number> = {}
   for (const c of corridas) {
-    const z = c.zonas_fc || {}
+    // usa a zona gravada ou, na falta dela, a estimativa pela FC média
+    const z = zonasDaAtividade(c) || {}
     for (const k of ZONAS) totais[k.k] = (totais[k.k] || 0) + Number(z[k.k] || 0)
   }
   const soma = Object.values(totais).reduce((a, b) => a + b, 0)
