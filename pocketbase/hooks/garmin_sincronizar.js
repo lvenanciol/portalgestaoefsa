@@ -244,6 +244,21 @@ routerAdd(
       }
 
       if (lista.length < 100) break
+
+      // pausa entre páginas: respeita o limite de ~100 req/min da API
+      try {
+        $http.send({
+          url: 'https://personal.connectapi.garmin.com/activitylist-service/activities/search/activities?start=0&limit=1',
+          method: 'GET',
+          headers: { Authorization: 'Bearer ' + token, Accept: '*/*' },
+          timeout: 10,
+        })
+      } catch (_) {}
+    }
+
+    // diagnóstico: se leu mas nada entrou nem atualizou, registra o motivo
+    if (totalLidas > 0 && importadas === 0 && atualizadas === 0 && errosDeLinha.length > 0) {
+      console.log('[garmin/sync] nenhuma atividade gravada. Erros: ' + errosDeLinha.join(' | '))
     }
 
     // ---------------- 3) resumo + auditoria ----------------

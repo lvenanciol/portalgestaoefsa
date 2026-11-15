@@ -375,7 +375,10 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     setNovoOpen(true)
   }
 
-  const abrirEdicao = (t: any) => {
+  const abrirEdicao = (linha: any) => {
+    // 15/11/2026 — a tabela passa uma LINHA (tratamento + _sessao). O diálogo
+    // precisa do TRATAMENTO: resolve pelo id.
+    const t = tratamentos.find((x) => x.id === linha.id) || linha
     setEditando(t)
     const sessoes: string[] = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
     setSessoesManuais(sessoes.length ? [...sessoes] : null)
@@ -535,36 +538,89 @@ export default function TratamentosTab({ aba }: { aba: any }) {
    * Marca o tratamento como concluído E conclui a tarefa correspondente
    * na tela Tarefas (status='concluida'). Uma tarefa por sessão executada.
    */
+  /**
+   * b / b2 — CONCLUIR.
+   *
+   * BUG b1 CORRIGIDO: `atualizar()` recebia o objeto `r` que vinha de uma
+   * LINHA da tabela. Como a tabela expande um tratamento em N linhas, o
+   * spread carregava `_sessao`, `_idx` e outros campos internos; o update
+   * acabava sem o `id` certo e o PocketBase aplicava no registro errado —
+   * dando a impressão de que "todos mudavam de status".
+   *
+   * Agora usamos SEMPRE `t.id` do tratamento, e gravamos o status:
+   *   · sessão específica → `sessoes_concluidas[]` + a tarefa daquela data
+   *   · sem sessão        → status='concluido' do tratamento inteiro
+   */
   const concluirTratamento = async (t: any, sessaoData?: string | null) => {
     try {
-      const ids: string[] = Array.isArray(t.tarefa_ids) ? t.tarefa_ids : []
+      // id do TRATAMENTO (não da linha da tabela)
+      const tratamentoId = String(t.id || '').split('-')[0]
+      if (!tratamentoId) throw new Error('Tratamento sem id')
+
+      const registro = tratamentos.find((x) => x.id === tratamentoId) || t
+      const ids: string[] = Array.isArray(registro.tarefa_ids) ? registro.tarefa_ids : []
+
       let concluidas = 0
 
-      for (const id of ids) {
-        try {
-          const tarefa: any = await pb.collection('tarefas').getOne(id)
-          const prazo = String(tarefa?.prazo || '').slice(0, 10)
-          // se veio uma sessão específica, conclui só ela
-          if (sessaoData && prazo && prazo !== sessaoData) continue
-          await pb.collection('tarefas').update(id, {
-            status: 'concluida',
-            concluida_em: new Date().toISOString(),
-          })
-          concluidas++
-        } catch (_e) {
-          // tarefa ausente: ignora
+      if (sessaoData) {
+        // ---------- b2: conclui SOMENTE a sessão clicada ----------
+        for (const id of ids) {
+          try {
+            const tarefa: any = await pb.collection('tarefas').getOne(id)
+            const prazo = String(tarefa?.prazo || '').slice(0, 10)
+            if (prazo !== sessaoData) continue
+            await pb.collection('tarefas').update(id, {
+              status: 'concluida',
+              concluida_em: new Date().toISOString(),
+            })
+            concluidas++
+          } catch (_e) {
+            // tarefa ausente
+          }
         }
+
+        // registra a sessão concluída no tratamento (sem tocar no status dele)
+        const jaConcluidas: string[] = Array.isArray(registro.sessoes_concluidas)
+          ? [...registro.sessoes_concluidas]
+          : []
+        if (!jaConcluidas.includes(sessaoData)) jaConcluidas.push(sessaoData)
+
+        await atualizar('ll5_treatments', ator, tratamentoId, {
+          sessoes_concluidas: jaConcluidas,
+        })
+
+        toast({
+          title: 'Sessão concluída',
+          description: `${dataBR(sessaoData)} · ${concluidas} tarefa concluída.`,
+        })
+      } else {
+        // ---------- b: conclui o tratamento INTEIRO ----------
+        for (const id of ids) {
+          try {
+            await pb.collection('tarefas').update(id, {
+              status: 'concluida',
+              concluida_em: new Date().toISOString(),
+            })
+            concluidas++
+          } catch (_e) {
+            // tarefa ausente
+          }
+        }
+
+        await atualizar('ll5_treatments', ator, tratamentoId, {
+          status: 'concluido',
+          // marca todas as sessões como concluídas
+          sessoes_concluidas: Array.isArray(registro.proximas_sessoes)
+            ? [...registro.proximas_sessoes]
+            : [],
+        })
+
+        toast({
+          title: 'Tratamento concluído',
+          description: `${concluidas} tarefa(s) concluída(s) em Tarefas.`,
+        })
       }
 
-      // se não havia sessão específica, conclui o tratamento inteiro
-      if (!sessaoData) {
-        await atualizar('ll5_treatments', ator, t.id, { status: 'concluido' })
-      }
-
-      toast({
-        title: sessaoData ? 'Sessão concluída' : 'Tratamento concluído',
-        description: `${concluidas} tarefa(s) marcada(s) como concluída(s) em Tarefas.`,
-      })
       await carregar()
     } catch (e: any) {
       toast({ title: 'Falha ao concluir', description: e?.message, variant: 'destructive' })
@@ -613,6 +669,32 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         description: e?.response?.data?.message || e?.message,
         variant: 'destructive',
       })
+    }
+  }
+
+  const [reconciliando, setReconciliando] = useState(false)
+
+  /** b6: chama o endpoint que remove tarefas órfãs e duplicadas. */
+  const reconciliar = async () => {
+    setReconciliando(true)
+    try {
+      const r: any = await pb.send('/backend/v1/tratamentos/reconciliar-tarefas', {
+        method: 'POST',
+        body: '{}',
+      })
+      toast({
+        title: 'Tarefas reconciliadas',
+        description:
+          `${r.tarefas_orfas_removidas || 0} órfã(s) removida(s) · ` +
+          `${r.tarefas_duplicadas_removidas || 0} duplicada(s) · ` +
+          `${r.tarefas_validas || 0} válida(s).`,
+      })
+      await carregar()
+    } catch (e: any) {
+      const detalhe = e?.response?.data?.erro || e?.message || String(e)
+      toast({ title: 'Falha ao reconciliar', description: detalhe, variant: 'destructive' })
+    } finally {
+      setReconciliando(false)
     }
   }
 
@@ -717,6 +799,22 @@ export default function TratamentosTab({ aba }: { aba: any }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-end gap-2">
+        {/* b6: reconcilia tarefas órfãs/duplicadas */}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={reconciliar}
+          disabled={reconciliando}
+          className="h-9 text-xs"
+          title="Remove tarefas órfãs e duplicadas, garantindo 1 tarefa por sessão"
+        >
+          {reconciliando ? (
+            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+          ) : (
+            <Repeat className="h-3.5 w-3.5 mr-1.5" />
+          )}
+          Reconciliar tarefas
+        </Button>
         <Button
           size="sm"
           variant={parecerAberto ? 'default' : 'outline'}

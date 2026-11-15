@@ -51,6 +51,8 @@ migrate(
       add(new JSONField({ name: 'proximas_sessoes', maxSize: 8000 }))
       add(new JSONField({ name: 'tarefa_ids', maxSize: 8000 }))
       add(new NumberField({ name: 'intervalo_dias', onlyInt: true }))
+      // b2 (15/11/2026): sessões concluídas individualmente
+      add(new JSONField({ name: 'sessoes_concluidas', maxSize: 8000 }))
 
       app.save(col)
       console.log('[ll5/campos] ll5_treatments atualizada')

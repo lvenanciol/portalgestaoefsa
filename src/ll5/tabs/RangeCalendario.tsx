@@ -27,8 +27,17 @@ const MESES = [
 ]
 const DIAS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S']
 
+/**
+ * 15/11/2026 — BUG DO CALENDÁRIO (b4):
+ * `toISOString()` converte para UTC. Uma data local 01/11 às 00:00 vira
+ * 31/10 em UTC (-03:00) — o calendário selecionava o DIA ANTERIOR ao clicado.
+ * Agora a string ISO é montada com os componentes LOCAIS.
+ */
 function iso(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return y + '-' + m + '-' + dia
 }
 
 function mesmoDia(a: string, b: string): boolean {
@@ -97,13 +106,18 @@ export default function RangeCalendario({
   }
 
   const clicar = (d: string) => {
-    // clique simples: define início e limpa fim
-    if (!inicio || (inicio && fim)) {
+    // 15/11/2026 — clique simples agora é PREVISÍVEL:
+    //   sem início OU já com intervalo completo → começa novo intervalo
+    //   com início definido e sem fim            → fecha o intervalo
+    // Antes, um clique após arrasto reabria o intervalo e a data "pulava".
+    if (!inicio || fim) {
       onChange(d, '')
       setAncora(d)
       setHover(d)
     } else {
       aplicar(inicio, d)
+      setAncora('')
+      setHover('')
     }
   }
 
