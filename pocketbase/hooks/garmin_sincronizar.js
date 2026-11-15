@@ -181,6 +181,22 @@ routerAdd(
             (String(a.startTimeGMT).indexOf('Z') < 0 ? 'Z' : '')
           : null
 
+        // ----------------------------------------------------------------
+        // 15/11/2026 — MAPEAMENTO COMPLETO do SummarizedActivityDTO.
+        // O print mostrava CADÊNCIA = 0 e colunas vazias porque eu mapeava só
+        // 10 campos. A API devolve bem mais; nomes conforme a documentação:
+        //   distance, duration, elapsedDuration, movingDuration, elevationGain,
+        //   elevationLoss, averageSpeed, maxSpeed, calories, averageHR, maxHR,
+        //   averageRunningCadenceInStepsPerMinute, maxRunningCadenceInStepsPerMinute,
+        //   avgPower, maxPower, normPower, aerobicTrainingEffect,
+        //   anaerobicTrainingEffect, activityTrainingLoad, steps, avgStrideLength,
+        //   avgVerticalOscillation, avgGroundContactTime, avgVerticalRatio,
+        //   avgGradeAdjustedSpeed, minElevation, maxElevation, vO2MaxValue
+        // ----------------------------------------------------------------
+        const num = (v) => (v == null || v === '' ? null : Number(v))
+        const int = (v) => (v == null || v === '' ? null : Math.round(Number(v)))
+        const velParaPace = (v) => (v && Number(v) > 0 ? Math.round(1000 / Number(v)) : null)
+
         const dados = {
           owner_id: dono,
           created_by: e.auth.getString('email') || 'garmin-api',
@@ -191,20 +207,62 @@ routerAdd(
           origem_aba: ehForca ? 'gym' : 'running',
           titulo: String(a.activityName || ''),
           data_hora_inicio: dataInicio,
-          duracao_s: a.duration != null ? Math.round(Number(a.duration)) : null,
-          distancia_m: a.distance != null ? Number(a.distance) : null,
-          calorias: a.calories != null ? Math.round(Number(a.calories)) : null,
-          fc_media: a.averageHR != null ? Math.round(Number(a.averageHR)) : null,
-          fc_max: a.maxHR != null ? Math.round(Number(a.maxHR)) : null,
-          ganho_elevacao_m: a.elevationGain != null ? Number(a.elevationGain) : null,
-          pace_medio_s_km:
-            a.averageSpeed && Number(a.averageSpeed) > 0
-              ? Math.round(1000 / Number(a.averageSpeed))
-              : null,
-          qualidade_dados: ehForca ? 'parcial' : 'resumo',
+
+          // tempos e distância
+          distancia_m: num(a.distance),
+          duracao_s: int(a.duration),
+          tempo_decorrido_s: int(a.elapsedDuration),
+          tempo_movimento_s: int(a.movingDuration),
+          pace_medio_s_km: velParaPace(a.averageSpeed),
+          melhor_pace_s_km: velParaPace(a.maxSpeed),
+          gap_s_km: velParaPace(a.avgGradeAdjustedSpeed),
+
+          // coração
+          fc_media: int(a.averageHR),
+          fc_max: int(a.maxHR),
+
+          // cadência: o campo da API já vem em passos/min
+          cadencia_spm: int(a.averageRunningCadenceInStepsPerMinute),
+          cadencia_max_spm: int(a.maxRunningCadenceInStepsPerMinute),
+
+          // elevação
+          ganho_elevacao_m: num(a.elevationGain),
+          perda_elevacao_m: num(a.elevationLoss),
+          elevacao_min_m: num(a.minElevation),
+          elevacao_max_m: num(a.maxElevation),
+
+          // corpo e carga
+          calorias: int(a.calories),
+          passos: int(a.steps),
+          te_aerobico: num(a.aerobicTrainingEffect),
+          te_anaerobico: num(a.anaerobicTrainingEffect),
+          training_load: num(a.activityTrainingLoad),
+
+          // running dynamics
+          comprimento_passada_m: num(a.avgStrideLength),
+          vertical_oscillation_cm: num(a.avgVerticalOscillation),
+          ground_contact_time_ms: num(a.avgGroundContactTime),
+          vertical_ratio_pct: num(a.avgVerticalRatio),
+          tem_running_dynamics: a.avgGroundContactTime != null,
+
+          // potência
+          potencia_media_w: int(a.avgPower),
+          potencia_max_w: int(a.maxPower),
+          potencia_normalizada_w: int(a.normPower),
+          potencia_confiavel: false,
+
+          // força
           tem_detalhe_exercicio: false,
           volume_kg: null,
+
+          // qualidade
+          qualidade_dados: ehForca ? 'parcial' : 'resumo',
           demo: false,
+        }
+
+        // remove chaves nulas para não sobrescrever dado bom com null
+        for (const k of Object.keys(dados)) {
+          if (dados[k] === null || dados[k] === undefined) delete dados[k]
         }
 
         // dedupe por device_activity_id
@@ -221,9 +279,11 @@ routerAdd(
         try {
           if (existente) {
             // não sobrescreve owner nem created_by
+            // 15/11/2026 — atualização COMPLETA: a API deve refletir no app.
+            // Só os campos de propriedade ficam protegidos.
             const d2 = {}
             for (const k of Object.keys(dados)) {
-              if (k === 'owner_id' || k === 'created_by') continue
+              if (k === 'owner_id' || k === 'created_by' || k === 'demo') continue
               d2[k] = dados[k]
             }
             for (const k of Object.keys(d2)) existente.set(k, d2[k])

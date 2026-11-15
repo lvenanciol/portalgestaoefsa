@@ -1310,7 +1310,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                   setForm({ ...form, tipo_id: v })
                 }}
               >
-                <SelectTrigger className="h-9 text-[12px]">
+                <SelectTrigger className="h-9 !text-[12px] [&>span]:!text-[12px] [&>span]:!font-normal">
                   <SelectValue placeholder="Selecione ou crie um tipo..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white z-[130]">
