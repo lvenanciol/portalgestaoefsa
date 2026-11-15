@@ -314,7 +314,8 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     for (const dia of datas) {
       try {
         const tarefa = await pb.collection('tarefas').create({
-          titulo: `${tipoNome} — ${dados.paciente_nome || 'paciente'} · ${dataBR(dia)}`,
+          // paciente vai como RESPONSÁVEL, não no título
+          titulo: `${tipoNome} · ${dataBR(dia)}`,
           descricao:
             (dados.instituto ? dados.instituto + ' · ' : '') +
             (dados.profissional || '') +
@@ -324,6 +325,8 @@ export default function TratamentosTab({ aba }: { aba: any }) {
           prioridade: 'media',
           empresa: dados.empresa || '',
           responsaveis_ids: dados.responsavel_id ? [dados.responsavel_id] : [],
+          // nome legível do responsável (paciente) no campo texto
+          responsavel: dados.paciente_nome || '',
           criado_por: ator.email,
         })
         criadas++

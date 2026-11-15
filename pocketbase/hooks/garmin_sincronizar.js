@@ -204,11 +204,14 @@ routerAdd(
           device_activity_id: 'garmin-' + actId,
           // 15/11/2026 — chave CANÔNICA igual à do CSV: a mesma corrida não
           // duplica quando vem por API e por CSV.
+          // chave canônica por DIA (a API devolve GMT; o CSV devolve -03:00;
+          // o dia é o mesmo e casa nos dois)
           chave_canonica: (() => {
-            const ts = dataInicio ? new Date(dataInicio).getTime() : 0
-            const minuto = ts ? Math.floor(ts / 60000) : 0
+            const bruto = String(dataInicio || '')
+            const m = /(\d{4})-(\d{2})-(\d{2})/.exec(bruto)
+            const dia = m ? m[1] + '-' + m[2] + '-' + m[3] : 'sem-data'
             const dist = Math.round(Number(a.distance || 0) / 100)
-            return minuto + '|' + tipo + '|' + dist
+            return dia + '|' + tipo + '|' + dist
           })(),
           fonte: 'garmin_api',
           tipo: tipo,

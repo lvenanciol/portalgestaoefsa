@@ -164,10 +164,9 @@ routerAdd(
           try {
             const colT = $app.findCollectionByNameOrId('tarefas')
             const nova = new Record(colT)
-            nova.set(
-              'titulo',
-              tipoNome + ' — ' + paciente + ' · ' + d.split('-').reverse().join('/'),
-            )
+            // 15/11/2026 — o paciente NÃO vai no título: ele é o RESPONSÁVEL
+            // pela tarefa. O título descreve o procedimento e a data.
+            nova.set('titulo', tipoNome + ' · ' + d.split('-').reverse().join('/'))
             nova.set(
               'descricao',
               (String(t.get('instituto') || '') ? String(t.get('instituto')) + ' · ' : '') +
@@ -177,11 +176,18 @@ routerAdd(
             nova.set('status', 'pendente')
             nova.set('prioridade', 'media')
             if (empresa) nova.set('empresa', empresa)
+
+            // responsável da tarefa: o paciente do tratamento
             if (responsavel) {
               try {
                 nova.set('responsaveis_ids', [responsavel])
               } catch (_) {}
             }
+            // o campo texto `responsavel` guarda o nome legível
+            try {
+              nova.set('responsavel', paciente)
+            } catch (_) {}
+
             nova.set('criado_por', String(t.getString('created_by') || 'reconciliar'))
             $app.save(nova)
 

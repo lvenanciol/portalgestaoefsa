@@ -413,11 +413,15 @@ export async function processarLoteCsv(
       device_activity_id: `csv-${a.data_hora_inicio}-${a.tipo}`.replace(/[^a-zA-Z0-9-]/g, ''),
       // 15/11/2026 — chave CANÔNICA: igual para a mesma atividade venha do
       // CSV, do .FIT ou da API. Evita a duplicação (2.350 para 1.189 linhas).
+      // chave canônica: DIA + tipo + distância (imune a fuso horário).
+      // O minuto falhava porque o CSV grava com offset -03:00 e a API devolve
+      // GMT — a mesma corrida caía em minutos diferentes.
       chave_canonica: (() => {
-        const ts = a.data_hora_inicio ? new Date(a.data_hora_inicio).getTime() : 0
-        const minuto = ts ? Math.floor(ts / 60000) : 0
+        const bruto = String(a.data_hora_inicio || '')
+        const m = /(\d{4})-(\d{2})-(\d{2})/.exec(bruto)
+        const dia = m ? m[1] + '-' + m[2] + '-' + m[3] : 'sem-data'
         const dist = Math.round(Number(a.distancia_m || 0) / 100)
-        return minuto + '|' + (a.tipo || 'outro') + '|' + dist
+        return dia + '|' + (a.tipo || 'outro') + '|' + dist
       })(),
       fonte: 'garmin_csv',
       tipo: tipoSeguro,
