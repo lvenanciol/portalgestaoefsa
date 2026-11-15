@@ -277,6 +277,10 @@ export async function processarLoteCsv(
   let ignoradosLote = 0
   let sinalizados = 0
   let distanciaLote = 0
+  // 15/11/2026 — distância acumulada SÓ do que entrou de fato.
+  // O relatório mostrava "0 km" com 800 importadas porque a soma acontecia
+  // antes da inserção e era perdida quando o insert falhava.
+  let distanciaEntrou = 0
   const log: any[] = [...(job.log || [])]
 
   // 1) busca existentes do lote.
@@ -575,24 +579,37 @@ export async function processarLoteCsv(
     try {
       await inserirBloco(bloco)
       importados += bloco.length
+      for (const r of bloco) distanciaEntrou += Number(r.distancia_m || 0)
     } catch (eBloco: any) {
       log.push({
         status: 'aviso',
         motivo: 'bloco de ' + bloco.length + ' falhou (' + detalheErro(eBloco) + '); um a um',
       })
+      // ------------------------------------------------------------------
+      // 15/11/2026 — RATE LIMIT no fallback (causa dos 261 "Too Many Requests").
+      //
+      // O PocketBase aceita ~20 req/s por IP. O fallback um-a-um esperava
+      // apenas 40ms (25 req/s) → estourava e devolvia 429 em ~1/3 das linhas.
+      //
+      // Agora: 120ms entre inserts (≈8 req/s, metade do limite) + retry
+      // exponencial em 429. Custa alguns segundos a mais e importa tudo.
+      // ------------------------------------------------------------------
       for (const row of bloco) {
         let entrou = false
-        // tentativa 1: payload completo
+        // tentativa 1: payload completo, com retry em 429
         try {
-          await pb.collection('ll5_activity').create(row)
+          await comRetry(() => pb.collection('ll5_activity').create(row), 4)
           importados++
+          distanciaEntrou += Number(row.distancia_m || 0)
           entrou = true
         } catch (e1: any) {
           const motivo1 = detalheErro(e1)
+          await esperar(300)
           // tentativa 2: payload mínimo
           try {
-            await pb.collection('ll5_activity').create(camposMinimos(row))
+            await comRetry(() => pb.collection('ll5_activity').create(camposMinimos(row)), 4)
             importados++
+            distanciaEntrou += Number(row.distancia_m || 0)
             entrou = true
             log.push({
               linha: row.titulo || '?',
@@ -608,13 +625,13 @@ export async function processarLoteCsv(
             })
           }
         }
-        if (!entrou) {
-          // nada mais a tentar
+        if (!entrou && row.distancia_m) {
+          // não conta distância de linha que não entrou
         }
-        await esperar(40)
+        await esperar(120)
       }
     }
-    await esperar(PAUSA_MS)
+    await esperar(400)
   }
 
   // atualizações: batch também, quando houver mais de uma
@@ -670,7 +687,7 @@ export async function processarLoteCsv(
     erros: totalErros,
     ignorados: Number(job.ignorados || 0) + ignoradosLote,
     sinalizados: Number(job.sinalizados || 0) + sinalizados,
-    distancia_total_m: Number(job.distancia_total_m || 0) + distanciaLote,
+    distancia_total_m: Number(job.distancia_total_m || 0) + distanciaEntrou,
     indice_retomada: fim,
     // log enxuto: centenas de linhas faziam o update do job estourar o limite
     log: log.filter((l) => l && l.status === 'erro').slice(-40),
