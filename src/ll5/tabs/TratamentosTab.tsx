@@ -210,6 +210,17 @@ export default function TratamentosTab({ aba }: { aba: any }) {
   // sessões editáveis antes de salvar (b4 rodapé)
   const [sessoesManuais, setSessoesManuais] = useState<string[] | null>(null)
 
+  // 16/11/2026 — CONTROLE DE ALTERAÇÃO EXPLÍCITA.
+  //
+  // Antes eu travava o calendário inteiro na edição (pointer-events-none) para
+  // impedir o loop de recriação de tarefas. Efeito colateral: o dono não
+  // conseguia alterar a data de uma sessão.
+  //
+  // Agora o calendário está ATIVO e este sinalizador diz se o usuário MEXEU
+  // no período. A agenda só é sincronizada quando ele mexeu — assim a edição
+  // de campos comuns não toca em tarefa nenhuma.
+  const [periodoAlterado, setPeriodoAlterado] = useState(false)
+
   // b) sessão aberta na edição — o status exibido no diálogo é o DELA,
   // o mesmo que a lista mostra na linha.
   const [sessaoEmEdicao, setSessaoEmEdicao] = useState<string | null>(null)
@@ -521,6 +532,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
   const abrirNovo = () => {
     setEditando(null)
     setSessoesManuais(null)
+    setPeriodoAlterado(false)
     setForm({
       tipo_id: '',
       instituto: '',
@@ -546,6 +558,8 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     // precisa do TRATAMENTO: resolve pelo id.
     const t = tratamentos.find((x) => x.id === linha.id) || linha
     setEditando(t)
+    // zera o sinalizador: nada foi alterado ainda
+    setPeriodoAlterado(false)
 
     // b) — o status exibido no diálogo é o da SESSÃO clicada, exatamente o
     // mesmo que a coluna Status da lista mostra.
@@ -679,22 +693,24 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         id = rec.id
       }
 
-      // (d) Ao EDITAR, NUNCA mexer na agenda — nem se `sessoesManuais` tiver
-      // valor. Só uma alteração EXPLÍCITA de data pelo usuário deve passar,
-      // e ela vem pela função `alterarDataSessao`, não pelo salvar.
+      // ------------------------------------------------------------------
+      // (d) 16/11/2026 — A AGENDA SÓ É RECALCULADA COM ALTERAÇÃO EXPLÍCITA.
       //
-      // 16/11/2026 — isto era o loop: `sessoesManuais` era sempre preenchido
-      // em `abrirEdicao`, o guard não disparava e cada "Salvar" recriava as
-      // tarefas (todas nascendo em triagem). Agora, editando, não sincroniza.
-      const r = editando
-        ? { sessoes: 0, criadas: 0, removidas: 0, ignorado: true }
-        : await sincronizarAgenda(
-            id,
-            form,
-            tipo?.nome || 'Tratamento',
-            sessoesManuais || undefined,
-            false,
-          )
+      // O loop das 40 tarefas vinha daqui: eu sincronizava SEMPRE, porque
+      // `sessoesManuais` estava sempre preenchido. Depois passei a nunca
+      // sincronizar na edição — e o dono ficou sem conseguir mudar datas.
+      //
+      // Regra correta:
+      //   · criação                       → sincroniza (monta a agenda)
+      //   · edição SEM mexer nas datas    → NÃO sincroniza (preserva tudo)
+      //   · edição MEXENDO nas datas      → sincroniza INCREMENTAL
+      //     (`periodoAlterado` é o sinalizador — só o usuário o liga)
+      // ------------------------------------------------------------------
+      const precisaSincronizar = !editando || periodoAlterado
+
+      const r = precisaSincronizar
+        ? await sincronizarAgenda(id, form, tipo?.nome || 'Tratamento', undefined, false)
+        : { sessoes: 0, criadas: 0, removidas: 0, ignorado: true }
 
       const descricao = r.ignorado
         ? 'Cadastro atualizado. As datas e tarefas agendadas foram preservadas.'
@@ -1748,30 +1764,48 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               </div>
             </div>
 
-            {/* (b) Ao EDITAR, o período/frequência ficam DESATIVADOS:
-                a agenda já existe e não deve ser recalculada. Só leitura. */}
+            {/* 16/11/2026 — o calendário está ATIVO também na edição.
+                A agenda só é recalculada se o usuário alterar o período. */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-[11px] font-semibold text-gray-600 flex items-center gap-1">
                   <CalendarRange className="h-3 w-3" /> Período
-                  {editando && (
+                  {editando && periodoAlterado && (
                     <span className="text-[9.5px] font-normal text-amber-700">
-                      (bloqueado na edição — a agenda já existe)
+                      (alterado — a agenda será recalculada ao salvar)
                     </span>
                   )}
                 </Label>
-                <div className={cn(editando && 'pointer-events-none opacity-60')}>
-                  <RangeCalendario
-                    inicio={form.inicio}
-                    fim={form.fim}
-                    onChange={(i, f) => {
-                      // (b) na edição, clique/arrasto é ignorado
-                      if (editando) return
+                <RangeCalendario
+                  inicio={form.inicio}
+                  fim={form.fim}
+                  onChange={(i, f) => {
+                    setSessoesManuais(null)
+                    setPeriodoAlterado(true)
+                    setForm({ ...form, inicio: i || form.inicio, fim: f })
+                  }}
+                />
+                {editando && periodoAlterado && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const t = tratamentos.find((x) => x.id === editando.id)
+                      const sessoes: string[] = Array.isArray(t?.proximas_sessoes)
+                        ? t.proximas_sessoes
+                        : []
+                      setPeriodoAlterado(false)
                       setSessoesManuais(null)
-                      setForm({ ...form, inicio: i || form.inicio, fim: f })
+                      setForm((f) => ({
+                        ...f,
+                        inicio: String(t?.inicio || '').slice(0, 10),
+                        fim: sessoes.length ? sessoes[sessoes.length - 1] : '',
+                      }))
                     }}
-                  />
-                </div>
+                    className="text-[10px] font-semibold text-[#1b5e20] hover:underline"
+                  >
+                    desfazer alteração de período
+                  </button>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -1781,12 +1815,11 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                     <Select
                       value={form.frequencia}
                       onValueChange={(v) => {
-                        if (editando) return
                         const f = FREQUENCIAS.find((x) => x.label === v)
                         setSessoesManuais(null)
+                        if (editando) setPeriodoAlterado(true)
                         setForm({ ...form, frequencia: v, intervalo_dias: f?.dias || 7 })
                       }}
-                      disabled={!!editando}
                     >
                       <SelectTrigger className="h-9 !text-[12px] [&>span]:!text-[12px] [&>span]:!font-normal">
                         <SelectValue />
@@ -1810,12 +1843,12 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                       max={200}
                       value={form.repetir}
                       onChange={(e) => {
-                        if (editando) return
                         setSessoesManuais(null)
+                        if (editando) setPeriodoAlterado(true)
                         setForm({ ...form, repetir: Number(e.target.value) })
                       }}
-                      disabled={!!form.fim || !!editando}
-                      className={cn('h-9 !text-[12px]', (form.fim || editando) && 'bg-gray-50')}
+                      disabled={!!form.fim}
+                      className={cn('h-9 !text-[12px]', form.fim && 'bg-gray-50')}
                     />
                   </div>
                   {/* (c) HORA DA AGENDA */}
