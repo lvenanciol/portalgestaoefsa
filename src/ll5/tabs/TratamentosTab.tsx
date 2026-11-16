@@ -237,6 +237,9 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     null | 'ativos' | 'agendadas' | 'concluidas' | 'proxima'
   >(null)
 
+  // (d) 16/11/2026 — anexos do tratamento (compartilhados por todas as sessões)
+  const [anexosVer, setAnexosVer] = useState<any | null>(null)
+
   // (a) 16/11/2026 — HORA REAL DE CADA SESSÃO.
   //
   // A hora não fica no tratamento: fica no `prazo` da tarefa (formato
@@ -249,16 +252,28 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     let vivo = true
     ;(async () => {
       try {
-        const lista = await listar('tarefas', ator, { ownerEscolhido: ownerAtual })
+        // (a) 16/11/2026 — CAUSA DO "—" na coluna Hora.
+        //
+        // Eu usava `listar('tarefas', ...)`, que aplica o filtro de
+        // `owner_id`. Mas a coleção `tarefas` NÃO TEM esse campo — o
+        // isolamento dela é por `responsaveis_ids` / `criado_por`. Resultado:
+        // a lista voltava VAZIA e nenhuma hora era encontrada.
+        //
+        // Aqui consultamos direto a coleção (a regra de acesso do PocketBase
+        // já limita ao que o usuário pode ver).
+        const lista = await pb.collection('tarefas').getFullList({ sort: '-prazo' })
         if (!vivo) return
+
         const mapa: Record<string, string> = {}
         for (const t of lista as any[]) {
-          const m = String(t?.prazo || '').match(/T(\d{2}):(\d{2})/)
+          // prazo vem como "AAAA-MM-DD HH:MM:SS.sssZ" — aceita T ou espaço
+          const m = /[T ](\d{2}):(\d{2})/.exec(String(t?.prazo || ''))
           if (m) mapa[String(t.id)] = m[1] + ':' + m[2]
         }
+        console.log('[tratamentos] horas carregadas: ' + Object.keys(mapa).length)
         setHorasPorTarefa(mapa)
-      } catch (_e) {
-        // sem hora: a coluna mostra "—"
+      } catch (e) {
+        console.warn('[tratamentos] falha ao carregar horas das tarefas', e)
       }
     })()
     return () => {
@@ -404,11 +419,15 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             // da tarefa correspondente. O mapa `horas` é montado uma vez, na
             // carga, a partir das tarefas.
             _hora: (() => {
-              const h = horasPorTarefa[mapaTarefa[dia]]
+              // 1) hora da tarefa daquela data (fonte real)
+              const idT = mapaTarefa[dia]
+              const h = idT ? horasPorTarefa[String(idT)] : ''
               if (h) return h
+              // 2) hora do registro
               const doTrat = String(t.hora || '').trim()
               if (doTrat) return doTrat
-              const m = String(t.proxima_sessao || '').match(/T(\d{2}:\d{2})/)
+              // 3) hora de proxima_sessao
+              const m = /[T ](\d{2}:\d{2})/.exec(String(t.proxima_sessao || ''))
               return m ? m[1] : '—'
             })(),
           })
@@ -624,6 +643,15 @@ export default function TratamentosTab({ aba }: { aba: any }) {
           vinculo_tipo: 'tratamento',
           vinculo_id: tratamentoId,
           origem: 'projeto',
+          // (e) 16/11/2026 — INSTITUIÇÃO ABAIXO DO TÍTULO.
+          // O kanban mostra `titulo` em destaque e `descricao` abaixo. A
+          // primeira linha da descrição passa a ser o instituto, para o
+          // usuário identificar a clínica sem abrir a tarefa.
+          descricao: dados.instituto
+            ? dados.instituto +
+              (dados.profissional ? ' · ' + dados.profissional : '') +
+              (dados.observacoes ? '\n' + dados.observacoes : '')
+            : (dados.profissional || '') + (dados.observacoes ? '\n' + dados.observacoes : ''),
         })
         mapaFinal[dia] = tarefa.id
         criadas++
@@ -2130,28 +2158,57 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                 label: 'Anexos',
                 largura: 80,
                 align: 'center',
-                valor: (r: any) => anexos.filter((a) => a.tratamento_id === r.id).length,
-                // b7) clicar na coluna abre o seletor de arquivo
+                // (d) 16/11/2026 — O ANEXO É DO TRATAMENTO, NÃO DA SESSÃO.
+                //
+                // O vínculo já era `tratamento_id`, mas a contagem usava
+                // `r.id`. Como cada linha da tabela é uma SESSÃO (o objeto
+                // traz `id` do tratamento + `_idx`), a comparação funcionava
+                // por coincidência. Aqui o id é normalizado e a contagem fica
+                // explícita: TODAS as sessões do mesmo tratamento mostram os
+                // mesmos anexos.
+                valor: (r: any) =>
+                  anexos.filter((a) => String(a.tratamento_id) === String(r.id)).length,
                 render: (r: any) => {
-                  const n = anexos.filter((a) => a.tratamento_id === r.id).length
+                  const meus = anexos.filter((a) => String(a.tratamento_id) === String(r.id))
+                  const n = meus.length
                   return (
-                    <label
-                      className="inline-flex items-center gap-0.5 text-[11px] text-gray-600 cursor-pointer hover:text-[#1b5e20] px-1.5 py-0.5 rounded hover:bg-emerald-50"
-                      title="Clique para anexar um arquivo"
-                    >
-                      <Paperclip className="h-3 w-3" />
-                      {n}
-                      <input
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        className="hidden"
-                        onChange={(ev) => {
-                          const f = ev.target.files?.[0]
-                          if (f) anexarArquivo(r, f)
-                          ev.target.value = ''
-                        }}
-                      />
-                    </label>
+                    <div className="inline-flex items-center gap-1">
+                      <label
+                        className="inline-flex items-center gap-0.5 text-[11px] text-gray-600 cursor-pointer hover:text-[#1b5e20] px-1.5 py-0.5 rounded hover:bg-emerald-50"
+                        title={
+                          n > 0
+                            ? n +
+                              ' anexo(s) deste tratamento (vale para todas as sessões) — clique para adicionar'
+                            : 'Clique para anexar um arquivo a este tratamento'
+                        }
+                      >
+                        <Paperclip className="h-3 w-3" />
+                        {n}
+                        <input
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          className="hidden"
+                          onChange={(ev) => {
+                            const f = ev.target.files?.[0]
+                            if (f) anexarArquivo(r, f)
+                            ev.target.value = ''
+                          }}
+                        />
+                      </label>
+                      {n > 0 && (
+                        <button
+                          type="button"
+                          onClick={(ev) => {
+                            ev.stopPropagation()
+                            setAnexosVer(r)
+                          }}
+                          className="text-[9.5px] font-semibold text-[#1b5e20] hover:underline"
+                          title="Ver os anexos deste tratamento"
+                        >
+                          ver
+                        </button>
+                      )}
+                    </div>
                   )
                 },
               },
@@ -2244,6 +2301,60 @@ export default function TratamentosTab({ aba }: { aba: any }) {
           </div>
         </div>
       )}
+
+      {/* (d) ANEXOS DO TRATAMENTO — visíveis em todas as sessões */}
+      <Dialog open={!!anexosVer} onOpenChange={(o) => !o && setAnexosVer(null)}>
+        <DialogContent className="bg-white max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-[#1b5e20]">
+              Anexos do tratamento
+            </DialogTitle>
+            <DialogDescription className="text-xs text-gray-500">
+              {anexosVer?.tipo_nome || 'Tratamento'} · {anexosVer?.paciente_nome || ''} — estes
+              arquivos valem para TODAS as sessões.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2 max-h-[320px] overflow-y-auto">
+            {anexos.filter((a) => String(a.tratamento_id) === String(anexosVer?.id)).length ===
+            0 ? (
+              <p className="text-[12px] text-gray-500 py-4 text-center">
+                Nenhum anexo neste tratamento.
+              </p>
+            ) : (
+              anexos
+                .filter((a) => String(a.tratamento_id) === String(anexosVer?.id))
+                .map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg border border-gray-200"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-[12px] font-semibold text-gray-800 truncate">
+                        {a.nome_arquivo || 'arquivo'}
+                      </p>
+                      <p className="text-[10px] text-gray-500">
+                        {a.tipo || 'documento'}
+                        {a.tamanho ? ' · ' + Math.round(Number(a.tamanho) / 1024) + ' KB' : ''}
+                      </p>
+                    </div>
+                    <span className="text-[10px] text-gray-400 shrink-0">
+                      {a.created
+                        ? String(a.created).slice(0, 10).split('-').reverse().join('/')
+                        : ''}
+                    </span>
+                  </div>
+                ))
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setAnexosVer(null)}>
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* EXCLUIR */}
       <AlertDialog open={!!excluir} onOpenChange={(o) => !o && setExcluir(null)}>
