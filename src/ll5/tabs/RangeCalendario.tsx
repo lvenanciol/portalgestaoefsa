@@ -59,12 +59,14 @@ export default function RangeCalendario({
     return new Date(base.getFullYear(), base.getMonth(), 1)
   })
 
-  // (a) 16/11/2026 — SEGUIR A DATA DA AGENDA.
+  // (a) 16/11/2026 — SEGUIR A DATA DA AGENDA ABERTA.
   //
-  // O calendário guardava o mês da PRIMEIRA montagem e não acompanhava o
-  // `inicio` que chegava depois (ao abrir a edição de uma sessão de outro
-  // mês, a tela mostrava o mês errado e o usuário não encontrava o dia).
-  // Agora, sempre que `inicio` mudar, o mês exibido acompanha.
+  // O calendário guardava o mês da PRIMEIRA montagem. Ao editar uma sessão de
+  // outro mês, ele abria no mês errado. Agora acompanha `inicio`.
+  //
+  // (b) 16/11/2026 — A REFERÊNCIA É A SESSÃO, não a primeira do tratamento.
+  // O TratamentosTab passa `inicio` = data da sessão clicada ao abrir a
+  // edição, então este efeito alinha o calendário nela.
   useEffect(() => {
     if (!inicio) return
     const d = new Date(inicio + 'T12:00:00')
@@ -75,6 +77,9 @@ export default function RangeCalendario({
       }
       return new Date(d.getFullYear(), d.getMonth(), 1)
     })
+    // rearma a âncora do arrasto nessa data
+    setAncora(String(inicio).slice(0, 10))
+    setHover(String(inicio).slice(0, 10))
   }, [inicio])
 
   const arrastando = useRef(false)

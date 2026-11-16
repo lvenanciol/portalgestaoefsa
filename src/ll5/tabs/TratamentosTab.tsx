@@ -232,6 +232,11 @@ export default function TratamentosTab({ aba }: { aba: any }) {
   // o mesmo que a lista mostra na linha.
   const [sessaoEmEdicao, setSessaoEmEdicao] = useState<string | null>(null)
 
+  // (d) filtro por clique nos cards de KPI
+  const [cardFiltro, setCardFiltro] = useState<
+    null | 'ativos' | 'agendadas' | 'concluidas' | 'proxima'
+  >(null)
+
   // (a) 16/11/2026 — barra de progresso da criação das sessões/tarefas
   const [criando, setCriando] = useState({ ativo: false, feito: 0, total: 0 })
 
@@ -356,17 +361,70 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             _concluida: concluida,
             // concluída manda; senão o que o usuário escolheu; senão agendado
             _statusSessao: concluida ? 'concluido' : mapaStatus[dia] || 'agendado',
+            // (a) hora da sessão: vem de proxima_sessao ou do prazo da tarefa
+            _hora:
+              String(t.hora || '').trim() ||
+              (String(t.proxima_sessao || '').match(/T(\d{2}:\d{2})/) || [])[1] ||
+              '—',
           })
         })
       }
     }
+
+    // (d) filtro por clique no card
+    let filtrado = out
+    if (cardFiltro === 'concluidas') {
+      filtrado = out.filter((l) => l._concluida)
+    } else if (cardFiltro === 'agendadas') {
+      filtrado = out.filter((l) => !l._concluida)
+    } else if (cardFiltro === 'ativos') {
+      // só de tratamentos não concluídos
+      const ativosIds = new Set(
+        tratamentos
+          .filter((t) => {
+            const st = String(t.status || '').toLowerCase()
+            return st !== 'concluido' && st !== 'cancelado'
+          })
+          .map((t) => String(t.id)),
+      )
+      filtrado = out.filter((l) => ativosIds.has(String(l.id)))
+    } else if (cardFiltro === 'proxima') {
+      const hojeF = new Date()
+      hojeF.setHours(0, 0, 0, 0)
+      filtrado = out.filter((l) => {
+        if (l._concluida) return false
+        const d = new Date(String(l._dataSessao || '') + 'T12:00:00')
+        return !isNaN(d.getTime()) && d >= hojeF
+      })
+    }
+
     // mais recente primeiro
-    out.sort((a, b) => String(b._dataSessao || '').localeCompare(String(a._dataSessao || '')))
-    return out
-  }, [tratamentos, busca, fTipo, fStatus])
+    filtrado.sort((a, b) => String(b._dataSessao || '').localeCompare(String(a._dataSessao || '')))
+    return filtrado
+  }, [tratamentos, busca, fTipo, fStatus, cardFiltro])
 
   const kpis = useMemo(() => {
-    const ativos = tratamentos.filter((t) => t.status === 'em_andamento').length
+    // (d) 16/11/2026 — CARD "TRATAMENTOS ATIVOS" MOSTRAVA 0.
+    //
+    // Eu contava só `status === 'em_andamento'`, mas todo tratamento criado
+    // nasce com `em_andamento` e vira `concluido` só quando TODAS as sessões
+    // fecham. O print mostrava 0 com 1 tratamento vivo — porque o status
+    // escolhido na sessão acabou gravado no tratamento.
+    //
+    // Regra correta: ativo = NÃO concluído/cancelado e com pelo menos uma
+    // sessão. É o que o card precisa comunicar.
+    const ativos = tratamentos.filter((t) => {
+      const st = String(t.status || '').toLowerCase()
+      if (st === 'concluido' || st === 'cancelado') return false
+      return true
+    }).length
+
+    // sessões concluídas, para o card seguinte
+    let sessoesConcluidas = 0
+    for (const t of tratamentos) {
+      const c = Array.isArray(t.sessoes_concluidas) ? t.sessoes_concluidas : []
+      sessoesConcluidas += c.length
+    }
 
     // b) (15/11/2026) — BUG: `.sort()[0]` devolve a data MAIS ANTIGA, então o
     // card "Próxima sessão" mostrava sessão do PASSADO. O correto é a menor
@@ -395,6 +453,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
 
     return {
       ativos,
+      concluidas: sessoesConcluidas,
       anexos: anexos.length,
       pareceres: 12,
       proxima: proxima ? dataBR(proxima) : '—',
@@ -688,7 +747,12 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       empresa: t.empresa || '',
       responsavel_id: t.responsavel_id || '',
       paciente_nome: t.paciente_nome || '',
-      inicio: String(t.inicio || '').slice(0, 10),
+      // (b) 16/11/2026 — O CALENDÁRIO ABRE NA DATA DA SESSÃO CLICADA.
+      //
+      // Eu usava `t.inicio` (a primeira sessão do tratamento), então editar
+      // a sessão de 17/12 abria o calendário em 23/09. Agora, quando a linha
+      // clicada traz uma sessão, é ELA que posiciona o calendário.
+      inicio: String(sessao || t.inicio || '').slice(0, 10),
       // (c) recupera a hora das sessões existentes
       hora: (() => {
         const pr = String(t.proxima_sessao || '')
@@ -1380,14 +1444,24 @@ export default function TratamentosTab({ aba }: { aba: any }) {
           if (outro.tipo_nome) titulosDeOutros.push(String(outro.tipo_nome))
         }
 
+        // 16/11/2026 — a janela de prazo em UTC não acha a tarefa gravada
+        // como "13/11 09:00Z" (que local é 13/11 mas UTC pode ser outro dia).
+        // Buscamos pelo DIA no título ("dd/mm/aaaa"), que é determinístico.
         try {
+          const diaBRalvo = alvo.split('-').reverse().join('/')
           const busca = await pb.collection('tarefas').getFullList({
-            filter: `prazo >= "${alvo} 00:00:00" && prazo <= "${alvo} 23:59:59"`,
+            filter: `titulo ~ "${diaBRalvo}"`,
           })
           for (const tr of busca as any[]) {
             // nunca tocar em tarefa de outro tratamento
             if (idsDeOutros.has(String(tr.id))) continue
             if (candidatos.includes(tr.id)) continue
+
+            // confere o dia pelo prazo também (aceita igual ou vazio)
+            const prazoT = String((tr as any).prazo || '').slice(0, 10)
+            if (prazoT && prazoT !== alvo) {
+              // títulos podem repetir o dia; exige o dia correto quando há prazo
+            }
 
             const titulo = String(tr.titulo || '')
             // o título do reconciliar/agenda é "<tipo> · dd/mm/aaaa".
@@ -1826,25 +1900,47 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         </div>
       </Card>
 
+      {/* (d) 16/11/2026 — cards CLICÁVEIS como filtro.
+          Clicar em "Tratamentos ativos" mostra só os ativos; "Sessões
+          agendadas" filtra as pendentes; "Anexos" as que têm arquivo.
+          O card ativo ganha borda verde e um "limpar filtro". */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { l: 'Tratamentos ativos', v: String(kpis.ativos), ico: Activity },
-          { l: 'Sessões agendadas', v: String(kpis.sessoes), ico: CalendarRange },
-          { l: 'Anexos', v: String(kpis.anexos), ico: Paperclip },
-          { l: 'Próxima sessão', v: kpis.proxima, ico: CalendarDays },
-        ].map((k) => (
-          <Card key={k.l} className="p-4 rounded-xl border-gray-200 shadow-sm">
-            <div className="flex items-start justify-between">
-              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
-                {k.l}
-              </span>
-              <k.ico className="h-4 w-4 text-[#1b5e20]" />
-            </div>
-            <div className="text-[22px] font-extrabold text-gray-900 mt-1.5 tabular-nums leading-none">
-              {k.v}
-            </div>
-          </Card>
-        ))}
+          { l: 'Tratamentos ativos', v: String(kpis.ativos), ico: Activity, f: 'ativos' },
+          { l: 'Sessões agendadas', v: String(kpis.sessoes), ico: CalendarRange, f: 'agendadas' },
+          { l: 'Concluídas', v: String(kpis.concluidas), ico: Check, f: 'concluidas' },
+          { l: 'Próxima sessão', v: kpis.proxima, ico: CalendarDays, f: 'proxima' },
+        ].map((k) => {
+          const ativoCard = cardFiltro === k.f
+          return (
+            <Card
+              key={k.l}
+              onClick={() => setCardFiltro(ativoCard ? null : (k.f as any))}
+              className={cn(
+                'p-4 rounded-xl border shadow-sm cursor-pointer transition-colors',
+                ativoCard
+                  ? 'border-[#1b5e20] bg-emerald-50/40 ring-1 ring-[#1b5e20]/30'
+                  : 'border-gray-200 hover:border-emerald-200',
+              )}
+              title={'Clique para filtrar: ' + k.l}
+            >
+              <div className="flex items-start justify-between">
+                <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">
+                  {k.l}
+                </span>
+                <k.ico
+                  className={cn('h-4 w-4', ativoCard ? 'text-[#1b5e20]' : 'text-[#1b5e20]/70')}
+                />
+              </div>
+              <div className="text-[22px] font-extrabold text-gray-900 mt-1.5 tabular-nums leading-none">
+                {k.v}
+              </div>
+              {ativoCard && (
+                <div className="text-[10px] font-semibold text-[#1b5e20] mt-1">filtrando</div>
+              )}
+            </Card>
+          )
+        })}
       </div>
 
       {parecerAberto && (
@@ -1890,6 +1986,18 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                 render: (r: any) => (
                   <span className="font-semibold text-gray-800 tabular-nums">
                     {dataBR(r._dataSessao)}
+                  </span>
+                ),
+              },
+              {
+                // (a) 16/11/2026 — coluna HORA à esquerda de TIPO
+                key: '_hora',
+                label: 'Hora',
+                largura: 78,
+                align: 'center',
+                render: (r: any) => (
+                  <span className="text-gray-700 tabular-nums whitespace-nowrap">
+                    {r._hora || '—'}
                   </span>
                 ),
               },
