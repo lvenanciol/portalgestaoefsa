@@ -458,6 +458,11 @@ export default function TratamentosTab({ aba }: { aba: any }) {
           responsaveis_ids: dados.responsavel_id ? [dados.responsavel_id] : [],
           responsavel: dados.paciente_nome || '',
           criado_por: ator.email,
+          // (f) 16/11/2026 — vínculo explícito com o tratamento. Sem isto a
+          // tarefa aparecia como "avulsa" no kanban e não podia ser rastreada.
+          vinculo_tipo: 'tratamento',
+          vinculo_id: tratamentoId,
+          origem: 'projeto',
         })
         mapaFinal[dia] = tarefa.id
         criadas++
@@ -634,6 +639,15 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       toast({ title: 'Informe o profissional', variant: 'destructive' })
       return
     }
+    // (d) 16/11/2026 — HORA É OBRIGATÓRIA para qualquer agenda/sessão.
+    if (!form.hora || !/^\d{2}:\d{2}$/.test(String(form.hora))) {
+      toast({
+        title: 'Defina a hora da agenda',
+        description: 'Toda sessão precisa de um horário. Preencha o campo Hora.',
+        variant: 'destructive',
+      })
+      return
+    }
     try {
       const tipo = tipos.find((t) => t.id === form.tipo_id)
       const dados: any = {
@@ -726,7 +740,54 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         const diaSessao = sessaoEmEdicao ? String(sessaoEmEdicao).slice(0, 10) : null
         const novaData = String(form.inicio || '').slice(0, 10)
 
-        if (diaSessao && novaData && novaData !== diaSessao) {
+        // ------------------------------------------------------------------
+        // (b) 16/11/2026 — PERGUNTAR ANTES DE REPROGRAMAR.
+        //
+        // Se a data alterada é a PRIMEIRA sessão da agenda, o sistema deve
+        // oferecer reprogramar as demais (usando frequência e repetir).
+        // Se é uma sessão do meio, move só ela — sem perguntar nada.
+        // ------------------------------------------------------------------
+        const atualT2 = tratamentos.find((x) => x.id === editando.id)
+        const listaAtual: string[] = Array.isArray(atualT2?.proximas_sessoes)
+          ? [...atualT2.proximas_sessoes].map((d) => String(d).slice(0, 10))
+          : []
+        const primeira = listaAtual.length ? listaAtual.slice().sort()[0] : null
+        const ehPrimeira = primeira && diaSessao === primeira && novaData !== primeira
+
+        if (ehPrimeira) {
+          const reprogramar = window.confirm(
+            'Você alterou a data da PRIMEIRA sessão.\n\n' +
+              'Deseja reprogramar as demais sessões usando a frequência "' +
+              (form.frequencia || '—') +
+              '"?\n\n' +
+              'OK = reprograma todas a partir de ' +
+              dataBR(novaData) +
+              '\n' +
+              'Cancelar = altera somente esta sessão',
+          )
+
+          if (reprogramar) {
+            // regenera a agenda a partir da nova primeira data
+            const geradas = gerarDatas(
+              novaData,
+              Number(form.intervalo_dias),
+              '',
+              Number(form.repetir) || listaAtual.length || 8,
+            )
+            r = await sincronizarAgenda(id, form, tipo?.nome || 'Tratamento', geradas, false)
+          } else {
+            // só a primeira muda
+            const idxP = listaAtual.indexOf(primeira)
+            if (idxP >= 0) listaAtual[idxP] = novaData
+            listaAtual.sort()
+            await atualizar('ll5_treatments', ator, editando.id, {
+              proximas_sessoes: listaAtual,
+              inicio: listaAtual[0] + 'T12:00:00Z',
+              proxima_sessao: listaAtual[0] + 'T12:00:00Z',
+            })
+            r = await sincronizarAgenda(id, form, tipo?.nome || 'Tratamento', listaAtual, false)
+          }
+        } else if (diaSessao && novaData && novaData !== diaSessao) {
           // (3) move SOMENTE a sessão em edição para a data clicada
           const atualT = tratamentos.find((x) => x.id === editando.id)
           const lista: string[] = Array.isArray(atualT?.proximas_sessoes)
