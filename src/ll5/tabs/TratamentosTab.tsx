@@ -416,9 +416,20 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     }
 
     const datas =
-      datasForcadas ||
-      gerarDatas(dados.inicio, Number(dados.intervalo_dias), dados.fim, dados.repetir)
-    if (!datas.length) return { sessoes: 0, criadas: 0, removidas: 0 }
+      datasForcadas && datasForcadas.length
+        ? datasForcadas
+        : gerarDatas(dados.inicio, Number(dados.intervalo_dias), dados.fim, dados.repetir)
+
+    // 16/11/2026 — se não há datas, isso é ERRO na criação (não silêncio).
+    if (!datas.length) {
+      console.warn('[tratamentos] sincronizarAgenda sem datas', {
+        inicio: dados.inicio,
+        intervalo: dados.intervalo_dias,
+        repetir: dados.repetir,
+        fim: dados.fim,
+      })
+      return { sessoes: 0, criadas: 0, removidas: 0 }
+    }
 
     // ---------- mapa data → tarefa já existente ----------
     const existentes: Record<string, string> = (() => {
@@ -500,6 +511,9 @@ export default function TratamentosTab({ aba }: { aba: any }) {
 
     const idsFinal = datas.map((d) => mapaFinal[d]).filter(Boolean) as string[]
 
+    // 16/11/2026 — o catch vazio escondia a falha de gravação da agenda: as
+    // tarefas eram criadas mas o tratamento NUNCA recebia `proximas_sessoes`,
+    // então a lista mostrava o tratamento sem sessão nenhuma.
     try {
       await atualizar('ll5_treatments', ator, tratamentoId, {
         proximas_sessoes: datas,
@@ -507,8 +521,19 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         tarefa_por_data: mapaFinal,
         proxima_sessao: datas[0] + 'T12:00:00Z',
       })
-    } catch (_e) {
-      // tratamento já existe
+      console.log('[tratamentos] agenda gravada: ' + datas.length + ' sessão(ões)')
+    } catch (errAg) {
+      console.error('[tratamentos] FALHA ao gravar a agenda', errAg)
+      toast({
+        title: 'Agenda não foi gravada',
+        description:
+          'As sessões foram calculadas, mas o tratamento não aceitou o registro. ' +
+          String((errAg as any)?.response?.data?.message || (errAg as any)?.message || '').slice(
+            0,
+            160,
+          ),
+        variant: 'destructive',
+      })
     }
 
     return { sessoes: datas.length, criadas, removidas }
@@ -756,16 +781,50 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       let r = { sessoes: 0, criadas: 0, removidas: 0, ignorado: true } as any
 
       if (!editando) {
-        // (1) criação — monta a agenda
+        // ------------------------------------------------------------------
+        // (a) 16/11/2026 — CRIAÇÃO: SEMPRE considera início + frequência +
+        // repetir.
+        //
+        // Antes eu passava `formEfetivo` e o `sincronizarAgenda` recalculava
+        // por dentro. Se `form.fim` tivesse qualquer resíduo (de uma edição
+        // anterior no mesmo diálogo), o gerador entendia "intervalo" e
+        // ignorava o `repetir` — a agenda saía vazia ou com 1 data.
+        //
+        // Aqui as datas são calculadas AQUI, explicitamente, com `fim` vazio.
+        // Assim a criação nunca depende de estado residual do formulário.
+        // ------------------------------------------------------------------
+        const datasCriacao = gerarDatas(
+          String(formEfetivo.inicio || hojeLocal()).slice(0, 10),
+          Number(formEfetivo.intervalo_dias) || 7,
+          '', // criação NUNCA usa intervalo
+          Number(formEfetivo.repetir) || 8,
+        )
+
         console.log('[tratamentos] criando agenda', {
           inicio: formEfetivo.inicio,
           hora: formEfetivo.hora,
           intervalo: formEfetivo.intervalo_dias,
           repetir: formEfetivo.repetir,
-          fim: formEfetivo.fim,
+          datas: datasCriacao,
         })
-        r = await sincronizarAgenda(id, formEfetivo, tipo?.nome || 'Tratamento', undefined, false)
-        console.log('[tratamentos] agenda criada', r)
+
+        if (!datasCriacao.length) {
+          toast({
+            title: 'Não foi possível gerar as sessões',
+            description: 'Confira a data inicial, a frequência e o campo Repetir.',
+            variant: 'destructive',
+          })
+          return
+        }
+
+        r = await sincronizarAgenda(
+          id,
+          formEfetivo,
+          tipo?.nome || 'Tratamento',
+          datasCriacao,
+          false,
+        )
+        console.log('[tratamentos] agenda criada', r, datasCriacao)
       } else if (periodoAlterado) {
         const diaSessao = sessaoEmEdicao ? String(sessaoEmEdicao).slice(0, 10) : null
         const novaData = String(form.inicio || '').slice(0, 10)

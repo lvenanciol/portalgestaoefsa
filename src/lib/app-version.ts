@@ -28,5 +28,5 @@
 // 15/11/2026 — REGRA (memorizada): escrever aqui o número que o build VAI
 // produzir (package.json + 1), não o atual. O apply_changes incrementa o
 // package.json a cada commit; escrever o atual deixa a sidebar 1 atrás.
-export const APP_VERSION = '0.0.564'
-export const APP_BUILD = '41571d2'
+export const APP_VERSION = '0.0.565'
+export const APP_BUILD = 'f0c884c'
