@@ -32,6 +32,7 @@ import {
   FolderGit2,
   Milestone,
   ScrollText,
+  Activity,
 } from 'lucide-react'
 import {
   Dialog,
@@ -342,15 +343,20 @@ export function TarefaDetalheModal({
   const ehProjeto =
     detalhe.origem === 'projeto' || detalhe.vinculo_tipo === 'projeto' || !!detalhe.projeto_id
 
-  const tipoVinculo: 'projeto' | 'contrato' | 'ata' | 'tarefa' | 'nenhum' = ehProjeto
+  // 16/11/2026 — 'tratamento' não existia nesta lista, então a tarefa criada
+  // pela aba Tratamentos caía em "nenhum" e a tela mostrava "Avulsa"
+  // (o print do dono). Adicionado como tipo de vínculo de primeira classe.
+  const tipoVinculo: 'projeto' | 'contrato' | 'ata' | 'tarefa' | 'tratamento' | 'nenhum' = ehProjeto
     ? 'projeto'
     : detalhe.vinculo_tipo === 'contrato'
       ? 'contrato'
       : detalhe.vinculo_tipo === 'ata'
         ? 'ata'
-        : detalhe.vinculo_tipo === 'tarefa'
-          ? 'tarefa'
-          : 'nenhum'
+        : detalhe.vinculo_tipo === 'tratamento'
+          ? 'tratamento'
+          : detalhe.vinculo_tipo === 'tarefa'
+            ? 'tarefa'
+            : 'nenhum'
 
   // Dados do projeto e marco quando vínculo = projeto
   const projetoId =
@@ -371,9 +377,11 @@ export function TarefaDetalheModal({
         ? `Contrato: ${vinculoTitulo || detalhe.vinculo_id || 'Sim'}`
         : tipoVinculo === 'ata'
           ? `Ata: ${vinculoTitulo || detalhe.vinculo_id || 'Sim'}`
-          : tipoVinculo === 'tarefa'
-            ? `Subtarefa: ${vinculoTitulo || detalhe.vinculo_id || 'Sim'}`
-            : 'Nenhum'
+          : tipoVinculo === 'tratamento'
+            ? `Tratamento: ${vinculoTitulo || detalhe.vinculo_id || 'Sim'}`
+            : tipoVinculo === 'tarefa'
+              ? `Subtarefa: ${vinculoTitulo || detalhe.vinculo_id || 'Sim'}`
+              : 'Nenhum'
 
   const recorrenciaLabel =
     detalhe.recorrencia && detalhe.recorrencia !== 'Nenhuma' ? detalhe.recorrencia : 'Nenhuma'
@@ -681,6 +689,12 @@ export function TarefaDetalheModal({
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-gray-100 text-gray-700 border border-gray-200">
                       <ListTodo className="h-3 w-3 text-gray-600" />
                       <span>Subtarefa</span>
+                    </span>
+                  )}
+                  {tipoVinculo === 'tratamento' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-sky-50 text-sky-800 border border-sky-200">
+                      <Activity className="h-3 w-3 text-sky-700" />
+                      <span>Tratamento</span>
                     </span>
                   )}
                   {tipoVinculo === 'nenhum' && (
@@ -1279,9 +1293,11 @@ export function TarefaDetalheModal({
                             ? 'Contrato'
                             : tipoVinculo === 'ata'
                               ? 'Ata'
-                              : tipoVinculo === 'tarefa'
-                                ? 'Subtarefa'
-                                : 'Avulsa'}
+                              : tipoVinculo === 'tratamento'
+                                ? 'Tratamento'
+                                : tipoVinculo === 'tarefa'
+                                  ? 'Subtarefa'
+                                  : 'Avulsa'}
                       </span>
                       <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
                     </button>

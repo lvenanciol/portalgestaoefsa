@@ -872,7 +872,20 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         const diaAntigo = String(sessaoEmEdicao).slice(0, 10)
         const diaNovo = String(form.inicio || diaAntigo).slice(0, 10)
 
-        const atualE = tratamentos.find((x) => x.id === editando.id)
+        // 16/11/2026 — LÊ O REGISTRO FRESCO DO BANCO.
+        //
+        // Eu usava a cópia em `tratamentos` (carregada quando a tela abriu).
+        // Se outra gravação aconteceu no meio, essa cópia está velha: os
+        // mapas `sessoes_status` / `sessoes_concluidas` vinham vazios e o
+        // status escolhido era sobrescrito — sintoma "só salvou a data".
+        let atualE: any = tratamentos.find((x) => x.id === editando.id)
+        try {
+          const fresco: any = await pb.collection('ll5_treatments').getOne(editando.id)
+          if (fresco) atualE = fresco
+        } catch (errF) {
+          console.warn('[tratamentos] não consegui reler o tratamento', errF)
+        }
+
         const lista: string[] = Array.isArray(atualE?.proximas_sessoes)
           ? [...atualE.proximas_sessoes].map((d) => String(d).slice(0, 10))
           : []
@@ -968,12 +981,38 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               if (m && typeof m === 'object' && !Array.isArray(m)) return { ...m }
               return {}
             })()
+
+            // se o mapa estiver vazio (registro antigo), reconstrói pelos ids
+            if (!Object.keys(mapaE2).length) {
+              const idsTr: string[] = Array.isArray(atualE?.tarefa_ids) ? atualE.tarefa_ids : []
+              for (const idc of idsTr) {
+                try {
+                  const tc: any = await pb.collection('tarefas').getOne(idc)
+                  const dc = String(tc?.prazo || '').slice(0, 10)
+                  if (dc) mapaE2[dc] = idc
+                } catch (_e) {
+                  // tarefa já removida
+                }
+              }
+            }
+
             const idT2 = mapaE2[dataRef]
             if (idT2) {
-              await pb.collection('tarefas').update(idT2, {
-                status: statusEscolhido === 'concluido' ? 'concluida' : 'pendente',
-                status_kanban: statusEscolhido === 'concluido' ? 'concluido' : 'a_fazer',
-              })
+              // (e) sessão concluída ⇒ TAREFA concluída. Os dois campos são
+              // gravados: `status` é o campo de conclusão do banco e
+              // `status_kanban` é o que o kanban exibe.
+              const concluir = statusEscolhido === 'concluido'
+              const patch: Record<string, any> = {
+                status: concluir ? 'concluida' : 'pendente',
+                status_kanban: concluir ? 'concluido' : 'a_fazer',
+              }
+              if (concluir) patch.concluida_em = new Date().toISOString()
+              await pb.collection('tarefas').update(idT2, patch)
+              console.log(
+                '[tratamentos] tarefa ' + idT2 + ' → ' + (concluir ? 'concluída' : 'pendente'),
+              )
+            } else {
+              console.warn('[tratamentos] sessão sem tarefa vinculada em ' + dataRef)
             }
           } catch (errS) {
             console.warn('[tratamentos] falha ao aplicar status na tarefa', errS)
