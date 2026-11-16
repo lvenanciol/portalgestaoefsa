@@ -209,6 +209,8 @@ onRecordAfterUpdateSuccess(function (e) {
           if (arq) {
             logos.push({
               empresa: rec.getString('empresa'),
+              arquivo: arq,
+              recId: rec.id,
               url: base + '/api/files/' + colLogosId + '/' + rec.id + '/' + arq,
             })
           }
@@ -239,6 +241,8 @@ onRecordAfterUpdateSuccess(function (e) {
           if (a) {
             logos.push({
               empresa: r.getString('empresa'),
+              arquivo: a,
+              recId: r.id,
               url: base + '/api/files/' + colLogosId + '/' + r.id + '/' + a,
             })
           }
@@ -263,11 +267,13 @@ onRecordAfterUpdateSuccess(function (e) {
     // ------------------------------------------------------------------
     var imgs = ''
     for (var j = 0; j < logos.length; j++) {
-      var cid = 'logo' + j + '@pge'
-      logos[j].cid = cid
+      // o cid tem de ser o NOME DO ARQUIVO — é a chave do mapa
+      // inlineAttachments que o PocketBase envia
+      var nomeArq = String(logos[j].arquivo || '')
+      if (!nomeArq) continue
       imgs +=
         '<img src="cid:' +
-        cid +
+        nomeArq +
         '" alt="' +
         (logos[j].empresa || '') +
         '" title="' +
@@ -488,69 +494,47 @@ onRecordAfterUpdateSuccess(function (e) {
     var erro = ''
     try {
       // ------------------------------------------------------------------
-      // 15/11/2026 — ANEXA OS LOGOS COMO INLINE (contentId).
-      // O <img src="cid:logoN@pge"> do HTML é resolvido por estes anexos.
-      // Sem eles, o cliente de e-mail mostra imagem quebrada.
+      // 15/11/2026 — LOGO INLINE COM A API CORRETA.
+      //
+      // O Gmail mostrou "?" nos quadrados: o anexo não foi reconhecido.
+      // Eu usava `attachments: [{filename, contentId, content}]` — formato
+      // ERRADO. O MailerMessage do PocketBase espera um MAPA de readers:
+      //
+      //   attachments       : { "arquivo.png": <reader> }  → vai como arquivo
+      //   inlineAttachments : { "arquivo.png": <reader> }  → resolvido via cid
+      //
+      // E o HTML referencia por `cid:<nome do arquivo>`.
+      // Doc: pocketbase.io/jsvm/classes/MailerMessage.html (inlineAttachments)
       // ------------------------------------------------------------------
-      var anexos = []
+      var anexosInline = {}
+      var readers = []
       try {
         for (var li = 0; li < logosAnexar.length; li++) {
           var lg = logosAnexar[li]
-          if (!lg || !lg.cid) continue
-          var recL = null
-          try {
-            recL = $app.findFirstRecordByFilter(
-              'logomarcas',
-              'empresa = "' + String(lg.empresa).replace(/"/g, '\\"') + '" && ativo = true',
-            )
-          } catch (_) {
-            recL = null
-          }
-          if (!recL) continue
-          var arqL = recL.getString('logo') || recL.getString('emblema')
-          if (!arqL) continue
+          if (!lg || !lg.arquivo) continue
 
-          // lê os bytes pela rota de arquivos do próprio PocketBase
-          var caminho = recL.id + '/' + arqL
-          var conteudo = null
-          try {
-            conteudo = $filesystem.fileFromPath(
-              $filepath.join($app.dataDir(), 'storage', recL.collection().id, caminho),
-            )
-          } catch (_a) {
-            conteudo = null
-          }
+          var caminhoCompleto = $filepath.join(
+            $app.dataDir(),
+            'storage',
+            'pbc_3701359284',
+            String(lg.recId),
+            String(lg.arquivo),
+          )
 
-          // fallback: baixa pela API interna
-          if (!conteudo) {
-            try {
-              var baseI = String(
-                $secrets.get('PB_INSTANCE_URL') || $app.settings().meta.appURL || '',
-              )
-              var urlF =
-                baseI.replace(/\/+$/, '') +
-                '/api/files/' +
-                recL.collection().id +
-                '/' +
-                recL.id +
-                '/' +
-                encodeURIComponent(arqL)
-              var rF = $http.send({ url: urlF, method: 'GET', timeout: 20 })
-              if (rF.statusCode === 200 && rF.body) {
-                conteudo = rF.body
-              }
-            } catch (_b) {
-              conteudo = null
+          try {
+            var fL = $filesystem.fileFromPath(caminhoCompleto)
+            if (!fL) {
+              console.warn('tarefa_eventos: arquivo não encontrado ' + caminhoCompleto)
+              continue
             }
+            var rd = fL.reader.open()
+            anexosInline[String(lg.arquivo)] = rd
+            readers.push(rd)
+          } catch (errArq) {
+            console.warn(
+              'tarefa_eventos: falha ao abrir ' + lg.arquivo + ': ' + String(errArq).slice(0, 120),
+            )
           }
-
-          if (!conteudo) continue
-
-          anexos.push({
-            filename: arqL,
-            contentId: lg.cid,
-            content: conteudo,
-          })
         }
       } catch (errL) {
         console.warn('tarefa_eventos: logos inline falharam: ' + String(errL).slice(0, 140))
@@ -562,9 +546,16 @@ onRecordAfterUpdateSuccess(function (e) {
         subject: assunto,
         html: html,
         text: texto,
-        attachments: anexos,
+        inlineAttachments: anexosInline,
       })
       $app.newMailClient().send(msg)
+
+      // fecha os readers depois do envio
+      for (var ai = 0; ai < readers.length; ai++) {
+        try {
+          readers[ai].close()
+        } catch (_c) {}
+      }
       // limpa para o próximo destinatário não repetir os mesmos anexos
       logosAnexar = []
     } catch (err) {
