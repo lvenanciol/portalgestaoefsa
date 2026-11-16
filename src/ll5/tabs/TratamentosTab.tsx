@@ -105,6 +105,32 @@ function dataBR(iso?: string | null): string {
   return iso.slice(0, 10).split('-').reverse().join('/')
 }
 
+/**
+ * Data LOCAL no formato AAAA-MM-DD.
+ *
+ * 16/11/2026 — BUG a: "selecionei 15/10 e salvou 14/10".
+ *
+ * A versão anterior montava cada data com `d.toISOString().slice(0,10)`.
+ * `toISOString()` SEMPRE converte para UTC. Com o horário ao meio-dia e fuso
+ * negativo (Brasil, UTC-3) o dia se mantém; mas com fuso POSITIVO (UTC+13)
+ * 12:00 local vira 23:00 UTC do DIA ANTERIOR — e o recorte devolvia 14/10.
+ * Qualquer variação de fuso do navegador podia deslocar a data.
+ *
+ * Aqui a string é montada com os componentes LOCAIS, como o calendário já faz.
+ * Isso elimina a classe inteira do problema: não existe conversão de fuso.
+ */
+function isoLocal(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const dia = String(d.getDate()).padStart(2, '0')
+  return y + '-' + m + '-' + dia
+}
+
+/** Hoje no formato local (nunca UTC). */
+function hojeLocal(): string {
+  return isoLocal(new Date())
+}
+
 /** Datas entre início e fim no intervalo; sem fim, usa "repetir". */
 function gerarDatas(
   inicio: string,
@@ -114,6 +140,7 @@ function gerarDatas(
 ): string[] {
   if (!inicio || !intervaloDias) return []
   const out: string[] = []
+  // T12:00 evita virada de dia por horário de verão e mantém o dia intacto
   const base = new Date(inicio + 'T12:00:00')
   const limite = fim ? new Date(fim + 'T12:00:00') : null
 
@@ -122,7 +149,7 @@ function gerarDatas(
       const d = new Date(base)
       d.setDate(d.getDate() + intervaloDias * i)
       if (d > limite) break
-      out.push(d.toISOString().slice(0, 10))
+      out.push(isoLocal(d))
     }
     return out
   }
@@ -131,7 +158,7 @@ function gerarDatas(
   for (let i = 0; i < n; i++) {
     const d = new Date(base)
     d.setDate(d.getDate() + intervaloDias * i)
-    out.push(d.toISOString().slice(0, 10))
+    out.push(isoLocal(d))
   }
   return out
 }
@@ -162,7 +189,10 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     empresa: '',
     responsavel_id: '',
     paciente_nome: '',
-    inicio: new Date().toISOString().slice(0, 10),
+    // 16/11/2026 — dia local, não UTC (toISOString dava o dia anterior em
+    // fusos positivos e à noite no Brasil após 21h).
+    inicio: hojeLocal(),
+    hora: '09:00',
     fim: '',
     frequencia: 'Semanal',
     intervalo_dias: 7,
@@ -406,7 +436,8 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             (dados.instituto ? dados.instituto + ' · ' : '') +
             (dados.profissional || '') +
             (dados.observacoes ? ' · ' + dados.observacoes : ''),
-          prazo: dia + 'T12:00:00Z',
+          // (c) hora da agenda escolhida pelo usuário; 12:00 é o padrão seguro
+          prazo: dia + 'T' + (dados.hora || '09:00') + ':00Z',
           status: 'pendente',
           // 16/11/2026 — sem isto o PocketBase aplicava o default 'triagem'
           // e cada nova sessão nascia na triagem do kanban.
@@ -497,7 +528,9 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       empresa: '',
       responsavel_id: '',
       paciente_nome: '',
-      inicio: new Date().toISOString().slice(0, 10),
+      inicio: hojeLocal(),
+      // c) hora da agenda: cada sessão é criada neste horário
+      hora: '09:00',
       fim: '',
       frequencia: 'Semanal',
       intervalo_dias: 7,
@@ -548,6 +581,12 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       responsavel_id: t.responsavel_id || '',
       paciente_nome: t.paciente_nome || '',
       inicio: String(t.inicio || '').slice(0, 10),
+      // (c) recupera a hora das sessões existentes
+      hora: (() => {
+        const pr = String(t.proxima_sessao || '')
+        const m = /T(\d{2}):(\d{2})/.exec(pr)
+        return m ? m[1] + ':' + m[2] : '09:00'
+      })(),
       fim: sessoes.length ? sessoes[sessoes.length - 1] : '',
       frequencia: t.frequencia || 'Semanal',
       intervalo_dias: Number(t.intervalo_dias) || f?.dias || 7,
@@ -1692,20 +1731,30 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               </div>
             </div>
 
-            {/* b4: calendário ÚNICO com arrasto */}
+            {/* (b) Ao EDITAR, o período/frequência ficam DESATIVADOS:
+                a agenda já existe e não deve ser recalculada. Só leitura. */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-[11px] font-semibold text-gray-600 flex items-center gap-1">
-                  <CalendarRange className="h-3 w-3" /> Período (arraste no calendário)
+                  <CalendarRange className="h-3 w-3" /> Período
+                  {editando && (
+                    <span className="text-[9.5px] font-normal text-amber-700">
+                      (bloqueado na edição — a agenda já existe)
+                    </span>
+                  )}
                 </Label>
-                <RangeCalendario
-                  inicio={form.inicio}
-                  fim={form.fim}
-                  onChange={(i, f) => {
-                    setSessoesManuais(null)
-                    setForm({ ...form, inicio: i || form.inicio, fim: f })
-                  }}
-                />
+                <div className={cn(editando && 'pointer-events-none opacity-60')}>
+                  <RangeCalendario
+                    inicio={form.inicio}
+                    fim={form.fim}
+                    onChange={(i, f) => {
+                      // (b) na edição, clique/arrasto é ignorado
+                      if (editando) return
+                      setSessoesManuais(null)
+                      setForm({ ...form, inicio: i || form.inicio, fim: f })
+                    }}
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -1715,12 +1764,14 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                     <Select
                       value={form.frequencia}
                       onValueChange={(v) => {
+                        if (editando) return
                         const f = FREQUENCIAS.find((x) => x.label === v)
                         setSessoesManuais(null)
                         setForm({ ...form, frequencia: v, intervalo_dias: f?.dias || 7 })
                       }}
+                      disabled={!!editando}
                     >
-                      <SelectTrigger className="h-9 text-[12px]">
+                      <SelectTrigger className="h-9 !text-[12px] [&>span]:!text-[12px] [&>span]:!font-normal">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent className="bg-white z-[130]">
@@ -1742,13 +1793,25 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                       max={200}
                       value={form.repetir}
                       onChange={(e) => {
+                        if (editando) return
                         setSessoesManuais(null)
                         setForm({ ...form, repetir: Number(e.target.value) })
                       }}
-                      disabled={!!form.fim}
-                      className={cn('h-9 text-[12px]', form.fim && 'bg-gray-50')}
+                      disabled={!!form.fim || !!editando}
+                      className={cn('h-9 !text-[12px]', (form.fim || editando) && 'bg-gray-50')}
                     />
                   </div>
+                  {/* (c) HORA DA AGENDA */}
+                  <div className="space-y-1">
+                    <Label className="text-[10.5px] font-semibold text-gray-600">Hora</Label>
+                    <Input
+                      type="time"
+                      value={form.hora || '09:00'}
+                      onChange={(e) => setForm({ ...form, hora: e.target.value })}
+                      className="h-9 !text-[12px]"
+                      title="Horário de cada sessão na agenda"
+                    />
+                  </div>{' '}
                 </div>
                 {/* a) fonte e tamanho iguais ao campo "Profissional" (h-9 text-[12px]) */}
                 {/* b) status da SESSÃO em edição, igual ao da linha na lista */}
