@@ -164,7 +164,6 @@ export default function RunningTab({ aba }: { aba: any }) {
       passos: a.passos,
       fc_max: a.fc_max,
       distancia_km: Number(a.distancia_m || 0) / 1000,
-      duracao_s: Number(a.duracao_s || 0),
       // o CSV traz pace pronto; o .FIT precisa calcular
       pace_medio_s_km:
         a.pace_medio_s_km != null
@@ -173,11 +172,9 @@ export default function RunningTab({ aba }: { aba: any }) {
             ? Math.round(Number(a.duracao_s) / (Number(a.distancia_m) / 1000))
             : 0,
       fc_media: a.fc_media,
-      fc_max: a.fc_max,
       zonas_fc: a.zonas_fc_seg || null,
       fonte: a.fonte || 'garmin_csv',
       origem: 'activity' as const,
-      titulo: a.titulo,
       confiabilidade_fc: a.confiabilidade_fc || 'alta',
       qualidade_dados: a.qualidade_dados || 'resumo',
       carga_proxy: a.carga_proxy,
@@ -215,7 +212,7 @@ export default function RunningTab({ aba }: { aba: any }) {
     const fc = janela.length
       ? janela.reduce((a, c) => a + Number(c.fc_media || 0), 0) / janela.length
       : 0
-    const carga = janela.reduce((a, c) => a + Number(c.training_effect || 0) * 10, 0)
+    const carga = janela.reduce((a, c) => a + Number((c as any).training_effect || 0) * 10, 0)
     return {
       dist,
       pace: dist > 0 ? durTotal / dist : 0,
@@ -1088,7 +1085,7 @@ function estimarZonas(fcMedia: any, duracao: any): Record<string, number> | null
 function zonasDaAtividade(c: any): Record<string, number> | null {
   const z = c.zonas_fc
   if (z && typeof z === 'object' && Object.keys(z).length > 0) {
-    const soma = Object.values(z).reduce((a: number, b: any) => a + Number(b || 0), 0)
+    const soma = Object.values(z).reduce<number>((a, b) => a + Number(b || 0), 0)
     if (soma > 0) return z as Record<string, number>
   }
   if (typeof z === 'string' && z.length > 5 && z !== '{}') {

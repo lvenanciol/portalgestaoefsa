@@ -563,6 +563,9 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       return {}
     })()
 
+    // agenda existente do tratamento (mesma fonte das linhas da lista)
+    const sessoes: string[] = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
+
     const diaSessao = sessao ? String(sessao).slice(0, 10) : null
     const statusDaSessao = diaSessao
       ? concluidas.indexOf(diaSessao) >= 0

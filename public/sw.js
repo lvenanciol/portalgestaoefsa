@@ -120,7 +120,10 @@
 // v68 (13/11/2026): correção do TypeError "Cannot read properties of undefined
 // (reading 'length')" que quebrava a montagem de /desempenho — o Card lia
 // `variacoes` mas os defs passam `vars`; leitura protegida com fallback [].
-const CACHE_NAME = 'pge-pwa-v68'
+// v69 (13/11/2026): correção do ReferenceError "sessoes is not defined" ao
+// clicar numa linha da tabela de Tratamentos (/ll5/saude) — abrirEdicao usava
+// a variável órfã `sessoes`; agora lê t.proximas_sessoes (mesma fonte da lista).
+const CACHE_NAME = 'pge-pwa-v69'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
