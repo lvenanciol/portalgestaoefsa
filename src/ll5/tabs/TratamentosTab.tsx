@@ -1410,8 +1410,12 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             const tarefa: any = await pb.collection('tarefas').getOne(id)
             const prazo = String(tarefa?.prazo || '').slice(0, 10)
             if (prazo && prazo !== alvo) continue
+            // 16/11/2026 — BUG: gravava só `status` e o kanban lê
+            // `status_kanban`. A tarefa ficava concluída no banco mas
+            // aparecia em "A Fazer" na tela (exatamente o print do dono).
             await pb.collection('tarefas').update(id, {
               status: 'concluida',
+              status_kanban: 'concluido',
               concluida_em: new Date().toISOString(),
             })
             concluidas++
@@ -1455,10 +1459,18 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         })
       } else {
         // ---------- b: conclui o tratamento INTEIRO ----------
-        for (const id of ids) {
+        // 16/11/2026 — o mapa por data é mais confiável que `tarefa_ids`
+        // (que pode estar defasado). Reunimos os dois conjuntos.
+        const todosIds = new Set<string>()
+        for (const id of ids) todosIds.add(String(id))
+        for (const k of Object.keys(mapaData)) todosIds.add(String(mapaData[k]))
+
+        for (const id of Array.from(todosIds)) {
           try {
             await pb.collection('tarefas').update(id, {
               status: 'concluida',
+              // o kanban lê `status_kanban` — sem ele a tarefa fica em A Fazer
+              status_kanban: 'concluido',
               concluida_em: new Date().toISOString(),
             })
             concluidas++
