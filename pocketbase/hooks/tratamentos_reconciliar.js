@@ -210,7 +210,11 @@ routerAdd(
           nova.set('titulo', tipoNome + ' · ' + dia.split('-').reverse().join('/'))
           nova.set('descricao', (instituto ? instituto + ' · ' : '') + (profissional || ''))
           nova.set('prazo', dia + ' 12:00:00.000Z')
+          // 16/11/2026 — o reconciliar criava sem `status_kanban`, e o padrão
+          // do PocketBase caía em 'triagem'. Era essa a origem das 40 tarefas
+          // em triagem que voltavam depois de cada limpeza.
           nova.set('status', 'pendente')
+          nova.set('status_kanban', 'a_fazer')
           nova.set('prioridade', 'media')
           if (empresa) nova.set('empresa', empresa)
           if (responsavel) {

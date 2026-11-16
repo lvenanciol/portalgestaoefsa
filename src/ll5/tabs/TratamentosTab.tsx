@@ -408,6 +408,9 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             (dados.observacoes ? ' · ' + dados.observacoes : ''),
           prazo: dia + 'T12:00:00Z',
           status: 'pendente',
+          // 16/11/2026 — sem isto o PocketBase aplicava o default 'triagem'
+          // e cada nova sessão nascia na triagem do kanban.
+          status_kanban: 'a_fazer',
           prioridade: 'media',
           empresa: dados.empresa || '',
           responsaveis_ids: dados.responsavel_id ? [dados.responsavel_id] : [],
