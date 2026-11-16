@@ -324,38 +324,83 @@ export default function TratamentosTab({ aba }: { aba: any }) {
    *   · grava os ids no tratamento.
    * Assim nunca há mais tarefas que sessões.
    */
+  /**
+   * SINCRONIZA A AGENDA — INCREMENTAL (16/11/2026)
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * BUG a/b: o status de uma sessão se replicava para TODAS.
+   *
+   * A versão anterior APAGAVA todas as tarefas do tratamento e recriava do
+   * zero a cada salvamento, sempre com status='pendente'. Consequência:
+   *   1. concluir uma sessão e salvar destruía o status de todas as outras;
+   *   2. o campo `sessoes_concluidas` ficava apontando para datas cujas
+   *      tarefas já não existiam no mesmo estado;
+   *   3. qualquer status escolhido voltava para 'pendente'.
+   *
+   * BUG c: lentidão. Cada tarefa tinha `await setTimeout(80)` e o ciclo
+   * apagava+recriava tudo: 8 sessões = ~16 requisições + ~640 ms parados.
+   *
+   * BUG d: editar um tratamento REGENERAVA a agenda a partir de
+   * inicio+frequência+repetir, sobrescrevendo datas já ajustadas à mão.
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * COMO FUNCIONA AGORA
+   *   · `modoEdicao = true` (editar tratamento existente): NÃO toca em
+   *     datas nem em tarefas. Só atualiza os campos de cadastro.
+   *   · `datasForcadas` (veio do rodapé/calendário): aplica exatamente
+   *     aquelas datas, criando SÓ as que faltam e removendo SÓ as que
+   *     saíram — preservando o status das que continuam.
+   *   · criação nova: gera as datas e cria todas.
+   * ─────────────────────────────────────────────────────────────────────
+   */
   const sincronizarAgenda = async (
     tratamentoId: string,
     dados: typeof form,
     tipoNome: string,
     datasForcadas?: string[],
+    modoEdicao?: boolean,
   ) => {
+    const atual = tratamentos.find((t) => t.id === tratamentoId)
+
+    // ---------- (d) EDIÇÃO SEM MEXER NA AGENDA ----------
+    if (modoEdicao && !datasForcadas) {
+      return { sessoes: 0, criadas: 0, removidas: 0, ignorado: true }
+    }
+
     const datas =
       datasForcadas ||
       gerarDatas(dados.inicio, Number(dados.intervalo_dias), dados.fim, dados.repetir)
     if (!datas.length) return { sessoes: 0, criadas: 0, removidas: 0 }
 
-    const atual = tratamentos.find((t) => t.id === tratamentoId)
-    const antigos: string[] = Array.isArray(atual?.tarefa_ids) ? atual.tarefa_ids : []
-
-    // remove as tarefas antigas do tratamento (evita acúmulo — b6)
-    let removidas = 0
-    for (const id of antigos) {
-      try {
-        await pb.collection('tarefas').delete(id)
-        removidas++
-      } catch (_e) {
-        // já não existe
+    // ---------- mapa data → tarefa já existente ----------
+    const existentes: Record<string, string> = (() => {
+      const m = atual?.tarefa_por_data
+      if (m && typeof m === 'object' && !Array.isArray(m)) return { ...m }
+      return {}
+    })()
+    // fallback: reconstrói o mapa a partir de tarefa_ids quando vazio
+    if (!Object.keys(existentes).length) {
+      const ids: string[] = Array.isArray(atual?.tarefa_ids) ? atual.tarefa_ids : []
+      for (const id of ids) {
+        try {
+          const t: any = await pb.collection('tarefas').getOne(id)
+          const d = String(t?.prazo || '').slice(0, 10)
+          if (d) existentes[d] = id
+        } catch (_e) {
+          // tarefa já removida
+        }
       }
     }
 
-    // cria exatamente uma por data
-    const ids: string[] = []
+    const mapaFinal: Record<string, string> = {}
     let criadas = 0
-    for (const dia of datas) {
+    let removidas = 0
+
+    // ---------- cria APENAS as datas que faltam ----------
+    const novas = datas.filter((d) => !existentes[d])
+    for (const dia of novas) {
       try {
-        const tarefa = await pb.collection('tarefas').create({
-          // paciente vai como RESPONSÁVEL, não no título
+        const tarefa: any = await pb.collection('tarefas').create({
           titulo: `${tipoNome} · ${dataBR(dia)}`,
           descricao:
             (dados.instituto ? dados.instituto + ' · ' : '') +
@@ -366,29 +411,43 @@ export default function TratamentosTab({ aba }: { aba: any }) {
           prioridade: 'media',
           empresa: dados.empresa || '',
           responsaveis_ids: dados.responsavel_id ? [dados.responsavel_id] : [],
-          // nome legível do responsável (paciente) no campo texto
           responsavel: dados.paciente_nome || '',
           criado_por: ator.email,
         })
+        mapaFinal[dia] = tarefa.id
         criadas++
-        ids.push((tarefa as any).id)
-        await new Promise((r) => setTimeout(r, 80))
+        // pausa curta SÓ entre criações novas (evita rate limit sem travar a UI)
+        await new Promise((r) => setTimeout(r, 40))
       } catch (e) {
         console.warn('[tratamentos] falha ao criar tarefa em ' + dia, e)
       }
     }
 
-    // b6: grava o mapa data → tarefa, garantindo 1 tarefa por data
-    const mapa: Record<string, string> = {}
-    for (let i = 0; i < datas.length && i < ids.length; i++) {
-      mapa[datas[i]] = ids[i]
+    // ---------- mantém as que continuam válidas ----------
+    for (const d of datas) {
+      if (mapaFinal[d]) continue
+      const id = existentes[d]
+      if (id) mapaFinal[d] = id
     }
+
+    // ---------- remove SÓ as datas que saíram da agenda ----------
+    for (const d of Object.keys(existentes)) {
+      if (datas.indexOf(d) >= 0) continue
+      try {
+        await pb.collection('tarefas').delete(existentes[d])
+        removidas++
+      } catch (_e) {
+        // já removida
+      }
+    }
+
+    const idsFinal = datas.map((d) => mapaFinal[d]).filter(Boolean) as string[]
 
     try {
       await atualizar('ll5_treatments', ator, tratamentoId, {
         proximas_sessoes: datas,
-        tarefa_ids: ids,
-        tarefa_por_data: mapa,
+        tarefa_ids: idsFinal,
+        tarefa_por_data: mapaFinal,
         proxima_sessao: datas[0] + 'T12:00:00Z',
       })
     } catch (_e) {
@@ -568,16 +627,23 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         id = rec.id
       }
 
+      // (d) Ao EDITAR, não mexer na agenda — só quando o usuário alterou as
+      // datas explicitamente no rodapé/calendário (`sessoesManuais`).
       const r = await sincronizarAgenda(
         id,
         form,
         tipo?.nome || 'Tratamento',
         sessoesManuais || undefined,
+        !!editando,
       )
+
+      const descricao = r.ignorado
+        ? 'Cadastro atualizado. As datas e tarefas agendadas foram preservadas.'
+        : `${r.sessoes} sessão(ões) · ${r.criadas} criada(s) · ${r.removidas} removida(s).`
 
       toast({
         title: editando ? 'Tratamento atualizado' : 'Tratamento criado',
-        description: `${r.sessoes} sessão(ões) · ${r.criadas} tarefa(s) criada(s) · ${r.removidas} removida(s).`,
+        description: descricao,
       })
       setNovoOpen(false)
       await carregar()
@@ -699,6 +765,17 @@ export default function TratamentosTab({ aba }: { aba: any }) {
 
       let concluidas = 0
 
+      if (!sessaoData) {
+        // 16/11/2026 — sem sessão definida, isto conclui TUDO. Confirmo com
+        // o usuário: antes o clique concluía o tratamento inteiro em silêncio.
+        const ok = window.confirm(
+          'Concluir o tratamento INTEIRO?\n\nTodas as ' +
+            (Array.isArray(registro.proximas_sessoes) ? registro.proximas_sessoes.length : 0) +
+            ' sessões serão marcadas como realizadas.\n\nPara concluir apenas uma data, feche este diálogo e clique na linha da sessão desejada.',
+        )
+        if (!ok) return
+      }
+
       if (sessaoData) {
         // ---------- b2: conclui SOMENTE a sessão clicada ----------
         //
@@ -714,17 +791,48 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         if (idMapeado) candidatos.push(String(idMapeado))
         for (const id of ids) if (!candidatos.includes(String(id))) candidatos.push(String(id))
 
-        // fallback: procura no PGE por prazo + nome do paciente/tipo
+        // ------------------------------------------------------------------
+        // 16/11/2026 — BUG b: o status se replicava para TODAS as sessões.
+        //
+        // Este fallback buscava no PGE INTEIRO as tarefas do dia e aceitava
+        // qualquer uma cujo título contivesse o TIPO do tratamento. Como dois
+        // tratamentos podem ter o mesmo tipo (ex.: "Liberação Miofascial"),
+        // ele capturava tarefas de OUTROS tratamentos da mesma data e as
+        // marcava como concluídas.
+        //
+        // Correção: só aceita tarefa que NÃO pertença a outro tratamento.
+        // Construímos o conjunto de ids/títulos de todos os OUTROS tratamentos
+        // e descartamos qualquer candidato que caia neles.
+        // ------------------------------------------------------------------
+        const idsDeOutros = new Set<string>()
+        const titulosDeOutros: string[] = []
+        for (const outro of tratamentos) {
+          if (outro.id === tratamentoId) continue
+          const oIds: string[] = Array.isArray(outro.tarefa_ids) ? outro.tarefa_ids : []
+          for (const oi of oIds) idsDeOutros.add(String(oi))
+          if (outro.tipo_nome) titulosDeOutros.push(String(outro.tipo_nome))
+        }
+
         try {
           const busca = await pb.collection('tarefas').getFullList({
             filter: `prazo >= "${alvo} 00:00:00" && prazo <= "${alvo} 23:59:59"`,
           })
           for (const tr of busca as any[]) {
+            // nunca tocar em tarefa de outro tratamento
+            if (idsDeOutros.has(String(tr.id))) continue
+            if (candidatos.includes(tr.id)) continue
+
             const titulo = String(tr.titulo || '')
-            const combina =
-              (registro.tipo_nome && titulo.includes(String(registro.tipo_nome))) ||
-              (registro.paciente_nome && titulo.includes(String(registro.paciente_nome)))
-            if (combina && !candidatos.includes(tr.id)) candidatos.push(tr.id)
+            // o título do reconciliar/agenda é "<tipo> · dd/mm/aaaa".
+            // Só aceita quando o tipo é DESTE tratamento e não de outro.
+            const casaEsteTipo =
+              registro.tipo_nome && titulo.indexOf(String(registro.tipo_nome)) === 0
+            const casaOutroTipo = titulosDeOutros.some(
+              (tp) => tp && tp !== registro.tipo_nome && titulo.indexOf(tp) === 0,
+            )
+            if (casaEsteTipo && !casaOutroTipo) {
+              candidatos.push(tr.id)
+            }
           }
         } catch (_e) {
           // sem permissão de busca ampla: segue com os candidatos conhecidos
@@ -758,8 +866,19 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         const fechou =
           todas.length > 0 && todas.every((d) => jaConcluidas.includes(String(d).slice(0, 10)))
 
+        // 16/11/2026 — grava TAMBÉM o status textual no mapa por data, para a
+        // coluna Status da lista refletir a conclusão sem depender só do array
+        // `sessoes_concluidas` (que pode estar defasado).
+        const mapaSt: Record<string, string> = (() => {
+          const m = registro.sessoes_status
+          if (m && typeof m === 'object' && !Array.isArray(m)) return { ...m }
+          return {}
+        })()
+        mapaSt[alvo] = 'concluido'
+
         await atualizar('ll5_treatments', ator, tratamentoId, {
           sessoes_concluidas: jaConcluidas,
+          sessoes_status: mapaSt,
           ...(fechou ? { status: 'concluido' } : {}),
         })
 
@@ -1667,18 +1786,30 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               As datas são gerenciadas pelo calendário de período, acima. */}
 
           <DialogFooter className="flex-wrap gap-2">
-            {/* b) concluir o tratamento direto da tela de edição */}
+            {/* b) (16/11/2026) — BUG: este botão chamava concluirTratamento
+                SEM a sessão, então concluía o TRATAMENTO INTEIRO e o status se
+                replicava para todas as sessões (o print do dono comprova).
+                Agora passa `sessaoEmEdicao`: se há uma sessão aberta, só ela
+                é concluída; sem sessão, conclui o tratamento — com aviso. */}
             {editando && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
                   setNovoOpen(false)
-                  concluirTratamento(editando)
+                  concluirTratamento(editando, sessaoEmEdicao)
                 }}
                 className="h-9 text-[12px] text-[#1b5e20] border-emerald-300 hover:bg-emerald-50 mr-auto"
+                title={
+                  sessaoEmEdicao
+                    ? 'Concluir somente a sessão de ' + dataBR(sessaoEmEdicao)
+                    : 'Concluir o tratamento inteiro (todas as sessões)'
+                }
               >
-                <Check className="h-3.5 w-3.5 mr-1.5" /> Marcar como realizado
+                <Check className="h-3.5 w-3.5 mr-1.5" />
+                {sessaoEmEdicao
+                  ? 'Marcar esta sessão como realizada'
+                  : 'Marcar tratamento como realizado'}
               </Button>
             )}
             <Button variant="outline" size="sm" onClick={() => setNovoOpen(false)}>
