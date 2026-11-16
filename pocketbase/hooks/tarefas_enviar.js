@@ -8,6 +8,13 @@ routerAdd(
     const destinatarios = Array.isArray(body.destinatarios) ? body.destinatarios : []
     if (!destinatarios.length) return e.badRequestError('Informe ao menos um destinatário.')
     const hoje = new Date().toISOString().slice(0, 10)
+    // 16/11/2026 — marcas de tempo para achar QUAL etapa estoura (o 500 levava
+    // 51 s, que é timeout de SMTP — mas precisamos da prova por etapa).
+    const t0 = Date.now()
+    function marco(etapa) {
+      console.log('[tarefas/enviar] ' + etapa + ' +' + (Date.now() - t0) + 'ms')
+    }
+    marco('inicio')
     const nomesEmpresas = []
     const gruposEmpresas = {}
     let listaFinalTarefas = []
@@ -63,6 +70,7 @@ routerAdd(
       })
     }
     if (!empPrincipal) empPrincipal = nomesEmpresas[0] || 'Geral'
+    marco('tarefas agrupadas: ' + listaFinalTarefas.length)
 
     const logosMap = {}
     try {
@@ -913,6 +921,7 @@ routerAdd(
         empPrincipal: empPrincipal,
         hoje: hoje,
       })
+      marco('PDF gerado: ' + (pdfStr ? pdfStr.length : 0) + ' bytes')
     } catch (errPdf) {
       console.warn('[tarefas/enviar] PDF falhou: ' + String(errPdf).slice(0, 180))
     }
@@ -969,12 +978,15 @@ routerAdd(
       hoje.replace(/-/g, '') +
       '.pdf'
 
+    marco('logos inline: ' + Object.keys(inlineMap).length)
+
     for (const d of destinatarios) {
       const email = String(d.email || '').trim()
       if (!email || email.indexOf('@') < 0) {
         erros.push({ email: email || '(vazio)', erro: 'E-mail inválido' })
         continue
       }
+      marco('enviando para ' + email)
       let pdfReader = null
       try {
         const msg = new MailerMessage({
@@ -984,6 +996,11 @@ routerAdd(
           html: html,
           text: textoPlano,
         })
+        // 16/11/2026 — headers que não mudam o envio, mas ajudam o cliente
+        // de e-mail a renderizar o layout de 600px.
+        try {
+          msg.headers = { 'X-Priority': '3' }
+        } catch (_) {}
         if (Object.keys(inlineMap).length) msg.inlineAttachments = inlineMap
         if (pdfStr) {
           try {
@@ -1002,6 +1019,7 @@ routerAdd(
           console.log('[tarefas/enviar] pdfStr vazio — PDF não gerado')
         }
         $app.newMailClient().send(msg)
+        marco('enviado para ' + email)
         enviados.push({ email: email, ok: true })
         try {
           const colE = $app.findCollectionByNameOrId('emails')
@@ -1015,6 +1033,7 @@ routerAdd(
         } catch (_) {}
       } catch (err) {
         const m = String(err).slice(0, 300)
+        console.log('[tarefas/enviar] FALHA para ' + email + ': ' + m)
         erros.push({ email: email, erro: m })
         try {
           const colE = $app.findCollectionByNameOrId('emails')
