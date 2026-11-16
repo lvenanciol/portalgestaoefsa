@@ -290,7 +290,12 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       const [t, tp, at] = await Promise.all([
         listar('ll5_treatments', ator, { ownerEscolhido: ownerAtual, sort: '-inicio' }),
         listar('ll5_treatment_types', ator, { ownerEscolhido: ownerAtual, sort: 'ordem' }),
-        listar('ll5_attachments', ator, { ownerEscolhido: ownerAtual }),
+        // 16/11/2026 — `sort: '-created'` dava 400 "invalid sort field
+        // 'created'" (a coleção não tinha os campos automáticos), e os
+        // anexos nunca carregavam. A migração 127 adiciona created/updated;
+        // aqui ordenamos por um campo que existe SEMPRE, para não depender
+        // de migração aplicada.
+        listar('ll5_attachments', ator, { ownerEscolhido: ownerAtual, sort: '-id' }),
       ])
       setTratamentos(t.filter((x) => !x.deletado_em))
       setTipos(tp.filter((x) => x.ativo && !x.deletado_em))
@@ -1672,15 +1677,28 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         },
         ownerAtual,
       )
-      // tenta subir o binário no campo File (se o storage permitir)
+      // 16/11/2026 — UPLOAD DO BINÁRIO.
+      //
+      // Eu passava um `FormData` cru para `update()`. A SDK do PocketBase
+      // espera um OBJETO cujo campo do arquivo é um `File` (ou array de
+      // `File`), e serializa para multipart internamente. Com FormData o
+      // campo `arquivo` era IGNORADO — o registro existia sem o binário,
+      // e o "ver" não tinha o que baixar.
+      let binarioOk = false
       try {
-        const fd = new FormData()
-        fd.append('arquivo', file)
-        await pb.collection('ll5_attachments').update(rec.id, fd)
-      } catch (_e) {
-        // sem storage: o metadado já registra o anexo
+        const atualizado: any = await pb.collection('ll5_attachments').update(rec.id, {
+          arquivo: file,
+        })
+        binarioOk = Boolean(atualizado?.arquivo)
+      } catch (errUp) {
+        console.warn('[anexos] upload do binário falhou', errUp)
       }
-      toast({ title: 'Anexo registrado', description: file.name })
+
+      toast({
+        title: binarioOk ? 'Anexo enviado' : 'Anexo registrado',
+        description: binarioOk ? file.name : file.name + ' — o arquivo não subiu, só o registro.',
+        variant: binarioOk ? undefined : 'destructive',
+      })
       await carregar()
     } catch (e: any) {
       toast({

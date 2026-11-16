@@ -1994,9 +1994,22 @@ export default function TarefasKanbanPage() {
                           </div>
 
                           {/* Título: em até 2 linhas */}
-                          <h4 className="text-[13px] font-semibold text-gray-900 leading-snug line-clamp-2 mb-2.5">
+                          <h4 className="text-[13px] font-semibold text-gray-900 leading-snug line-clamp-2 mb-1">
                             {t.titulo}
                           </h4>
+
+                          {/* (e) 16/11/2026 — INSTITUIÇÃO ABAIXO DO TÍTULO.
+                              Tarefas criadas pela aba Tratamentos gravam o
+                              instituto na 1ª linha da descrição. O card não
+                              renderizava `descricao`, então o dado existia no
+                              banco e ficava invisível (relato do dono). */}
+                          {t.vinculo_tipo === 'tratamento' && t.descricao ? (
+                            <p className="text-[11px] text-gray-500 leading-snug line-clamp-1 mb-2">
+                              {String(t.descricao).split('\n')[0]}
+                            </p>
+                          ) : (
+                            <div className="mb-1.5" />
+                          )}
 
                           {/* Base do cartão: Responsável com avatar + Prazo com ícone de calendário */}
                           <div className="flex items-center justify-between gap-2 text-[11px] text-gray-600 mb-1.5 flex-wrap">
