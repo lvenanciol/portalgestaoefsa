@@ -333,7 +333,14 @@ export default function TabelaInterativa({
           <tbody className="divide-y divide-gray-50">
             {ordenados.map((row, i) => (
               <tr
-                key={row.id || i}
+                // 16/11/2026 — BUG: `key={row.id}` duplicava chaves.
+                // Em Tratamentos, cada tratamento se expande em N linhas de
+                // sessão e TODAS compartilham o mesmo `row.id` (o id do
+                // tratamento). O React recebia chaves repetidas, reutilizava
+                // nós e a tela mostrava linhas duplicadas ("sujeira visual"
+                // do print). A chave única é `_id` (id + índice da sessão),
+                // preenchida pelo TratamentosTab.
+                key={row._id || row.id || i}
                 onClick={() => onLinhaClique?.(row)}
                 className={cn(
                   'hover:bg-gray-50/50',

@@ -286,10 +286,45 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       if (fTipo !== 'todos' && t.tipo_id !== fTipo) continue
       if (fStatus !== 'todos' && t.status !== fStatus) continue
 
-      const sessoes: string[] = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
-      const concluidas: string[] = Array.isArray(t.sessoes_concluidas)
-        ? t.sessoes_concluidas.map((x: any) => String(x).slice(0, 10))
-        : []
+      // 16/11/2026 — DEDUPE DAS DATAS.
+      //
+      // O print mostrava 15/10, 13/11 e 19/11 repetidos 3×. A causa está no
+      // dado: `proximas_sessoes` acumulou datas repetidas (sincronizações
+      // antigas empilhavam sem verificar). Aqui a lista é normalizada:
+      //   · só AAAA-MM-DD (descarta hora/lixo)
+      //   · sem repetição
+      //   · em ordem
+      // Assim a tabela mostra UMA linha por sessão de verdade.
+      const sessoes: string[] = (() => {
+        const bruto: any[] = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
+        const vistos = new Set<string>()
+        const out: string[] = []
+        for (const b of bruto) {
+          const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(b || '').trim())
+          if (!m) continue
+          const dia = m[1] + '-' + m[2] + '-' + m[3]
+          if (vistos.has(dia)) continue
+          vistos.add(dia)
+          out.push(dia)
+        }
+        out.sort()
+        return out
+      })()
+
+      const concluidas: string[] = (() => {
+        const bruto: any[] = Array.isArray(t.sessoes_concluidas) ? t.sessoes_concluidas : []
+        const vistos = new Set<string>()
+        const out: string[] = []
+        for (const b of bruto) {
+          const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(b || '').trim())
+          if (!m) continue
+          const dia = m[1] + '-' + m[2] + '-' + m[3]
+          if (vistos.has(dia)) continue
+          vistos.add(dia)
+          out.push(dia)
+        }
+        return out
+      })()
 
       // b) mapa de status por data (escolha do usuário)
       const mapaStatus: Record<string, string> = (() => {
