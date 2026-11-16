@@ -82,7 +82,10 @@ function executarLogicaRecorrencia(appInstance) {
         const nova = new Record(colTarefas)
         nova.set('titulo', tituloOriginal)
         nova.set('descricao', t.getString('descricao'))
-        nova.set('status_kanban', 'triagem')
+        // 16/11/2026 — a recorrência criava em 'triagem'. O dono determinou que
+        // tarefa em triagem é EXCLUÍDA incondicionalmente, então a nova
+        // ocorrência nasce direto em 'a_fazer'.
+        nova.set('status_kanban', 'a_fazer')
         nova.set('status', 'pendente')
         nova.set('prioridade_p', t.getString('prioridade_p') || 'P2')
         nova.set('prioridade', t.getString('prioridade') || 'media')
@@ -243,7 +246,8 @@ cronAdd('tarefas_recorrencia_diario', '0 9 * * *', () => {
         const nova = new Record(colTarefas)
         nova.set('titulo', tituloOriginal)
         nova.set('descricao', t.getString('descricao'))
-        nova.set('status_kanban', 'triagem')
+        // criada em 'a_fazer' (triagem é excluída incondicionalmente)
+        nova.set('status_kanban', 'a_fazer')
         nova.set('status', 'pendente')
         nova.set('prioridade_p', t.getString('prioridade_p') || 'P2')
         nova.set('prioridade', t.getString('prioridade') || 'media')
@@ -400,7 +404,8 @@ routerAdd('POST', '/backend/v1/tarefas/recorrencia-cron', (c) => {
         const nova = new Record(colTarefas)
         nova.set('titulo', tituloOriginal)
         nova.set('descricao', t.getString('descricao'))
-        nova.set('status_kanban', 'triagem')
+        // criada em 'a_fazer' (triagem é excluída incondicionalmente)
+        nova.set('status_kanban', 'a_fazer')
         nova.set('status', 'pendente')
         nova.set('prioridade_p', t.getString('prioridade_p') || 'P2')
         nova.set('prioridade', t.getString('prioridade') || 'media')
