@@ -1157,17 +1157,62 @@ export default function TratamentosTab({ aba }: { aba: any }) {
   const confirmarExclusao = async () => {
     if (!excluir) return
     try {
-      // remove as tarefas vinculadas
+      // ------------------------------------------------------------------
+      // 16/11/2026 — antes eu apagava SÓ `tarefa_ids`, e toda tarefa criada
+      // por outro caminho (ou cujo id saiu do array numa sincronização)
+      // ficava órfã no kanban para sempre.
+      //
+      // Agora reúno os ids de TODAS as fontes e, como reforço, apago também
+      // as tarefas cujo título seja "<tipo> · dd/mm" deste tratamento.
+      // ------------------------------------------------------------------
+      const alvos = new Set<string>()
+
+      // a) array de ids
       const ids: string[] = Array.isArray(excluir.tarefa_ids) ? excluir.tarefa_ids : []
-      for (const id of ids) {
+      for (const id of ids) alvos.add(String(id))
+
+      // b) mapa data → tarefa
+      try {
+        const m = excluir.tarefa_por_data
+        if (m && typeof m === 'object' && !Array.isArray(m)) {
+          for (const k of Object.keys(m)) alvos.add(String(m[k]))
+        }
+      } catch (_e) {}
+
+      // c) varredura por título (pega o que escapou das duas listas)
+      const tipoTrat = String(excluir.tipo_nome || '').trim()
+      if (tipoTrat) {
+        try {
+          const todas = await pb.collection('tarefas').getFullList({
+            filter: `titulo ~ "${tipoTrat.replace(/"/g, '\\"')}"`,
+          })
+          for (const tr of todas as any[]) {
+            const t = String(tr.titulo || '')
+            // só o padrão da agenda: "<tipo> · dd/mm/aaaa"
+            const casa = /^(.+?)\s*·\s*\d{2}\/\d{2}\/\d{4}\s*$/.exec(t)
+            if (casa && casa[1].trim() === tipoTrat) alvos.add(String(tr.id))
+          }
+        } catch (_e) {
+          // sem permissão de busca ampla: segue com as listas
+        }
+      }
+
+      let removidas = 0
+      for (const id of Array.from(alvos)) {
         try {
           await pb.collection('tarefas').delete(id)
+          removidas++
         } catch (_e) {
           // já removida
         }
       }
+
       await excluirLogico('ll5_treatments', ator, excluir.id)
-      toast({ title: 'Tratamento excluído', description: 'As tarefas vinculadas foram removidas.' })
+
+      toast({
+        title: 'Tratamento excluído',
+        description: `${removidas} tarefa(s) vinculada(s) removida(s).`,
+      })
       setExcluir(null)
       await carregar()
     } catch (e: any) {
