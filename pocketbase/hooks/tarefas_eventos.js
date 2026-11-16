@@ -489,7 +489,57 @@ onRecordAfterUpdateSuccess(function (e) {
     }
   }
 
-  function enviarEmail(dest, assunto, html, texto) {
+  // -------------------------------------------------------------------------
+  // 16/11/2026 — E-MAIL DESLIGADO PARA TAREFAS DE TRATAMENTO.
+  //
+  // Diretiva do dono: "desligue o e-mail em eventos de tratamento".
+  //
+  // MOTIVO: o Office 365 recusa conexões SMTP simultâneas. Salvar um
+  // tratamento cria/atualiza várias tarefas de uma vez, e cada evento abria
+  // uma conexão — o log encheu de:
+  //     432 "4.3.2 Concurrent connections limit exceeded"
+  //
+  // O SINO continua funcionando: a notificação in-app é gravada normalmente.
+  // Só o e-mail é suprimido, e SÓ para tarefas cujo vínculo é tratamento —
+  // tarefas normais do PGE seguem enviando e-mail como antes.
+  //
+  // A detecção olha o registro da tarefa, sem consultar o banco (rápido).
+  // -------------------------------------------------------------------------
+  function ehTarefaDeTratamento(reg) {
+    try {
+      if (!reg) return false
+      var vt = String((reg.getString ? reg.getString('vinculo_tipo') : reg.vinculo_tipo) || '')
+        .trim()
+        .toLowerCase()
+      if (vt === 'tratamento') return true
+
+      // fallback: origem/título do padrão da agenda
+      var origem = String((reg.getString ? reg.getString('origem') : reg.origem) || '')
+        .trim()
+        .toLowerCase()
+      var titulo = String((reg.getString ? reg.getString('titulo') : reg.titulo) || '')
+
+      // "Tratamento · dd/mm/aaaa" ou "<Tipo> · dd/mm/aaaa"
+      var padraoAgenda = /^(.+?)\s*·\s*\d{2}\/\d{2}\/\d{4}\s*$/.test(titulo)
+      if (padraoAgenda && origem === 'projeto') return true
+
+      return false
+    } catch (_) {
+      return false
+    }
+  }
+
+  function enviarEmail(dest, assunto, html, texto, tarefaRef) {
+    // e-mail suprimido para tarefa de tratamento (o sino já foi gravado)
+    if (ehTarefaDeTratamento(tarefaRef)) {
+      try {
+        console.log(
+          '[tarefa_eventos] e-mail suprimido (tarefa de tratamento): ' + String(dest.email || ''),
+        )
+      } catch (_) {}
+      return
+    }
+
     var status = 'enviado'
     var erro = ''
     try {
@@ -726,7 +776,8 @@ onRecordAfterUpdateSuccess(function (e) {
         '\n\n' +
         'Sistema corporativo de uso restrito. Grupo Extrafruti · Casafruti · FoldBox'
 
-      enviarEmail(d, assunto, html, texto)
+      // passa o registro: o gate de tratamento suprime o e-mail (sino mantido)
+      enviarEmail(d, assunto, html, texto, t)
     }
   } catch (err) {
     console.warn('tarefa_eventos (update): ' + String(err).slice(0, 200))
@@ -1026,6 +1077,20 @@ onRecordAfterCreateSuccess(function (e) {
     }
   }
 
+  // 16/11/2026 — mesmo gate do hook de tarefas: e-mail suprimido quando a
+  // tarefa do chat pertence a um tratamento (o sino continua).
+  function ehTarefaDeTratamentoChat(reg) {
+    try {
+      if (!reg) return false
+      var vt = String((reg.getString ? reg.getString('vinculo_tipo') : reg.vinculo_tipo) || '')
+        .trim()
+        .toLowerCase()
+      return vt === 'tratamento'
+    } catch (_) {
+      return false
+    }
+  }
+
   function enviarEmail(dest, assunto, html, texto) {
     var status = 'enviado'
     var erro = ''
@@ -1237,7 +1302,16 @@ onRecordAfterCreateSuccess(function (e) {
         '\n\n' +
         'Sistema corporativo de uso restrito. Grupo Extrafruti · Casafruti · FoldBox'
 
-      enviarEmail(d, assunto, html, txtPlano)
+      // e-mail suprimido se a tarefa do chat é de tratamento (sino mantido)
+      var tarefaDoChat = null
+      try {
+        tarefaDoChat = $app.findRecordById('tarefas', tarefaId)
+      } catch (_) {}
+      if (ehTarefaDeTratamentoChat(tarefaDoChat)) {
+        console.log('[chat_email] e-mail suprimido (tarefa de tratamento)')
+      } else {
+        enviarEmail(d, assunto, html, txtPlano)
+      }
     }
   } catch (err) {
     console.warn('chat_email (create): ' + String(err).slice(0, 200))
