@@ -989,26 +989,26 @@ routerAdd(
       marco('enviando para ' + email)
       let pdfReader = null
       try {
-        const msg = new MailerMessage({
-          from: { address: senderFallback, name: senderName },
-          to: [{ address: email }],
-          subject: assunto,
-          html: html,
-          text: textoPlano,
-        })
-        // 16/11/2026 — headers que não mudam o envio, mas ajudam o cliente
-        // de e-mail a renderizar o layout de 600px.
-        try {
-          msg.headers = { 'X-Priority': '3' }
-        } catch (_) {}
-        if (Object.keys(inlineMap).length) msg.inlineAttachments = inlineMap
+        // ----------------------------------------------------------------
+        // 16/11/2026 — CAUSA DO 500 (provada no log):
+        //   [PANIC RECOVER] assignment to entry in nil map
+        //
+        // No JSVM do PocketBase, `new MailerMessage({...})` cria os maps
+        // `attachments` e `inlineAttachments` NIL. Fazer depois:
+        //     msg.attachments[nome] = reader
+        // estoura o panic do Go ("assignment to entry in nil map") e o
+        // servidor devolve 500 genérico.
+        //
+        // CORREÇÃO: os maps vão JÁ PREENCHIDOS no construtor. Nada de
+        // atribuir chave depois de criar a mensagem.
+        // ----------------------------------------------------------------
+        const anexosMap = {}
         if (pdfStr) {
           try {
             const fo = $filesystem.fileFromBytes(pdfStr, pdfNome)
             if (fo && fo.reader) {
               pdfReader = fo.reader.open()
-              if (!msg.attachments) msg.attachments = {}
-              msg.attachments[pdfNome] = pdfReader
+              anexosMap[pdfNome] = pdfReader
             } else {
               console.log('[tarefas/enviar] fileFromBytes não devolveu reader')
             }
@@ -1018,6 +1018,16 @@ routerAdd(
         } else {
           console.log('[tarefas/enviar] pdfStr vazio — PDF não gerado')
         }
+
+        const msg = new MailerMessage({
+          from: { address: senderFallback, name: senderName },
+          to: [{ address: email }],
+          subject: assunto,
+          html: html,
+          text: textoPlano,
+          attachments: anexosMap,
+          inlineAttachments: inlineMap,
+        })
         $app.newMailClient().send(msg)
         marco('enviado para ' + email)
         enviados.push({ email: email, ok: true })
