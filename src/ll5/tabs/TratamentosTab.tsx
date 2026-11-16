@@ -1194,6 +1194,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
           }
         } catch (_e) {
           // sem permissão de busca ampla: segue com as listas
+          console.warn('[tratamentos] varredura por título indisponível')
         }
       }
 
