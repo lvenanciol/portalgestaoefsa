@@ -1177,7 +1177,9 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         if (m && typeof m === 'object' && !Array.isArray(m)) {
           for (const k of Object.keys(m)) alvos.add(String(m[k]))
         }
-      } catch (_e) {}
+      } catch (_e) {
+        // mapa ausente ou malformado: as outras duas fontes cobrem
+      }
 
       // c) varredura por título (pega o que escapou das duas listas)
       const tipoTrat = String(excluir.tipo_nome || '').trim()
