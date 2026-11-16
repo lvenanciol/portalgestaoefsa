@@ -140,12 +140,44 @@ export default function TabelaInterativa({
   }
 
   // colunas na ordem escolhida (ignora chaves que não existem mais)
+  //
+  // 16/11/2026 — COLUNA NOVA ENTRAVA NO FIM.
+  //
+  // A ordem fica salva em localStorage. Quando eu adicionei "Hora", ela não
+  // estava na ordem gravada, então era EMPURRADA PARA O FINAL (o print mostra
+  // HORA depois de AÇÕES). O certo é inserir na posição que ela ocupa na
+  // definição atual — entre Data/Sessão e Tipo.
   const cols = useMemo(() => {
     const mapa = new Map(colunas.map((c) => [c.key, c]))
-    const naOrdem = estado.ordem.map((k) => mapa.get(k)).filter(Boolean) as Coluna[]
-    for (const c of colunas) {
-      if (!naOrdem.some((x) => x.key === c.key)) naOrdem.push(c)
+    const naOrdem: Coluna[] = []
+    const jaPosta = new Set<string>()
+
+    // 1) respeita a ordem salva, mas só para colunas que ainda existem
+    for (const k of estado.ordem) {
+      const c = mapa.get(k)
+      if (!c || jaPosta.has(k)) continue
+      naOrdem.push(c)
+      jaPosta.add(k)
     }
+
+    // 2) insere as colunas NOVAS na posição da definição atual
+    for (let i = 0; i < colunas.length; i++) {
+      const c = colunas[i]
+      if (jaPosta.has(c.key)) continue
+
+      // procura o primeiro vizinho da definição que já esteja na lista
+      let pos = naOrdem.length
+      for (let j = i + 1; j < colunas.length; j++) {
+        const prox = naOrdem.findIndex((x) => x.key === colunas[j].key)
+        if (prox >= 0) {
+          pos = prox
+          break
+        }
+      }
+      naOrdem.splice(pos, 0, c)
+      jaPosta.add(c.key)
+    }
+
     return naOrdem
   }, [colunas, estado.ordem])
 

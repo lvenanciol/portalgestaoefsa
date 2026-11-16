@@ -237,6 +237,35 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     null | 'ativos' | 'agendadas' | 'concluidas' | 'proxima'
   >(null)
 
+  // (a) 16/11/2026 — HORA REAL DE CADA SESSÃO.
+  //
+  // A hora não fica no tratamento: fica no `prazo` da tarefa (formato
+  // "AAAA-MM-DDTHH:MM:00Z"). Carrego todas as tarefas uma vez e monto:
+  //   · horasPorTarefa: id da tarefa → "HH:MM"
+  //   · (o mapa data→tarefa vem do próprio tratamento)
+  const [horasPorTarefa, setHorasPorTarefa] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      try {
+        const lista = await listar('tarefas', ator, { ownerEscolhido: ownerAtual })
+        if (!vivo) return
+        const mapa: Record<string, string> = {}
+        for (const t of lista as any[]) {
+          const m = String(t?.prazo || '').match(/T(\d{2}):(\d{2})/)
+          if (m) mapa[String(t.id)] = m[1] + ':' + m[2]
+        }
+        setHorasPorTarefa(mapa)
+      } catch (_e) {
+        // sem hora: a coluna mostra "—"
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [ator, ownerAtual, tratamentos.length])
+
   // (a) 16/11/2026 — barra de progresso da criação das sessões/tarefas
   const [criando, setCriando] = useState({ ativo: false, feito: 0, total: 0 })
 
@@ -338,6 +367,13 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         return {}
       })()
 
+      // (a) mapa data → id da tarefa (para buscar a HORA de cada sessão)
+      const mapaTarefa: Record<string, string> = (() => {
+        const m = t.tarefa_por_data
+        if (m && typeof m === 'object' && !Array.isArray(m)) return m
+        return {}
+      })()
+
       if (sessoes.length === 0) {
         out.push({
           ...t,
@@ -361,11 +397,20 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             _concluida: concluida,
             // concluída manda; senão o que o usuário escolheu; senão agendado
             _statusSessao: concluida ? 'concluido' : mapaStatus[dia] || 'agendado',
-            // (a) hora da sessão: vem de proxima_sessao ou do prazo da tarefa
-            _hora:
-              String(t.hora || '').trim() ||
-              (String(t.proxima_sessao || '').match(/T(\d{2}:\d{2})/) || [])[1] ||
-              '—',
+            // (a) 16/11/2026 — HORA POR SESSÃO.
+            //
+            // O tratamento não guarda a hora de cada sessão (só o registro
+            // tem `proxima_sessao`). A hora REAL de cada data está no `prazo`
+            // da tarefa correspondente. O mapa `horas` é montado uma vez, na
+            // carga, a partir das tarefas.
+            _hora: (() => {
+              const h = horasPorTarefa[mapaTarefa[dia]]
+              if (h) return h
+              const doTrat = String(t.hora || '').trim()
+              if (doTrat) return doTrat
+              const m = String(t.proxima_sessao || '').match(/T(\d{2}:\d{2})/)
+              return m ? m[1] : '—'
+            })(),
           })
         })
       }
