@@ -647,10 +647,22 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       return
     }
     // (d) 16/11/2026 — HORA É OBRIGATÓRIA para qualquer agenda/sessão.
-    if (!form.hora || !/^\d{2}:\d{2}$/.test(String(form.hora))) {
+    //
+    // 16/11 — o campo `type="time"` do navegador devolve "HH:MM" ou "HH:MM:SS"
+    // (Safari inclui segundos). Aceito os dois formatos; se vier vazio, uso
+    // 09:00 em vez de BLOQUEAR o salvamento sem o usuário entender.
+    const horaNorm = (() => {
+      const raw = String(form.hora || '').trim()
+      const m = /^(\d{1,2}):(\d{2})/.exec(raw)
+      if (!m) return ''
+      const h = String(Math.min(23, Number(m[1]))).padStart(2, '0')
+      return h + ':' + m[2]
+    })()
+
+    if (!horaNorm) {
       toast({
         title: 'Defina a hora da agenda',
-        description: 'Toda sessão precisa de um horário. Preencha o campo Hora.',
+        description: 'O campo Hora é obrigatório. Preencha um horário (ex.: 09:00).',
         variant: 'destructive',
       })
       return
@@ -665,13 +677,16 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         empresa: form.empresa,
         responsavel_id: form.responsavel_id,
         paciente_nome: form.paciente_nome.trim(),
-        inicio: form.inicio + 'T12:00:00Z',
+        inicio: String(form.inicio || hojeLocal()).slice(0, 10) + 'T12:00:00Z',
         frequencia: form.frequencia,
         intervalo_dias: Number(form.intervalo_dias),
         status: form.status,
         observacoes: form.observacoes,
         demo: false,
       }
+
+      // usa a hora normalizada em todo o fluxo (inclusive no gerarDatas)
+      const formEfetivo = { ...form, hora: horaNorm }
 
       let id = editando?.id
       if (editando) {
@@ -742,7 +757,15 @@ export default function TratamentosTab({ aba }: { aba: any }) {
 
       if (!editando) {
         // (1) criação — monta a agenda
-        r = await sincronizarAgenda(id, form, tipo?.nome || 'Tratamento', undefined, false)
+        console.log('[tratamentos] criando agenda', {
+          inicio: formEfetivo.inicio,
+          hora: formEfetivo.hora,
+          intervalo: formEfetivo.intervalo_dias,
+          repetir: formEfetivo.repetir,
+          fim: formEfetivo.fim,
+        })
+        r = await sincronizarAgenda(id, formEfetivo, tipo?.nome || 'Tratamento', undefined, false)
+        console.log('[tratamentos] agenda criada', r)
       } else if (periodoAlterado) {
         const diaSessao = sessaoEmEdicao ? String(sessaoEmEdicao).slice(0, 10) : null
         const novaData = String(form.inicio || '').slice(0, 10)
@@ -853,9 +876,27 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       setNovoOpen(false)
       await carregar()
     } catch (e: any) {
+      // 16/11/2026 — o toast mostrava só "Falha ao salvar". Agora o erro real
+      // vai para o console E para a descrição, com o campo que o PocketBase
+      // recusou (a API devolve `data` por campo).
+      console.error('[tratamentos] falha ao salvar', e)
+
+      let detalhe = e?.response?.data?.message || e?.message || String(e)
+      try {
+        const campos = e?.response?.data?.data
+        if (campos && typeof campos === 'object') {
+          const partes = Object.keys(campos).map(
+            (k) => k + ': ' + (campos[k]?.message || String(campos[k])),
+          )
+          if (partes.length) detalhe = partes.join(' | ')
+        }
+      } catch (_e2) {
+        // mantém o detalhe simples
+      }
+
       toast({
         title: 'Falha ao salvar',
-        description: e?.response?.data?.message || e?.message,
+        description: String(detalhe).slice(0, 240),
         variant: 'destructive',
       })
     }
