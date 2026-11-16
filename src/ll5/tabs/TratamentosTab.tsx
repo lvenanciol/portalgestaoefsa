@@ -611,7 +611,11 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         const m = /T(\d{2}):(\d{2})/.exec(pr)
         return m ? m[1] + ':' + m[2] : '09:00'
       })(),
-      fim: sessoes.length ? sessoes[sessoes.length - 1] : '',
+      // 16/11/2026 — `fim` começa VAZIO na edição.
+      // Antes eu preenchia com a última sessão da agenda; o `gerarDatas` então
+      // criava um intervalo de `inicio` até `fim`, ignorando a data clicada.
+      // Vazio = "não há intervalo"; o clique define a data da sessão.
+      fim: '',
       frequencia: t.frequencia || 'Semanal',
       intervalo_dias: Number(t.intervalo_dias) || f?.dias || 7,
       repetir: sessoes.length || 8,
@@ -694,23 +698,81 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       }
 
       // ------------------------------------------------------------------
-      // (d) 16/11/2026 — A AGENDA SÓ É RECALCULADA COM ALTERAÇÃO EXPLÍCITA.
+      // (16/11/2026) — A DATA CLICADA MANDA. NÃO RECALCULAR.
       //
-      // O loop das 40 tarefas vinha daqui: eu sincronizava SEMPRE, porque
-      // `sessoesManuais` estava sempre preenchido. Depois passei a nunca
-      // sincronizar na edição — e o dono ficou sem conseguir mudar datas.
+      // PROBLEMA RELATADO: "cliquei 15/10 e gravou data diferente"; "salvar e
+      // atualizar agenda não funciona".
       //
-      // Regra correta:
-      //   · criação                       → sincroniza (monta a agenda)
-      //   · edição SEM mexer nas datas    → NÃO sincroniza (preserva tudo)
-      //   · edição MEXENDO nas datas      → sincroniza INCREMENTAL
-      //     (`periodoAlterado` é o sinalizador — só o usuário o liga)
+      // CAUSA: eu chamava `sincronizarAgenda` sem `datasForcadas`, e ela
+      // REGENERAVA a agenda inteira com `gerarDatas(inicio, intervalo, fim,
+      // repetir)`. Como `abrirEdicao` preenche `fim` com a última sessão
+      // existente, o gerador criava datas de 15/10 até aquela última —
+      // ignorando a data que o usuário clicou.
+      //
+      // REGRA NOVA, em ordem:
+      //   1. criação                         → monta a agenda do período
+      //   2. edição SEM mexer em data        → não toca em nada
+      //   3. edição de UMA SESSÃO + clique   → move APENAS aquela sessão,
+      //                                        mantendo as demais intactas
+      //   4. edição SEM sessão + período     → respeita o intervalo exato
+      //                                        escolhido no calendário
       // ------------------------------------------------------------------
-      const precisaSincronizar = !editando || periodoAlterado
+      let r = { sessoes: 0, criadas: 0, removidas: 0, ignorado: true } as any
 
-      const r = precisaSincronizar
-        ? await sincronizarAgenda(id, form, tipo?.nome || 'Tratamento', undefined, false)
-        : { sessoes: 0, criadas: 0, removidas: 0, ignorado: true }
+      if (!editando) {
+        // (1) criação — monta a agenda
+        r = await sincronizarAgenda(id, form, tipo?.nome || 'Tratamento', undefined, false)
+      } else if (periodoAlterado) {
+        const diaSessao = sessaoEmEdicao ? String(sessaoEmEdicao).slice(0, 10) : null
+        const novaData = String(form.inicio || '').slice(0, 10)
+
+        if (diaSessao && novaData && novaData !== diaSessao) {
+          // (3) move SOMENTE a sessão em edição para a data clicada
+          const atualT = tratamentos.find((x) => x.id === editando.id)
+          const lista: string[] = Array.isArray(atualT?.proximas_sessoes)
+            ? [...atualT.proximas_sessoes].map((d) => String(d).slice(0, 10))
+            : []
+
+          const idx = lista.indexOf(diaSessao)
+          if (idx >= 0) {
+            lista[idx] = novaData
+          } else {
+            lista.push(novaData)
+          }
+          lista.sort()
+
+          try {
+            await atualizar('ll5_treatments', ator, editando.id, {
+              proximas_sessoes: lista,
+              inicio: lista[0] + 'T12:00:00Z',
+              proxima_sessao: lista[0] + 'T12:00:00Z',
+            })
+          } catch (_e) {
+            // segue: a agenda abaixo reconcilia
+          }
+
+          // reconcilia as tarefas com a lista EXATA (nada é recalculado)
+          r = await sincronizarAgenda(id, form, tipo?.nome || 'Tratamento', lista, false)
+        } else {
+          // (4) sem sessão específica em edição: usa o período do calendário.
+          //
+          // Clique simples devolve inicio === fim (uma data só) → respeitamos
+          // exatamente ela. Arrasto devolve inicio < fim → geramos o intervalo
+          // pela frequência escolhida.
+          const fimStr = String(form.fim || '').slice(0, 10)
+          let lista: string[] = []
+
+          if (fimStr && fimStr > novaData) {
+            // intervalo real (arrasto) → respeita frequência e repetir
+            lista = gerarDatas(novaData, Number(form.intervalo_dias), fimStr, form.repetir)
+          } else {
+            // uma data só → é ela, sem calcular nada
+            lista = [novaData]
+          }
+
+          r = await sincronizarAgenda(id, form, tipo?.nome || 'Tratamento', lista, false)
+        }
+      }
 
       const descricao = r.ignorado
         ? 'Cadastro atualizado. As datas e tarefas agendadas foram preservadas.'
@@ -1780,9 +1842,11 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                   inicio={form.inicio}
                   fim={form.fim}
                   onChange={(i, f) => {
+                    // 16/11/2026 — clique simples escolhe UMA data:
+                    // `f` vem vazio nesse caso e não deve apagar `inicio`.
                     setSessoesManuais(null)
                     setPeriodoAlterado(true)
-                    setForm({ ...form, inicio: i || form.inicio, fim: f })
+                    setForm({ ...form, inicio: i || form.inicio, fim: f || '' })
                   }}
                 />
                 {editando && periodoAlterado && (

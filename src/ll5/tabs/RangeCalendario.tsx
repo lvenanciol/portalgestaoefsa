@@ -106,19 +106,21 @@ export default function RangeCalendario({
   }
 
   const clicar = (d: string) => {
-    // 15/11/2026 — clique simples agora é PREVISÍVEL:
-    //   sem início OU já com intervalo completo → começa novo intervalo
-    //   com início definido e sem fim            → fecha o intervalo
-    // Antes, um clique após arrasto reabria o intervalo e a data "pulava".
-    if (!inicio || fim) {
-      onChange(d, '')
-      setAncora(d)
-      setHover(d)
-    } else {
-      aplicar(inicio, d)
-      setAncora('')
-      setHover('')
-    }
+    // 16/11/2026 — CLIQUE SIMPLES = UMA DATA SÓ.
+    //
+    // O dono precisa escolher a data da sessão com um clique. Antes eu
+    // alternava entre "abrir intervalo" e "fechar intervalo", e o segundo
+    // clique transformava o dia escolhido num RANGE — a data efetiva virava
+    // a outra ponta.
+    //
+    // Agora:
+    //   · clique  → seleciona SÓ aquele dia (início = fim = d)
+    //   · arrasto → define o intervalo (comportamento preservado)
+    //
+    // Quem quiser intervalo arrasta; quem quer um dia, clica.
+    onChange(d, d)
+    setAncora(d)
+    setHover(d)
   }
 
   const noIntervalo = (d: string) => {
