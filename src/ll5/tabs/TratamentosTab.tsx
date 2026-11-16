@@ -570,8 +570,15 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         : mapaStatus[diaSessao] || 'agendado'
       : t.status || 'em_andamento'
 
-    const sessoes: string[] = Array.isArray(t.proximas_sessoes) ? t.proximas_sessoes : []
-    setSessoesManuais(sessoes.length ? [...sessoes] : null)
+    // 16/11/2026 — CAUSA DO LOOP DE TAREFAS.
+    // Eu preenchia `sessoesManuais` com as sessões já existentes. Em `salvar`,
+    // esse array era passado como `datasForcadas` e a guarda
+    // `if (modoEdicao && !datasForcadas) return` NUNCA disparava — então cada
+    // clique em "Salvar" recriava todas as tarefas (e cada nova nascia em
+    // triagem). 40 tarefas = várias salvadas.
+    //
+    // Agora começa NULO: só recebe valor se o usuário mexer nas datas.
+    setSessoesManuais(null)
     const f = FREQUENCIAS.find((x) => x.label === t.frequencia)
     setForm({
       tipo_id: t.tipo_id || '',
@@ -669,15 +676,22 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         id = rec.id
       }
 
-      // (d) Ao EDITAR, não mexer na agenda — só quando o usuário alterou as
-      // datas explicitamente no rodapé/calendário (`sessoesManuais`).
-      const r = await sincronizarAgenda(
-        id,
-        form,
-        tipo?.nome || 'Tratamento',
-        sessoesManuais || undefined,
-        !!editando,
-      )
+      // (d) Ao EDITAR, NUNCA mexer na agenda — nem se `sessoesManuais` tiver
+      // valor. Só uma alteração EXPLÍCITA de data pelo usuário deve passar,
+      // e ela vem pela função `alterarDataSessao`, não pelo salvar.
+      //
+      // 16/11/2026 — isto era o loop: `sessoesManuais` era sempre preenchido
+      // em `abrirEdicao`, o guard não disparava e cada "Salvar" recriava as
+      // tarefas (todas nascendo em triagem). Agora, editando, não sincroniza.
+      const r = editando
+        ? { sessoes: 0, criadas: 0, removidas: 0, ignorado: true }
+        : await sincronizarAgenda(
+            id,
+            form,
+            tipo?.nome || 'Tratamento',
+            sessoesManuais || undefined,
+            false,
+          )
 
       const descricao = r.ignorado
         ? 'Cadastro atualizado. As datas e tarefas agendadas foram preservadas.'
