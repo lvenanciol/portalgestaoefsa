@@ -232,6 +232,9 @@ export default function TratamentosTab({ aba }: { aba: any }) {
   // o mesmo que a lista mostra na linha.
   const [sessaoEmEdicao, setSessaoEmEdicao] = useState<string | null>(null)
 
+  // (a) 16/11/2026 — barra de progresso da criação das sessões/tarefas
+  const [criando, setCriando] = useState({ ativo: false, feito: 0, total: 0 })
+
   const carregar = async () => {
     setCarregando(true)
     try {
@@ -407,6 +410,7 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     tipoNome: string,
     datasForcadas?: string[],
     modoEdicao?: boolean,
+    onProgresso?: (feito: number, total: number) => void,
   ) => {
     const atual = tratamentos.find((t) => t.id === tratamentoId)
 
@@ -484,6 +488,14 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         })
         mapaFinal[dia] = tarefa.id
         criadas++
+        // (a) reporta progresso para a barra
+        if (onProgresso) {
+          try {
+            onProgresso(criadas, datas.length)
+          } catch (_p) {
+            // progresso é acessório
+          }
+        }
         // pausa curta SÓ entre criações novas (evita rate limit sem travar a UI)
         await new Promise((r) => setTimeout(r, 40))
       } catch (e) {
@@ -780,6 +792,23 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       // ------------------------------------------------------------------
       let r = { sessoes: 0, criadas: 0, removidas: 0, ignorado: true } as any
 
+      // ==================================================================
+      // 16/11/2026 — REGRA DEFINITIVA (diretiva do dono, item d):
+      //
+      //   "Ao editar uma sessão/agenda o app NÃO deve alterar, nem replicar,
+      //    nem reprogramar as próximas ou demais sessões."
+      //   "A programação de novas sessões só deve ocorrer na CRIAÇÃO."
+      //
+      // O print mostrava "1 sessão(ões) · 0 criada(s) · 7 removida(s)":
+      // editar uma sessão entregava ao sincronizarAgenda uma lista com UMA
+      // data, e ele removia as outras 7 tarefas.
+      //
+      // Agora:
+      //   · EDIÇÃO não chama mais `sincronizarAgenda` (nenhuma criação ou
+      //     remoção de tarefa). Só atualiza o registro do tratamento e, se
+      //     a data da sessão mudou, move/atualiza APENAS a tarefa daquela data.
+      //   · CRIAÇÃO é o único caminho que monta a agenda.
+      // ==================================================================
       if (!editando) {
         // ------------------------------------------------------------------
         // (a) 16/11/2026 — CRIAÇÃO: SEMPRE considera início + frequência +
@@ -817,15 +846,72 @@ export default function TratamentosTab({ aba }: { aba: any }) {
           return
         }
 
+        setCriando({ ativo: true, feito: 0, total: datasCriacao.length })
+
         r = await sincronizarAgenda(
           id,
           formEfetivo,
           tipo?.nome || 'Tratamento',
           datasCriacao,
           false,
+          (feito, total) => setCriando({ ativo: true, feito, total }),
         )
+        setCriando({ ativo: false, feito: 0, total: 0 })
         console.log('[tratamentos] agenda criada', r, datasCriacao)
-      } else if (periodoAlterado) {
+      } else if (sessaoEmEdicao) {
+        // ==============================================================
+        // EDIÇÃO DE UMA SESSÃO — só ela muda (regra d do pedido).
+        //
+        // Não chama sincronizarAgenda: nenhuma sessão é criada, removida ou
+        // reprogramada. Se a data mudou, move APENAS a tarefa daquela data.
+        // ==============================================================
+        const diaAntigo = String(sessaoEmEdicao).slice(0, 10)
+        const diaNovo = String(form.inicio || diaAntigo).slice(0, 10)
+
+        const atualE = tratamentos.find((x) => x.id === editando.id)
+        const lista: string[] = Array.isArray(atualE?.proximas_sessoes)
+          ? [...atualE.proximas_sessoes].map((d) => String(d).slice(0, 10))
+          : []
+
+        if (diaNovo && diaNovo !== diaAntigo && lista.indexOf(diaAntigo) >= 0) {
+          const idxE = lista.indexOf(diaAntigo)
+          lista[idxE] = diaNovo
+          lista.sort()
+
+          await atualizar('ll5_treatments', ator, editando.id, {
+            proximas_sessoes: lista,
+            inicio: lista[0] + 'T12:00:00Z',
+            proxima_sessao: lista[0] + 'T12:00:00Z',
+          })
+
+          // move a tarefa DAQUELA data e nenhuma outra
+          const mapaE: Record<string, string> = (() => {
+            const m = atualE?.tarefa_por_data
+            if (m && typeof m === 'object' && !Array.isArray(m)) return { ...m }
+            return {}
+          })()
+          const idTarefa = mapaE[diaAntigo]
+
+          if (idTarefa) {
+            try {
+              await pb.collection('tarefas').update(idTarefa, {
+                prazo: diaNovo + 'T' + (form.hora || '09:00') + ':00Z',
+                titulo: `${tipo?.nome || 'Tratamento'} · ${dataBR(diaNovo)}`,
+              })
+              delete mapaE[diaAntigo]
+              mapaE[diaNovo] = idTarefa
+              await atualizar('ll5_treatments', ator, editando.id, { tarefa_por_data: mapaE })
+            } catch (errT) {
+              console.warn('[tratamentos] falha ao mover a tarefa da sessão', errT)
+            }
+          }
+          r = { sessoes: lista.length, criadas: 0, removidas: 0, ignorado: false }
+        } else {
+          r = { sessoes: lista.length, criadas: 0, removidas: 0, ignorado: true }
+        }
+      } else if (false as boolean) {
+        // RAMO DESATIVADO — a regra definitiva está no bloco acima.
+        // Mantido apenas como referência histórica; nunca executa.
         const diaSessao = sessaoEmEdicao ? String(sessaoEmEdicao).slice(0, 10) : null
         const novaData = String(form.inicio || '').slice(0, 10)
 
@@ -1738,7 +1824,10 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                     {/* b) concluir a sessão desta linha (ou o tratamento todo) */}
                     <button
                       type="button"
-                      onClick={() => concluirTratamento(r, r._sessao)}
+                      onClick={(ev) => {
+                        ev.stopPropagation()
+                        concluirTratamento(r, r._sessao)
+                      }}
                       className="p-1 rounded hover:bg-emerald-50 text-[#1b5e20]"
                       title={
                         r._sessao
@@ -1750,7 +1839,10 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => abrirEdicao(r)}
+                      onClick={(ev) => {
+                        ev.stopPropagation()
+                        abrirEdicao(r)
+                      }}
                       className="p-1 rounded hover:bg-gray-100 text-gray-500 hover:text-[#1b5e20]"
                       title="Editar tratamento"
                     >
@@ -1758,7 +1850,10 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => enviarTarefas(r)}
+                      onClick={(ev) => {
+                        ev.stopPropagation()
+                        enviarTarefas(r)
+                      }}
                       className="p-1 rounded hover:bg-emerald-50 text-[#1b5e20]"
                       title="Enviar agenda ao responsável"
                     >
@@ -1766,7 +1861,12 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setExcluir(r)}
+                      onClick={(ev) => {
+                        // 16/11/2026 — o clique subia para a LINHA, que abre a
+                        // edição. Resultado: excluir abria "editar tratamento".
+                        ev.stopPropagation()
+                        setExcluir(r)
+                      }}
                       className="p-1 rounded hover:bg-red-50 text-red-500"
                       title="Excluir tratamento"
                     >
@@ -1779,6 +1879,30 @@ export default function TratamentosTab({ aba }: { aba: any }) {
           />
         )}
       </Card>
+
+      {/* (a) barra de progresso da criação das sessões/tarefas */}
+      {criando.ativo && (
+        <div className="fixed inset-x-0 bottom-0 z-[200] bg-white border-t border-gray-200 px-4 py-3 shadow-lg">
+          <div className="max-w-2xl mx-auto">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[12px] font-semibold text-gray-800">
+                Criando sessões e tarefas…
+              </span>
+              <span className="text-[11px] font-bold text-[#1b5e20] tabular-nums">
+                {criando.feito}/{criando.total}
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+              <div
+                className="h-full bg-[#1b5e20] transition-all duration-200"
+                style={{
+                  width: (criando.total > 0 ? (criando.feito / criando.total) * 100 : 0) + '%',
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* EXCLUIR */}
       <AlertDialog open={!!excluir} onOpenChange={(o) => !o && setExcluir(null)}>
