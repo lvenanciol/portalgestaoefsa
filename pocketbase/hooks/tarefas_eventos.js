@@ -183,10 +183,14 @@ onRecordAfterUpdateSuccess(function (e) {
     return b.replace(/\/+$/, '')
   }
 
+  // logos que devem ser anexados (cid) no próximo envio
+  var logosAnexar = []
+
   function faixaLogos(usuarioRecord, empresaNome) {
     var base = baseUrl()
     var colLogosId = 'pbc_3701359284'
     var logos = []
+    logosAnexar = []
 
     function addLogo(nomeEmp) {
       if (!nomeEmp) return
@@ -242,11 +246,28 @@ onRecordAfterUpdateSuccess(function (e) {
       } catch (_) {}
     }
     if (!logos.length) return ''
+    // ------------------------------------------------------------------
+    // 15/11/2026 — LOGO INLINE (cid), NÃO URL.
+    //
+    // O e-mail chegava com dois quadrados de imagem quebrada. Causa: o src
+    // apontava para <host>/api/files/... e esse host é o INTERNO
+    // (*.shrd01.internal.goskip.dev), que o Gmail não alcança. No domínio
+    // público, /api/* devolve a SPA (HTML), não a imagem — testado.
+    //
+    // Solução: embutir a imagem no próprio e-mail como anexo com
+    // `contentId` (referência cid:). É o formato que Gmail, Outlook e Apple
+    // Mail respeitam, e não depende de rede nem de rota pública.
+    //
+    // O src de cada <img> passa a ser cid:<chave>, e as imagens são anexadas
+    // pela função anexosLogos() na hora de enviar.
+    // ------------------------------------------------------------------
     var imgs = ''
     for (var j = 0; j < logos.length; j++) {
+      var cid = 'logo' + j + '@pge'
+      logos[j].cid = cid
       imgs +=
-        '<img src="' +
-        logos[j].url +
+        '<img src="cid:' +
+        cid +
         '" alt="' +
         (logos[j].empresa || '') +
         '" title="' +
@@ -254,6 +275,10 @@ onRecordAfterUpdateSuccess(function (e) {
         '" height="42" style="height:42px;width:auto;max-height:42px;max-width:140px;' +
         'margin:0 12px;vertical-align:middle;border:0;outline:none;text-decoration:none" />'
     }
+    // guarda no escopo do hook para o envio anexar as imagens
+    try {
+      logosAnexar = logos
+    } catch (_) {}
     return (
       '<tr><td style="background:#ffffff;padding:18px 20px;border:1px solid #e5e7eb;' +
       'border-top:0;border-bottom:0;text-align:center">' +
@@ -462,14 +487,86 @@ onRecordAfterUpdateSuccess(function (e) {
     var status = 'enviado'
     var erro = ''
     try {
+      // ------------------------------------------------------------------
+      // 15/11/2026 — ANEXA OS LOGOS COMO INLINE (contentId).
+      // O <img src="cid:logoN@pge"> do HTML é resolvido por estes anexos.
+      // Sem eles, o cliente de e-mail mostra imagem quebrada.
+      // ------------------------------------------------------------------
+      var anexos = []
+      try {
+        for (var li = 0; li < logosAnexar.length; li++) {
+          var lg = logosAnexar[li]
+          if (!lg || !lg.cid) continue
+          var recL = null
+          try {
+            recL = $app.findFirstRecordByFilter(
+              'logomarcas',
+              'empresa = "' + String(lg.empresa).replace(/"/g, '\\"') + '" && ativo = true',
+            )
+          } catch (_) {
+            recL = null
+          }
+          if (!recL) continue
+          var arqL = recL.getString('logo') || recL.getString('emblema')
+          if (!arqL) continue
+
+          // lê os bytes pela rota de arquivos do próprio PocketBase
+          var caminho = recL.id + '/' + arqL
+          var conteudo = null
+          try {
+            conteudo = $filesystem.fileFromPath(
+              $filepath.join($app.dataDir(), 'storage', recL.collection().id, caminho),
+            )
+          } catch (_a) {
+            conteudo = null
+          }
+
+          // fallback: baixa pela API interna
+          if (!conteudo) {
+            try {
+              var baseI = String(
+                $secrets.get('PB_INSTANCE_URL') || $app.settings().meta.appURL || '',
+              )
+              var urlF =
+                baseI.replace(/\/+$/, '') +
+                '/api/files/' +
+                recL.collection().id +
+                '/' +
+                recL.id +
+                '/' +
+                encodeURIComponent(arqL)
+              var rF = $http.send({ url: urlF, method: 'GET', timeout: 20 })
+              if (rF.statusCode === 200 && rF.body) {
+                conteudo = rF.body
+              }
+            } catch (_b) {
+              conteudo = null
+            }
+          }
+
+          if (!conteudo) continue
+
+          anexos.push({
+            filename: arqL,
+            contentId: lg.cid,
+            content: conteudo,
+          })
+        }
+      } catch (errL) {
+        console.warn('tarefa_eventos: logos inline falharam: ' + String(errL).slice(0, 140))
+      }
+
       var msg = new MailerMessage({
         from: { address: remetente(), name: nomeRemetente() },
         to: [{ address: dest.email }],
         subject: assunto,
         html: html,
         text: texto,
+        attachments: anexos,
       })
       $app.newMailClient().send(msg)
+      // limpa para o próximo destinatário não repetir os mesmos anexos
+      logosAnexar = []
     } catch (err) {
       status = 'erro'
       erro = String(err).slice(0, 500)
