@@ -106,19 +106,15 @@ export default function RangeCalendario({
   }
 
   const clicar = (d: string) => {
-    // 16/11/2026 — CLIQUE SIMPLES = UMA DATA SÓ.
+    // 16/11/2026 — CLIQUE SIMPLES = UMA DATA SÓ, sem fim.
     //
-    // O dono precisa escolher a data da sessão com um clique. Antes eu
-    // alternava entre "abrir intervalo" e "fechar intervalo", e o segundo
-    // clique transformava o dia escolhido num RANGE — a data efetiva virava
-    // a outra ponta.
+    // O dono precisa escolher a data da sessão com um clique. Se eu gravava
+    // inicio = fim = d, o resto do formulário entendia "intervalo fechado"
+    // e travava o campo Repetir.
     //
-    // Agora:
-    //   · clique  → seleciona SÓ aquele dia (início = fim = d)
-    //   · arrasto → define o intervalo (comportamento preservado)
-    //
-    // Quem quiser intervalo arrasta; quem quer um dia, clica.
-    onChange(d, d)
+    // Aqui o clique devolve SÓ o início (fim vazio). Intervalo existe apenas
+    // quando o usuário ARRASTA.
+    onChange(d, '')
     setAncora(d)
     setHover(d)
   }
@@ -210,9 +206,13 @@ export default function RangeCalendario({
               {diasIntervalo} dia(s)
             </>
           ) : inicio ? (
-            <>Início {inicio.split('-').reverse().join('/')} — arraste até o fim</>
+            <>
+              Data selecionada:{' '}
+              <strong className="text-gray-800">{inicio.split('-').reverse().join('/')}</strong>{' '}
+              <span className="text-gray-400">· arraste para definir um intervalo</span>
+            </>
           ) : (
-            'Arraste sobre os dias para definir o período'
+            'Clique num dia ou arraste para definir o período'
           )}
         </span>
         {(inicio || fim) && (

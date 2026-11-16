@@ -142,7 +142,14 @@ function gerarDatas(
   const out: string[] = []
   // T12:00 evita virada de dia por horário de verão e mantém o dia intacto
   const base = new Date(inicio + 'T12:00:00')
-  const limite = fim ? new Date(fim + 'T12:00:00') : null
+
+  // 16/11/2026 — `fim` SÓ vale como intervalo quando é realmente POSTERIOR
+  // ao início. Um clique no calendário devolve inicio === fim; nesse caso o
+  // intervalo tem 1 dia e quem manda é o campo "Repetir".
+  const fimStr = String(fim || '').slice(0, 10)
+  const inicioStr = String(inicio || '').slice(0, 10)
+  const temIntervalo = fimStr && fimStr > inicioStr
+  const limite = temIntervalo ? new Date(fimStr + 'T12:00:00') : null
 
   if (limite) {
     for (let i = 0; i < 500; i++) {
@@ -1982,7 +1989,10 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               </div>
 
               <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2">
+                {/* 16/11/2026 — grid de 3 colunas: Frequência, Repetir e Hora
+                    na MESMA linha, alinhados. Antes eram 2 colunas e a Hora
+                    caía sozinha na linha de baixo, desalinhada. */}
+                <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1">
                     <Label className="text-[10.5px] font-semibold text-gray-600">Frequência</Label>
                     <Select
@@ -2020,21 +2030,29 @@ export default function TratamentosTab({ aba }: { aba: any }) {
                         if (editando) setPeriodoAlterado(true)
                         setForm({ ...form, repetir: Number(e.target.value) })
                       }}
-                      disabled={!!form.fim}
-                      className={cn('h-9 !text-[12px]', form.fim && 'bg-gray-50')}
+                      // 16/11/2026 — NÃO desabilitar por `form.fim`.
+                      // Um clique simples no calendário devolve inicio = fim
+                      // (uma data só), e o campo ficava travado já na criação.
+                      // "Repetir" só faz sentido sem intervalo — e o próprio
+                      // gerarDatas decide: com fim, usa o intervalo; sem fim,
+                      // usa o repetir.
+                      className="h-9 !text-[12px]"
+                      title="Quantas sessões criar a partir do início"
                     />
                   </div>
-                  {/* (c) HORA DA AGENDA */}
+                  {/* (c) HORA DA AGENDA — obrigatória */}
                   <div className="space-y-1">
-                    <Label className="text-[10.5px] font-semibold text-gray-600">Hora</Label>
+                    <Label className="text-[10.5px] font-semibold text-gray-600">
+                      Hora <span className="text-red-500">*</span>
+                    </Label>
                     <Input
                       type="time"
                       value={form.hora || '09:00'}
                       onChange={(e) => setForm({ ...form, hora: e.target.value })}
                       className="h-9 !text-[12px]"
-                      title="Horário de cada sessão na agenda"
+                      title="Horário de cada sessão na agenda (obrigatório)"
                     />
-                  </div>{' '}
+                  </div>
                 </div>
                 {/* a) fonte e tamanho iguais ao campo "Profissional" (h-9 text-[12px]) */}
                 {/* b) status da SESSÃO em edição, igual ao da linha na lista */}
