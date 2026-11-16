@@ -121,7 +121,21 @@ routerAdd(
     const assunto =
       String(body.assunto_custom || '').trim() ||
       'Acompanhamento de Tarefas — ' + listaFinalTarefas.length + ' tarefa(s)'
-    const nome = String(body.mensagem || '').trim()
+
+    // 16/11/2026 — a saudação dizia "Prezado(a)" porque eu lia o nome de
+    // `body.mensagem`. O nome está em `destinatarios[].nome`. Agora uso o
+    // primeiro destinatário e formato como o brief pede ("[CEO] Léo" → "Léo").
+    let nome = ''
+    try {
+      const p0 = destinatarios[0] || {}
+      nome = String(p0.nome || '').trim()
+      // remove o prefixo de papel: "[CEO] Léo" → "Léo"
+      nome = nome.replace(/^\[[^\]]+\]\s*/, '').trim()
+      // mantém só o primeiro nome
+      if (nome.indexOf(' ') > 0) nome = nome.split(/\s+/)[0]
+    } catch (_) {
+      nome = ''
+    }
 
     // link do CTA
     let linkPainel = ''
@@ -219,6 +233,10 @@ routerAdd(
       ';">'
     html +=
       '<tr><td align="center" bgcolor="' + CORES.offwhite + '" style="padding:24px 20px 18px;">'
+    // 16/11/2026 — o lockup do cadastro JÁ CONTÉM o wordmark da empresa.
+    // Eu repetia o nome em texto ao lado, duplicando a marca (visível no
+    // print: ícone FOLDBOX + "FOLDBOX" em 20px). Agora a imagem aparece
+    // sozinha, e o texto abaixo é só o subtítulo do portal.
     const lgPrinc = logosMap[String(empPrincipal).toLowerCase()]
     if (lgPrinc && lgPrinc.arquivo) {
       html +=
@@ -226,22 +244,23 @@ routerAdd(
         lgPrinc.arquivo +
         '" alt="' +
         escapeHtml(empPrincipal) +
-        ' logomarca" width="42" height="42" style="display:inline-block;vertical-align:middle;border:0;" />'
+        ' logomarca" height="44" style="display:inline-block;vertical-align:middle;border:0;height:44px;width:auto;max-width:220px;" />'
+    } else {
+      html +=
+        '<div style="font-family:' +
+        FONTE +
+        ';font-size:20px;font-weight:800;letter-spacing:1.5px;color:' +
+        CORES.charcoal +
+        ';text-transform:uppercase;">' +
+        escapeHtml(empPrincipal) +
+        '</div>'
     }
     html +=
       '<div style="font-family:' +
       FONTE +
-      ';font-size:20px;font-weight:800;letter-spacing:1.5px;color:' +
-      CORES.charcoal +
-      ';margin-top:10px;text-transform:uppercase;">' +
-      escapeHtml(empPrincipal) +
-      '</div>'
-    html +=
-      '<div style="font-family:' +
-      FONTE +
-      ';font-size:10px;font-weight:600;letter-spacing:2px;color:' +
+      ';font-size:9.5px;font-weight:600;letter-spacing:2px;color:' +
       CORES.texto2 +
-      ';margin-top:4px;text-transform:uppercase;">PORTAL DE GESTÃO ' +
+      ';margin-top:12px;text-transform:uppercase;">PORTAL DE GESTÃO ' +
       escapeHtml(String(empPrincipal).toUpperCase()) +
       '</div>'
     html += '</td></tr>'
@@ -337,31 +356,32 @@ routerAdd(
       html +=
         '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 12px;"><tr>'
       html += '<td bgcolor="' + CORES.offwhite + '" style="padding:12px 14px;border-radius:6px;">'
+      // o logo do cadastro já traz o wordmark: a célula mostra SÓ a imagem.
       const lgSec = logosMap[String(empNome).toLowerCase()]
       html += '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
-      html += '<td valign="middle" style="padding-right:10px;">'
+      html += '<td valign="middle">'
       if (lgSec && lgSec.arquivo) {
         html +=
           '<img src="cid:' +
           lgSec.arquivo +
           '" alt="' +
           escapeHtml(empNome) +
-          ' logomarca" width="26" height="26" style="display:block;border:0;" />'
+          ' logomarca" height="28" style="display:block;border:0;height:28px;width:auto;max-width:150px;" />'
       } else {
         html +=
-          '<div style="width:26px;height:26px;border-radius:4px;background:' +
+          '<div style="display:inline-block;width:26px;height:26px;border-radius:4px;background:' +
           corSimbolo +
-          ';"></div>'
+          ';vertical-align:middle;"></div>'
+        html +=
+          '<span style="font-family:' +
+          FONTE +
+          ';font-size:14px;font-weight:800;letter-spacing:0.8px;color:' +
+          CORES.charcoal +
+          ';text-transform:uppercase;vertical-align:middle;margin-left:8px;">' +
+          escapeHtml(rotulo) +
+          '</span>'
       }
       html += '</td>'
-      html +=
-        '<td valign="middle"><span style="font-family:' +
-        FONTE +
-        ';font-size:14px;font-weight:800;letter-spacing:0.8px;color:' +
-        CORES.charcoal +
-        ';text-transform:uppercase;">' +
-        escapeHtml(rotulo) +
-        '</span></td>'
       html += '</tr></table>'
       html += '</td>'
       html += '<td align="right" valign="middle" width="90" style="padding-left:8px;">'
@@ -584,6 +604,17 @@ routerAdd(
       const CW = W - ML * 2
       const ops = []
       let y = H
+      // 16/11/2026 — BUG CORRIGIDO: `destNome` não existe neste escopo (é da
+      // função externa). O ReferenceError matava gerarPdf e o PDF não era
+      // anexado (o catch só logava). Agora vem em `dados.destNome`.
+      const destNome = String(dados.destNome || 'Prezado(a)')
+      const empPrincipal = String(dados.empPrincipal || 'Extrafruti')
+      const hoje = String(dados.hoje || new Date().toISOString().slice(0, 10))
+      function brData(iso) {
+        const v = String(iso || '').slice(0, 10)
+        if (!v || v.length < 10) return ''
+        return v.slice(8, 10) + '/' + v.slice(5, 7) + '/' + v.slice(0, 4)
+      }
 
       function esc(t) {
         return String(t == null ? '' : t)
@@ -878,6 +909,9 @@ routerAdd(
         nSemPrazo: nSemPrazo,
         nEmDia: nEmDia,
         secoes: secoesPdf,
+        destNome: nome || destinatarios[0] ? String(destinatarios[0].nome || nome || '') : '',
+        empPrincipal: empPrincipal,
+        hoje: hoje,
       })
     } catch (errPdf) {
       console.warn('[tarefas/enviar] PDF falhou: ' + String(errPdf).slice(0, 180))
@@ -958,8 +992,14 @@ routerAdd(
               pdfReader = fo.reader.open()
               if (!msg.attachments) msg.attachments = {}
               msg.attachments[pdfNome] = pdfReader
+            } else {
+              console.log('[tarefas/enviar] fileFromBytes não devolveu reader')
             }
-          } catch (_) {}
+          } catch (errAnexo) {
+            console.log('[tarefas/enviar] anexo do PDF falhou: ' + String(errAnexo).slice(0, 180))
+          }
+        } else {
+          console.log('[tarefas/enviar] pdfStr vazio — PDF não gerado')
         }
         $app.newMailClient().send(msg)
         enviados.push({ email: email, ok: true })
@@ -999,15 +1039,22 @@ routerAdd(
       } catch (_) {}
     }
 
+    // 16/11/2026 — A UI lê `ok` (TarefasEnviarPopover). Eu devolvia só
+    // `success`, então o toast era SEMPRE "Falha no envio" mesmo quando os
+    // e-mails saíam (o print mostra o e-mail chegando e o toast vermelho
+    // ao mesmo tempo). Agora devolvo os dois campos.
     return e.json(200, {
-      success: erros.length === 0,
-      enviados: enviados,
+      ok: erros.length === 0 && enviados.length > 0,
+      success: erros.length === 0 && enviados.length > 0,
+      enviados: enviados.length,
+      detalhe_enviados: enviados,
       erros: erros,
       total_tarefas: listaFinalTarefas.length,
       kpis: { total: nTotal, vencidas: nVencidas, semPrazo: nSemPrazo, emDia: nEmDia },
       secoes: secoesPdf.map((s) => ({ empresa: s.rotulo, qtd: s.tarefas.length })),
       html_bytes: html.length,
       pdf_bytes: pdfStr ? pdfStr.length : 0,
+      pdf_gerado: !!pdfStr,
     })
   },
   $apis.requireAuth(),
