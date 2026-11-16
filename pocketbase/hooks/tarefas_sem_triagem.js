@@ -1,50 +1,65 @@
 // ============================================================================
-// TAREFAS EM 'triagem' SÃO EXCLUÍDAS (16/11/2026)
+// TAREFAS EM 'triagem' SÃO EXCLUÍDAS (v2 — 16/11/2026)
 //
 // DIRETIVA DO DONO: "TAREFAS criadas com status = triagem devem ser excluídas
 // incondicionalmente".
 //
-// API usada: `onRecordAfterCreateSuccess` / `onRecordAfterUpdateSuccess` —
-// as mesmas que `tarefas_notificacoes.js` já usa neste projeto e que o runtime
-// comprovadamente carrega. A tentativa anterior com `onRecordCreateRequest`
-// NÃO registrou o hook (o cron nem apareceu na lista de jobs).
+// ┌─ DESCOBERTA QUE EXPLICA AS 40 CONTINUAREM ────────────────────────────┐
+// │ O kanban agrupa com `t.status_kanban || 'triagem'`.                    │
+// │ Portanto: campo VAZIO (NULL ou '') é EXIBIDO como TRIAGEM.             │
+// │ Cada tarefa criada sem definir status_kanban entrava nesse caso, e as  │
+// │ migrações que filtravam `= 'triagem'` (literal) não as alcançavam.     │
+// └────────────────────────────────────────────────────────────────────────┘
 //
-// Estratégia, em duas frentes:
-//   1. HOOK — toda tarefa que chega em 'triagem' é APAGADA na hora;
-//   2. CRON (15 min) — remove o que escapar por gravação de sistema.
+// Aqui os TRÊS estados são tratados:
+//   1. tarefa criada/movida com status_kanban VAZIO  → recebe 'a_fazer'
+//   2. tarefa criada/movida com 'triagem' (literal)  → é APAGADA
+//   3. cron de 15 min                               → rede de segurança
 //
-// Atenção ao escopo: no JSVM cada callback tem que declarar suas funções
-// DENTRO dele. Nada de helper no topo do arquivo.
+// API: onRecordAfterCreateSuccess / onRecordAfterUpdateSuccess — as mesmas de
+// tarefas_notificacoes.js, comprovadamente carregadas neste runtime.
 // ============================================================================
 
 // ---------------------------------------------------------------------------
-// AO CRIAR: se nasceu em triagem, apaga imediatamente.
+// AO CRIAR
 // ---------------------------------------------------------------------------
 onRecordAfterCreateSuccess((e) => {
   try {
     const t = e.record
     if (!t) return e.next()
 
-    const st = String(t.getString('status_kanban') || '')
-      .toLowerCase()
+    const raw = String(t.getString('status_kanban') || '')
       .trim()
+      .toLowerCase()
+    const id = String(t.id)
 
-    if (st === 'triagem') {
-      const id = String(t.id)
-      console.log('[sem-triagem] APAGANDO tarefa criada em triagem: ' + id)
-
-      // apaga via SQL (não passa pelo hook de novo, evita recursão)
+    if (raw === 'triagem') {
+      // pedido explícito do dono: apagar
+      console.log('[sem-triagem] criada em triagem — APAGANDO ' + id)
       try {
         $app.db().newQuery('DELETE FROM tarefas WHERE id = {:id}').bind({ id: id }).execute()
-        console.log('[sem-triagem] apagada: ' + id)
-      } catch (errSql) {
-        // fallback pela API de records
+      } catch (_) {
         try {
           $app.delete(t)
-          console.log('[sem-triagem] apagada (fallback): ' + id)
-        } catch (errDel) {
-          console.log('[sem-triagem] FALHA ao apagar ' + id + ': ' + String(errDel).slice(0, 140))
-        }
+        } catch (_) {}
+      }
+      return e.next()
+    }
+
+    if (!raw) {
+      // campo vazio: o kanban mostraria como triagem. Corrige para a_fazer.
+      console.log('[sem-triagem] criada sem status_kanban — promovendo para a_fazer ' + id)
+      try {
+        $app
+          .db()
+          .newQuery("UPDATE tarefas SET status_kanban = 'a_fazer' WHERE id = {:id}")
+          .bind({ id: id })
+          .execute()
+      } catch (_) {
+        try {
+          t.set('status_kanban', 'a_fazer')
+          $app.save(t)
+        } catch (_) {}
       }
     }
   } catch (err) {
@@ -55,20 +70,20 @@ onRecordAfterCreateSuccess((e) => {
 }, 'tarefas')
 
 // ---------------------------------------------------------------------------
-// AO ATUALIZAR: se foi movida para triagem, apaga.
+// AO ATUALIZAR
 // ---------------------------------------------------------------------------
 onRecordAfterUpdateSuccess((e) => {
   try {
     const t = e.record
     if (!t) return e.next()
 
-    const st = String(t.getString('status_kanban') || '')
-      .toLowerCase()
+    const raw = String(t.getString('status_kanban') || '')
       .trim()
+      .toLowerCase()
+    const id = String(t.id)
 
-    if (st === 'triagem') {
-      const id = String(t.id)
-      console.log('[sem-triagem] APAGANDO tarefa movida para triagem: ' + id)
+    if (raw === 'triagem') {
+      console.log('[sem-triagem] movida para triagem — APAGANDO ' + id)
       try {
         $app.db().newQuery('DELETE FROM tarefas WHERE id = {:id}').bind({ id: id }).execute()
       } catch (_) {
@@ -85,27 +100,57 @@ onRecordAfterUpdateSuccess((e) => {
 }, 'tarefas')
 
 // ---------------------------------------------------------------------------
-// REDE DE SEGURANÇA — a cada 15 minutos apaga o que restar.
+// REDE DE SEGURANÇA — a cada 15 minutos
+//
+// Apaga as literais em 'triagem' e PROMOVE as de campo vazio para 'a_fazer'
+// (apagar uma tarefa só porque o campo veio vazio destruiria dado legítimo;
+// promover resolve o efeito no kanban sem perder a tarefa).
 // ---------------------------------------------------------------------------
 cronAdd('tarefas_limpar_triagem', '*/15 * * * *', () => {
   try {
     const db = $app.db()
 
-    let antes = 0
+    let literais = 0
     try {
       const r = db
         .newQuery("SELECT COUNT(*) AS n FROM tarefas WHERE status_kanban = 'triagem'")
         .all()
-      for (const x of r) antes = Number(x.get('n') || 0)
+      for (const x of r) literais = Number(x.get('n') || 0)
     } catch (_) {}
 
-    if (antes === 0) return
+    if (literais > 0) {
+      try {
+        db.newQuery(
+          "DELETE FROM notificacoes WHERE tarefa_id IN (SELECT id FROM tarefas WHERE status_kanban = 'triagem')",
+        ).execute()
+      } catch (_) {}
+      try {
+        db.newQuery("DELETE FROM tarefas WHERE status_kanban = 'triagem'").execute()
+        console.log('[sem-triagem] cron apagou ' + literais + ' literal(is) em triagem')
+      } catch (err) {
+        console.log('[sem-triagem] cron delete: ' + String(err).slice(0, 140))
+      }
+    }
 
+    let vazios = 0
     try {
-      db.newQuery("DELETE FROM tarefas WHERE status_kanban = 'triagem'").execute()
-      console.log('[sem-triagem] cron apagou ' + antes + ' tarefa(s) em triagem')
-    } catch (err) {
-      console.log('[sem-triagem] cron falhou: ' + String(err).slice(0, 160))
+      const r2 = db
+        .newQuery(
+          "SELECT COUNT(*) AS n FROM tarefas WHERE status_kanban IS NULL OR TRIM(COALESCE(status_kanban,'')) = ''",
+        )
+        .all()
+      for (const x of r2) vazios = Number(x.get('n') || 0)
+    } catch (_) {}
+
+    if (vazios > 0) {
+      try {
+        db.newQuery(
+          "UPDATE tarefas SET status_kanban = 'a_fazer' WHERE status_kanban IS NULL OR TRIM(COALESCE(status_kanban,'')) = ''",
+        ).execute()
+        console.log('[sem-triagem] cron promoveu ' + vazios + ' tarefa(s) sem status para a_fazer')
+      } catch (err) {
+        console.log('[sem-triagem] cron update: ' + String(err).slice(0, 140))
+      }
     }
   } catch (errGeral) {
     console.log('[sem-triagem] cron erro: ' + String(errGeral).slice(0, 160))
