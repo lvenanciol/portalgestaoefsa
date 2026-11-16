@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -58,6 +58,24 @@ export default function RangeCalendario({
     const base = inicio ? new Date(inicio + 'T12:00:00') : hoje
     return new Date(base.getFullYear(), base.getMonth(), 1)
   })
+
+  // (a) 16/11/2026 — SEGUIR A DATA DA AGENDA.
+  //
+  // O calendário guardava o mês da PRIMEIRA montagem e não acompanhava o
+  // `inicio` que chegava depois (ao abrir a edição de uma sessão de outro
+  // mês, a tela mostrava o mês errado e o usuário não encontrava o dia).
+  // Agora, sempre que `inicio` mudar, o mês exibido acompanha.
+  useEffect(() => {
+    if (!inicio) return
+    const d = new Date(inicio + 'T12:00:00')
+    if (isNaN(d.getTime())) return
+    setMesRef((atual) => {
+      if (atual.getFullYear() === d.getFullYear() && atual.getMonth() === d.getMonth()) {
+        return atual
+      }
+      return new Date(d.getFullYear(), d.getMonth(), 1)
+    })
+  }, [inicio])
 
   const arrastando = useRef(false)
   const [ancora, setAncora] = useState<string>('')

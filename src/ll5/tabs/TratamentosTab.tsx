@@ -859,6 +859,10 @@ export default function TratamentosTab({ aba }: { aba: any }) {
         setCriando({ ativo: false, feito: 0, total: 0 })
         console.log('[tratamentos] agenda criada', r, datasCriacao)
       } else if (sessaoEmEdicao) {
+        // (b) 16/11/2026 — feedback de progresso: 3 etapas (agenda, status,
+        // tarefa). Antes o clique parecia travado durante os updates.
+        setCriando({ ativo: true, feito: 0, total: 3 })
+
         // ==============================================================
         // EDIÇÃO DE UMA SESSÃO — só ela muda (regra d do pedido).
         //
@@ -873,16 +877,51 @@ export default function TratamentosTab({ aba }: { aba: any }) {
           ? [...atualE.proximas_sessoes].map((d) => String(d).slice(0, 10))
           : []
 
-        if (diaNovo && diaNovo !== diaAntigo && lista.indexOf(diaAntigo) >= 0) {
+        // ------------------------------------------------------------------
+        // (d) 16/11/2026 — ANTES: só a data era salva.
+        //
+        // O STATUS da sessão ficou no ramo antigo (desativado), então mudar
+        // data E status gravava apenas a data. Agora, ao salvar uma sessão:
+        //   · se a DATA mudou     → move a data na agenda + a tarefa daquela data
+        //   · se o STATUS mudou   → grava em `sessoes_status[data]` e, quando
+        //                            "concluído", entra em `sessoes_concluidas`
+        //   · as demais sessões NUNCA são tocadas
+        // ------------------------------------------------------------------
+        const dataMudou = Boolean(diaNovo && diaNovo !== diaAntigo && lista.indexOf(diaAntigo) >= 0)
+
+        // mapa de status por data (base: o que já está gravado)
+        const mapaStatus: Record<string, string> = (() => {
+          const m = atualE?.sessoes_status
+          if (m && typeof m === 'object' && !Array.isArray(m)) return { ...m }
+          return {}
+        })()
+        const concluidas: string[] = Array.isArray(atualE?.sessoes_concluidas)
+          ? [...atualE.sessoes_concluidas]
+          : []
+
+        let dataRef = diaAntigo
+        let arquivoAtualizado = false
+
+        if (dataMudou) {
           const idxE = lista.indexOf(diaAntigo)
           lista[idxE] = diaNovo
           lista.sort()
+          dataRef = diaNovo
 
-          await atualizar('ll5_treatments', ator, editando.id, {
-            proximas_sessoes: lista,
-            inicio: lista[0] + 'T12:00:00Z',
-            proxima_sessao: lista[0] + 'T12:00:00Z',
-          })
+          // (b) 16/11/2026 — VELOCIDADE: 3 round-trips em série viravam 6
+          // requisições (cada `atualizar` faz um getOne de validação).
+          // A agenda e o status passam a ir na MESMA gravação.
+          arquivoAtualizado = true
+
+          // o status acompanha a data
+          if (mapaStatus[diaAntigo] !== undefined) {
+            mapaStatus[diaNovo] = mapaStatus[diaAntigo]
+            delete mapaStatus[diaAntigo]
+          }
+          const idxConc = concluidas.indexOf(diaAntigo)
+          if (idxConc >= 0) {
+            concluidas[idxConc] = diaNovo
+          }
 
           // move a tarefa DAQUELA data e nenhuma outra
           const mapaE: Record<string, string> = (() => {
@@ -905,9 +944,72 @@ export default function TratamentosTab({ aba }: { aba: any }) {
               console.warn('[tratamentos] falha ao mover a tarefa da sessão', errT)
             }
           }
-          r = { sessoes: lista.length, criadas: 0, removidas: 0, ignorado: false }
-        } else {
-          r = { sessoes: lista.length, criadas: 0, removidas: 0, ignorado: true }
+        }
+
+        // (d) status da sessão — grava SEMPRE que houver escolha
+        const statusEscolhido = String(form.status || '').trim()
+        if (statusEscolhido) {
+          mapaStatus[dataRef] = statusEscolhido
+
+          if (statusEscolhido === 'concluido') {
+            if (concluidas.indexOf(dataRef) < 0) concluidas.push(dataRef)
+          } else {
+            const ic = concluidas.indexOf(dataRef)
+            if (ic >= 0) concluidas.splice(ic, 1)
+          }
+
+          arquivoAtualizado = true
+          setCriando({ ativo: true, feito: 2, total: 3 })
+
+          // a tarefa daquela data reflete o status
+          try {
+            const mapaE2: Record<string, string> = (() => {
+              const m = atualE?.tarefa_por_data
+              if (m && typeof m === 'object' && !Array.isArray(m)) return { ...m }
+              return {}
+            })()
+            const idT2 = mapaE2[dataRef]
+            if (idT2) {
+              await pb.collection('tarefas').update(idT2, {
+                status: statusEscolhido === 'concluido' ? 'concluida' : 'pendente',
+                status_kanban: statusEscolhido === 'concluido' ? 'concluido' : 'a_fazer',
+              })
+            }
+          } catch (errS) {
+            console.warn('[tratamentos] falha ao aplicar status na tarefa', errS)
+          }
+        }
+
+        // (b) UMA gravação para agenda + status (era 2–3 chamadas em série)
+        if (arquivoAtualizado) {
+          const pacote: Record<string, any> = {
+            proximas_sessoes: lista,
+            inicio: lista[0] + 'T12:00:00Z',
+            proxima_sessao: lista[0] + 'T12:00:00Z',
+            sessoes_status: mapaStatus,
+            sessoes_concluidas: concluidas,
+          }
+          try {
+            await atualizar('ll5_treatments', ator, editando.id, pacote)
+          } catch (errP) {
+            console.error('[tratamentos] falha ao gravar sessão', errP)
+            toast({
+              title: 'Falha ao gravar a sessão',
+              description: String(
+                (errP as any)?.response?.data?.message || (errP as any)?.message || '',
+              ).slice(0, 180),
+              variant: 'destructive',
+            })
+          }
+        }
+
+        setCriando({ ativo: false, feito: 0, total: 0 })
+
+        r = {
+          sessoes: lista.length,
+          criadas: 0,
+          removidas: 0,
+          ignorado: !arquivoAtualizado,
         }
       } else if (false as boolean) {
         // RAMO DESATIVADO — a regra definitiva está no bloco acima.
