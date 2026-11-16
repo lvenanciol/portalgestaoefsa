@@ -88,32 +88,39 @@ export default function RangeCalendario({
   }
 
   const pressionar = (d: string) => {
+    // 16/11/2026 — (c) NÃO gravar nada no mousedown.
+    //
+    // Antes eu fazia `onChange(d, d)` aqui: o clique definia início E fim, o
+    // resto do formulário entendia "intervalo fechado" e o valor final podia
+    // sair diferente do dia clicado. Agora o mousedown só ARMA o arrasto; a
+    // gravação acontece no `soltar` (arrasto) ou no `clicar` (um dia).
     arrastando.current = true
     setAncora(d)
     setHover(d)
-    onChange(d, d)
   }
 
   const entrar = (d: string) => {
     if (!arrastando.current) return
     setHover(d)
-    aplicar(ancora, d)
   }
 
   const soltar = () => {
-    if (arrastando.current && ancora && hover) aplicar(ancora, hover)
+    // só aplica intervalo se o mouse ANDOU para outro dia
+    if (arrastando.current && ancora && hover && hover !== ancora) {
+      aplicar(ancora, hover)
+    }
     arrastando.current = false
   }
 
   const clicar = (d: string) => {
-    // 16/11/2026 — CLIQUE SIMPLES = UMA DATA SÓ, sem fim.
+    // 16/11/2026 — CLIQUE = EXATAMENTE O DIA CLICADO.
     //
-    // O dono precisa escolher a data da sessão com um clique. Se eu gravava
-    // inicio = fim = d, o resto do formulário entendia "intervalo fechado"
-    // e travava o campo Repetir.
+    // (c) O sistema tem de gravar a data que o usuário clicou como data da
+    // agenda/sessão. O clique devolve SÓ o início (fim vazio), para o campo
+    // "Repetir" continuar válido — intervalo só existe por ARRASTO.
     //
-    // Aqui o clique devolve SÓ o início (fim vazio). Intervalo existe apenas
-    // quando o usuário ARRASTA.
+    // `soltar` roda depois do clique (o mouseup acontece depois); como
+    // `ancora === hover` num clique puro, ele NÃO aplica intervalo.
     onChange(d, '')
     setAncora(d)
     setHover(d)
