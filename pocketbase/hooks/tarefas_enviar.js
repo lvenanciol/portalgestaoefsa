@@ -33,22 +33,65 @@ routerAdd(
     const gruposEmpresas = {}
     let listaFinalTarefas = []
 
-    const filtros = body.filtros || {}
-    const partes = ["status_kanban != 'triagem'"]
-    if (filtros.empresa) partes.push('empresa = "' + String(filtros.empresa) + '"')
-    if (filtros.responsavel) partes.push('responsavel = "' + String(filtros.responsavel) + '"')
+    // ---------------------------------------------------------------------
+    // 18/11/2026 — ENVIAR EXATAMENTE O QUE ESTÁ NA TELA.
+    //
+    // DIRETIVA: "as tarefas enviadas pelo botão enviar devem enviar no corpo
+    // do e-mail e no PDF em anexo exatamente as tarefas como filtradas na
+    // tela".
+    //
+    // CAUSA: o popover mandava `tarefas_ids` (os ids visíveis) e este hook
+    // IGNORAVA esse campo — consultava por conta própria, só com
+    // `status_kanban != 'triagem'`, e ainda descartava as concluídas. O
+    // resultado eram 53 tarefas num envio em que a tela mostrava 11.
+    //
+    // CORREÇÃO: quando `tarefas_ids` chega, essa lista é a VERDADE. Nada de
+    // filtro adicional — nem status, nem empresa, nem responsável. Os ids
+    // viram registro na ORDEM EM QUE VIERAM da tela.
+    //
+    // Sem `tarefas_ids` (envio de automação), cai no comportamento antigo.
+    // ---------------------------------------------------------------------
+    const idsPedidos = Array.isArray(body.tarefas_ids)
+      ? body.tarefas_ids.map(function (x) {
+          return String(x || '').trim()
+        })
+      : []
 
+    const filtros = body.filtros || {}
     let consulta = []
-    try {
-      consulta = $app.findRecordsByFilter('tarefas', partes.join(' && '), '-created', 500, 0)
-    } catch (err) {
-      console.log('[tarefas/enviar] consulta: ' + String(err).slice(0, 160))
-      consulta = []
+
+    if (idsPedidos.length) {
+      marco('modo tela: ' + idsPedidos.length + ' id(s)')
+      for (let qi = 0; qi < idsPedidos.length; qi++) {
+        const idAlvo = idsPedidos[qi]
+        if (!idAlvo) continue
+        try {
+          consulta.push($app.findRecordById('tarefas', idAlvo))
+        } catch (errId) {
+          console.log(
+            '[tarefas/enviar] id ' + idAlvo + ' não encontrado: ' + String(errId).slice(0, 80),
+          )
+        }
+      }
+    } else {
+      const partes = ["status_kanban != 'triagem'"]
+      if (filtros.empresa) partes.push('empresa = "' + String(filtros.empresa) + '"')
+      if (filtros.responsavel) partes.push('responsavel = "' + String(filtros.responsavel) + '"')
+      try {
+        consulta = $app.findRecordsByFilter('tarefas', partes.join(' && '), '-created', 500, 0)
+      } catch (err) {
+        console.log('[tarefas/enviar] consulta: ' + String(err).slice(0, 160))
+        consulta = []
+      }
     }
 
     for (const t of consulta) {
-      if (t.getString('status_kanban') === 'triagem') continue
-      if (t.getString('status') === 'concluida') continue
+      // O filtro de triagem/concluída vale APENAS no modo automático: no modo
+      // tela, o que o usuário vê é o que ele quer receber.
+      if (!idsPedidos.length) {
+        if (t.getString('status_kanban') === 'triagem') continue
+        if (t.getString('status') === 'concluida') continue
+      }
       const emp = String(t.getString('empresa') || '').trim() || 'Geral'
       if (!gruposEmpresas[emp]) {
         gruposEmpresas[emp] = []
@@ -79,8 +122,13 @@ routerAdd(
       })
     }
 
-    for (var empOrd in gruposEmpresas) {
-      gruposEmpresas[empOrd] = ordenarPorPrazo(gruposEmpresas[empOrd])
+    // No MODO TELA a ordem é a da tela (a lista chegou ordenada pelo usuário).
+    // Ordenar por prazo aqui desfaria o que ele vê. No modo automático,
+    // ordenamos por prazo como antes.
+    if (!idsPedidos.length) {
+      for (var empOrd in gruposEmpresas) {
+        gruposEmpresas[empOrd] = ordenarPorPrazo(gruposEmpresas[empOrd])
+      }
     }
 
     const ordemPref = ['FoldBox', 'Extrafruti', 'Casafruti']
