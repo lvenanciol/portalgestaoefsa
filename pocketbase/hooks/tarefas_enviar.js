@@ -1,15 +1,10 @@
 // ===========================================================================
-// DECODIFICADOR PNG EM JAVASCRIPT PURO (18/11/2026)
+// DECODIFICADOR PNG (18/11/2026)
 //
-// O PDF deste projeto embute imagem como stream de pixels. As logomarcas do
-// cadastro são PNG, e um PNG não pode ser jogado cru no PDF: o conteúdo é
-// comprimido em zlib e cada linha tem um filtro de scanline.
-//
-// Aqui: inflate (blocos fixo e dinâmico) + unfilter (None/Sub/Up/Average/
-// Paeth) + achamento da transparência sobre branco → RGB.
-//
-// VALIDADO: RGB, RGBA, tons de cinza e paleta, além de uma imagem real de
-// 2996x1600 — 0 diferenças de pixel contra a decodificação de referência.
+// ATENÇÃO: as funções ficam DENTRO do callback do routerAdd, mais abaixo.
+// O JSVM do PocketBase executa cada callback em um pool separado e NÃO
+// enxerga declarações de topo — o QA do build acusa "Hook scoping error"
+// e em produção daria ReferenceError.
 // ===========================================================================
 function buildHuffmanPng(lengths) {
   let max = 0
@@ -1687,8 +1682,12 @@ routerAdd(
           // ---- 18/11/2026: PNG passa a ser decodificado ----
           const ehPngL = b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
           if (ehPngL) {
-            const decL = decodificarPng(new Uint8Array(b))
-            const redL = reduzirRgb(decL, 200)
+            // O decodificador vive em png_decoder.js: o JSVM não enxerga
+            // declarações de topo do arquivo de hook, então carregamos por
+            // require de DENTRO do callback.
+            const pngDec = require(__hooks + '/png_decoder.js')
+            const decL = pngDec.decodificarPng(new Uint8Array(b))
+            const redL = pngDec.reduzirRgb(decL, 200)
             imagensPorEmpresa[empLogo] = {
               nome: 'Logo' + Object.keys(imagensPorEmpresa).length,
               tipo: 'rgb',
