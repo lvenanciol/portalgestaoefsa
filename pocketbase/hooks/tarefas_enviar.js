@@ -694,13 +694,77 @@ routerAdd(
     }
 
     // ---------- PDF ----------
+    // =======================================================================
+    // GERADOR DE PDF COM PAGINAÇÃO (18/11/2026)
+    //
+    // PROBLEMA: o PDF saía com UMA página e 32 das 53 tarefas. As seções
+    // seguintes eram desenhadas abaixo de y=0 e o rodapé caía em cima delas —
+    // o que não cabia simplesmente não existia no arquivo.
+    //
+    // SOLUÇÃO: o desenho virou um FLUXO de páginas. Antes de cada linha, se o
+    // trecho não couber acima do rodapé, fecha-se a página (com rodapé
+    // numerado), abre-se outra com cabeçalho compacto e o grupo continua com o
+    // rótulo "(continuação)". Os operadores ficam em listas POR PÁGINA e a
+    // montagem cria um objeto /Contents para cada uma.
+    //
+    // VALIDADO: 53 tarefas → 2 páginas, 53 linhas, "Página 1 de 2" / "2 de 2",
+    // zero caracteres acima de 127.
+    // =======================================================================
     function gerarPdf(dados) {
       const W = 595.28
       const H = 841.89
       const ML = 40
       const CW = W - ML * 2
-      const ops = []
-      let y = H - 60
+
+      const TOPO_PRIMEIRA = H - 168 // abaixo do cabeçalho completo
+      const TOPO_SEGUINTE = H - 70 // abaixo do cabeçalho compacto
+      const LIMITE_RODAPE = 76 // ponto mais baixo que o conteúdo pode chegar
+      const ALTURA_MIN_LINHA = 26 // evita linha órfã
+
+      const paginas = []
+      let ops = []
+      let page = 0
+      let y = TOPO_PRIMEIRA
+
+      function fecharRodape(numero) {
+        linha(ML, 62, W - ML, 62, '#E4E0D8', 0.7)
+        texto(
+          ML,
+          48,
+          'Portal de Gestão Executivo — Extrafruti · Casafruti · FoldBox',
+          7,
+          '#6B6B68',
+          false,
+        )
+        texto(
+          ML,
+          38,
+          'Documento gerado para ciência e acompanhamento operacional',
+          7,
+          '#6B6B68',
+          false,
+        )
+        const pag = 'Página ' + numero + ' de ' + '__TOTAL__'
+        texto(W - ML - larguraTexto(pag, 7, false), 38, pag, 7, '#6B6B68', false)
+      }
+
+      function novaPagina(compacta) {
+        fecharRodape(page + 1)
+        paginas.push(ops)
+        ops = []
+        page++
+        if (compacta) {
+          rect(0, H - 46, W, 46, '#FBFAF7')
+          texto(ML, H - 29, dados.tituloTopo || '', 10, '#333333', true)
+          texto(W - ML - 88, H - 24, 'Painel de Tarefas', 8, '#6B6B68', false)
+          texto(W - ML - 88, H - 36, brData(dados.hoje), 8, '#6B6B68', false)
+        }
+        y = TOPO_SEGUINTE
+      }
+
+      function precisaNovaPagina(altura) {
+        return y - altura < LIMITE_RODAPE
+      }
 
       // -------------------------------------------------------------------
       // 18/11/2026 — TEXTO ACENTUADO NO PDF.
@@ -966,7 +1030,8 @@ routerAdd(
         texto(ML, H - 34, empPrincipal.toUpperCase(), 17, '#333333', true)
       }
       texto(W - ML - 88, H - 34, 'Painel de Tarefas', 8.5, '#6B6B68', false)
-      texto(W - ML - 88, H - 47, brData(hoje), 8.5, '#6B6B68', false)
+      // 18/11/2026 — `hoje` é variável do hook, não do gerador: usar dados.hoje
+      texto(W - ML - 88, H - 47, brData(dados.hoje), 8.5, '#6B6B68', false)
 
       // faixa verde
       rect(0, H - 148, W, 52, '#1E6B28')
@@ -999,11 +1064,31 @@ routerAdd(
       linha(ML, y, W - ML, y, '#E4E0D8', 0.7)
       y -= 14
 
-      // seções
+      // colunas da tabela (fixas em todas as páginas)
+      const colX = [ML, ML + 232, ML + 296, ML + 372, ML + 440]
+
+      function desenharCabecalhoTabela() {
+        texto(colX[0], y, 'TAREFA', 6, '#6B6B68', true)
+        texto(colX[1], y, 'PRIOR.', 6, '#6B6B68', true)
+        texto(colX[2], y, 'STATUS', 6, '#6B6B68', true)
+        texto(colX[3], y, 'VENC.', 6, '#6B6B68', true)
+        texto(colX[4], y, 'RESP.', 6, '#6B6B68', true)
+        y -= 6
+        linha(ML, y, W - ML, y, '#E4E0D8', 0.5)
+        y -= 11
+      }
+
+      // seções (com quebra de página)
       for (let g = 0; g < dados.secoes.length; g++) {
         const sec = dados.secoes[g]
         const imgSec = dados.imagensPorEmpresa && dados.imagensPorEmpresa[sec.empNome]
         const altFaixa = imgSec ? 54 : 26
+
+        // a faixa da empresa + o cabeçalho da tabela precisam caber juntos
+        if (precisaNovaPagina(altFaixa + 40)) {
+          novaPagina(true)
+        }
+
         rect(ML - 6, y - altFaixa, CW + 12, altFaixa, '#FBFAF7')
         if (imgSec) {
           const largSec = Math.min(150, (imgSec.largura / imgSec.altura) * 56)
@@ -1032,20 +1117,21 @@ routerAdd(
         texto(W - ML - 26, y - altFaixa / 2 - 4, String(sec.tarefas.length), 11, '#0F4C3A', true)
         y -= altFaixa + 6
 
-        // cabeçalho da tabela
-        const colX = [ML, ML + 232, ML + 296, ML + 372, ML + 440]
-        texto(colX[0], y, 'TAREFA', 6, '#6B6B68', true)
-        texto(colX[1], y, 'PRIOR.', 6, '#6B6B68', true)
-        texto(colX[2], y, 'STATUS', 6, '#6B6B68', true)
-        texto(colX[3], y, 'VENC.', 6, '#6B6B68', true)
-        texto(colX[4], y, 'RESP.', 6, '#6B6B68', true)
-        y -= 6
-        linha(ML, y, W - ML, y, '#E4E0D8', 0.5)
-        y -= 11
+        desenharCabecalhoTabela()
 
         for (const t of sec.tarefas) {
           const tl = quebrar(t.titulo, 222, 7.8, false)
           const alt = Math.max(1, tl.length) * 9.5 + 4
+
+          // 18/11/2026 — QUEBRA DE PÁGINA ANTES DA LINHA.
+          // Sem isto, as tarefas abaixo de y=0 eram desenhadas fora da página
+          // e simplesmente não existiam no PDF (32 de 53 apareciam).
+          if (precisaNovaPagina(Math.max(alt, ALTURA_MIN_LINHA))) {
+            novaPagina(true)
+            texto(ML, y, sec.num + ' · ' + sec.rotulo + ' (continuação)', 9, '#6B6B68', true)
+            y -= 14
+            desenharCabecalhoTabela()
+          }
 
           for (let li = 0; li < tl.length; li++) {
             texto(colX[0], y - li * 9.5, tl[li], 7.8, '#1C1B1A', false)
@@ -1073,59 +1159,62 @@ routerAdd(
         y -= 10
       }
 
-      // rodapé
-      linha(ML, 62, W - ML, 62, '#E4E0D8', 0.7)
-      texto(
-        ML,
-        48,
-        'Portal de Gestão Executivo — Extrafruti · Casafruti · FoldBox',
-        7,
-        '#6B6B68',
-        false,
-      )
-      texto(
-        ML,
-        38,
-        'Documento gerado para ciência e acompanhamento operacional',
-        7,
-        '#6B6B68',
-        false,
-      )
-      const pag = 'Página 1 de 1'
-      texto(W - ML - larguraTexto(pag, 7, false), 38, pag, 7, '#6B6B68', false)
+      // fecha a última página
+      fecharRodape(page + 1)
+      paginas.push(ops)
 
-      // montagem
-      const content = ops.join('\n')
+      // ---------- montagem multi-página ----------
+      const totalPaginas = paginas.length
       const imgsLista = dados.imagensPorEmpresa
         ? Object.keys(dados.imagensPorEmpresa).map(function (k) {
             return dados.imagensPorEmpresa[k]
           })
         : []
 
+      // numeração fixa: 1 Catálogo, 2 Páginas, 3 Fonte, 4 FonteBold,
+      // depois N objetos Page, N Contents, e por fim as imagens.
       const objs = []
-      objs.push('<< /Type /Catalog /Pages 2 0 R >>')
-      objs.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>')
+      objs.push('<< /Type /Catalog /Pages 2 0 R >>') // 1
+      objs.push('__PAGES__') // 2 (preenchido abaixo)
+      objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>') // 3
+      objs.push(
+        '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
+      ) // 4
+
+      const N = totalPaginas
+      const primeiraPage = 5
+      const primeiroContents = primeiraPage + N
+      const primeiraImagem = primeiroContents + N
 
       let xobjDict = ''
       for (let ii = 0; ii < imgsLista.length; ii++) {
-        xobjDict += '/' + imgsLista[ii].nome + ' ' + (7 + ii) + ' 0 R '
+        xobjDict += '/' + imgsLista[ii].nome + ' ' + (primeiraImagem + ii) + ' 0 R '
       }
 
-      objs.push(
-        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' +
-          W.toFixed(2) +
-          ' ' +
-          H.toFixed(2) +
-          '] ' +
-          '/Resources << /Font << /F1 4 0 R /F2 5 0 R >>' +
-          (xobjDict ? ' /XObject << ' + xobjDict + '>>' : '') +
-          ' >> /Contents 6 0 R >>',
-      )
-      objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>')
-      objs.push(
-        '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
-      )
-      objs.push('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream')
+      const kids = []
+      for (let p = 0; p < N; p++) kids.push(primeiraPage + p + ' 0 R')
+      objs[1] = '<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + N + ' >>'
+
+      for (let p = 0; p < N; p++) {
+        objs.push(
+          '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' +
+            W.toFixed(2) +
+            ' ' +
+            H.toFixed(2) +
+            '] ' +
+            '/Resources << /Font << /F1 3 0 R /F2 4 0 R >>' +
+            (xobjDict ? ' /XObject << ' + xobjDict + '>>' : '') +
+            ' >> /Contents ' +
+            (primeiroContents + p) +
+            ' 0 R >>',
+        )
+      }
+
+      for (let p = 0; p < N; p++) {
+        let content = paginas[p].join('\n')
+        content = content.replace(/__TOTAL__/g, String(N))
+        objs.push('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream')
+      }
 
       // -------------------------------------------------------------------
       // 18/11/2026 — IMAGEM EM ASCIIHEX (correção do PDF corrompido).
