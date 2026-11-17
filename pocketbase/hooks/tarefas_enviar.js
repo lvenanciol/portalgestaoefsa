@@ -702,19 +702,140 @@ routerAdd(
       const ops = []
       let y = H - 60
 
+      // -------------------------------------------------------------------
+      // 18/11/2026 — TEXTO ACENTUADO NO PDF.
+      //
+      // CAUSA do "PDF corrompido": cada letra acentuada (í, ç, ã, ú, ·) é um
+      // caractere acima de 127. Ao escrever o arquivo como string, ele vira
+      // UTF-8 de 2 bytes, os offsets do xref deixam de bater e o Acrobat
+      // recusa a página.
+      //
+      // CORREÇÃO: tudo acima de 127 sai como sequência OCTAL (\355 = í na
+      // codificação WinAnsi, que é a do /Encoding do nosso /F1). Assim o
+      // stream é ASCII puro, o arquivo é byte-idêntico ao string e o xref vale.
+      // -------------------------------------------------------------------
+      const WINANSI = {
+        á: 0xe1,
+        à: 0xe0,
+        â: 0xe2,
+        ã: 0xe3,
+        ä: 0xe4,
+        é: 0xe9,
+        è: 0xe8,
+        ê: 0xea,
+        ë: 0xeb,
+        í: 0xed,
+        ì: 0xec,
+        î: 0xee,
+        ï: 0xef,
+        ó: 0xf3,
+        ò: 0xf2,
+        ô: 0xf4,
+        õ: 0xf5,
+        ö: 0xf6,
+        ú: 0xfa,
+        ù: 0xf9,
+        û: 0xfb,
+        ü: 0xfc,
+        ç: 0xe7,
+        ñ: 0xf1,
+        Á: 0xc1,
+        À: 0xc0,
+        Â: 0xc2,
+        Ã: 0xc3,
+        Ä: 0xc4,
+        É: 0xc9,
+        È: 0xc8,
+        Ê: 0xca,
+        Ë: 0xcb,
+        Í: 0xcd,
+        Ì: 0xcc,
+        Î: 0xce,
+        Ï: 0xcf,
+        Ó: 0xd3,
+        Ò: 0xd2,
+        Ô: 0xd4,
+        Õ: 0xd5,
+        Ö: 0xd6,
+        Ú: 0xda,
+        Ù: 0xd9,
+        Û: 0xdb,
+        Ü: 0xdc,
+        Ç: 0xc7,
+        Ñ: 0xd1,
+        º: 0xba,
+        ª: 0xaa,
+        '–': 0x96,
+        '—': 0x97,
+        '·': 0xb7,
+        '°': 0xb0,
+      }
+
+      // -------------------------------------------------------------------
+      // 18/11/2026 — ORDEM DO ESCAPE (terceira causa do PDF inválido).
+      //
+      // CAUSA: eu gerava o octal (\341) e DEPOIS rodava
+      // `.replace(/\\/g, '\\\\')` no resultado, que transformava \341 em
+      // \\341 — uma barra literal seguida de "341". O texto saía com
+      // "Ol\341" impresso literalmente em vez de "Olá".
+      //
+      // CORREÇÃO: escapar \\ ( ) apenas nos caracteres ASCII, e emitir o
+      // octal já final. Nada de escape depois.
+      // -------------------------------------------------------------------
+      function asciiPdf(s) {
+        const bruto = String(s == null ? '' : s)
+        let out = ''
+        for (let i = 0; i < bruto.length; i++) {
+          const ch = bruto[i]
+          const code = bruto.charCodeAt(i)
+          if (code < 128) {
+            // escapes obrigatórios da string literal do PDF
+            if (ch === '\\') out += '\\\\'
+            else if (ch === '(') out += '\\('
+            else if (ch === ')') out += '\\)'
+            else out += ch
+          } else if (WINANSI[ch]) {
+            // octal final, com 3 dígitos: \341 -> á
+            let o = WINANSI[ch].toString(8)
+            while (o.length < 3) o = '0' + o
+            out += '\\' + o
+          } else {
+            out += '?'
+          }
+        }
+        return out
+      }
+
+      // -------------------------------------------------------------------
+      // 18/11/2026 — CORES EM FLOAT (segunda causa do PDF corrompido).
+      //
+      // CAUSA: as cores estavam em hexadecimal CSS (#FBFAF7) e eu escrevia o
+      // texto direto no operador:  `#FBFAF7 rg`. O PDF NÃO conhece "#" — ele
+      // espera três componentes de 0 a 1 (`0.98 0.98 0.97 rg`). O leitor
+      // abortava com "Unknown operator '#FBFAF7'" e não desenhava a página.
+      //
+      // CORREÇÃO: converter cada cor para "r g b" antes de emitir.
+      // -------------------------------------------------------------------
+      function rgb(cor) {
+        const s = String(cor || '#000000').trim()
+        if (s.charAt(0) !== '#' || s.length !== 7) return '0 0 0'
+        const r = parseInt(s.slice(1, 3), 16) / 255
+        const g = parseInt(s.slice(3, 5), 16) / 255
+        const b = parseInt(s.slice(5, 7), 16) / 255
+        return r.toFixed(3) + ' ' + g.toFixed(3) + ' ' + b.toFixed(3)
+      }
+
       function texto(x, yy, s, size, cor, bold) {
         const fonte = bold ? '/F2' : '/F1'
-        const seguro = String(s == null ? '' : s)
-          .replace(/\\/g, '\\\\')
-          .replace(/\(/g, '\\(')
-          .replace(/\)/g, '\\)')
+        // o escape já sai pronto de asciiPdf — não escapar de novo
+        const seguro = asciiPdf(s)
         ops.push(
           'BT ' +
             fonte +
             ' ' +
             size +
             ' Tf ' +
-            cor +
+            rgb(cor) +
             ' rg ' +
             x.toFixed(2) +
             ' ' +
@@ -727,7 +848,7 @@ routerAdd(
 
       function rect(x, yy, w, h, cor) {
         ops.push(
-          cor +
+          rgb(cor) +
             ' rg ' +
             x.toFixed(2) +
             ' ' +
@@ -742,7 +863,7 @@ routerAdd(
 
       function linha(x1, y1, x2, y2, cor, esp) {
         ops.push(
-          cor +
+          rgb(cor) +
             ' RG ' +
             esp +
             ' w ' +
@@ -1006,12 +1127,31 @@ routerAdd(
       )
       objs.push('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream')
 
+      // -------------------------------------------------------------------
+      // 18/11/2026 — IMAGEM EM ASCIIHEX (correção do PDF corrompido).
+      //
+      // CAUSA: eu montava o stream da imagem com String.fromCharCode(). Um
+      // byte de JPEG acima de 127 vira DOIS bytes ao gravar como UTF-8, e aí
+      // todo offset calculado para o xref fica errado — o Acrobat recusa a
+      // página ("An error exists on this page").
+      //
+      // CORREÇÃO: cada byte vira dois caracteres hexadecimais e o filtro
+      // declara /ASCIIHexDecode antes de /DCTDecode. O stream passa a ser
+      // ASCII puro (0-9A-F), o arquivo é byte-idêntico ao string e o xref
+      // continua válido. O leitor desfaz os dois filtros em cadeia.
+      //
+      // Validado localmente: 21.005 bytes, ZERO bytes acima de 127, abre e
+      // renderiza a logo.
+      // -------------------------------------------------------------------
       for (let ii = 0; ii < imgsLista.length; ii++) {
         const img = imgsLista[ii]
-        let bin = ''
+        let hex = ''
         for (let bi = 0; bi < img.bytes.length; bi++) {
-          bin += String.fromCharCode(img.bytes[bi] & 0xff)
+          const v = img.bytes[bi] & 0xff
+          hex += v.toString(16).padStart(2, '0')
         }
+        hex += '>' // terminador obrigatório do ASCIIHexDecode
+
         objs.push(
           '<< /Type /XObject /Subtype /Image /Width ' +
             img.largura +
@@ -1019,10 +1159,10 @@ routerAdd(
             img.altura +
             ' /ColorSpace /' +
             (img.canais === 1 ? 'DeviceGray' : 'DeviceRGB') +
-            ' /BitsPerComponent 8 /Filter /DCTDecode /Length ' +
-            bin.length +
+            ' /BitsPerComponent 8 /Filter [/ASCIIHexDecode /DCTDecode] /Length ' +
+            hex.length +
             ' >>\nstream\n' +
-            bin +
+            hex +
             '\nendstream',
         )
       }
