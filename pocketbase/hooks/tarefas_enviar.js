@@ -99,9 +99,11 @@ routerAdd(
 
     if (!listaFinalTarefas.length) {
       return e.json(200, {
+        ok: false,
         success: false,
         erro: 'Nenhuma tarefa ativa para envio.',
-        enviados: [],
+        enviados: 0,
+        enviados_lista: [],
         erros: [],
       })
     }
@@ -1148,9 +1150,21 @@ routerAdd(
       }
     }
 
+    // 18/11/2026 — CONTRATO DE RESPOSTA.
+    //
+    // O popover lê `res.ok` e `res.enviados`. Eu devolvia `success`, então o
+    // envio acontecia (o log mostra "enviado para ...") e a tela exibia
+    // "Falha no envio" mesmo com tudo certo.
+    //
+    // Devolvo os DOIS nomes para não quebrar nenhum consumidor:
+    //   ok / success  → booleano de sucesso
+    //   enviados      → QUANTIDADE de envios (o popover usa em `${res.enviados}`)
+    //   enviados_lista → detalhe por destinatário
     return e.json(200, {
+      ok: enviados.length > 0,
       success: enviados.length > 0,
-      enviados: enviados,
+      enviados: enviados.length,
+      enviados_lista: enviados,
       erros: erros,
       total_tarefas: listaFinalTarefas.length,
       pdf_gerado: !!pdfStr,
