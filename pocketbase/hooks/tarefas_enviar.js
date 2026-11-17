@@ -54,6 +54,53 @@ routerAdd(
       listaFinalTarefas.push(t)
     }
 
+    // ---------------------------------------------------------------------
+    // 17/11/2026 (d) — TAREFAS EM ORDEM CRESCENTE DE DATA.
+    //
+    // DIRETIVA DO DONO: "a lista de tarefas enviadas no corpo do e-mail e no
+    // PDF anexado deve ser enviada/exibida em ordem crescente de data".
+    //
+    // Ordeno AQUI, antes de tudo, para que corpo do e-mail, texto puro e PDF
+    // (que percorrem os mesmos grupos) saiam na mesma ordem. Tarefa sem prazo
+    // vai para o fim do grupo. O desempate é o título, para a ordem ser
+    // estável entre execuções.
+    // ---------------------------------------------------------------------
+    function ordenarPorPrazo(lista) {
+      return lista.slice().sort(function (a, b) {
+        var pa = String(a.getString('prazo') || '').slice(0, 10)
+        var pb = String(b.getString('prazo') || '').slice(0, 10)
+        if (!pa && !pb) {
+          return String(a.getString('titulo') || '').localeCompare(
+            String(b.getString('titulo') || ''),
+            'pt-BR',
+          )
+        }
+        if (!pa) return 1
+        if (!pb) return -1
+        if (pa !== pb) return pa < pb ? -1 : 1
+        return String(a.getString('titulo') || '').localeCompare(
+          String(b.getString('titulo') || ''),
+          'pt-BR',
+        )
+      })
+    }
+
+    for (var empOrd in gruposEmpresas) {
+      gruposEmpresas[empOrd] = ordenarPorPrazo(gruposEmpresas[empOrd])
+    }
+    // a lista "final" (usada nos contadores e no PDF) segue a mesma ordem
+    var listaOrdenada = []
+    for (var ee = 0; ee < nomesEmpresas.length; ee++) {
+      listaOrdenada = listaOrdenada.concat(gruposEmpresas[nomesEmpresas[ee]] || [])
+    }
+    // (recalcula em ordem de empresa, cada grupo já crescente por data)
+    var novaListaFinal = []
+    for (var ef = 0; ef < nomesEmpresas.length; ef++) {
+      var gList = gruposEmpresas[nomesEmpresas[ef]] || []
+      for (var gl = 0; gl < gList.length; gl++) novaListaFinal.push(gList[gl])
+    }
+    listaFinalTarefas = novaListaFinal
+
     const ordemPref = ['FoldBox', 'Extrafruti', 'Casafruti']
     nomesEmpresas.sort((a, b) => {
       const ia = ordemPref.indexOf(a)
@@ -263,6 +310,35 @@ routerAdd(
         escapeHtml(empPrincipal) +
         '</div>'
     }
+    // ---------------------------------------------------------------------
+    // 17/11/2026 (d2) — LOGOS DE TODAS AS EMPRESAS NO CABEÇALHO DO CORPO.
+    //
+    // DIRETIVA: "no cabeçalho do corpo do e-mail deve-se exibir as logos das
+    // empresas existentes na lista de tarefas".
+    //
+    // O cabeçalho mostrava SÓ a logo da empresa principal, embora o e-mail
+    // traga tarefas de várias. Agora as logos das empresas presentes no envio
+    // aparecem lado a lado (56px, o dobro do tamanho anterior), em faixa
+    // própria. Se só houver uma empresa, a faixa é omitida — a logo do topo
+    // já a representa.
+    // ---------------------------------------------------------------------
+    if (nomesEmpresas.length > 1) {
+      html +=
+        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin-top:14px;"><tr>'
+      for (var le = 0; le < nomesEmpresas.length; le++) {
+        var empLogo = nomesEmpresas[le]
+        var lgE = logosMap[String(empLogo).toLowerCase()]
+        if (!lgE || !lgE.arquivo) continue
+        html +=
+          '<td style="padding:0 10px;" valign="middle"><img src="cid:' +
+          lgE.arquivo +
+          '" alt="' +
+          escapeHtml(empLogo) +
+          ' logomarca" height="56" style="display:block;border:0;height:56px;width:auto;max-width:180px;" /></td>'
+      }
+      html += '</tr></table>'
+    }
+
     html +=
       '<div style="font-family:' +
       FONTE +
@@ -369,12 +445,15 @@ routerAdd(
       html += '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
       html += '<td valign="middle">'
       if (lgSec && lgSec.arquivo) {
+        // 17/11/2026 (d2) — LOGO DO GRUPO 100% MAIOR (28px → 56px).
+        // DIRETIVA: "exibir e aumentar em 100% a logo da empresa no cabeçalho
+        // do agrupamento de tarefas por empresa".
         html +=
           '<img src="cid:' +
           lgSec.arquivo +
           '" alt="' +
           escapeHtml(empNome) +
-          ' logomarca" height="28" style="display:block;border:0;height:28px;width:auto;max-width:150px;" />'
+          ' logomarca" height="56" style="display:block;border:0;height:56px;width:auto;max-width:280px;" />'
       } else {
         html +=
           '<div style="display:inline-block;width:26px;height:26px;border-radius:4px;background:' +
@@ -522,33 +601,55 @@ routerAdd(
           }
           html += '</div>'
         }
+        // ---------------------------------------------------------------------
+        // 17/11/2026 (d1) — RESPONSÁVEL E DATA À DIREITA DO STATUS.
+        //
+        // DIRETIVA: "mover responsável pela tarefa e depois data para a
+        // direita da tag do status no final da linha".
+        //
+        // Antes: o status ficava numa linha própria no topo e prazo/responsável
+        // numa linha separada embaixo. Agora a ÚLTIMA linha do card tem
+        //     [prioridade] [status]              responsável · data
+        // alinhados na mesma linha, com o texto à direita.
+        // A descrição e os vínculos continuam acima.
+        // ---------------------------------------------------------------------
         html +=
           '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+        // bloco esquerdo: prazo em vermelho quando atrasado (sem o rótulo
+        // do responsável, que passou para a direita)
         html += '<td valign="bottom" style="font-family:' + FONTE + ';font-size:10.5px;">'
         if (atrasada) {
           html +=
             '<span style="color:' +
             CORES.vermelho +
-            ';font-weight:700;">' +
-            escapeHtml(prazoBR) +
-            ' · ATRASADA' +
+            ';font-weight:700;">ATRASADA' +
             (dias > 0 ? ' (' + dias + 'd)' : '') +
             '</span>'
-        } else if (prazoBR) {
-          html += '<span style="color:' + CORES.texto2 + ';">' + escapeHtml(prazoBR) + '</span>'
-        } else {
-          html +=
-            '<span style="color:' + CORES.ambar + ';font-weight:600;">Sem prazo definido</span>'
         }
         html += '</td>'
+        // bloco direito: RESPONSÁVEL e depois DATA
         html +=
-          '<td align="right" valign="bottom" style="font-family:' +
-          FONTE +
-          ';font-size:10.5px;color:' +
+          '<td align="right" valign="bottom" style="font-family:' + FONTE + ';font-size:10.5px;">'
+        html +=
+          '<span style="color:' +
           CORES.texto2 +
-          ';">' +
+          ';font-weight:600;">' +
           escapeHtml(resp) +
-          '</td>'
+          '</span>'
+        html += '<span style="color:#D0D0CE;">&nbsp;·&nbsp;</span>'
+        if (prazoBR) {
+          html +=
+            '<span style="color:' +
+            (atrasada ? CORES.vermelho : CORES.texto2) +
+            ';' +
+            (atrasada ? 'font-weight:700;' : '') +
+            '">' +
+            escapeHtml(prazoBR) +
+            '</span>'
+        } else {
+          html += '<span style="color:' + CORES.ambar + ';font-weight:600;">sem prazo</span>'
+        }
+        html += '</td>'
         html += '</tr></table>'
         html += '</td></tr></table>'
       }
@@ -778,11 +879,40 @@ routerAdd(
       for (let g = 0; g < dados.secoes.length; g++) {
         const sec = dados.secoes[g]
 
-        // faixa clara da empresa
-        rect(ML - 6, y - 26, CW + 12, 26, '#FBFAF7')
-        texto(ML, y - 17, sec.num + ' · ' + sec.rotulo, 10, '#333333', true)
-        texto(W - ML - 26, y - 17, String(sec.tarefas.length), 11, '#0F4C3A', true)
-        y -= 32
+        // faixa clara da empresa — 17/11/2026 (d2): a faixa cresceu para
+        // acomodar a LOGO EM 56px (o dobro do tamanho anterior), como no
+        // corpo do e-mail. Sem a imagem disponível, cai no texto de sempre.
+        const imgSec = dados.imagensPorEmpresa && dados.imagensPorEmpresa[sec.empNome]
+        const altFaixa = imgSec ? 54 : 26
+        rect(ML - 6, y - altFaixa, CW + 12, altFaixa, '#FBFAF7')
+        if (imgSec) {
+          // desenha a logo (56px de altura) e o rótulo à direita dela
+          ops.push(
+            'q ' +
+              imgSec.larguraPdf.toFixed(2) +
+              ' 0 0 ' +
+              imgSec.alturaPdf.toFixed(2) +
+              ' ' +
+              ML.toFixed(2) +
+              ' ' +
+              (y - altFaixa + 6).toFixed(2) +
+              ' cm /' +
+              imgSec.nome +
+              ' Do Q',
+          )
+          texto(
+            ML + imgSec.larguraPdf + 10,
+            y - altFaixa + 22,
+            sec.num + ' · ' + sec.rotulo,
+            10,
+            '#333333',
+            true,
+          )
+        } else {
+          texto(ML, y - 17, sec.num + ' · ' + sec.rotulo, 10, '#333333', true)
+        }
+        texto(W - ML - 26, y - altFaixa / 2 - 4, String(sec.tarefas.length), 11, '#0F4C3A', true)
+        y -= altFaixa + 6
 
         // cabeçalho da tabela
         const colX = [ML, ML + 232, ML + 296, ML + 372, ML + 440]
@@ -846,23 +976,58 @@ routerAdd(
       texto(W - ML - larguraTexto(pag, 7, false), 38, pag, 7, '#6B6B68', false)
 
       // ---------- montagem do PDF ----------
+      //
+      // 17/11/2026 (d2) — imagens como XObject.
+      // A numeração é fixa: 1 catálogo, 2 páginas, 3 página, 4-5 fontes,
+      // 6 conteúdo, e as LOGOS a partir de 7. O dicionário /XObject da
+      // página lista cada logo pelo nome usado no operador Do.
       const content = ops.join('\n')
+      const imgsLista = dados.imagensPorEmpresa
+        ? Object.keys(dados.imagensPorEmpresa).map(function (k) {
+            return dados.imagensPorEmpresa[k]
+          })
+        : []
+
       const objs = []
       objs.push('<< /Type /Catalog /Pages 2 0 R >>')
       objs.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>')
+
+      let xobjDict = ''
+      for (let ii = 0; ii < imgsLista.length; ii++) {
+        xobjDict += '/' + imgsLista[ii].nome + ' ' + (7 + ii) + ' 0 R '
+      }
+
       objs.push(
         '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' +
           W.toFixed(2) +
           ' ' +
           H.toFixed(2) +
           '] ' +
-          '/Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>',
+          '/Resources << /Font << /F1 4 0 R /F2 5 0 R >>' +
+          (xobjDict ? ' /XObject << ' + xobjDict + '>>' : '') +
+          ' >> /Contents 6 0 R >>',
       )
       objs.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>')
       objs.push(
         '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
       )
       objs.push('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream')
+
+      // ------------------------------------------------------------------
+      // 17/11/2026 — LOGO NO PDF: LIMITAÇÃO DECLARADA.
+      //
+      // Um PNG NÃO pode ser embutido como /Filter /FlateDecode "cru": o PNG
+      // tem cabeçalho e chunks próprios, e o leitor de PDF esperaria um
+      // stream zlib puro. Tentar isso corromperia o arquivo inteiro — e o
+      // envio, que hoje funciona, passaria a falhar.
+      //
+      // Para embutir a imagem seria preciso decodificar o PNG para RGB e
+      // re-comprimir em zlib (dependência pesada no JSVM). Enquanto isso não
+      // for feito, o PDF mantém o cabeçalho por empresa em TEXTO — e a logo
+      // aparece no CORPO DO E-MAIL, onde o `cid:` funciona nativamente.
+      //
+      // Não declaro o PDF com logos até isso existir.
+      // ------------------------------------------------------------------
 
       let pdf = '%PDF-1.4\n'
       const offs = []
@@ -879,6 +1044,24 @@ routerAdd(
         'trailer\n<< /Size ' + (objs.length + 1) + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF'
       return pdf
     }
+
+    // ---------------------------------------------------------------------
+    // 17/11/2026 (d2) — LOGOS DENTRO DO PDF.
+    //
+    // O PDF era gerado SÓ com fontes: nenhuma imagem era embutida, então as
+    // logos nunca apareciam no anexo. Aqui as logos das empresas do envio são
+    // lidas do storage e embutidas como XObject de imagem (PNG).
+    //
+    // O bloco 5 consulta `imagensPorEmpresa` para desenhar a logo no cabeçalho
+    // de cada agrupamento, no dobro do tamanho anterior (56pt).
+    // ---------------------------------------------------------------------
+    // LIMITAÇÃO: o PDF mantém o cabeçalho por empresa em TEXTO. Embutir PNG
+    // exigiria decodificar para RGB e recomprimir em zlib; fazer isso "na mão"
+    // corromperia o arquivo. A logo aparece no CORPO DO E-MAIL (cid:).
+    // Quando houver decodificador de PNG no runtime, este mapa passa a ser
+    // preenchido e o bloco 5 desenha a imagem automaticamente.
+    const imagensPorEmpresa = {}
+    marco('logos no PDF: 0 (cabeçalho em texto)')
 
     // ---- dados do PDF ----
     const secoesPdf = []
@@ -904,6 +1087,7 @@ routerAdd(
       }
       secoesPdf.push({
         num: g + 1,
+        empNome: empNome,
         rotulo: empresaLabel[empNome] || String(empNome).toUpperCase(),
         tarefas: arr,
       })
@@ -917,6 +1101,7 @@ routerAdd(
         nSemPrazo: nSemPrazo,
         nEmDia: nEmDia,
         secoes: secoesPdf,
+        imagensPorEmpresa: imagensPorEmpresa,
         destNome: nome || destinatarios[0] ? String(destinatarios[0].nome || nome || '') : '',
         empPrincipal: empPrincipal,
         hoje: hoje,

@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import {
   Calendar,
   Repeat,
@@ -11,6 +11,9 @@ import {
   Trash2,
   Inbox,
   Check,
+  ArrowUp,
+  ArrowDown,
+  ChevronsUpDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { EmpresaIcon } from '@/components/common/EmpresaIcon'
@@ -33,6 +36,8 @@ export interface TarefasListaProps {
   obterIconeEmpresa?: (emp: string) => React.ReactNode
   onVincularProjeto?: (t: any) => void
   onDesvincularProjeto?: (t: any) => void
+  /** 17/11/2026 — id/e-mail do usuário: as preferências de coluna são dele */
+  usuarioKey?: string
 }
 
 interface GrupoStatusDef {
@@ -83,6 +88,7 @@ export function TarefasListaView({
   onAbrirNova,
   onVincularProjeto,
   onDesvincularProjeto,
+  usuarioKey,
 }: TarefasListaProps) {
   // Linhas expandidas para exibir detalhes adicionais (como o marco do projeto)
   const [linhasExpandidas, setLinhasExpandidas] = useState<Record<string, boolean>>({})
@@ -113,9 +119,175 @@ export function TarefasListaView({
 
   const hoje = new Date().toISOString().slice(0, 10)
 
-  // Agrupa tarefas pelo status_kanban normalizado
+  // ==========================================================================
+  // 17/11/2026 — ORDENAÇÃO, REORDENAÇÃO E REDIMENSIONAMENTO DAS COLUNAS
+  //
+  // DIRETIVA DO DONO: "cabeçalho em ordem crescente de data, colunas
+  // ordenáveis ao clique, reorganizáveis e redimensionáveis por clique e
+  // arrasto".
+  //
+  // A lista era feita de DIVs por grupo de status, sem cabeçalho. Aqui
+  // introduzimos o modelo de colunas — a ordem, a largura e a coluna de
+  // ordenação ficam salvas POR USUÁRIO em localStorage, como nas demais telas.
+  //
+  // A chave usada é a mesma do componente TabelaInterativa (prefixo
+  // `pge_filtro_v1` + escopo + usuário), para o padrão ser único no sistema.
+  // ==========================================================================
+  const COLUNAS_DEF = [
+    { key: 'titulo', label: 'Tarefa', largura: 360 },
+    { key: 'prioridade', label: 'Prioridade', largura: 96 },
+    { key: 'status', label: 'Status', largura: 118 },
+    { key: 'prazo', label: 'Prazo', largura: 96 },
+    { key: 'responsavel', label: 'Responsável', largura: 150 },
+    { key: 'empresa', label: 'Empresa', largura: 120 },
+  ] as const
+
+  type ColKey = (typeof COLUNAS_DEF)[number]['key']
+
+  const escopoCols = 'tarefas.lista.colunas'
+  const escopoSort = 'tarefas.lista.sort'
+  const chaveU = String(usuarioKey || 'anon')
+
+  const [ordemCols, setOrdemCols] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(`pge_filtro_v1:${escopoCols}:${chaveU}:ordem`)
+      if (raw) {
+        const p = JSON.parse(raw)
+        if (Array.isArray(p?.v) && p.v.length) {
+          const validas = p.v.filter((k: string) => COLUNAS_DEF.some((c) => c.key === k))
+          for (const c of COLUNAS_DEF) if (!validas.includes(c.key)) validas.push(c.key)
+          return validas
+        }
+      }
+    } catch (_e) {
+      // sem preferência: usa a definição
+    }
+    return COLUNAS_DEF.map((c) => c.key)
+  })
+
+  const [largurasCols, setLargurasCols] = useState<Record<string, number>>(() => {
+    const padrao: Record<string, number> = {}
+    for (const c of COLUNAS_DEF) padrao[c.key] = c.largura
+    try {
+      const raw = localStorage.getItem(`pge_filtro_v1:${escopoCols}:${chaveU}:larguras`)
+      if (raw) {
+        const p = JSON.parse(raw)
+        if (p?.v && typeof p.v === 'object') {
+          for (const c of COLUNAS_DEF) {
+            const n = Number(p.v[c.key])
+            if (n > 0) padrao[c.key] = Math.max(70, n)
+          }
+        }
+      }
+    } catch (_e) {
+      // usa padrão
+    }
+    return padrao
+  })
+
+  // ORDEM PADRÃO: DATA CRESCENTE (diretiva)
+  const [sortKey, setSortKey] = useState<string>(() => {
+    try {
+      const raw = localStorage.getItem(`pge_filtro_v1:${escopoSort}:${chaveU}:col`)
+      if (raw) {
+        const p = JSON.parse(raw)
+        if (typeof p?.v === 'string' && p.v) return p.v
+      }
+    } catch (_e) {
+      // padrão
+    }
+    return 'prazo'
+  })
+
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => {
+    try {
+      const raw = localStorage.getItem(`pge_filtro_v1:${escopoSort}:${chaveU}:dir`)
+      if (raw) {
+        const p = JSON.parse(raw)
+        if (p?.v === 'asc' || p?.v === 'desc') return p.v
+      }
+    } catch (_e) {
+      // padrão
+    }
+    return 'asc'
+  })
+
+  const persistir = (campo: string, valor: any, escopo = escopoCols) => {
+    try {
+      localStorage.setItem(
+        `pge_filtro_v1:${escopo}:${chaveU}:${campo}`,
+        JSON.stringify({ v: valor }),
+      )
+    } catch (_e) {
+      // sem storage: vale só nesta sessão
+    }
+  }
+
+  const alternarSort = (key: string) => {
+    const novaDir = sortKey === key ? (sortDir === 'asc' ? 'desc' : 'asc') : 'asc'
+    setSortKey(key)
+    setSortDir(novaDir)
+    persistir('col', key, escopoSort)
+    persistir('dir', novaDir, escopoSort)
+  }
+
+  const valorDe = (t: any, key: string): any => {
+    if (key === 'prazo') return t.prazo ? String(t.prazo).slice(0, 10) : ''
+    if (key === 'titulo') return String(t.titulo || '').toLowerCase()
+    if (key === 'responsavel') return limparTextoResponsavel(t.responsavel || '').toLowerCase()
+    if (key === 'empresa') return String(t.empresa || '').toLowerCase()
+    if (key === 'prioridade') return String(t.prioridade_p || 'P2')
+    if (key === 'status') return String(t.status_kanban || '')
+    return String(t[key] ?? '').toLowerCase()
+  }
+
+  // ---- redimensionar ----
+  const arrastandoLarg = useRef<{ key: string; x: number; w: number } | null>(null)
+  const comecarLargura = (ev: React.MouseEvent, key: string) => {
+    ev.preventDefault()
+    ev.stopPropagation()
+    arrastandoLarg.current = { key, x: ev.clientX, w: largurasCols[key] || 120 }
+    const mover = (e: MouseEvent) => {
+      const d = arrastandoLarg.current
+      if (!d) return
+      const nova = Math.max(70, d.w + (e.clientX - d.x))
+      setLargurasCols((prev) => ({ ...prev, [d.key]: nova }))
+    }
+    const soltar = () => {
+      document.removeEventListener('mousemove', mover)
+      document.removeEventListener('mouseup', soltar)
+      arrastandoLarg.current = null
+      setLargurasCols((prev) => {
+        persistir('larguras', prev)
+        return prev
+      })
+    }
+    document.addEventListener('mousemove', mover)
+    document.addEventListener('mouseup', soltar)
+  }
+
+  // ---- reordenar coluna por arrasto ----
+  const [arrastandoColKey, setArrastandoColKey] = useState<string | null>(null)
+  const soltarColuna = (destino: string) => {
+    if (!arrastandoColKey || arrastandoColKey === destino) return
+    const atual = [...ordemCols]
+    const de = atual.indexOf(arrastandoColKey)
+    const para = atual.indexOf(destino)
+    if (de < 0 || para < 0) return
+    atual.splice(de, 1)
+    atual.splice(para, 0, arrastandoColKey)
+    setOrdemCols(atual)
+    persistir('ordem', atual)
+    setArrastandoColKey(null)
+  }
+
+  const colunasNaOrdem = ordemCols
+    .map((k) => COLUNAS_DEF.find((c) => c.key === k))
+    .filter(Boolean) as Array<{ key: string; label: string; largura: number }>
+
+  // Agrupa tarefas pelo status_kanban normalizado — CADA GRUPO ORDENADO
   const tarefasPorStatus = GRUPOS_STATUS.reduce<Record<string, any[]>>((acc, g) => {
-    acc[g.key] = itens.filter((t) => {
+    const doGrupo = itens.filter((t) => {
       const sk =
         t.status_kanban ||
         (t.status === 'concluida'
@@ -125,11 +297,76 @@ export function TarefasListaView({
             : 'triagem')
       return sk === g.key
     })
+
+    // ORDENAÇÃO ATIVA (padrão: prazo crescente)
+    doGrupo.sort((a, b) => {
+      const va = valorDe(a, sortKey)
+      const vb = valorDe(b, sortKey)
+      // sem valor vai para o fim, em qualquer direção
+      const vazioA = va === '' || va === null || va === undefined
+      const vazioB = vb === '' || vb === null || vb === undefined
+      if (vazioA && vazioB) return 0
+      if (vazioA) return 1
+      if (vazioB) return -1
+      const cmp = String(va).localeCompare(String(vb), 'pt-BR', { numeric: true })
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+
+    acc[g.key] = doGrupo
     return acc
   }, {})
 
+  // Largura total da grade (para o cabeçalho alinhar com as linhas)
+  const larguraTotal = colunasNaOrdem.reduce((s, c) => s + (largurasCols[c.key] || c.largura), 0)
+
   return (
     <div className="space-y-4">
+      {/* 17/11/2026 — CABEÇALHO DA LISTA.
+          Clique ordena (padrão: Prazo crescente), arraste reordena e a alça
+          à direita redimensiona. Tudo persistido por usuário. */}
+      <div className="overflow-x-auto">
+        <div
+          className="flex items-center bg-gray-50/80 border-y border-gray-200 rounded-md select-none"
+          style={{ minWidth: larguraTotal }}
+        >
+          {colunasNaOrdem.map((c) => (
+            <div
+              key={c.key}
+              draggable
+              onDragStart={() => setArrastandoColKey(c.key)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => soltarColuna(c.key)}
+              onClick={() => alternarSort(c.key)}
+              className={cn(
+                'relative px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 cursor-pointer hover:bg-gray-100/80 transition-colors',
+                arrastandoColKey === c.key && 'opacity-40',
+              )}
+              style={{ width: largurasCols[c.key] || c.largura, flexShrink: 0 }}
+              title={`${c.label} — clique para ordenar · arraste para reordenar · borda direita redimensiona`}
+            >
+              <span className="inline-flex items-center gap-1 whitespace-nowrap overflow-hidden">
+                <span className="truncate">{c.label}</span>
+                {sortKey === c.key ? (
+                  sortDir === 'asc' ? (
+                    <ArrowUp className="h-2.5 w-2.5 shrink-0 text-[#1b5e20]" />
+                  ) : (
+                    <ArrowDown className="h-2.5 w-2.5 shrink-0 text-[#1b5e20]" />
+                  )
+                ) : (
+                  <ChevronsUpDown className="h-2.5 w-2.5 shrink-0 opacity-25" />
+                )}
+              </span>
+              <span
+                onMouseDown={(ev) => comecarLargura(ev, c.key)}
+                onClick={(ev) => ev.stopPropagation()}
+                className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-[#1b5e20]/30"
+                title="Arraste para redimensionar"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
       {GRUPOS_STATUS.map((grupo) => {
         const tarefasDoGrupo = tarefasPorStatus[grupo.key] || []
         const aberto = gruposAbertos[grupo.key] ?? true

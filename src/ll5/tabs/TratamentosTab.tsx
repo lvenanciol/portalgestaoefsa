@@ -58,6 +58,7 @@ import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
 import { useLl5 } from '@/ll5/Ll5Context'
 import { listar, criar, atualizar, excluirLogico, excluirFisico } from '@/ll5/repo'
+import { useFiltroPersistente } from '@/hooks/use-filtro-persistente'
 import ParecerIaCard from '@/ll5/ParecerIaCard'
 import TabelaInterativa from './TabelaInterativa'
 import RangeCalendario from './RangeCalendario'
@@ -182,9 +183,27 @@ export default function TratamentosTab({ aba }: { aba: any }) {
   const [usuarios, setUsuarios] = useState<any[]>([])
   const [carregando, setCarregando] = useState(true)
 
-  const [busca, setBusca] = useState('')
-  const [fTipo, setFTipo] = useState('todos')
-  const [fStatus, setFStatus] = useState('todos')
+  // 17/11/2026 — FILTROS PERSISTIDOS POR USUÁRIO (diretiva do dono).
+  // Ao reabrir a tela, o último filtro aplicado volta como estava.
+  const chaveUsuario = String(ator?.id || ator?.email || '')
+  const [busca, setBusca] = useFiltroPersistente<string>(
+    'll5.tratamentos',
+    'busca',
+    '',
+    chaveUsuario,
+  )
+  const [fTipo, setFTipo] = useFiltroPersistente<string>(
+    'll5.tratamentos',
+    'tipo',
+    'todos',
+    chaveUsuario,
+  )
+  const [fStatus, setFStatus] = useFiltroPersistente<string>(
+    'll5.tratamentos',
+    'status',
+    'todos',
+    chaveUsuario,
+  )
 
   const [parecerAberto, setParecerAberto] = useState(false)
   const [novoOpen, setNovoOpen] = useState(false)
@@ -2168,6 +2187,8 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             id="tratamentos.sessoes"
             dados={linhas}
             onLinhaClique={(r) => abrirEdicao(r)}
+            // 17/11/2026 — abre em ORDEM CRESCENTE DE DATA (diretiva do dono)
+            ordemInicial={{ key: '_dataSessao', dir: 'asc' }}
             colunas={[
               {
                 key: '_dataSessao',

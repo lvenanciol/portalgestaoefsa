@@ -1731,6 +1731,7 @@ export default function TarefasKanbanPage() {
           obterIconeEmpresa={obterIconeEmpresa}
           onVincularProjeto={abrirVincularProjeto}
           onDesvincularProjeto={abrirDesvincularProjeto}
+          usuarioKey={String((user as any)?.id || (user as any)?.email || '')}
         />
       )}
 
@@ -1745,7 +1746,22 @@ export default function TarefasKanbanPage() {
             const isEmAndamento = col.key === 'em_andamento'
             const isOver = colunaHover === col.key && arrastandoTarefa?.status_kanban !== col.key
 
-            const cards = itensLista.filter((t) => (t.status_kanban || 'triagem') === col.key)
+            // 17/11/2026 — (c) CARDS EM ORDEM CRESCENTE DE DATA.
+            // O filtro não ordenava nada: os cards saíam na ordem do array
+            // carregado (mais recente primeiro). Agora cada coluna é ordenada
+            // pelo prazo, do mais antigo para o mais novo; tarefa sem prazo
+            // vai para o fim da coluna.
+            const cards = itensLista
+              .filter((t) => (t.status_kanban || 'triagem') === col.key)
+              .slice()
+              .sort((a: any, b: any) => {
+                const pa = a.prazo ? String(a.prazo).slice(0, 10) : ''
+                const pb = b.prazo ? String(b.prazo).slice(0, 10) : ''
+                if (!pa && !pb) return 0
+                if (!pa) return 1
+                if (!pb) return -1
+                return pa.localeCompare(pb)
+              })
 
             return (
               <div

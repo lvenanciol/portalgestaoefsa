@@ -48,6 +48,12 @@ interface Props {
   vazio?: React.ReactNode
   /** f) clique na linha (15/11/2026) — abre o detalhe do registro */
   onLinhaClique?: (row: any) => void
+  /**
+   * 17/11/2026 — ORDEM PADRÃO (diretiva do dono: "cabeçalho em ordem
+   * crescente de data"). Aplicada enquanto o usuário não clicar numa coluna;
+   * a escolha dele passa a valer e é persistida.
+   */
+  ordemInicial?: { key: string; dir: 'asc' | 'desc' }
 }
 
 // 15/11/2026 — mínimo por coluna calculado do RÓTULO, não um valor fixo.
@@ -62,8 +68,10 @@ export default function TabelaInterativa({
   limite,
   vazio,
   onLinhaClique,
+  ordemInicial,
 }: Props) {
   const STORAGE = 'll5_tabela_' + id
+  const STORAGE_SORT = STORAGE + '_sort'
 
   // ordem das colunas + larguras, persistidas
   const [estado, setEstado] = useState<{ ordem: string[]; larguras: Record<string, number> }>(
@@ -102,7 +110,26 @@ export default function TabelaInterativa({
     },
   )
 
-  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: '', dir: 'asc' })
+  // 17/11/2026 — ORDENAÇÃO PERSISTIDA POR USUÁRIO.
+  //
+  // Ordem de resolução:
+  //   1. o que o usuário escolheu e está salvo (localStorage)
+  //   2. `ordemInicial` passada pela tela (padrão: data crescente)
+  // Assim a tabela abre SEMPRE crescente por data, e respeita o clique dele.
+  const [sort, setSort] = useState<{ key: string; dir: 'asc' | 'desc' }>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_SORT)
+      if (raw) {
+        const p = JSON.parse(raw)
+        if (p && typeof p.key === 'string' && p.key) {
+          return { key: p.key, dir: p.dir === 'desc' ? 'desc' : 'asc' }
+        }
+      }
+    } catch (_e) {
+      // preferência corrompida: cai no padrão
+    }
+    return ordemInicial || { key: '', dir: 'asc' }
+  })
 
   const salvar = (novo: typeof estado) => {
     setEstado(novo)
@@ -205,9 +232,16 @@ export default function TabelaInterativa({
   }, [dados, sort, colunas, limite])
 
   const alternarSort = (key: string) => {
-    setSort((s) =>
-      s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
-    )
+    setSort((s) => {
+      const novo =
+        s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }
+      try {
+        localStorage.setItem(STORAGE_SORT, JSON.stringify(novo))
+      } catch (_e) {
+        // sem persistência: vale só nesta sessão
+      }
+      return novo as { key: string; dir: 'asc' | 'desc' }
+    })
   }
 
   // ---- redimensionar ----
