@@ -1432,14 +1432,44 @@ export function TarefaDetalheModal({
                 <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
                   PROPRIEDADES
                 </span>
-                <button
-                  type="button"
-                  onClick={() => (editandoInline ? salvarInline() : abrirEdicaoInline())}
-                  className="text-[11px] text-[#1B5E20] font-semibold hover:underline"
-                >
-                  {editandoInline ? 'Salvar' : 'Editar tudo'}
-                </button>
+                <div className="flex items-center gap-3">
+                  {editandoInline && (
+                    <button
+                      type="button"
+                      onClick={() => setEditandoInline(false)}
+                      disabled={inlineSalvando}
+                      className="text-[11px] text-gray-500 font-semibold hover:underline"
+                    >
+                      Cancelar
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => (editandoInline ? salvarInline() : abrirEdicaoInline())}
+                    disabled={inlineSalvando}
+                    className="text-[11px] text-[#1B5E20] font-semibold hover:underline flex items-center gap-1"
+                  >
+                    {inlineSalvando && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {editandoInline ? 'Salvar' : 'Editar tudo'}
+                  </button>
+                </div>
               </div>
+
+              {/* erro do salvamento inline, visível acima dos campos */}
+              {inlineErro && (
+                <div className="mb-2 text-[11px] text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1">
+                  {inlineErro}
+                </div>
+              )}
+
+              {/* sugestões de empresa para o campo de edição */}
+              <datalist id="empresas-sugeridas">
+                <option value="FoldBox" />
+                <option value="Extrafruti" />
+                <option value="Casafruti" />
+                <option value="LL5" />
+                <option value="Geral" />
+              </datalist>
 
               <div className="space-y-1.5 text-xs">
                 {/* Empresa */}
@@ -1447,18 +1477,28 @@ export function TarefaDetalheModal({
                   <span className="flex items-center gap-1.5 text-gray-500">
                     <Building2 className="h-3.5 w-3.5 text-gray-400" /> Empresa
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => (editandoInline ? salvarInline() : abrirEdicaoInline())}
-                    className="flex items-center gap-1.5 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline max-w-[170px] truncate"
-                    title="Editar os dados da tarefa aqui mesmo"
-                  >
-                    {detalhe.empresa ? (
-                      <EmpresaIcon nome={detalhe.empresa} className="h-3.5 w-3.5 shrink-0" />
-                    ) : null}
-                    <span className="truncate">{nomeEmpresa}</span>
-                    <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
-                  </button>
+                  {editandoInline ? (
+                    <input
+                      list="empresas-sugeridas"
+                      value={campos.empresa}
+                      onChange={(e) => setCampos({ ...campos, empresa: e.target.value })}
+                      placeholder="Empresa"
+                      className="w-[170px] h-7 rounded border border-gray-300 px-2 text-[11px] text-right focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/25"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => abrirEdicaoInline()}
+                      className="flex items-center gap-1.5 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline max-w-[170px] truncate"
+                      title="Editar os dados da tarefa aqui mesmo"
+                    >
+                      {detalhe.empresa ? (
+                        <EmpresaIcon nome={detalhe.empresa} className="h-3.5 w-3.5 shrink-0" />
+                      ) : null}
+                      <span className="truncate">{nomeEmpresa}</span>
+                      <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Responsável */}
@@ -1466,15 +1506,24 @@ export function TarefaDetalheModal({
                   <span className="flex items-center gap-1.5 text-gray-500">
                     <User className="h-3.5 w-3.5 text-gray-400" /> Responsável
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => onEditar(detalhe)}
-                    className="flex items-center gap-1 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline max-w-[170px] truncate"
-                    title="Editar responsável"
-                  >
-                    <span className="truncate">{responsavelNome}</span>
-                    <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
-                  </button>
+                  {editandoInline ? (
+                    <input
+                      value={campos.responsavel}
+                      onChange={(e) => setCampos({ ...campos, responsavel: e.target.value })}
+                      placeholder="Responsável"
+                      className="w-[170px] h-7 rounded border border-gray-300 px-2 text-[11px] text-right focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/25"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => abrirEdicaoInline()}
+                      className="flex items-center gap-1 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline max-w-[170px] truncate"
+                      title="Editar responsável"
+                    >
+                      <span className="truncate">{responsavelNome}</span>
+                      <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Vínculo */}
@@ -1541,15 +1590,24 @@ export function TarefaDetalheModal({
                   <span className="flex items-center gap-1.5 text-gray-500">
                     <Clock className="h-3.5 w-3.5 text-gray-400" /> Prazo
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => onEditar(detalhe)}
-                    className="flex items-center gap-1 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline"
-                    title="Editar prazo"
-                  >
-                    <span>{fmtDataCompleta(detalhe.prazo)}</span>
-                    <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
-                  </button>
+                  {editandoInline ? (
+                    <input
+                      type="date"
+                      value={campos.prazo}
+                      onChange={(e) => setCampos({ ...campos, prazo: e.target.value })}
+                      className="h-7 rounded border border-gray-300 px-2 text-[11px] focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/25"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => abrirEdicaoInline()}
+                      className="flex items-center gap-1 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline"
+                      title="Editar prazo"
+                    >
+                      <span>{fmtDataCompleta(detalhe.prazo)}</span>
+                      <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Recorrência */}
@@ -1557,15 +1615,31 @@ export function TarefaDetalheModal({
                   <span className="flex items-center gap-1.5 text-gray-500">
                     <Repeat className="h-3.5 w-3.5 text-gray-400" /> Recorrência
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => onEditar(detalhe)}
-                    className="flex items-center gap-1 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline"
-                    title="Editar recorrência"
-                  >
-                    <span>{recorrenciaLabel}</span>
-                    <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
-                  </button>
+                  {editandoInline ? (
+                    <select
+                      value={campos.recorrencia}
+                      onChange={(e) => setCampos({ ...campos, recorrencia: e.target.value })}
+                      className="h-7 rounded border border-gray-300 px-1 text-[11px] bg-white focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/25"
+                    >
+                      {['Nenhuma', 'Diária', 'Semanal', 'Mensal', 'Bimestral', 'A definir'].map(
+                        (r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => abrirEdicaoInline()}
+                      className="flex items-center gap-1 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline"
+                      title="Editar recorrência"
+                    >
+                      <span>{recorrenciaLabel}</span>
+                      <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Prioridade */}
@@ -1573,15 +1647,27 @@ export function TarefaDetalheModal({
                   <span className="flex items-center gap-1.5 text-gray-500">
                     <Flag className="h-3.5 w-3.5 text-gray-400" /> Prioridade
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => onEditar(detalhe)}
-                    className="flex items-center gap-1 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline"
-                    title="Editar prioridade"
-                  >
-                    <span>{prioridadeNome}</span>
-                    <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
-                  </button>
+                  {editandoInline ? (
+                    <select
+                      value={campos.prioridade_p}
+                      onChange={(e) => setCampos({ ...campos, prioridade_p: e.target.value })}
+                      className="h-7 rounded border border-gray-300 px-1 text-[11px] bg-white focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/25"
+                    >
+                      <option value="P1">Alta (P1)</option>
+                      <option value="P2">Normal (P2)</option>
+                      <option value="P3">Baixa (P3)</option>
+                    </select>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => abrirEdicaoInline()}
+                      className="flex items-center gap-1 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline"
+                      title="Editar prioridade"
+                    >
+                      <span>{prioridadeNome}</span>
+                      <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Status */}
@@ -1589,15 +1675,29 @@ export function TarefaDetalheModal({
                   <span className="flex items-center gap-1.5 text-gray-500">
                     <ListTodo className="h-3.5 w-3.5 text-gray-400" /> Status
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => onEditar(detalhe)}
-                    className="flex items-center gap-1 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline"
-                    title="Editar status"
-                  >
-                    <span>{etapaAtualObj.label}</span>
-                    <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
-                  </button>
+                  {editandoInline ? (
+                    <select
+                      value={campos.status_kanban}
+                      onChange={(e) => setCampos({ ...campos, status_kanban: e.target.value })}
+                      className="h-7 rounded border border-gray-300 px-1 text-[11px] bg-white focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/25"
+                    >
+                      {ETAPAS.filter((et) => et.key !== 'triagem').map((et) => (
+                        <option key={et.key} value={et.key}>
+                          {et.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => abrirEdicaoInline()}
+                      className="flex items-center gap-1 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline"
+                      title="Editar status"
+                    >
+                      <span>{etapaAtualObj.label}</span>
+                      <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
