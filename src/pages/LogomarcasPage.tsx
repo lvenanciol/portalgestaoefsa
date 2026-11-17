@@ -256,6 +256,11 @@ export default function LogomarcasPage() {
         }
       }
 
+      // (d) PDF da logomarca, quando enviado separadamente
+      if (pendentesRef.current['logo_pdf']) {
+        fd.append('logo_pdf', pendentesRef.current['logo_pdf'])
+      }
+
       let arquivoEmb: File | null = null
       if (pendentesRef.current['emblema']) {
         arquivoEmb = pendentesRef.current['emblema']
@@ -539,11 +544,22 @@ export default function LogomarcasPage() {
                         <input
                           id="logo-file"
                           type="file"
-                          accept="image/png,image/jpeg,image/webp"
+                          accept="image/png,image/jpeg,image/webp,application/pdf"
                           className="hidden"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const f = e.target.files?.[0]
-                            if (f && isImagemEditavel(f)) abrirEditor(f, 'logo')
+                            if (!f) return
+                            // (d) 18/11/2026 — o campo aceita PDF, PNG e JPEG.
+                            // PDF é guardado como está (vetorial, melhor no
+                            // PDF anexo). Imagem passa pelo editor de recorte.
+                            if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+                              pendentesRef.current['logo_pdf'] = f
+                              setMsg('PDF anexado: ' + f.name + '. Clique em Salvar.')
+                            } else if (isImagemEditavel(f)) {
+                              abrirEditor(f, 'logo')
+                            } else {
+                              setErro('Formato não suportado. Use PDF, PNG ou JPEG.')
+                            }
                           }}
                         />
                       </label>

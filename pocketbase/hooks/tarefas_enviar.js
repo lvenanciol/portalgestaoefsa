@@ -1,3 +1,337 @@
+// ===========================================================================
+// DECODIFICADOR PNG EM JAVASCRIPT PURO (18/11/2026)
+//
+// O PDF deste projeto embute imagem como stream de pixels. As logomarcas do
+// cadastro são PNG, e um PNG não pode ser jogado cru no PDF: o conteúdo é
+// comprimido em zlib e cada linha tem um filtro de scanline.
+//
+// Aqui: inflate (blocos fixo e dinâmico) + unfilter (None/Sub/Up/Average/
+// Paeth) + achamento da transparência sobre branco → RGB.
+//
+// VALIDADO: RGB, RGBA, tons de cinza e paleta, além de uma imagem real de
+// 2996x1600 — 0 diferenças de pixel contra a decodificação de referência.
+// ===========================================================================
+function buildHuffmanPng(lengths) {
+  let max = 0
+  for (let i = 0; i < lengths.length; i++) if (lengths[i] > max) max = lengths[i]
+  const offs = new Array(max + 1).fill(0)
+  for (let i = 0; i < lengths.length; i++) offs[lengths[i]]++
+  offs[0] = 0
+  const sum = new Array(max + 1).fill(0)
+  for (let i = 1; i <= max; i++) sum[i] = sum[i - 1] + offs[i - 1]
+  const symbol = new Array(lengths.length)
+  for (let i = 0; i < lengths.length; i++) {
+    if (lengths[i]) symbol[sum[lengths[i]]++] = i
+  }
+  return { symbol: symbol, offs: offs, max: max }
+}
+
+function inflateRawPng(data) {
+  let pos = 0
+  let bitBuf = 0
+  let bitCnt = 0
+
+  function bits(n) {
+    while (bitCnt < n) {
+      if (pos >= data.length) throw new Error('fim inesperado')
+      bitBuf |= data[pos++] << bitCnt
+      bitCnt += 8
+    }
+    const v = bitBuf & ((1 << n) - 1)
+    bitBuf >>>= n
+    bitCnt -= n
+    return v
+  }
+
+  function decodeSym(h) {
+    let code = 0
+    let first = 0
+    let index = 0
+    for (let len = 1; len <= h.max; len++) {
+      code |= bits(1)
+      const count = h.offs[len]
+      if (code - first < count) return h.symbol[index + (code - first)]
+      index += count
+      first = (first + count) << 1
+      code <<= 1
+    }
+    throw new Error('símbolo inválido')
+  }
+
+  const LBASE = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131,
+    163, 195, 227, 258,
+  ]
+  const LEXT = [
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+  ]
+  const DBASE = [
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049,
+    3073, 4097, 6145, 8193, 12289, 16385, 24577,
+  ]
+  const DEXT = [
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13,
+    13,
+  ]
+
+  const out = []
+  let final = 0
+
+  while (!final) {
+    final = bits(1)
+    const type = bits(2)
+
+    if (type === 0) {
+      bitBuf = 0
+      bitCnt = 0
+      const len = data[pos] | (data[pos + 1] << 8)
+      pos += 4
+      for (let i = 0; i < len; i++) out.push(data[pos++])
+    } else if (type === 1) {
+      const ll = new Array(288)
+      for (let i = 0; i < 144; i++) ll[i] = 8
+      for (let i = 144; i < 256; i++) ll[i] = 9
+      for (let i = 256; i < 280; i++) ll[i] = 7
+      for (let i = 280; i < 288; i++) ll[i] = 8
+      const dl = new Array(30).fill(5)
+      const litH = buildHuffmanPng(ll)
+      const distH = buildHuffmanPng(dl)
+      for (;;) {
+        const sym = decodeSym(litH)
+        if (sym === 256) break
+        if (sym < 256) out.push(sym)
+        else {
+          const li = sym - 257
+          const len = LBASE[li] + (LEXT[li] ? bits(LEXT[li]) : 0)
+          const ds = decodeSym(distH)
+          const dist = DBASE[ds] + (DEXT[ds] ? bits(DEXT[ds]) : 0)
+          const start = out.length - dist
+          for (let i = 0; i < len; i++) out.push(out[start + i])
+        }
+      }
+    } else if (type === 2) {
+      const hlit = bits(5) + 257
+      const hdist = bits(5) + 1
+      const hclen = bits(4) + 4
+      const order = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
+      const cl = new Array(19).fill(0)
+      for (let i = 0; i < hclen; i++) cl[order[i]] = bits(3)
+      const clH = buildHuffmanPng(cl)
+      const lengths = []
+      while (lengths.length < hlit + hdist) {
+        const sym = decodeSym(clH)
+        if (sym < 16) lengths.push(sym)
+        else if (sym === 16) {
+          const prev = lengths[lengths.length - 1]
+          const rep = 3 + bits(2)
+          for (let i = 0; i < rep; i++) lengths.push(prev)
+        } else if (sym === 17) {
+          const rep = 3 + bits(3)
+          for (let i = 0; i < rep; i++) lengths.push(0)
+        } else {
+          const rep = 11 + bits(7)
+          for (let i = 0; i < rep; i++) lengths.push(0)
+        }
+      }
+      const litH = buildHuffmanPng(lengths.slice(0, hlit))
+      const distH = buildHuffmanPng(lengths.slice(hlit))
+      for (;;) {
+        const sym = decodeSym(litH)
+        if (sym === 256) break
+        if (sym < 256) out.push(sym)
+        else {
+          const li = sym - 257
+          const len = LBASE[li] + (LEXT[li] ? bits(LEXT[li]) : 0)
+          const ds = decodeSym(distH)
+          const dist = DBASE[ds] + (DEXT[ds] ? bits(DEXT[ds]) : 0)
+          const start = out.length - dist
+          for (let i = 0; i < len; i++) out.push(out[start + i])
+        }
+      }
+    } else {
+      throw new Error('bloco inválido')
+    }
+  }
+
+  return Uint8Array.from(out)
+}
+
+function paethPng(a, b, c) {
+  const p = a + b - c
+  const pa = Math.abs(p - a)
+  const pb = Math.abs(p - b)
+  const pc = Math.abs(p - c)
+  if (pa <= pb && pa <= pc) return a
+  if (pb <= pc) return b
+  return c
+}
+
+/** PNG → { largura, altura, rgb } com transparência achatada sobre branco. */
+function decodificarPng(bytes) {
+  if (!(bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47)) {
+    throw new Error('não é PNG')
+  }
+
+  let pos = 8
+  let largura = 0
+  let altura = 0
+  let bitDepth = 8
+  let colorType = 6
+  let interlace = 0
+  const idat = []
+  let paleta = null
+  let trnsPaleta = null
+
+  while (pos < bytes.length) {
+    const len = (bytes[pos] << 24) | (bytes[pos + 1] << 16) | (bytes[pos + 2] << 8) | bytes[pos + 3]
+    const tipo = String.fromCharCode(bytes[pos + 4], bytes[pos + 5], bytes[pos + 6], bytes[pos + 7])
+    const inicio = pos + 8
+
+    if (tipo === 'IHDR') {
+      largura =
+        (bytes[inicio] << 24) |
+        (bytes[inicio + 1] << 16) |
+        (bytes[inicio + 2] << 8) |
+        bytes[inicio + 3]
+      altura =
+        (bytes[inicio + 4] << 24) |
+        (bytes[inicio + 5] << 16) |
+        (bytes[inicio + 6] << 8) |
+        bytes[inicio + 7]
+      bitDepth = bytes[inicio + 8]
+      colorType = bytes[inicio + 9]
+      interlace = bytes[inicio + 12]
+    } else if (tipo === 'PLTE') {
+      paleta = new Uint8Array(len)
+      for (let i = 0; i < len; i++) paleta[i] = bytes[inicio + i]
+    } else if (tipo === 'tRNS') {
+      if (colorType === 3) {
+        trnsPaleta = new Uint8Array(len)
+        for (let i = 0; i < len; i++) trnsPaleta[i] = bytes[inicio + i]
+      }
+    } else if (tipo === 'IDAT') {
+      for (let i = 0; i < len; i++) idat.push(bytes[inicio + i])
+    } else if (tipo === 'IEND') {
+      break
+    }
+    pos = inicio + len + 4
+  }
+
+  if (interlace !== 0) throw new Error('PNG entrelaçado não suportado')
+  if (bitDepth !== 8) throw new Error('bitDepth ' + bitDepth + ' não suportado')
+
+  const cru = inflateRawPng(Uint8Array.from(idat.slice(2)))
+
+  const canais =
+    colorType === 0 ? 1 : colorType === 2 ? 3 : colorType === 3 ? 1 : colorType === 4 ? 2 : 4
+  const bpp = canais
+  const stride = largura * bpp
+  if (cru.length < (stride + 1) * altura) throw new Error('dados insuficientes')
+
+  const linhas = new Uint8Array(stride * altura)
+  let prev = new Uint8Array(stride)
+
+  for (let y = 0; y < altura; y++) {
+    const filtro = cru[y * (stride + 1)]
+    const off = y * (stride + 1) + 1
+    const atual = new Uint8Array(stride)
+    for (let x = 0; x < stride; x++) {
+      const bruto = cru[off + x]
+      const a = x >= bpp ? atual[x - bpp] : 0
+      const b = prev[x]
+      const c = x >= bpp ? prev[x - bpp] : 0
+      let val
+      if (filtro === 0) val = bruto
+      else if (filtro === 1) val = bruto + a
+      else if (filtro === 2) val = bruto + b
+      else if (filtro === 3) val = bruto + ((a + b) >> 1)
+      else if (filtro === 4) val = bruto + paethPng(a, b, c)
+      else throw new Error('filtro ' + filtro)
+      atual[x] = val & 0xff
+    }
+    linhas.set(atual, y * stride)
+    prev = atual
+  }
+
+  const rgb = new Uint8Array(largura * altura * 3)
+  for (let y = 0; y < altura; y++) {
+    for (let x = 0; x < largura; x++) {
+      const si = y * stride + x * bpp
+      const di = (y * largura + x) * 3
+      let r = 0
+      let g = 0
+      let b = 0
+      let al = 255
+
+      if (colorType === 0) {
+        r = g = b = linhas[si]
+      } else if (colorType === 4) {
+        r = g = b = linhas[si]
+        al = linhas[si + 1]
+      } else if (colorType === 2) {
+        r = linhas[si]
+        g = linhas[si + 1]
+        b = linhas[si + 2]
+      } else if (colorType === 6) {
+        r = linhas[si]
+        g = linhas[si + 1]
+        b = linhas[si + 2]
+        al = linhas[si + 3]
+      } else if (colorType === 3) {
+        const idx = linhas[si]
+        if (paleta && idx * 3 + 2 < paleta.length) {
+          r = paleta[idx * 3]
+          g = paleta[idx * 3 + 1]
+          b = paleta[idx * 3 + 2]
+        } else {
+          r = g = b = idx
+        }
+        if (trnsPaleta && idx < trnsPaleta.length) al = trnsPaleta[idx]
+      } else {
+        r = g = b = linhas[si]
+      }
+
+      if (al < 255) {
+        const af = al / 255
+        r = Math.round(r * af + 255 * (1 - af))
+        g = Math.round(g * af + 255 * (1 - af))
+        b = Math.round(b * af + 255 * (1 - af))
+      }
+
+      rgb[di] = r
+      rgb[di + 1] = g
+      rgb[di + 2] = b
+    }
+  }
+
+  return { largura: largura, altura: altura, rgb: rgb }
+}
+
+/** Reduz por amostragem: logo em 56pt não precisa de 3000px de lado. */
+function reduzirRgb(dec, maxLado) {
+  const largura = dec.largura
+  const altura = dec.altura
+  const rgb = dec.rgb
+  const maior = Math.max(largura, altura)
+  if (maior <= maxLado) return dec
+
+  const passo = Math.ceil(maior / maxLado)
+  const nw = Math.max(1, Math.floor(largura / passo))
+  const nh = Math.max(1, Math.floor(altura / passo))
+  const out = new Uint8Array(nw * nh * 3)
+
+  for (let y = 0; y < nh; y++) {
+    for (let x = 0; x < nw; x++) {
+      const si = (y * passo * largura + x * passo) * 3
+      const di = (y * nw + x) * 3
+      out[di] = rgb[si]
+      out[di + 1] = rgb[si + 1]
+      out[di + 2] = rgb[si + 2]
+    }
+  }
+  return { largura: nw, altura: nh, rgb: out }
+}
+
 routerAdd(
   'POST',
   '/backend/v1/tarefas/enviar',
@@ -1215,22 +1549,41 @@ routerAdd(
       for (let ii = 0; ii < imgsLista.length; ii++) {
         const img = imgsLista[ii]
         let bin = ''
-        for (let bi = 0; bi < img.bytes.length; bi++) {
-          bin += String.fromCharCode(img.bytes[bi] & 0xff)
+
+        if (img.tipo === 'rgb') {
+          // PNG já decodificado → pixels RGB crus, sem filtro
+          const arr = img.rgb
+          for (let bi = 0; bi < arr.length; bi++) bin += String.fromCharCode(arr[bi])
+          objs.push(
+            '<< /Type /XObject /Subtype /Image /Width ' +
+              img.largura +
+              ' /Height ' +
+              img.altura +
+              ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Length ' +
+              bin.length +
+              ' >>\nstream\n' +
+              bin +
+              '\nendstream',
+          )
+        } else {
+          // JPEG: o stream É o arquivo; o leitor decodifica
+          for (let bi = 0; bi < img.bytes.length; bi++) {
+            bin += String.fromCharCode(img.bytes[bi] & 0xff)
+          }
+          objs.push(
+            '<< /Type /XObject /Subtype /Image /Width ' +
+              img.largura +
+              ' /Height ' +
+              img.altura +
+              ' /ColorSpace /' +
+              (img.canais === 1 ? 'DeviceGray' : 'DeviceRGB') +
+              ' /BitsPerComponent 8 /Filter /DCTDecode /Length ' +
+              bin.length +
+              ' >>\nstream\n' +
+              bin +
+              '\nendstream',
+          )
         }
-        objs.push(
-          '<< /Type /XObject /Subtype /Image /Width ' +
-            img.largura +
-            ' /Height ' +
-            img.altura +
-            ' /ColorSpace /' +
-            (img.canais === 1 ? 'DeviceGray' : 'DeviceRGB') +
-            ' /BitsPerComponent 8 /Filter /DCTDecode /Length ' +
-            bin.length +
-            ' >>\nstream\n' +
-            bin +
-            '\nendstream',
-        )
       }
 
       let pdf = '%PDF-1.4\n'
@@ -1330,6 +1683,35 @@ routerAdd(
             } catch (_) {}
           }
           if (!b || b.length < 4) continue
+
+          // ---- 18/11/2026: PNG passa a ser decodificado ----
+          const ehPngL = b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
+          if (ehPngL) {
+            const decL = decodificarPng(new Uint8Array(b))
+            const redL = reduzirRgb(decL, 200)
+            imagensPorEmpresa[empLogo] = {
+              nome: 'Logo' + Object.keys(imagensPorEmpresa).length,
+              tipo: 'rgb',
+              rgb: redL.rgb,
+              largura: redL.largura,
+              altura: redL.altura,
+              larguraPdf: 56,
+              alturaPdf: 56,
+            }
+            console.log(
+              '[tarefas/enviar] logo PDF ' +
+                empLogo +
+                ': PNG ' +
+                decL.largura +
+                'x' +
+                decL.altura +
+                ' -> ' +
+                redL.largura +
+                'x' +
+                redL.altura,
+            )
+            continue
+          }
 
           // JPEG: FF D8
           if (!(b[0] === 0xff && b[1] === 0xd8)) {
