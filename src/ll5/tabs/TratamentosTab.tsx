@@ -19,6 +19,9 @@ import {
   Brain,
   Trash2,
   CalendarRange,
+  Download,
+  Eye,
+  Save,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -54,7 +57,7 @@ import { toast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
 import { useLl5 } from '@/ll5/Ll5Context'
-import { listar, criar, atualizar, excluirLogico } from '@/ll5/repo'
+import { listar, criar, atualizar, excluirLogico, excluirFisico } from '@/ll5/repo'
 import ParecerIaCard from '@/ll5/ParecerIaCard'
 import TabelaInterativa from './TabelaInterativa'
 import RangeCalendario from './RangeCalendario'
@@ -239,6 +242,15 @@ export default function TratamentosTab({ aba }: { aba: any }) {
 
   // (d) 16/11/2026 — anexos do tratamento (compartilhados por todas as sessões)
   const [anexosVer, setAnexosVer] = useState<any | null>(null)
+  // CRUD do anexo: edição inline de nome e tipo
+  const [anexoEdit, setAnexoEdit] = useState<any | null>(null)
+
+  // anexos DESTE tratamento (mesma lista para todas as sessões)
+  const anexosDoTratamento = useMemo(() => {
+    const idAlvo = String(anexosVer?.id || '')
+    if (!idAlvo) return []
+    return anexos.filter((a) => String(a.tratamento_id) === idAlvo)
+  }, [anexos, anexosVer])
 
   // (a) 16/11/2026 — HORA REAL DE CADA SESSÃO.
   //
@@ -1709,6 +1721,94 @@ export default function TratamentosTab({ aba }: { aba: any }) {
     }
   }
 
+  /**
+   * ANEXOS — VISUALIZAR / BAIXAR / EDITAR / EXCLUIR (16/11/2026)
+   *
+   * O dono pediu CRUD completo no diálogo de anexos: antes só listava.
+   * A URL do arquivo é a do PocketBase: /api/files/<collection>/<record>/<nome>
+   */
+  const urlAnexo = (a: any): string => {
+    if (!a?.arquivo) return ''
+    try {
+      return pb.files.getURL(a, a.arquivo)
+    } catch (_e) {
+      return ''
+    }
+  }
+
+  const abrirAnexo = (a: any) => {
+    const url = urlAnexo(a)
+    if (!url) {
+      toast({
+        title: 'Arquivo indisponível',
+        description: 'Este anexo tem só o registro — o binário não foi enviado.',
+        variant: 'destructive',
+      })
+      return
+    }
+    // PDF e imagem abrem no visualizador do navegador
+    window.open(url, '_blank', 'noopener')
+  }
+
+  const baixarAnexo = (a: any) => {
+    const url = urlAnexo(a)
+    if (!url) {
+      toast({
+        title: 'Arquivo indisponível',
+        description: 'Este anexo tem só o registro — o binário não foi enviado.',
+        variant: 'destructive',
+      })
+      return
+    }
+    const link = document.createElement('a')
+    link.href = url
+    link.download = a.nome_arquivo || 'anexo'
+    link.target = '_blank'
+    link.rel = 'noopener'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const salvarAnexo = async () => {
+    if (!anexoEdit?.id) return
+    try {
+      await atualizar('ll5_attachments', ator, anexoEdit.id, {
+        nome_arquivo: String(anexoEdit.nome_arquivo || '').trim(),
+        tipo: anexoEdit.tipo || 'outro',
+      })
+      toast({ title: 'Anexo atualizado' })
+      setAnexoEdit(null)
+      await carregar()
+    } catch (e: any) {
+      toast({
+        title: 'Falha ao atualizar o anexo',
+        description: e?.response?.data?.message || e?.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const excluirAnexo = async (a: any) => {
+    const ok = window.confirm(
+      'Excluir o anexo "' +
+        (a.nome_arquivo || 'arquivo') +
+        '"?\n\nEle sai de TODAS as sessões deste tratamento.',
+    )
+    if (!ok) return
+    try {
+      await excluirFisico('ll5_attachments', ator, a.id)
+      toast({ title: 'Anexo excluído' })
+      await carregar()
+    } catch (e: any) {
+      toast({
+        title: 'Falha ao excluir o anexo',
+        description: e?.response?.data?.message || e?.message,
+        variant: 'destructive',
+      })
+    }
+  }
+
   const [reconciliando, setReconciliando] = useState(false)
   const [corrigindo, setCorrigindo] = useState(false)
 
@@ -2333,40 +2433,159 @@ export default function TratamentosTab({ aba }: { aba: any }) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-2 max-h-[320px] overflow-y-auto">
-            {anexos.filter((a) => String(a.tratamento_id) === String(anexosVer?.id)).length ===
-            0 ? (
+          {/* CRUD completo: visualizar, baixar, renomear (tipo + nome) e excluir */}
+          <div className="space-y-2 max-h-[340px] overflow-y-auto">
+            {anexosDoTratamento.length === 0 ? (
               <p className="text-[12px] text-gray-500 py-4 text-center">
                 Nenhum anexo neste tratamento.
               </p>
             ) : (
-              anexos
-                .filter((a) => String(a.tratamento_id) === String(anexosVer?.id))
-                .map((a) => (
+              anexosDoTratamento.map((a) => {
+                const editandoEste = anexoEdit?.id === a.id
+                return (
                   <div
                     key={a.id}
-                    className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg border border-gray-200"
+                    className="px-2.5 py-2 rounded-lg border border-gray-200 space-y-1.5"
                   >
-                    <div className="min-w-0">
-                      <p className="text-[12px] font-semibold text-gray-800 truncate">
-                        {a.nome_arquivo || 'arquivo'}
-                      </p>
-                      <p className="text-[10px] text-gray-500">
-                        {a.tipo || 'documento'}
-                        {a.tamanho ? ' · ' + Math.round(Number(a.tamanho) / 1024) + ' KB' : ''}
-                      </p>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        {editandoEste ? (
+                          <Input
+                            value={anexoEdit.nome_arquivo}
+                            onChange={(ev) =>
+                              setAnexoEdit({ ...anexoEdit, nome_arquivo: ev.target.value })
+                            }
+                            className="h-7 !text-[11.5px]"
+                          />
+                        ) : (
+                          <p className="text-[12px] font-semibold text-gray-800 truncate">
+                            {a.nome_arquivo || 'arquivo'}
+                          </p>
+                        )}
+
+                        <div className="flex items-center gap-1.5 mt-1">
+                          {editandoEste ? (
+                            <Select
+                              value={anexoEdit.tipo}
+                              onValueChange={(v) => setAnexoEdit({ ...anexoEdit, tipo: v })}
+                            >
+                              <SelectTrigger className="h-6 w-[105px] !text-[10px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent className="bg-white z-[160]">
+                                {['exame', 'laudo', 'prescricao', 'outro'].map((tp) => (
+                                  <SelectItem key={tp} value={tp} className="text-[11px]">
+                                    {tp}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <span className="text-[10px] text-gray-500">{a.tipo || 'outro'}</span>
+                          )}
+                          <span className="text-[10px] text-gray-400">
+                            {a.tamanho ? Math.round(Number(a.tamanho) / 1024) + ' KB' : ''}
+                          </span>
+                          <span className="text-[10px] text-gray-400">
+                            {a.created
+                              ? String(a.created).slice(0, 10).split('-').reverse().join('/')
+                              : ''}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        {editandoEste ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={salvarAnexo}
+                              className="p-1 rounded hover:bg-emerald-50 text-[#1b5e20]"
+                              title="Salvar alterações"
+                            >
+                              <Save className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setAnexoEdit(null)}
+                              className="p-1 rounded hover:bg-gray-100 text-gray-500"
+                              title="Cancelar"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => abrirAnexo(a)}
+                              className="p-1 rounded hover:bg-emerald-50 text-[#1b5e20]"
+                              title="Visualizar o arquivo"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => baixarAnexo(a)}
+                              className="p-1 rounded hover:bg-emerald-50 text-[#1b5e20]"
+                              title="Baixar o arquivo"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAnexoEdit({
+                                  id: a.id,
+                                  nome_arquivo: a.nome_arquivo || '',
+                                  tipo: a.tipo || 'outro',
+                                })
+                              }
+                              className="p-1 rounded hover:bg-gray-100 text-gray-500"
+                              title="Editar nome e tipo"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => excluirAnexo(a)}
+                              className="p-1 rounded hover:bg-red-50 text-red-500"
+                              title="Excluir o anexo"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-[10px] text-gray-400 shrink-0">
-                      {a.created
-                        ? String(a.created).slice(0, 10).split('-').reverse().join('/')
-                        : ''}
-                    </span>
+
+                    {!a.arquivo && (
+                      <p className="text-[10px] text-amber-700">
+                        só o registro — o arquivo não subiu
+                      </p>
+                    )}
                   </div>
-                ))
+                )
+              })
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
+            <label className="mr-auto">
+              <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[#1b5e20] text-[#1b5e20] text-[12px] font-semibold cursor-pointer hover:bg-emerald-50">
+                <Plus className="h-3.5 w-3.5" /> Adicionar arquivo
+              </span>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                className="hidden"
+                onChange={(ev) => {
+                  const f = ev.target.files?.[0]
+                  if (f && anexosVer) anexarArquivo(anexosVer, f)
+                  ev.target.value = ''
+                }}
+              />
+            </label>
             <Button variant="outline" size="sm" onClick={() => setAnexosVer(null)}>
               Fechar
             </Button>
