@@ -114,6 +114,59 @@ export default function LogomarcasPage() {
     setImgSrc(URL.createObjectURL(file))
   }
 
+  // ==========================================================================
+  // 18/11/2026 — (d) CONVERSÃO PARA JPEG.
+  //
+  // DIRETIVA: "o campo logomarca principal deve ter anexos/upload separados
+  // em .png e .jpeg para o app definir quando usar .png ou .jpeg".
+  //
+  // O app usa:
+  //   · PNG (campo `logo`)       → corpo do e-mail, preserva transparência
+  //   · JPEG (campo `logo_jpeg`) → PDF, que só aceita /DCTDecode
+  //
+  // Esta função gera a versão JPEG de qualquer imagem, com fundo BRANCO (JPEG
+  // não tem transparência — sem isso a logo ficaria preta no PDF) e encaixe
+  // completo (contain), preservando a proporção.
+  // ==========================================================================
+  const paraJpeg = async (file: File, maxLado = 512): Promise<File | null> => {
+    try {
+      const bitmap = await createImageBitmap(file)
+      const escala = Math.min(1, maxLado / Math.max(bitmap.width, bitmap.height))
+      const w = Math.max(1, Math.round(bitmap.width * escala))
+      const h = Math.max(1, Math.round(bitmap.height * escala))
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return null
+      ctx.fillStyle = '#FFFFFF'
+      ctx.fillRect(0, 0, w, h)
+      ctx.drawImage(bitmap, 0, 0, w, h)
+      const blob: Blob | null = await new Promise((res) =>
+        canvas.toBlob((b) => res(b), 'image/jpeg', 0.92),
+      )
+      if (!blob) return null
+      const nome = String(file.name || 'logo').replace(/\.[^.]+$/, '') + '.jpg'
+      return new File([blob], nome, { type: 'image/jpeg' })
+    } catch (e) {
+      console.warn('Falha ao gerar JPEG:', e)
+      return null
+    }
+  }
+
+  /** Gera o JPEG a partir de uma URL já salva (ex.: logo antiga em PNG). */
+  const jpegDeUrl = async (imgUrl: string, nome: string): Promise<File | null> => {
+    try {
+      const res = await fetch(imgUrl)
+      const blob = await res.blob()
+      const f = new File([blob], nome || 'logo.png', { type: blob.type || 'image/png' })
+      return await paraJpeg(f)
+    } catch (e) {
+      console.warn('Falha ao converter logo existente:', e)
+      return null
+    }
+  }
+
   const abrirEditorDeUrl = async (imgUrl: string, campo: 'logo' | 'emblema', nome = 'logo.png') => {
     try {
       const res = await fetch(imgUrl)
@@ -179,16 +232,41 @@ export default function LogomarcasPage() {
       const logoInput = document.getElementById('logo-file') as HTMLInputElement
       const embInput = document.getElementById('emblema-file') as HTMLInputElement
 
+      // ------------------------------------------------------------------
+      // (d) 18/11/2026 — GERA E ENVIA O JPEG JUNTO COM O ORIGINAL.
+      //
+      // O usuário anexa UMA imagem; o app deriva a versão JPEG para o PDF.
+      // Se ele próprio enviou um .jpg/.jpeg, o mesmo arquivo serve.
+      // ------------------------------------------------------------------
+      let arquivoLogo: File | null = null
       if (pendentesRef.current['logo']) {
-        fd.append('logo', pendentesRef.current['logo'])
+        arquivoLogo = pendentesRef.current['logo']
       } else if (logoInput?.files?.[0]) {
-        fd.append('logo', logoInput.files[0])
+        arquivoLogo = logoInput.files[0]
       }
 
+      if (arquivoLogo) {
+        fd.append('logo', arquivoLogo)
+        const ehJpeg = /jpe?g$/i.test(arquivoLogo.name) || arquivoLogo.type === 'image/jpeg'
+        const jpg = ehJpeg ? arquivoLogo : await paraJpeg(arquivoLogo)
+        if (jpg) {
+          fd.append('logo_jpeg', jpg)
+        } else {
+          console.warn('Não foi possível gerar o JPEG da logomarca')
+        }
+      }
+
+      let arquivoEmb: File | null = null
       if (pendentesRef.current['emblema']) {
-        fd.append('emblema', pendentesRef.current['emblema'])
+        arquivoEmb = pendentesRef.current['emblema']
       } else if (embInput?.files?.[0]) {
-        fd.append('emblema', embInput.files[0])
+        arquivoEmb = embInput.files[0]
+      }
+      if (arquivoEmb) {
+        fd.append('emblema', arquivoEmb)
+        const ehJpegE = /jpe?g$/i.test(arquivoEmb.name) || arquivoEmb.type === 'image/jpeg'
+        const jpgE = ehJpegE ? arquivoEmb : await paraJpeg(arquivoEmb, 256)
+        if (jpgE) fd.append('emblema_jpeg', jpgE)
       }
 
       if (rec && rec.id) {
@@ -475,6 +553,47 @@ export default function LogomarcasPage() {
                         <Check className="h-3 w-3" /> Ajustada: {pendentesRef.current['logo'].name}
                       </span>
                     )}
+
+                    {/* (d) versão JPEG — usada no PDF anexo */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {l.logo_jpeg ? (
+                        <span className="text-[10.5px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded flex items-center gap-1">
+                          <Check className="h-3 w-3" /> JPEG pronto (PDF)
+                        </span>
+                      ) : (
+                        <span className="text-[10.5px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                          sem versão JPEG — o PDF usará texto no lugar da logo
+                        </span>
+                      )}
+                      {!l.logo_jpeg && url(l, 'logo') && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSalvando(true)
+                            setErro('')
+                            try {
+                              const jpg = await jpegDeUrl(
+                                url(l, 'logo'),
+                                `${l.empresa || 'logo'}.jpg`,
+                              )
+                              if (!jpg) throw new Error('Não foi possível converter a imagem.')
+                              const fdJ = new FormData()
+                              fdJ.append('logo_jpeg', jpg)
+                              await pb.collection('logomarcas').update(l.id, fdJ)
+                              setMsg('JPEG gerado para ' + (l.empresa || 'a empresa') + '.')
+                              await carregar()
+                            } catch (e: any) {
+                              setErro(String(e?.message || e))
+                            } finally {
+                              setSalvando(false)
+                            }
+                          }}
+                          className="text-[10.5px] font-semibold text-[#1B5E20] underline"
+                        >
+                          Gerar JPEG agora
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Upload e ajuste de Ícone / Emblema */}

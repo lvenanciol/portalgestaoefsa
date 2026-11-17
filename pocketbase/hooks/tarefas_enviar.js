@@ -149,15 +149,26 @@ routerAdd(
           continue
         }
         idxLogo++
+        // (b) 18/11/2026 — versão JPEG para o PDF (campo logo_jpeg)
+        const logoJpeg = String(r.getString('logo_jpeg') || '')
+
         logosMap[emp.toLowerCase()] = {
           empresa: emp,
-          arquivo: arq, // usado no cid:
+          arquivo: arq, // usado no cid: (PNG no corpo do e-mail)
           arquivoLogo: logo, // lockup (com nome)
           arquivoEmblema: emblema, // símbolo
+          arquivoJpeg: logoJpeg, // JPEG para embutir no PDF
           recId: r.id,
           ordem: idxLogo,
         }
-        console.log('[tarefas/enviar] logo ' + emp + ': ' + (logo ? 'lockup' : 'somente emblema'))
+        console.log(
+          '[tarefas/enviar] logo ' +
+            emp +
+            ': ' +
+            (logo ? 'lockup' : 'somente emblema') +
+            ' | jpeg=' +
+            (logoJpeg || 'AUSENTE'),
+        )
       }
     } catch (errLg) {
       console.log('[tarefas/enviar] logomarcas: ' + String(errLg).slice(0, 140))
@@ -381,14 +392,13 @@ routerAdd(
       html += '</tr></table>'
     }
 
-    html +=
-      '<div style="font-family:' +
-      FONTE +
-      ';font-size:9.5px;font-weight:600;letter-spacing:2px;color:' +
-      CORES.texto2 +
-      ';margin-top:12px;text-transform:uppercase;">PORTAL DE GESTÃO ' +
-      escapeHtml(String(empPrincipal).toUpperCase()) +
-      '</div>'
+    // (a) 18/11/2026 — REMOVIDO o texto "PORTAL DE GESTÃO FOLDBOX".
+    //
+    // DIRETIVA: "remover do layout do envio de tarefas no corpo do e-mail o
+    // texto 'PORTAL DE GESTÃO FOLDBOX' existente abaixo da logomarca".
+    //
+    // O subtítulo repetia o que a própria logo já informa, e aparecia duplicado
+    // quando havia mais de uma empresa. O cabeçalho agora mostra SÓ a(s) logo(s).
     html += '</td></tr>'
 
     // ===== BLOCO 2 — FAIXA VERDE =====
@@ -1020,14 +1030,8 @@ routerAdd(
       if (!empComImagem.length && !semImagem.length) {
         texto(ML, H - 34, empPrincipal.toUpperCase(), 17, '#333333', true)
       }
-      texto(
-        ML,
-        H - 50 + (alturasMax ? 0 : 0),
-        'PORTAL DE GESTÃO ' + empPrincipal.toUpperCase(),
-        0.1,
-        '#FFFFFF',
-        false,
-      )
+      // 18/11/2026 — o subtítulo "PORTAL DE GESTÃO <EMPRESA>" saiu do PDF
+      // também: a logo já identifica. Fica só a identificação do documento.
       texto(W - ML - 110, H - 34, 'Painel de Tarefas', 8.5, '#6B6B68', false)
       texto(W - ML - 110, H - 47, brData(hoje), 8.5, '#6B6B68', false)
 
@@ -1127,8 +1131,10 @@ routerAdd(
             false,
           )
           texto(colX[2], y, t.status, 6.8, '#495057', false)
+          // (c) 18/11/2026 — NÃO exibir "ATRASADA" na coluna VENC. do PDF.
+          // A data em vermelho já sinaliza o atraso.
           if (t.prazoAtrasado) {
-            texto(colX[3], y, t.prazoFormatado + ' ATRASADA', 6.8, '#C92A2A', true)
+            texto(colX[3], y, t.prazoFormatado, 6.8, '#C92A2A', true)
           } else {
             texto(colX[3], y, t.prazoFormatado, 6.8, '#1C1B1A', false)
           }
@@ -1278,16 +1284,51 @@ routerAdd(
     try {
       for (const empLogo of nomesEmpresas) {
         const lg = logosMap[String(empLogo).toLowerCase()]
-        if (!lg || !lg.arquivo) continue
+        if (!lg) continue
+
+        // ------------------------------------------------------------------
+        // (b) 18/11/2026 — USAR O ARQUIVO JPEG, NÃO O PNG.
+        //
+        // O cadastro de logomarcas passou a ter `logo_jpeg` (migração 130).
+        // A ordem de preferência é:
+        //   1. logo_jpeg  → já é JPEG, entra direto no PDF
+        //   2. logo       → se por acaso já for JPEG, também serve
+        // Sem nenhum dos dois em JPEG, a empresa cai no cabeçalho em texto.
+        // ------------------------------------------------------------------
+        const nomeJpeg = String(lg.arquivoJpeg || '')
+        const nomeOriginal = String(lg.arquivo || '')
+        let arquivoUsado = nomeJpeg || nomeOriginal
+        if (!arquivoUsado) continue
+
         try {
           const caminho = $filepath.join(
             $app.dataDir(),
             'storage',
             'pbc_3701359284',
             String(lg.recId),
-            String(lg.arquivo),
+            arquivoUsado,
           )
-          const b = $os.readFile(caminho)
+          let b = null
+          try {
+            b = $os.readFile(caminho)
+          } catch (_) {
+            b = null
+          }
+
+          // se o arquivo preferido não abriu, tenta o original
+          if ((!b || b.length < 4) && nomeOriginal && arquivoUsado !== nomeOriginal) {
+            try {
+              const caminho2 = $filepath.join(
+                $app.dataDir(),
+                'storage',
+                'pbc_3701359284',
+                String(lg.recId),
+                nomeOriginal,
+              )
+              b = $os.readFile(caminho2)
+              arquivoUsado = nomeOriginal
+            } catch (_) {}
+          }
           if (!b || b.length < 4) continue
 
           // JPEG: FF D8
