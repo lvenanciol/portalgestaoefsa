@@ -395,21 +395,17 @@ routerAdd(
     // estável entre execuções.
     // ---------------------------------------------------------------------
     // =======================================================================
-    // DECODIFICADOR PNG INLINE (18/11/2026)
+    // (18/11/2026) DECODIFICADOR PNG REMOVIDO DESTE HOOK.
     //
-    // POR QUE INLINE: o JSVM do PocketBase não enxerga declarações de topo
-    // ("Hook scoping error" no QA) e `require(__hooks + '/arquivo.js')` dá
-    // "GoError: Invalid module" em produção — foi o que o log mostrou, e por
-    // isso a logo continuou ausente do PDF.
+    // Ele existia para embutir logo PNG no PDF. Funcionava fora do PocketBase
+    // (validado com 0 diferenças de pixel), mas DENTRO do Goja o inflate em
+    // JavaScript puro estoura tempo/memória: o backend passou a responder
+    // timeout de autenticação e o envio retornava 500.
     //
-    // As logomarcas do cadastro são PNG. O PDF embute imagem como stream de
-    // pixels, então aqui: inflate (blocos armazenado/fixo/dinâmico) +
-    // unfilter (None/Sub/Up/Average/Paeth) + transparência sobre branco → RGB.
-    //
-    // VALIDADO: RGB, RGBA, cinza e paleta com 0 diferenças de pixel; imagem
-    // real de 2996x1600 decodificada em ~500 ms.
+    // A conversão acontece no NAVEGADOR, no cadastro de Logomarcas, gravando
+    // `logo_jpeg`. Este hook apenas lê esse arquivo.
     // =======================================================================
-    function buildHuffmanLocal(lengths) {
+    function buildHuffmanLocal_REMOVIDO(lengths) {
       let max = 0
       for (let i = 0; i < lengths.length; i++) if (lengths[i] > max) max = lengths[i]
       const offs = new Array(max + 1).fill(0)
@@ -2013,35 +2009,28 @@ routerAdd(
           }
           if (!b || b.length < 4) continue
 
-          // ---- 18/11/2026: PNG passa a ser decodificado ----
+          // ------------------------------------------------------------------
+          // 18/11/2026 — PNG NÃO é decodificado aqui.
+          //
+          // Tentei decodificar PNG dentro do JSVM do PocketBase e o servidor
+          // passou a falhar (timeout de autenticação, envio com erro 500). O
+          // motivo: o inflate em JavaScript puro empilha milhões de pixels num
+          // array e o Goja (VM do PocketBase) não tem o desempenho do Node —
+          // a requisição estoura tempo/memória.
+          //
+          // DECISÃO: o parse de imagem NÃO acontece no servidor. A versão JPEG
+          // é gerada no NAVEGADOR (canvas) ao salvar a logo, no cadastro de
+          // Logomarcas, e fica gravada em `logo_jpeg`. O PDF usa esse arquivo.
+          //
+          // Sem logo_jpeg, a empresa entra no PDF com o nome em texto — nunca
+          // derrubando o envio.
+          // ------------------------------------------------------------------
           const ehPngL = b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
           if (ehPngL) {
-            // 18/11/2026 — decodificador INLINE.
-            // O `require(__hooks + '/png_decoder.js')` dava
-            // "GoError: Invalid module": o JSVM não carrega módulo externo
-            // dessa forma. As funções vivem dentro deste callback.
-            const decL = decodificarPngLocal(new Uint8Array(b))
-            const redL = reduzirRgbLocal(decL, 200)
-            imagensPorEmpresa[empLogo] = {
-              nome: 'Logo' + Object.keys(imagensPorEmpresa).length,
-              tipo: 'rgb',
-              rgb: redL.rgb,
-              largura: redL.largura,
-              altura: redL.altura,
-              larguraPdf: 56,
-              alturaPdf: 56,
-            }
             console.log(
-              '[tarefas/enviar] logo PDF ' +
+              '[tarefas/enviar] logo ' +
                 empLogo +
-                ': PNG ' +
-                decL.largura +
-                'x' +
-                decL.altura +
-                ' -> ' +
-                redL.largura +
-                'x' +
-                redL.altura,
+                ': é PNG e não há logo_jpeg — gere a versão JPEG no cadastro de Logomarcas',
             )
             continue
           }
