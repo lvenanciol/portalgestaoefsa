@@ -1293,6 +1293,98 @@ export default function TarefasKanbanPage() {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // (3) MENÇÕES — estado e resolução
+  // ---------------------------------------------------------------------------
+  const [usuariosSistema, setUsuariosSistema] = useState<any[]>([])
+  const [mencoesAbertas, setMencoesAbertas] = useState(false)
+  const [mencoesTermo, setMencoesTermo] = useState('')
+  const [mencoesIndice, setMencoesIndice] = useState(0)
+
+  // lista de usuários do sistema, carregada uma vez ao abrir o módulo
+  useEffect(() => {
+    let vivo = true
+    ;(async () => {
+      try {
+        const us = await pb.collection('users').getFullList({ sort: 'name' })
+        if (vivo) setUsuariosSistema(us as any[])
+      } catch (err) {
+        console.warn('Não foi possível carregar usuários para menções:', err)
+      }
+    })()
+    return () => {
+      vivo = false
+    }
+  }, [])
+
+  const usuariosFiltrados = useMemo(() => {
+    const q = mencoesTermo.trim().toLowerCase()
+    const base = usuariosSistema.filter((u) => u?.email)
+    if (!q) return base.slice(0, 8)
+    return base
+      .filter(
+        (u) =>
+          String(u.name || '')
+            .toLowerCase()
+            .includes(q) ||
+          String(u.email || '')
+            .toLowerCase()
+            .includes(q),
+      )
+      .slice(0, 8)
+  }, [usuariosSistema, mencoesTermo])
+
+  /**
+   * Lê o texto e devolve os usuários citados com @.
+   * Casa por NOME completo ou por E-MAIL digitado após o @.
+   */
+  const extrairMencoes = (texto: string): any[] => {
+    const achados: any[] = []
+    const vistos = new Set<string>()
+    for (const u of usuariosSistema) {
+      const nome = String(u.name || '').trim()
+      const email = String(u.email || '').trim()
+      if (!nome && !email) continue
+      const alvos = [email, nome].filter(Boolean)
+      for (const alvo of alvos) {
+        const padrao = new RegExp('@' + alvo.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+        if (padrao.test(texto) && !vistos.has(u.id)) {
+          vistos.add(u.id)
+          achados.push(u)
+          break
+        }
+      }
+    }
+    return achados
+  }
+
+  /** Detecta o "@" em digitação e controla o autocomplete. */
+  const aoDigitarChat = (valor: string) => {
+    setNovoChat(valor)
+    const m = /@([\p{L}\p{N}._-]*)$/u.exec(valor)
+    if (m) {
+      setMencoesTermo(m[1] || '')
+      setMencoesAbertas(true)
+      setMencoesIndice(0)
+    } else {
+      setMencoesAbertas(false)
+      setMencoesTermo('')
+    }
+  }
+
+  /** Insere o usuário escolhido no texto, substituindo o trecho "@termo". */
+  const inserirMencao = (u: any) => {
+    const alvo = String(u.email || u.name || '')
+    setNovoChat((atual) => {
+      const m = /@([\p{L}\p{N}._-]*)$/u.exec(atual)
+      if (m) return atual.slice(0, m.index) + '@' + alvo + ' '
+      return atual + '@' + alvo + ' '
+    })
+    setMencoesAbertas(false)
+    setMencoesTermo('')
+    setMencoesIndice(0)
+  }
+
   const enviarChat = async () => {
     if (!detalhe || (!novoChat.trim() && !chatAnexo)) return
     setChatErro('')
@@ -1306,7 +1398,51 @@ export default function TarefasKanbanPage() {
       fd.append('autor_tipo', 'portal')
       if (novoChat.trim()) fd.append('texto', novoChat.trim())
       if (chatAnexo) fd.append('anexo', chatAnexo)
-      await pb.collection('tarefas_chat').create(fd)
+      const registroChat: any = await pb.collection('tarefas_chat').create(fd)
+
+      // -------------------------------------------------------------------
+      // (3) 17/11/2026 — MENÇÕES @ NOTIFICAM O USUÁRIO CITADO.
+      //
+      // DIRETIVA: "na aba chat/mensagens deve ser possível referenciar qualquer
+      // usuário cadastrado, buscando ao digitar @, e ao enviar, mandar a
+      // mensagem e o alerta/aviso ao usuário referenciado".
+      //
+      // Ao enviar, extraio os @menções do texto, resolvo para usuários de
+      // verdade e crio uma notificação (sino) para cada um. O e-mail sai pelo
+      // hook de chat, que já existe para tarefas_chat.
+      // -------------------------------------------------------------------
+      if (novoChat.trim()) {
+        try {
+          const citados = extrairMencoes(novoChat)
+          for (const u of citados) {
+            if (u.id && user?.id && u.id === user.id) continue
+            if (
+              u.email &&
+              user?.email &&
+              String(u.email).toLowerCase() === String(user.email).toLowerCase()
+            ) {
+              continue
+            }
+            await pb.collection('notificacoes').create({
+              usuario_id: u.id || '',
+              usuario_email: u.email || '',
+              titulo: 'Você foi mencionado em "' + (detalhe.titulo || 'tarefa') + '"',
+              mensagem:
+                (user?.name || user?.email || 'Alguém') +
+                ' mencionou você: ' +
+                novoChat.trim().slice(0, 200),
+              tipo: 'tarefa_mencao',
+              tarefa_id: detalhe.id,
+              rota: '/tarefas?tarefa=' + detalhe.id,
+              autor_nome: user?.name || user?.email || '',
+              autor_email: user?.email || '',
+              lida: false,
+            })
+          }
+        } catch (errMencao) {
+          console.warn('Falha ao notificar menções:', errMencao)
+        }
+      }
       // auditoria (best-effort)
       try {
         await pb.send('/backend/v1/auditoria', {
@@ -1328,34 +1464,52 @@ export default function TarefasKanbanPage() {
     }
   }
 
+  // 17/11/2026 — (2) campo `subtarefas` é do tipo JSON: gravar ARRAY.
+  // `JSON.stringify` deixava uma STRING no banco e a subtarefa "desaparecia"
+  // na leitura seguinte. Vale para os dois caminhos (aqui e no modal).
   const addSub = async () => {
     if (!detalhe || !novaSub.trim()) return
     const lista = Array.isArray(detalhe.subtarefas)
-      ? detalhe.subtarefas
-      : JSON.parse(detalhe.subtarefas || '[]')
-    lista.push({ t: novaSub, ok: false })
+      ? [...detalhe.subtarefas]
+      : (() => {
+          try {
+            const p = JSON.parse(detalhe.subtarefas || '[]')
+            return Array.isArray(p) ? p : []
+          } catch (_) {
+            return []
+          }
+        })()
+    lista.push({ t: novaSub.trim(), ok: false })
     try {
-      await pb.collection('tarefas').update(detalhe.id, { subtarefas: JSON.stringify(lista) })
+      await pb.collection('tarefas').update(detalhe.id, { subtarefas: lista })
       setNovaSub('')
       const upd = await pb.collection('tarefas').getOne(detalhe.id)
       setDetalhe(upd)
-    } catch (e) {
-      setErro(String(e))
+    } catch (e: any) {
+      setErro(String(e?.response?.data?.message || e?.message || e))
     }
   }
 
   const toggleSub = async (idx: number) => {
     if (!detalhe) return
     const lista = Array.isArray(detalhe.subtarefas)
-      ? detalhe.subtarefas
-      : JSON.parse(detalhe.subtarefas || '[]')
-    lista[idx].ok = !lista[idx].ok
+      ? [...detalhe.subtarefas]
+      : (() => {
+          try {
+            const p = JSON.parse(detalhe.subtarefas || '[]')
+            return Array.isArray(p) ? p : []
+          } catch (_) {
+            return []
+          }
+        })()
+    if (!lista[idx]) return
+    lista[idx] = { ...lista[idx], ok: !lista[idx].ok }
     try {
-      await pb.collection('tarefas').update(detalhe.id, { subtarefas: JSON.stringify(lista) })
+      await pb.collection('tarefas').update(detalhe.id, { subtarefas: lista })
       const upd = await pb.collection('tarefas').getOne(detalhe.id)
       setDetalhe(upd)
-    } catch (e) {
-      setErro(String(e))
+    } catch (e: any) {
+      setErro(String(e?.response?.data?.message || e?.message || e))
     }
   }
 
@@ -2181,6 +2335,13 @@ export default function TarefasKanbanPage() {
       {/* Detalhe da tarefa — Versão A: Layout 3 Zonas fiel ao mockup */}
       <TarefaDetalheModal
         detalhe={detalhe}
+        aoDigitarChat={aoDigitarChat}
+        mencoesAbertas={mencoesAbertas}
+        usuariosFiltrados={usuariosFiltrados}
+        mencoesIndice={mencoesIndice}
+        setMencoesIndice={setMencoesIndice}
+        inserirMencao={inserirMencao}
+        setMencoesAbertas={setMencoesAbertas}
         onClose={() => setDetalhe(null)}
         onEditar={(t) => abrirEditar(t)}
         onCompartilhar={(t) => abrirCompartilhar(t)}

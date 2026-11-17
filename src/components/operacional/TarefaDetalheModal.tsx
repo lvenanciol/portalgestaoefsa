@@ -135,15 +135,103 @@ export function TarefaDetalheModal({
   setChatAnexo,
   enviarChat,
   chatErro,
-}: TarefaDetalheModalProps) {
+  aoDigitarChat,
+  mencoesAbertas,
+  usuariosFiltrados,
+  mencoesIndice,
+  setMencoesIndice,
+  inserirMencao,
+  setMencoesAbertas,
+}: any) {
   const navigate = useNavigate()
   const [expandDescricao, setExpandDescricao] = useState(true)
+
+  // ==========================================================================
+  // 17/11/2026 — (1) EDITAR NA PRÓPRIA TELA.
+  //
+  // DIRETIVA: "ao editar uma tarefa e clicar no campo descrição ou botão
+  // editar, o app está abrindo outra tela ao invés de editar a tela que
+  // contém propriedades e subtarefas".
+  //
+  // CAUSA: o botão Editar e o clique na descrição chamavam `onEditar(detalhe)`,
+  // que na página abre um DIÁLOGO separado (CreateTaskDialog). Ao abrir, este
+  // modal era desmontado e o usuário perdia propriedades, subtarefas e chat.
+  //
+  // CORREÇÃO: edição INLINE aqui mesmo. O modo `editando` transforma os campos
+  // em entradas; Salvar/Cancelar ficam no cabeçalho da descrição. O modal não
+  // fecha e as seções continuam na tela.
+  // ==========================================================================
+  const [editandoInline, setEditandoInline] = useState(false)
+  const [inlineSalvando, setInlineSalvando] = useState(false)
+  const [inlineErro, setInlineErro] = useState('')
+  const [campos, setCampos] = useState({
+    titulo: '',
+    descricao: '',
+    prazo: '',
+    responsavel: '',
+    prioridade_p: 'P2',
+    status_kanban: 'a_fazer',
+    empresa: '',
+    recorrencia: 'Nenhuma',
+  })
+
+  const abrirEdicaoInline = () => {
+    setCampos({
+      titulo: String(detalhe?.titulo || ''),
+      descricao: String(detalhe?.descricao || ''),
+      prazo: detalhe?.prazo ? String(detalhe.prazo).slice(0, 10) : '',
+      responsavel: String(detalhe?.responsavel || ''),
+      prioridade_p: String(detalhe?.prioridade_p || 'P2'),
+      status_kanban: String(detalhe?.status_kanban || 'a_fazer'),
+      empresa: String(detalhe?.empresa || ''),
+      recorrencia: String(detalhe?.recorrencia || 'Nenhuma'),
+    })
+    setInlineErro('')
+    setEditandoInline(true)
+  }
+
+  const salvarInline = async () => {
+    if (!detalhe?.id || inlineSalvando) return
+    if (!campos.titulo.trim()) {
+      setInlineErro('O título é obrigatório.')
+      return
+    }
+    setInlineSalvando(true)
+    setInlineErro('')
+    try {
+      const dados: Record<string, any> = {
+        titulo: campos.titulo.trim(),
+        descricao: campos.descricao.trim(),
+        responsavel: campos.responsavel.trim(),
+        prioridade_p: campos.prioridade_p,
+        status_kanban: campos.status_kanban,
+        recorrencia: campos.recorrencia || 'Nenhuma',
+      }
+      if (campos.prazo) {
+        // meio-dia local evita virada de dia por fuso
+        dados.prazo = campos.prazo + 'T12:00:00.000Z'
+      }
+      if (campos.empresa) dados.empresa = campos.empresa
+
+      await pb.collection('tarefas').update(detalhe.id, dados)
+      const upd = await pb.collection('tarefas').getOne(detalhe.id)
+      if (onSubtarefasAtualizadas) onSubtarefasAtualizadas(upd)
+      setEditandoInline(false)
+    } catch (err: any) {
+      const det =
+        err?.response?.data?.message || err?.message || 'Não foi possível salvar a tarefa.'
+      setInlineErro(String(det))
+    } finally {
+      setInlineSalvando(false)
+    }
+  }
   const [expandSubtarefas, setExpandSubtarefas] = useState(true)
   const [expandAnexos, setExpandAnexos] = useState(true)
   const [abaLateral, setAbaLateral] = useState<'historico' | 'detalhes'>('detalhes')
   const [painelMobileAberto, setPainelMobileAberto] = useState(false)
   const [novaSub, setNovaSub] = useState('')
   const [subSalvando, setSubSalvando] = useState(false)
+  const [subErro, setSubErro] = useState('')
   const [anexoErro, setAnexoErro] = useState('')
   const [enviandoAnexo, setEnviandoAnexo] = useState(false)
   const [midiaPreview, setMidiaPreview] = useState<{
@@ -297,29 +385,70 @@ export function TarefaDetalheModal({
   const handleToggleSub = async (idx: number) => {
     if (subSalvando) return
     setSubSalvando(true)
+    setSubErro('')
     const clone = [...subs]
     clone[idx] = { ...clone[idx], ok: !clone[idx].ok }
     try {
-      await pb.collection('tarefas').update(detalhe.id, { subtarefas: JSON.stringify(clone) })
+      // ARRAY, não string (ver comentário em handleAddSub)
+      await pb.collection('tarefas').update(detalhe.id, { subtarefas: clone })
       const upd = await pb.collection('tarefas').getOne(detalhe.id)
       if (onSubtarefasAtualizadas) onSubtarefasAtualizadas(upd)
-    } catch (err) {
+    } catch (err: any) {
+      setSubErro(String(err?.response?.data?.message || err?.message || 'Falha ao atualizar.'))
       console.error('Falha ao atualizar subtarefa:', err)
     } finally {
       setSubSalvando(false)
     }
   }
 
-  const handleAddSub = async () => {
-    if (!novaSub.trim() || subSalvando) return
+  /** (2) remove uma subtarefa */
+  const handleRemoverSub = async (idx: number) => {
+    if (subSalvando) return
     setSubSalvando(true)
-    const clone = [...subs, { t: novaSub.trim(), ok: false }]
+    setSubErro('')
+    const clone = subs.filter((_x, i) => i !== idx)
     try {
-      await pb.collection('tarefas').update(detalhe.id, { subtarefas: JSON.stringify(clone) })
+      await pb.collection('tarefas').update(detalhe.id, { subtarefas: clone })
+      const upd = await pb.collection('tarefas').getOne(detalhe.id)
+      if (onSubtarefasAtualizadas) onSubtarefasAtualizadas(upd)
+    } catch (err: any) {
+      setSubErro(String(err?.response?.data?.message || err?.message || 'Falha ao remover.'))
+    } finally {
+      setSubSalvando(false)
+    }
+  }
+
+  /**
+   * (2) 17/11/2026 — O BOTÃO "+" NÃO CRIava a subtarefa.
+   *
+   * CAUSAS IDENTIFICADAS:
+   *   a) eu gravava `JSON.stringify(clone)` num campo do tipo JSON. O
+   *      PocketBase espera o ARRAY; gravar string deixa "[]" como texto e a
+   *      leitura seguinte devolve algo que não é lista — a subtarefa some.
+   *   b) o erro era só `console.error`, sem nenhum aviso na tela: o usuário
+   *      clicava, nada acontecia e não havia pista do motivo.
+   *
+   * Correção: gravar o ARRAY, e mostrar o erro real acima do campo.
+   */
+  const handleAddSub = async () => {
+    const texto = novaSub.trim()
+    if (!texto) {
+      setSubErro('Digite o texto da subtarefa.')
+      return
+    }
+    if (subSalvando) return
+    setSubSalvando(true)
+    setSubErro('')
+    const clone = [...subs, { t: texto, ok: false }]
+    try {
+      await pb.collection('tarefas').update(detalhe.id, { subtarefas: clone })
       setNovaSub('')
       const upd = await pb.collection('tarefas').getOne(detalhe.id)
       if (onSubtarefasAtualizadas) onSubtarefasAtualizadas(upd)
-    } catch (err) {
+    } catch (err: any) {
+      const det =
+        err?.response?.data?.message || err?.message || 'Não foi possível salvar a subtarefa.'
+      setSubErro(String(det))
       console.error('Falha ao adicionar subtarefa:', err)
     } finally {
       setSubSalvando(false)
@@ -598,12 +727,29 @@ export function TarefaDetalheModal({
             {/* Ações principais do topo: Editar (primário verde), Compartilhar, menu ⋯ */}
             <Button
               type="button"
-              onClick={() => onEditar(detalhe)}
+              onClick={() => (editandoInline ? salvarInline() : abrirEdicaoInline())}
+              disabled={inlineSalvando}
               className="h-8 px-3.5 text-xs font-semibold bg-[#1B5E20] hover:bg-[#0F3D13] text-white shadow-xs flex items-center gap-1.5"
             >
-              <Pencil className="h-3.5 w-3.5" />
-              <span>Editar</span>
+              {inlineSalvando ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Pencil className="h-3.5 w-3.5" />
+              )}
+              <span>{editandoInline ? 'Salvar' : 'Editar'}</span>
             </Button>
+
+            {editandoInline && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditandoInline(false)}
+                disabled={inlineSalvando}
+                className="h-8 px-3 text-xs font-semibold"
+              >
+                Cancelar
+              </Button>
+            )}
 
             <Button
               type="button"
@@ -931,10 +1077,60 @@ export function TarefaDetalheModal({
 
               {expandDescricao && (
                 <div
-                  onClick={() => onEditar(detalhe)}
-                  className="p-3.5 rounded-lg border border-gray-200 bg-gray-50/60 hover:bg-gray-50 hover:border-gray-300 transition-colors cursor-pointer text-[13px] text-gray-700 leading-relaxed min-h-[72px]"
-                  title="Clique para editar a descrição"
+                  onClick={() => {
+                    if (!editandoInline) abrirEdicaoInline()
+                  }}
+                  className={cn(
+                    'p-3.5 rounded-lg border transition-colors text-[13px] text-gray-700 leading-relaxed min-h-[72px]',
+                    editandoInline
+                      ? 'border-[#1B5E20] bg-white'
+                      : 'border-gray-200 bg-gray-50/60 hover:bg-gray-50 hover:border-gray-300 cursor-pointer',
+                  )}
+                  title={editandoInline ? '' : 'Clique para editar a descrição aqui mesmo'}
                 >
+                  {editandoInline && (
+                    <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                      <Input
+                        value={campos.titulo}
+                        onChange={(e) => setCampos({ ...campos, titulo: e.target.value })}
+                        placeholder="Título da tarefa"
+                        className="h-9 text-sm font-semibold"
+                      />
+                      <textarea
+                        value={campos.descricao}
+                        onChange={(e) => setCampos({ ...campos, descricao: e.target.value })}
+                        placeholder="Descrição"
+                        rows={4}
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/25"
+                      />
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => salvarInline()}
+                          disabled={inlineSalvando}
+                          className="h-8 text-xs bg-[#1B5E20] hover:bg-[#0F3D13] text-white"
+                        >
+                          {inlineSalvando ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                          ) : null}
+                          Salvar
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setEditandoInline(false)}
+                          disabled={inlineSalvando}
+                          className="h-8 text-xs"
+                        >
+                          Cancelar
+                        </Button>
+                      </div>
+                      {inlineErro && <p className="text-[11px] text-red-600">{inlineErro}</p>}
+                    </div>
+                  )}
+                  {!editandoInline && null}
                   {detalhe.descricao ? (
                     <p className="whitespace-pre-wrap">{detalhe.descricao}</p>
                   ) : (
@@ -1005,6 +1201,13 @@ export function TarefaDetalheModal({
                         </label>
                       ))}
                     </div>
+                  )}
+
+                  {/* (2) erro visível — antes o clique falhava em silêncio */}
+                  {subErro && (
+                    <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded px-2 py-1">
+                      {subErro}
+                    </p>
                   )}
 
                   {/* Campo Nova subtarefa... com botão + verde funcional */}
@@ -1231,10 +1434,10 @@ export function TarefaDetalheModal({
                 </span>
                 <button
                   type="button"
-                  onClick={() => onEditar(detalhe)}
+                  onClick={() => (editandoInline ? salvarInline() : abrirEdicaoInline())}
                   className="text-[11px] text-[#1B5E20] font-semibold hover:underline"
                 >
-                  Editar tudo
+                  {editandoInline ? 'Salvar' : 'Editar tudo'}
                 </button>
               </div>
 
@@ -1246,9 +1449,9 @@ export function TarefaDetalheModal({
                   </span>
                   <button
                     type="button"
-                    onClick={() => onEditar(detalhe)}
+                    onClick={() => (editandoInline ? salvarInline() : abrirEdicaoInline())}
                     className="flex items-center gap-1.5 text-gray-800 font-medium hover:text-[#1B5E20] hover:underline max-w-[170px] truncate"
-                    title="Editar empresa"
+                    title="Editar os dados da tarefa aqui mesmo"
                   >
                     {detalhe.empresa ? (
                       <EmpresaIcon nome={detalhe.empresa} className="h-3.5 w-3.5 shrink-0" />
@@ -1564,12 +1767,69 @@ export function TarefaDetalheModal({
                       }}
                       className="flex items-center gap-2"
                     >
-                      <Input
-                        value={novoChat}
-                        onChange={(e) => setNovoChat(e.target.value)}
-                        placeholder="Mensagem ou atualização..."
-                        className="h-10 text-xs bg-gray-50 border-gray-200 rounded-lg focus:bg-white"
-                      />
+                      <div className="relative flex-1">
+                        <Input
+                          value={novoChat}
+                          onChange={(e) => aoDigitarChat(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (!mencoesAbertas) return
+                            if (e.key === 'ArrowDown') {
+                              e.preventDefault()
+                              setMencoesIndice((i) =>
+                                Math.min(i + 1, Math.max(0, usuariosFiltrados.length - 1)),
+                              )
+                            } else if (e.key === 'ArrowUp') {
+                              e.preventDefault()
+                              setMencoesIndice((i) => Math.max(0, i - 1))
+                            } else if (e.key === 'Enter' || e.key === 'Tab') {
+                              if (usuariosFiltrados[mencoesIndice]) {
+                                e.preventDefault()
+                                inserirMencao(usuariosFiltrados[mencoesIndice])
+                              }
+                            } else if (e.key === 'Escape') {
+                              setMencoesAbertas(false)
+                            }
+                          }}
+                          placeholder="Mensagem ou atualização... use @ para mencionar"
+                          className="h-10 text-xs bg-gray-50 border-gray-200 rounded-lg focus:bg-white"
+                        />
+
+                        {mencoesAbertas && usuariosFiltrados.length > 0 && (
+                          <div className="absolute bottom-11 left-0 right-0 z-50 bg-white border border-gray-200 rounded-lg shadow-lg max-h-[220px] overflow-y-auto">
+                            <div className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 border-b border-gray-100">
+                              Mencionar usuário
+                            </div>
+                            {usuariosFiltrados.map((u, i) => (
+                              <button
+                                key={u.id}
+                                type="button"
+                                onMouseDown={(ev) => {
+                                  ev.preventDefault()
+                                  inserirMencao(u)
+                                }}
+                                className={cn(
+                                  'w-full text-left px-2.5 py-1.5 flex items-center gap-2 transition-colors',
+                                  i === mencoesIndice ? 'bg-emerald-50' : 'hover:bg-gray-50',
+                                )}
+                              >
+                                <span className="h-6 w-6 rounded-full bg-[#1B5E20] text-white text-[10px] font-bold flex items-center justify-center shrink-0">
+                                  {String(u.name || u.email || '?')
+                                    .slice(0, 1)
+                                    .toUpperCase()}
+                                </span>
+                                <span className="min-w-0">
+                                  <span className="block text-[12px] font-semibold text-gray-800 truncate">
+                                    {u.name || u.email}
+                                  </span>
+                                  <span className="block text-[10px] text-gray-500 truncate">
+                                    {u.email}
+                                  </span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <label
                         className="h-10 w-10 shrink-0 inline-flex items-center justify-center rounded-lg border border-gray-200 bg-white hover:bg-gray-50 cursor-pointer text-gray-500 transition-colors"
                         title="Anexar arquivo à mensagem"

@@ -386,6 +386,98 @@ onRecordAfterUpdateSuccess(function (e) {
     }
   }
 
+  /**
+   * (4) 17/11/2026 — E-MAIL ALÉM DO SINO.
+   *
+   * A diretiva pede "e-mail E sino" em toda atualização. O envio usa o mesmo
+   * cliente de e-mail já configurado no projeto, com o mesmo remetente das
+   * notificações de tarefa. Falha de e-mail NÃO impede o sino: só registra.
+   */
+  function enviarEmailAlerta(destinatario, dados, tituloTarefa) {
+    var email = String(destinatario.email || '').trim()
+    if (!email || email.indexOf('@') < 0) return
+    try {
+      // respeita a matriz de canais (Integrações > E-mail)
+      var usaEmail = true
+      try {
+        var cfg = $app.findRecordsByFilter(
+          'integracoes_config',
+          'integracao = "email_notificacoes"',
+          '',
+          1,
+          0,
+        )
+        if (cfg && cfg.length) {
+          var c = cfg[0].get('config') || {}
+          var no = c['tarefas'] && c['tarefas']['alterada']
+          if (no && no.email === false) usaEmail = false
+        }
+      } catch (_) {}
+      if (!usaEmail) return
+
+      var remetente = ''
+      var nomeRemetente = 'Portal de Gestão Executivo'
+      try {
+        var cfgR = $app.findRecordsByFilter(
+          'integracoes_config',
+          'integracao = "email_remetente"',
+          '',
+          1,
+          0,
+        )
+        if (cfgR && cfgR.length) {
+          var cr = cfgR[0].get('config') || {}
+          if (cr.remetente) remetente = String(cr.remetente)
+          if (cr.nome) nomeRemetente = String(cr.nome)
+        }
+      } catch (_) {}
+      if (!remetente) {
+        try {
+          remetente = String($app.settings().meta.senderAddress || '')
+        } catch (_) {}
+      }
+      if (!remetente) return
+
+      var base = 'https://portal-de-gestao-executivo-b4d94.goskip.app'
+      var link = base + '/tarefas?tarefa=' + dados.tarefa_id
+
+      var html =
+        '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;">' +
+        '<div style="background:#1B5E20;color:#fff;padding:18px 22px;border-radius:8px 8px 0 0;">' +
+        '<h2 style="margin:0;font-size:17px;">' +
+        dados.titulo +
+        '</h2></div>' +
+        '<div style="border:1px solid #E5E7EB;border-top:0;padding:20px 22px;border-radius:0 0 8px 8px;">' +
+        '<p style="margin:0 0 12px;font-size:14px;color:#111827;">' +
+        'Olá, ' +
+        (destinatario.nome || '') +
+        '.</p>' +
+        '<p style="margin:0 0 16px;font-size:14px;color:#374151;">' +
+        dados.mensagem +
+        '</p>' +
+        '<a href="' +
+        link +
+        '" style="display:inline-block;background:#1B5E20;color:#fff;text-decoration:none;' +
+        'padding:11px 20px;border-radius:999px;font-size:13px;font-weight:700;">Abrir a tarefa</a>' +
+        '<p style="margin:18px 0 0;font-size:11px;color:#6B7280;">' +
+        'Sistema corporativo de uso restrito. Grupo Extrafruti · Casafruti · FoldBox</p>' +
+        '</div></div>'
+
+      var texto = dados.titulo + '\n\n' + dados.mensagem + '\n\nAbrir a tarefa: ' + link
+
+      var msg = new MailerMessage({
+        from: { address: remetente, name: nomeRemetente },
+        to: [{ address: email }],
+        subject: dados.titulo,
+        html: html,
+        text: texto,
+      })
+      $app.newMailClient().send(msg)
+    } catch (err) {
+      console.warn('[notificacoes] e-mail falhou para ' + email + ': ' + String(err).slice(0, 140))
+    }
+  }
+
   try {
     var t = e.record
     if (!t) return e.next()
@@ -405,7 +497,52 @@ onRecordAfterUpdateSuccess(function (e) {
     var respMudou = respAntigo !== respNovo
     var parceirosMudou = JSON.stringify(parcAntigos.sort()) !== JSON.stringify(parcNovos.sort())
 
-    if (!statusMudou && !respMudou && !parceirosMudou) {
+    // ---------------------------------------------------------------------
+    // 17/11/2026 — (4) NOTIFICAR EM QUALQUER ATUALIZAÇÃO.
+    //
+    // DIRETIVA: "sempre que uma tarefa for atualizada de qualquer forma,
+    // enviar e-mail e sino de alerta para os usuários envolvidos".
+    //
+    // Antes eu saía cedo quando status, responsável e parceiros não mudavam —
+    // então alterar título, descrição, prazo, prioridade, subtarefas ou anexos
+    // não avisava ninguém.
+    //
+    // Agora detecto QUALQUER campo relevante alterado e descrevo a mudança.
+    // ---------------------------------------------------------------------
+    function txt(reg, campo) {
+      try {
+        var v = reg.getString ? reg.getString(campo) : reg[campo]
+        return v === null || v === undefined ? '' : String(v).trim()
+      } catch (_) {
+        return ''
+      }
+    }
+
+    var camposVigiados = [
+      ['titulo', 'título'],
+      ['descricao', 'descrição'],
+      ['prazo', 'prazo'],
+      ['prioridade_p', 'prioridade'],
+      ['recorrencia', 'recorrência'],
+      ['empresa', 'empresa'],
+      ['subtarefas', 'subtarefas'],
+      ['anexos', 'anexos'],
+    ]
+
+    var mudancas = []
+    for (var ci = 0; ci < camposVigiados.length; ci++) {
+      var campoC = camposVigiados[ci][0]
+      var rotuloC = camposVigiados[ci][1]
+      var aC = txt(orig, campoC)
+      var bC = txt(t, campoC)
+      if (aC !== bC) {
+        if (!aC && bC) mudancas.push(rotuloC + ' definido')
+        else if (aC && !bC) mudancas.push(rotuloC + ' removido')
+        else mudancas.push(rotuloC + ' alterado')
+      }
+    }
+
+    if (!statusMudou && !respMudou && !parceirosMudou && !mudancas.length) {
       return e.next()
     }
 
@@ -441,6 +578,11 @@ onRecordAfterUpdateSuccess(function (e) {
       )
     }
 
+    // (4) campos gerais alterados (título, descrição, prazo, prioridade...)
+    for (var mi = 0; mi < mudancas.length; mi++) {
+      partesMudanca.push(mudancas[mi])
+    }
+
     var resumoMudanca = partesMudanca.join('; ')
 
     registrarNoChat(t.id, '⚡ ' + resumoMudanca + ' por ' + autor.nome + '.', autor.nome)
@@ -468,7 +610,7 @@ onRecordAfterUpdateSuccess(function (e) {
       notificados[chave] = true
 
       if (!env.desativadas) {
-        criarNotificacao(env, {
+        var dadosNotif = {
           titulo: tituloNotif,
           mensagem: corpoMensagem,
           tipo: tipoNotif,
@@ -476,7 +618,10 @@ onRecordAfterUpdateSuccess(function (e) {
           rota: '/tarefas',
           autor_nome: autor.nome,
           autor_email: autor.email,
-        })
+        }
+        criarNotificacao(env, dadosNotif)
+        // (4) e-mail além do sino, na mesma atualização
+        enviarEmailAlerta(env, dadosNotif, tituloTarefa)
       }
     }
   } catch (err) {
