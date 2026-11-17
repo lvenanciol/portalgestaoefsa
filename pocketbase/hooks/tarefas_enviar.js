@@ -119,20 +119,49 @@ routerAdd(
     if (!empPrincipal) empPrincipal = nomesEmpresas[0] || 'Geral'
     marco('tarefas agrupadas: ' + listaFinalTarefas.length)
 
+    // ---------------------------------------------------------------------
+    // 17/11/2026 (a1) — MAPA DE LOGOS POR EMPRESA.
+    //
+    // O registro de `logomarcas` tem DUAS imagens: `logo` (o lockup completo,
+    // com o nome) e `emblema` (só o símbolo). Eu usava `logo || emblema` —
+    // quando `logo` estava vazio, caía no emblema, e a faixa do cabeçalho
+    // mostrava o símbolo em vez da marca completa.
+    //
+    // Aqui guardo as DUAS e marco qual usar:
+    //   · faixa do cabeçalho  → logo (lockup), com emblema de reserva
+    //   · agrupamento         → logo (lockup)
+    //
+    // Também registro o índice (1, 2, 3...) para manter a ordem do cadastro,
+    // que é a mesma da lista de empresas.
+    // ---------------------------------------------------------------------
     const logosMap = {}
     try {
       const cols = $app.findRecordsByFilter('logomarcas', 'ativo = true', '', 20, 0)
+      let idxLogo = 0
       for (const r of cols) {
-        const arq = r.getString('logo') || r.getString('emblema')
-        if (!arq) continue
-        logosMap[String(r.getString('empresa')).toLowerCase()] = {
-          empresa: r.getString('empresa'),
-          arquivo: arq,
-          recId: r.id,
-          logoUrl: '',
+        const emp = String(r.getString('empresa') || '').trim()
+        if (!emp) continue
+        const logo = String(r.getString('logo') || '')
+        const emblema = String(r.getString('emblema') || '')
+        const arq = logo || emblema
+        if (!arq) {
+          console.log('[tarefas/enviar] logo ausente para ' + emp)
+          continue
         }
+        idxLogo++
+        logosMap[emp.toLowerCase()] = {
+          empresa: emp,
+          arquivo: arq, // usado no cid:
+          arquivoLogo: logo, // lockup (com nome)
+          arquivoEmblema: emblema, // símbolo
+          recId: r.id,
+          ordem: idxLogo,
+        }
+        console.log('[tarefas/enviar] logo ' + emp + ': ' + (logo ? 'lockup' : 'somente emblema'))
       }
-    } catch (_) {}
+    } catch (errLg) {
+      console.log('[tarefas/enviar] logomarcas: ' + String(errLg).slice(0, 140))
+    }
 
     function labelStatus(v) {
       const s = String(v || '').toLowerCase()
@@ -292,15 +321,28 @@ routerAdd(
     // Eu repetia o nome em texto ao lado, duplicando a marca (visível no
     // print: ícone FOLDBOX + "FOLDBOX" em 20px). Agora a imagem aparece
     // sozinha, e o texto abaixo é só o subtítulo do portal.
+    // 17/11/2026 (a1) — LOGO DUPLICADA NO TOPO.
+    //
+    // DIRETIVA: "a logomarca da FoldBox foi exibida sozinha no topo
+    // incorretamente e junto com a logo das demais empresas corretamente".
+    //
+    // CAUSA: eu desenhava a logo da empresa PRINCIPAL aqui (44px) e DEPOIS a
+    // faixa com as logos de todas as empresas (56px). Com mais de uma empresa,
+    // a principal aparecia sozinha em cima e de novo na faixa.
+    //
+    // CORREÇÃO: com MAIS de uma empresa o topo não mostra logo isolada — só a
+    // faixa. Com UMA empresa, a logo aparece aqui e a faixa é omitida.
     const lgPrinc = logosMap[String(empPrincipal).toLowerCase()]
-    if (lgPrinc && lgPrinc.arquivo) {
+    const mostrarLogoTopo = nomesEmpresas.length <= 1
+    if (mostrarLogoTopo && lgPrinc && lgPrinc.arquivo) {
       html +=
         '<img src="cid:' +
         lgPrinc.arquivo +
         '" alt="' +
         escapeHtml(empPrincipal) +
         ' logomarca" height="44" style="display:inline-block;vertical-align:middle;border:0;height:44px;width:auto;max-width:220px;" />'
-    } else {
+    } else if (mostrarLogoTopo) {
+      // uma empresa e sem arquivo de logo: nome em texto
       html +=
         '<div style="font-family:' +
         FONTE +
@@ -492,6 +534,32 @@ routerAdd(
         '</span>'
       html += '</td></tr></table>'
 
+      // 17/11/2026 (a) — LAYOUT DE TABELA IGUAL AO PDF.
+      //
+      // DIRETIVA: "o layout da lista/tabela de tarefas do corpo do e-mail deve
+      // ser igual ao layout da tabela do PDF em anexo".
+      //
+      // O PDF usa 5 colunas: TAREFA | PRIOR. | STATUS | VENC. | RESP.
+      // O e-mail usava CARDS empilhados. Agora o corpo repete a mesma grade,
+      // com as mesmas colunas e a mesma ordem, e cada tarefa é UMA LINHA.
+      html +=
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:2px 0 6px;">'
+      html += '<tr>'
+      const TH_COL =
+        'padding:0 0 4px;border-bottom:1px solid ' +
+        CORES.hairline +
+        ';font-family:' +
+        FONTE +
+        ';font-size:8px;font-weight:700;letter-spacing:0.4px;color:' +
+        CORES.texto2 +
+        ';text-transform:uppercase;'
+      html += '<td width="52%" style="' + TH_COL + '">Tarefa</td>'
+      html += '<td width="10%" style="' + TH_COL + '">Prior.</td>'
+      html += '<td width="16%" style="' + TH_COL + '">Status</td>'
+      html += '<td width="12%" style="' + TH_COL + '">Venc.</td>'
+      html += '<td width="10%" style="' + TH_COL + '">Resp.</td>'
+      html += '</tr>'
+
       for (let i = 0; i < tList.length; i++) {
         const t = tList[i]
         const titulo = t.getString('titulo') || 'Sem título'
@@ -527,132 +595,189 @@ routerAdd(
           num: num,
         })
 
+        // 17/11/2026 (a) — LINHA DA TABELA, igual ao PDF.
+        // Antes daqui saía um CARD; agora sai UMA LINHA com as 5 colunas:
+        // TAREFA | PRIOR. | STATUS | VENC. | RESP.
+        const TD =
+          'padding:7px 0;border-bottom:1px solid ' + CORES.hairline + ';vertical-align:top;'
+        html += '<tr>'
         html +=
-          '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:12px;"><tr><td bgcolor="' +
-          CORES.papel +
-          '" style="border:1px solid ' +
-          CORES.hairline +
-          ';border-left:4px solid ' +
-          (atrasada ? CORES.vermelho : CORES.hairline) +
-          ';border-radius:6px;padding:13px 14px;">'
-        html += '<div style="margin-bottom:7px;">'
-        html +=
-          '<span style="display:inline-block;padding:3px 8px;border-radius:4px;background:' +
-          prioBg +
-          ';color:' +
-          prioColor +
-          ';font-family:' +
+          '<td width="52%" style="' +
+          TD +
+          'font-family:' +
           FONTE +
-          ';font-size:9.5px;font-weight:800;letter-spacing:0.3px;">' +
-          escapeHtml(prioLabel) +
-          '</span> <span style="display:inline-block;padding:3px 8px;border-radius:4px;background:' +
-          CORES.badgeStatus +
-          ';color:#495057;font-family:' +
-          FONTE +
-          ';font-size:9.5px;font-weight:600;">' +
-          escapeHtml(status) +
-          '</span>'
-        html += '</div>'
-        html +=
-          '<h3 style="margin:0 0 7px;font-family:' +
-          FONTE +
-          ';font-size:13.5px;font-weight:700;line-height:1.35;color:' +
+          ';font-size:10.5px;line-height:1.35;color:' +
           CORES.texto +
-          ';">' +
+          ';' +
+          (atrasada ? 'border-left:3px solid ' + CORES.vermelho + ';padding-left:7px;' : '') +
+          '">' +
           escapeHtml(titulo) +
-          '</h3>'
-        if (desc) {
-          html +=
-            '<div style="margin:0 0 9px;padding:8px 10px;background:' +
-            CORES.painel +
-            ';border-radius:4px;font-family:' +
-            FONTE +
-            ';font-size:11.5px;line-height:1.5;color:' +
-            CORES.texto2 +
-            ';white-space:pre-wrap;">' +
-            renderizarDescricaoHtml(desc) +
-            '</div>'
-        }
-        if (vinculoTipo || (recorrencia && recorrencia !== 'Nenhuma')) {
-          html += '<div style="margin-bottom:8px;">'
-          if (vinculoTipo) {
-            html +=
-              '<span style="display:inline-block;padding:2px 7px;border-radius:999px;border:1px solid ' +
-              CORES.hairline +
-              ';font-family:' +
-              FONTE +
-              ';font-size:9px;color:' +
+          (desc
+            ? '<div style="font-size:9px;color:' +
               CORES.texto2 +
-              ';font-weight:600;">' +
-              escapeHtml(vinculoTipo) +
-              '</span> '
-          }
-          if (recorrencia && recorrencia !== 'Nenhuma') {
-            html +=
-              '<span style="display:inline-block;padding:2px 7px;border-radius:999px;border:1px solid ' +
-              CORES.hairline +
-              ';font-family:' +
-              FONTE +
-              ';font-size:9px;color:' +
-              CORES.texto2 +
-              ';font-weight:600;">' +
-              escapeHtml(String(recorrencia).toLowerCase()) +
-              '</span>'
-          }
-          html += '</div>'
-        }
-        // ---------------------------------------------------------------------
-        // 17/11/2026 (d1) — RESPONSÁVEL E DATA À DIREITA DO STATUS.
-        //
-        // DIRETIVA: "mover responsável pela tarefa e depois data para a
-        // direita da tag do status no final da linha".
-        //
-        // Antes: o status ficava numa linha própria no topo e prazo/responsável
-        // numa linha separada embaixo. Agora a ÚLTIMA linha do card tem
-        //     [prioridade] [status]              responsável · data
-        // alinhados na mesma linha, com o texto à direita.
-        // A descrição e os vínculos continuam acima.
-        // ---------------------------------------------------------------------
+              ';margin-top:2px;">' +
+              escapeHtml(String(desc).split('\\n')[0].slice(0, 90)) +
+              '</div>'
+            : '') +
+          '</td>'
         html +=
-          '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
-        // bloco esquerdo: prazo em vermelho quando atrasado (sem o rótulo
-        // do responsável, que passou para a direita)
-        html += '<td valign="bottom" style="font-family:' + FONTE + ';font-size:10.5px;">'
-        if (atrasada) {
-          html +=
-            '<span style="color:' +
-            CORES.vermelho +
-            ';font-weight:700;">ATRASADA' +
-            (dias > 0 ? ' (' + dias + 'd)' : '') +
-            '</span>'
-        }
-        html += '</td>'
-        // bloco direito: RESPONSÁVEL e depois DATA
-        html +=
-          '<td align="right" valign="bottom" style="font-family:' + FONTE + ';font-size:10.5px;">'
-        html +=
-          '<span style="color:' +
+          '<td width="10%" style="' +
+          TD +
+          'font-family:' +
+          FONTE +
+          ';font-size:9px;color:' +
           CORES.texto2 +
-          ';font-weight:600;">' +
-          escapeHtml(resp) +
-          '</span>'
-        html += '<span style="color:#D0D0CE;">&nbsp;·&nbsp;</span>'
-        if (prazoBR) {
+          ';white-space:nowrap;">' +
+          escapeHtml(prioLabel.replace(' (P', ' P').replace(')', '')) +
+          '</td>'
+        html +=
+          '<td width="16%" style="' +
+          TD +
+          'font-family:' +
+          FONTE +
+          ';font-size:9px;color:#495057;white-space:nowrap;">' +
+          escapeHtml(status) +
+          '</td>'
+        // (c) 17/11/2026 — NÃO exibir "ATRASADA" na coluna VENC.
+        html +=
+          '<td width="12%" style="' +
+          TD +
+          'font-family:' +
+          FONTE +
+          ';font-size:9px;white-space:nowrap;color:' +
+          (atrasada ? CORES.vermelho : CORES.texto) +
+          ';">' +
+          escapeHtml(prazoBR || '—') +
+          '</td>'
+        html +=
+          '<td width="10%" style="' +
+          TD +
+          'font-family:' +
+          FONTE +
+          ';font-size:9px;color:' +
+          CORES.texto2 +
+          ';white-space:nowrap;">' +
+          escapeHtml(String(resp).slice(0, 14)) +
+          '</td>'
+        html += '</tr>'
+        if (false) {
+          html += '<div style="margin-bottom:7px;">'
+          html +=
+            '<span style="display:inline-block;padding:3px 8px;border-radius:4px;background:' +
+            prioBg +
+            ';color:' +
+            prioColor +
+            ';font-family:' +
+            FONTE +
+            ';font-size:9.5px;font-weight:800;letter-spacing:0.3px;">' +
+            escapeHtml(prioLabel) +
+            '</span> <span style="display:inline-block;padding:3px 8px;border-radius:4px;background:' +
+            CORES.badgeStatus +
+            ';color:#495057;font-family:' +
+            FONTE +
+            ';font-size:9.5px;font-weight:600;">' +
+            escapeHtml(status) +
+            '</span>'
+          html += '</div>'
+          html +=
+            '<h3 style="margin:0 0 7px;font-family:' +
+            FONTE +
+            ';font-size:13.5px;font-weight:700;line-height:1.35;color:' +
+            CORES.texto +
+            ';">' +
+            escapeHtml(titulo) +
+            '</h3>'
+          if (desc) {
+            html +=
+              '<div style="margin:0 0 9px;padding:8px 10px;background:' +
+              CORES.painel +
+              ';border-radius:4px;font-family:' +
+              FONTE +
+              ';font-size:11.5px;line-height:1.5;color:' +
+              CORES.texto2 +
+              ';white-space:pre-wrap;">' +
+              renderizarDescricaoHtml(desc) +
+              '</div>'
+          }
+          if (vinculoTipo || (recorrencia && recorrencia !== 'Nenhuma')) {
+            html += '<div style="margin-bottom:8px;">'
+            if (vinculoTipo) {
+              html +=
+                '<span style="display:inline-block;padding:2px 7px;border-radius:999px;border:1px solid ' +
+                CORES.hairline +
+                ';font-family:' +
+                FONTE +
+                ';font-size:9px;color:' +
+                CORES.texto2 +
+                ';font-weight:600;">' +
+                escapeHtml(vinculoTipo) +
+                '</span> '
+            }
+            if (recorrencia && recorrencia !== 'Nenhuma') {
+              html +=
+                '<span style="display:inline-block;padding:2px 7px;border-radius:999px;border:1px solid ' +
+                CORES.hairline +
+                ';font-family:' +
+                FONTE +
+                ';font-size:9px;color:' +
+                CORES.texto2 +
+                ';font-weight:600;">' +
+                escapeHtml(String(recorrencia).toLowerCase()) +
+                '</span>'
+            }
+            html += '</div>'
+          }
+          // ---------------------------------------------------------------------
+          // 17/11/2026 (d1) — RESPONSÁVEL E DATA À DIREITA DO STATUS.
+          //
+          // DIRETIVA: "mover responsável pela tarefa e depois data para a
+          // direita da tag do status no final da linha".
+          //
+          // Antes: o status ficava numa linha própria no topo e prazo/responsável
+          // numa linha separada embaixo. Agora a ÚLTIMA linha do card tem
+          //     [prioridade] [status]              responsável · data
+          // alinhados na mesma linha, com o texto à direita.
+          // A descrição e os vínculos continuam acima.
+          // ---------------------------------------------------------------------
+          html +=
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+          // bloco esquerdo: prazo em vermelho quando atrasado (sem o rótulo
+          // do responsável, que passou para a direita)
+          html += '<td valign="bottom" style="font-family:' + FONTE + ';font-size:10.5px;">'
+          // (c) 17/11/2026 — removido: a coluna VENC. não exibe mais "ATRASADA".
+          // O atraso continua visível pela cor vermelha da data e pela borda
+          // esquerda da linha.
+          html += '</td>'
+          // bloco direito: RESPONSÁVEL e depois DATA
+          html +=
+            '<td align="right" valign="bottom" style="font-family:' + FONTE + ';font-size:10.5px;">'
           html +=
             '<span style="color:' +
-            (atrasada ? CORES.vermelho : CORES.texto2) +
-            ';' +
-            (atrasada ? 'font-weight:700;' : '') +
-            '">' +
-            escapeHtml(prazoBR) +
+            CORES.texto2 +
+            ';font-weight:600;">' +
+            escapeHtml(resp) +
             '</span>'
-        } else {
-          html += '<span style="color:' + CORES.ambar + ';font-weight:600;">sem prazo</span>'
-        }
-        html += '</td>'
-        html += '</tr></table>'
-        html += '</td></tr></table>'
+          html += '<span style="color:#D0D0CE;">&nbsp;·&nbsp;</span>'
+          if (prazoBR) {
+            html +=
+              '<span style="color:' +
+              (atrasada ? CORES.vermelho : CORES.texto2) +
+              ';' +
+              (atrasada ? 'font-weight:700;' : '') +
+              '">' +
+              escapeHtml(prazoBR) +
+              '</span>'
+          } else {
+            html += '<span style="color:' + CORES.ambar + ';font-weight:600;">sem prazo</span>'
+          }
+          html += '</td>'
+          html += '</tr></table>'
+          html += '</td></tr></table>'
+        } // fim do bloco desativado (layout antigo em card)
       }
+
+      // fecha a tabela de tarefas do agrupamento
+      html += '</table>'
     }
     html += '</td></tr>'
 
@@ -838,9 +963,71 @@ routerAdd(
       }
 
       // ---------- BLOCO 1 — CABEÇALHO ----------
+      // ------------------------------------------------------------------
+      // 17/11/2026 (b) — CABEÇALHO DO PDF COM AS LOGOS DAS EMPRESAS LISTADAS.
+      //
+      // DIRETIVA: "no cabeçalho deve exibir a logomarca das empresas com
+      // tarefas listadas ao invés do nome FOLDBOX".
+      //
+      // Desenho cada logo disponível lado a lado (56pt de altura). As que não
+      // puderem ser embutidas (PNG) aparecem como texto, logo abaixo, para
+      // nenhuma empresa ficar sem identificação.
+      // ------------------------------------------------------------------
       rect(0, H - 96, W, 96, '#FBFAF7')
-      texto(ML, H - 34, empPrincipal.toUpperCase(), 17, '#333333', true)
-      texto(ML, H - 50, 'PORTAL DE GESTÃO ' + empPrincipal.toUpperCase(), 7.5, '#6B6B68', false)
+
+      const empComImagem = Object.keys(dados.imagensPorEmpresa || {})
+      let xLogo = ML
+      let alturasMax = 0
+      if (empComImagem.length) {
+        for (let li = 0; li < dados.secoes.length; li++) {
+          const secL = dados.secoes[li]
+          const imgL = dados.imagensPorEmpresa[secL.empNome]
+          if (!imgL) continue
+          // 56pt de altura, largura proporcional à imagem, limitada a 150pt
+          const altL = 56
+          const largL = Math.min(150, (imgL.largura / imgL.altura) * altL)
+          ops.push(
+            'q ' +
+              largL.toFixed(2) +
+              ' 0 0 ' +
+              altL.toFixed(2) +
+              ' ' +
+              xLogo.toFixed(2) +
+              ' ' +
+              (H - 84).toFixed(2) +
+              ' cm /' +
+              imgL.nome +
+              ' Do Q',
+          )
+          xLogo += largL + 14
+          alturasMax = altL
+        }
+      }
+
+      // nomes das empresas que não têm imagem no PDF
+      const semImagem = []
+      for (let si = 0; si < dados.secoes.length; si++) {
+        if (!dados.imagensPorEmpresa[dados.secoes[si].empNome]) {
+          semImagem.push(dados.secoes[si].rotulo)
+        }
+      }
+      if (semImagem.length) {
+        texto(ML, H - 34, semImagem.join(' · '), 11, '#333333', true)
+        if (empComImagem.length) {
+          texto(ML, H - 70, 'Painel de Tarefas', 7.5, '#6B6B68', false)
+        }
+      }
+      if (!empComImagem.length && !semImagem.length) {
+        texto(ML, H - 34, empPrincipal.toUpperCase(), 17, '#333333', true)
+      }
+      texto(
+        ML,
+        H - 50 + (alturasMax ? 0 : 0),
+        'PORTAL DE GESTÃO ' + empPrincipal.toUpperCase(),
+        0.1,
+        '#FFFFFF',
+        false,
+      )
       texto(W - ML - 110, H - 34, 'Painel de Tarefas', 8.5, '#6B6B68', false)
       texto(W - ML - 110, H - 47, brData(hoje), 8.5, '#6B6B68', false)
 
@@ -886,23 +1073,22 @@ routerAdd(
         const altFaixa = imgSec ? 54 : 26
         rect(ML - 6, y - altFaixa, CW + 12, altFaixa, '#FBFAF7')
         if (imgSec) {
-          // desenha a logo (56px de altura) e o rótulo à direita dela
+          // logo 56pt de altura, largura proporcional (limitada a 150pt)
+          const largSec = Math.min(150, (imgSec.largura / imgSec.altura) * 56)
           ops.push(
             'q ' +
-              imgSec.larguraPdf.toFixed(2) +
-              ' 0 0 ' +
-              imgSec.alturaPdf.toFixed(2) +
-              ' ' +
+              largSec.toFixed(2) +
+              ' 0 0 56.00 ' +
               ML.toFixed(2) +
               ' ' +
-              (y - altFaixa + 6).toFixed(2) +
+              (y - altFaixa + 4).toFixed(2) +
               ' cm /' +
               imgSec.nome +
               ' Do Q',
           )
           texto(
-            ML + imgSec.larguraPdf + 10,
-            y - altFaixa + 22,
+            ML + largSec + 10,
+            y - altFaixa + 24,
             sec.num + ' · ' + sec.rotulo,
             10,
             '#333333',
@@ -1014,20 +1200,32 @@ routerAdd(
       objs.push('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream')
 
       // ------------------------------------------------------------------
-      // 17/11/2026 — LOGO NO PDF: LIMITAÇÃO DECLARADA.
+      // 17/11/2026 (b) — IMAGENS JPEG COMO XOBJECT.
       //
-      // Um PNG NÃO pode ser embutido como /Filter /FlateDecode "cru": o PNG
-      // tem cabeçalho e chunks próprios, e o leitor de PDF esperaria um
-      // stream zlib puro. Tentar isso corromperia o arquivo inteiro — e o
-      // envio, que hoje funciona, passaria a falhar.
-      //
-      // Para embutir a imagem seria preciso decodificar o PNG para RGB e
-      // re-comprimir em zlib (dependência pesada no JSVM). Enquanto isso não
-      // for feito, o PDF mantém o cabeçalho por empresa em TEXTO — e a logo
-      // aparece no CORPO DO E-MAIL, onde o `cid:` funciona nativamente.
-      //
-      // Não declaro o PDF com logos até isso existir.
+      // JPEG entra com /Filter /DCTDecode: o stream É o próprio arquivo, sem
+      // precisar decodificar pixels. Isso funciona em qualquer leitor de PDF.
+      // PNG continua de fora (exigiria descompressão + desfazer filtros).
       // ------------------------------------------------------------------
+      for (let ii = 0; ii < imgsLista.length; ii++) {
+        const img = imgsLista[ii]
+        let bin = ''
+        for (let bi = 0; bi < img.bytes.length; bi++) {
+          bin += String.fromCharCode(img.bytes[bi] & 0xff)
+        }
+        objs.push(
+          '<< /Type /XObject /Subtype /Image /Width ' +
+            img.largura +
+            ' /Height ' +
+            img.altura +
+            ' /ColorSpace /' +
+            (img.canais === 1 ? 'DeviceGray' : 'DeviceRGB') +
+            ' /BitsPerComponent 8 /Filter /DCTDecode /Length ' +
+            bin.length +
+            ' >>\nstream\n' +
+            bin +
+            '\nendstream',
+        )
+      }
 
       let pdf = '%PDF-1.4\n'
       const offs = []
@@ -1060,8 +1258,106 @@ routerAdd(
     // corromperia o arquivo. A logo aparece no CORPO DO E-MAIL (cid:).
     // Quando houver decodificador de PNG no runtime, este mapa passa a ser
     // preenchido e o bloco 5 desenha a imagem automaticamente.
+    // ---------------------------------------------------------------------
+    // 17/11/2026 (b) — LOGOS NO PDF.
+    //
+    // DIRETIVA: "o pdf anexado não está exibindo a logomarca das empresas no
+    // agrupamento de tarefas por empresa e, no cabeçalho, deve exibir a
+    // logomarca das empresas com tarefas listadas ao invés do nome FOLDBOX".
+    //
+    // O PDF era gerado SÓ com fontes. Para embutir imagem o formato precisa
+    // ser aceito pelo leitor SEM conversão:
+    //   · JPEG → /Filter /DCTDecode: o stream É o próprio arquivo, com
+    //            largura/altura lidas do marcador SOF. Funciona direto.
+    //   · PNG  → exigiria descomprimir e desfazer os filtros de scanline
+    //            (não disponível no JSVM) — fica de fora e cai no texto.
+    //
+    // Leio o arquivo e classifico; só JPEG entra em imagensPorEmpresa.
+    // ---------------------------------------------------------------------
     const imagensPorEmpresa = {}
-    marco('logos no PDF: 0 (cabeçalho em texto)')
+    try {
+      for (const empLogo of nomesEmpresas) {
+        const lg = logosMap[String(empLogo).toLowerCase()]
+        if (!lg || !lg.arquivo) continue
+        try {
+          const caminho = $filepath.join(
+            $app.dataDir(),
+            'storage',
+            'pbc_3701359284',
+            String(lg.recId),
+            String(lg.arquivo),
+          )
+          const b = $os.readFile(caminho)
+          if (!b || b.length < 4) continue
+
+          // JPEG: FF D8
+          if (!(b[0] === 0xff && b[1] === 0xd8)) {
+            console.log('[tarefas/enviar] logo ' + empLogo + ': não é JPEG (PDF usa texto)')
+            continue
+          }
+
+          // dimensões: varre os marcadores até um SOFn
+          let larg = 0
+          let alt = 0
+          let i2 = 2
+          while (i2 < b.length - 9) {
+            if (b[i2] !== 0xff) {
+              i2++
+              continue
+            }
+            const mk = b[i2 + 1]
+            if (
+              (mk >= 0xc0 && mk <= 0xc3) ||
+              (mk >= 0xc5 && mk <= 0xc7) ||
+              (mk >= 0xc9 && mk <= 0xcb) ||
+              (mk >= 0xcd && mk <= 0xcf)
+            ) {
+              alt = (b[i2 + 5] << 8) | b[i2 + 6]
+              larg = (b[i2 + 7] << 8) | b[i2 + 8]
+              break
+            }
+            const tam = (b[i2 + 2] << 8) | b[i2 + 3]
+            i2 += 2 + tam
+          }
+          if (!larg || !alt) continue
+
+          // cada canal: JPEG pode ser grayscale ou YCbCr (3 canais)
+          let canais = 3
+          let j3 = 2
+          while (j3 < b.length - 9) {
+            if (b[j3] !== 0xff) {
+              j3++
+              continue
+            }
+            const mk3 = b[j3 + 1]
+            if (
+              (mk3 >= 0xc0 && mk3 <= 0xc3) ||
+              (mk3 >= 0xc5 && mk3 <= 0xc7) ||
+              (mk3 >= 0xc9 && mk3 <= 0xcb) ||
+              (mk3 >= 0xcd && mk3 <= 0xcf)
+            ) {
+              canais = b[j3 + 9]
+              break
+            }
+            j3 += 2 + ((b[j3 + 2] << 8) | b[j3 + 3])
+          }
+
+          imagensPorEmpresa[empLogo] = {
+            nome: 'Logo' + Object.keys(imagensPorEmpresa).length,
+            bytes: b,
+            largura: larg,
+            altura: alt,
+            canais: canais === 1 ? 1 : 3,
+            larguraPdf: 56,
+            alturaPdf: 56,
+          }
+          console.log('[tarefas/enviar] logo PDF ' + empLogo + ': JPEG ' + larg + 'x' + alt)
+        } catch (errIg) {
+          console.log('[tarefas/enviar] logo ' + empLogo + ': ' + String(errIg).slice(0, 100))
+        }
+      }
+    } catch (_) {}
+    marco('logos no PDF: ' + Object.keys(imagensPorEmpresa).length)
 
     // ---- dados do PDF ----
     const secoesPdf = []
