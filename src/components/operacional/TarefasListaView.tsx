@@ -346,8 +346,10 @@ export function TarefasListaView({
           Clique ordena (padrão: Prazo crescente), arraste reordena e a alça
           à direita redimensiona. Tudo persistido por usuário. */}
       <div className="overflow-x-auto">
+        {/* 18/11/2026 — cabeçalho e linha usam o MESMO gap e a MESMA reserva
+            para a coluna de ações; sem isso as colunas saíam deslocadas. */}
         <div
-          className="flex items-center bg-gray-50/80 border-y border-gray-200 rounded-md select-none"
+          className="flex items-center gap-3 bg-gray-50/80 border-y border-gray-200 rounded-md select-none"
           style={{ minWidth: larguraTotal }}
         >
           {colunasNaOrdem.map((c) => (
@@ -385,6 +387,13 @@ export function TarefasListaView({
               />
             </div>
           ))}
+          {/* coluna de AÇÕES: não ordenável, mas ocupa o mesmo espaço da linha */}
+          <div
+            className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 text-right"
+            style={{ width: LARGURA_ACOES, flexShrink: 0 }}
+          >
+            Ações
+          </div>
         </div>
       </div>
 
