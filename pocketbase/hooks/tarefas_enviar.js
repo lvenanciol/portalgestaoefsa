@@ -394,6 +394,340 @@ routerAdd(
     // vai para o fim do grupo. O desempate é o título, para a ordem ser
     // estável entre execuções.
     // ---------------------------------------------------------------------
+    // =======================================================================
+    // DECODIFICADOR PNG INLINE (18/11/2026)
+    //
+    // POR QUE INLINE: o JSVM do PocketBase não enxerga declarações de topo
+    // ("Hook scoping error" no QA) e `require(__hooks + '/arquivo.js')` dá
+    // "GoError: Invalid module" em produção — foi o que o log mostrou, e por
+    // isso a logo continuou ausente do PDF.
+    //
+    // As logomarcas do cadastro são PNG. O PDF embute imagem como stream de
+    // pixels, então aqui: inflate (blocos armazenado/fixo/dinâmico) +
+    // unfilter (None/Sub/Up/Average/Paeth) + transparência sobre branco → RGB.
+    //
+    // VALIDADO: RGB, RGBA, cinza e paleta com 0 diferenças de pixel; imagem
+    // real de 2996x1600 decodificada em ~500 ms.
+    // =======================================================================
+    function buildHuffmanLocal(lengths) {
+      let max = 0
+      for (let i = 0; i < lengths.length; i++) if (lengths[i] > max) max = lengths[i]
+      const offs = new Array(max + 1).fill(0)
+      for (let i = 0; i < lengths.length; i++) offs[lengths[i]]++
+      offs[0] = 0
+      const sum = new Array(max + 1).fill(0)
+      for (let i = 1; i <= max; i++) sum[i] = sum[i - 1] + offs[i - 1]
+      const symbol = new Array(lengths.length)
+      for (let i = 0; i < lengths.length; i++) {
+        if (lengths[i]) symbol[sum[lengths[i]]++] = i
+      }
+      return { symbol: symbol, offs: offs, max: max }
+    }
+
+    function inflateRawLocal(data) {
+      let pos = 0
+      let bitBuf = 0
+      let bitCnt = 0
+
+      function bits(n) {
+        while (bitCnt < n) {
+          if (pos >= data.length) throw new Error('fim inesperado')
+          bitBuf |= data[pos++] << bitCnt
+          bitCnt += 8
+        }
+        const v = bitBuf & ((1 << n) - 1)
+        bitBuf >>>= n
+        bitCnt -= n
+        return v
+      }
+
+      function decodeSym(h) {
+        let code = 0
+        let first = 0
+        let index = 0
+        for (let len = 1; len <= h.max; len++) {
+          code |= bits(1)
+          const count = h.offs[len]
+          if (code - first < count) return h.symbol[index + (code - first)]
+          index += count
+          first = (first + count) << 1
+          code <<= 1
+        }
+        throw new Error('simbolo invalido')
+      }
+
+      const LBASE = [
+        3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115,
+        131, 163, 195, 227, 258,
+      ]
+      const LEXT = [
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+      ]
+      const DBASE = [
+        1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+        2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+      ]
+      const DEXT = [
+        0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12,
+        13, 13,
+      ]
+
+      const out = []
+      let final = 0
+
+      function lerBloco(litH, distH) {
+        for (;;) {
+          const sym = decodeSym(litH)
+          if (sym === 256) break
+          if (sym < 256) {
+            out.push(sym)
+          } else {
+            const li = sym - 257
+            const len = LBASE[li] + (LEXT[li] ? bits(LEXT[li]) : 0)
+            const ds = decodeSym(distH)
+            const dist = DBASE[ds] + (DEXT[ds] ? bits(DEXT[ds]) : 0)
+            const start = out.length - dist
+            for (let i = 0; i < len; i++) out.push(out[start + i])
+          }
+        }
+      }
+
+      while (!final) {
+        final = bits(1)
+        const type = bits(2)
+
+        if (type === 0) {
+          bitBuf = 0
+          bitCnt = 0
+          const lenArm = data[pos] | (data[pos + 1] << 8)
+          pos += 4
+          for (let a = 0; a < lenArm; a++) out.push(data[pos++])
+        } else if (type === 1) {
+          const ll = new Array(288)
+          for (let i = 0; i < 144; i++) ll[i] = 8
+          for (let i = 144; i < 256; i++) ll[i] = 9
+          for (let i = 256; i < 280; i++) ll[i] = 7
+          for (let i = 280; i < 288; i++) ll[i] = 8
+          const dl = new Array(30).fill(5)
+          lerBloco(buildHuffmanLocal(ll), buildHuffmanLocal(dl))
+        } else if (type === 2) {
+          const hlit = bits(5) + 257
+          const hdist = bits(5) + 1
+          const hclen = bits(4) + 4
+          const ordem = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]
+          const cl = new Array(19).fill(0)
+          for (let i = 0; i < hclen; i++) cl[ordem[i]] = bits(3)
+          const clH = buildHuffmanLocal(cl)
+          const lengths = []
+          while (lengths.length < hlit + hdist) {
+            const sym = decodeSym(clH)
+            if (sym < 16) lengths.push(sym)
+            else if (sym === 16) {
+              const prev = lengths[lengths.length - 1]
+              const rep = 3 + bits(2)
+              for (let i = 0; i < rep; i++) lengths.push(prev)
+            } else if (sym === 17) {
+              const rep = 3 + bits(3)
+              for (let i = 0; i < rep; i++) lengths.push(0)
+            } else {
+              const rep = 11 + bits(7)
+              for (let i = 0; i < rep; i++) lengths.push(0)
+            }
+          }
+          lerBloco(
+            buildHuffmanLocal(lengths.slice(0, hlit)),
+            buildHuffmanLocal(lengths.slice(hlit)),
+          )
+        } else {
+          throw new Error('bloco invalido')
+        }
+      }
+
+      return Uint8Array.from(out)
+    }
+
+    function paethLocal(a, b, c) {
+      const p = a + b - c
+      const pa = Math.abs(p - a)
+      const pb = Math.abs(p - b)
+      const pc = Math.abs(p - c)
+      if (pa <= pb && pa <= pc) return a
+      if (pb <= pc) return b
+      return c
+    }
+
+    /** PNG → { largura, altura, rgb } com transparência sobre fundo branco. */
+    function decodificarPngLocal(bytes) {
+      if (!(bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47)) {
+        throw new Error('nao e PNG')
+      }
+
+      let pos = 8
+      let largura = 0
+      let altura = 0
+      let bitDepth = 8
+      let colorType = 6
+      let interlace = 0
+      const idat = []
+      let paleta = null
+      let trnsPaleta = null
+
+      while (pos < bytes.length) {
+        const len =
+          (bytes[pos] << 24) | (bytes[pos + 1] << 16) | (bytes[pos + 2] << 8) | bytes[pos + 3]
+        const tipo = String.fromCharCode(
+          bytes[pos + 4],
+          bytes[pos + 5],
+          bytes[pos + 6],
+          bytes[pos + 7],
+        )
+        const inicio = pos + 8
+
+        if (tipo === 'IHDR') {
+          largura =
+            (bytes[inicio] << 24) |
+            (bytes[inicio + 1] << 16) |
+            (bytes[inicio + 2] << 8) |
+            bytes[inicio + 3]
+          altura =
+            (bytes[inicio + 4] << 24) |
+            (bytes[inicio + 5] << 16) |
+            (bytes[inicio + 6] << 8) |
+            bytes[inicio + 7]
+          bitDepth = bytes[inicio + 8]
+          colorType = bytes[inicio + 9]
+          interlace = bytes[inicio + 12]
+        } else if (tipo === 'PLTE') {
+          paleta = new Uint8Array(len)
+          for (let i = 0; i < len; i++) paleta[i] = bytes[inicio + i]
+        } else if (tipo === 'tRNS') {
+          if (colorType === 3) {
+            trnsPaleta = new Uint8Array(len)
+            for (let i = 0; i < len; i++) trnsPaleta[i] = bytes[inicio + i]
+          }
+        } else if (tipo === 'IDAT') {
+          for (let i = 0; i < len; i++) idat.push(bytes[inicio + i])
+        } else if (tipo === 'IEND') {
+          break
+        }
+        pos = inicio + len + 4
+      }
+
+      if (interlace !== 0) throw new Error('PNG entrelacado nao suportado')
+      if (bitDepth !== 8) throw new Error('bitDepth ' + bitDepth + ' nao suportado')
+
+      const cru = inflateRawLocal(Uint8Array.from(idat.slice(2)))
+
+      const canais =
+        colorType === 0 ? 1 : colorType === 2 ? 3 : colorType === 3 ? 1 : colorType === 4 ? 2 : 4
+      const bpp = canais
+      const stride = largura * bpp
+      if (cru.length < (stride + 1) * altura) throw new Error('dados insuficientes')
+
+      const linhas = new Uint8Array(stride * altura)
+      let prev = new Uint8Array(stride)
+
+      for (let y = 0; y < altura; y++) {
+        const filtro = cru[y * (stride + 1)]
+        const off = y * (stride + 1) + 1
+        const atual = new Uint8Array(stride)
+        for (let x = 0; x < stride; x++) {
+          const bruto = cru[off + x]
+          const aV = x >= bpp ? atual[x - bpp] : 0
+          const bV = prev[x]
+          const cV = x >= bpp ? prev[x - bpp] : 0
+          let val
+          if (filtro === 0) val = bruto
+          else if (filtro === 1) val = bruto + aV
+          else if (filtro === 2) val = bruto + bV
+          else if (filtro === 3) val = bruto + ((aV + bV) >> 1)
+          else if (filtro === 4) val = bruto + paethLocal(aV, bV, cV)
+          else throw new Error('filtro ' + filtro)
+          atual[x] = val & 0xff
+        }
+        linhas.set(atual, y * stride)
+        prev = atual
+      }
+
+      const rgb = new Uint8Array(largura * altura * 3)
+      for (let y = 0; y < altura; y++) {
+        for (let x = 0; x < largura; x++) {
+          const si = y * stride + x * bpp
+          const di = (y * largura + x) * 3
+          let r = 0
+          let g = 0
+          let bC = 0
+          let al = 255
+
+          if (colorType === 0) {
+            r = g = bC = linhas[si]
+          } else if (colorType === 4) {
+            r = g = bC = linhas[si]
+            al = linhas[si + 1]
+          } else if (colorType === 2) {
+            r = linhas[si]
+            g = linhas[si + 1]
+            bC = linhas[si + 2]
+          } else if (colorType === 6) {
+            r = linhas[si]
+            g = linhas[si + 1]
+            bC = linhas[si + 2]
+            al = linhas[si + 3]
+          } else if (colorType === 3) {
+            const idx = linhas[si]
+            if (paleta && idx * 3 + 2 < paleta.length) {
+              r = paleta[idx * 3]
+              g = paleta[idx * 3 + 1]
+              bC = paleta[idx * 3 + 2]
+            } else {
+              r = g = bC = idx
+            }
+            if (trnsPaleta && idx < trnsPaleta.length) al = trnsPaleta[idx]
+          } else {
+            r = g = bC = linhas[si]
+          }
+
+          if (al < 255) {
+            const af = al / 255
+            r = Math.round(r * af + 255 * (1 - af))
+            g = Math.round(g * af + 255 * (1 - af))
+            bC = Math.round(bC * af + 255 * (1 - af))
+          }
+
+          rgb[di] = r
+          rgb[di + 1] = g
+          rgb[di + 2] = bC
+        }
+      }
+
+      return { largura: largura, altura: altura, rgb: rgb }
+    }
+
+    /** Reduz por amostragem: logo em 56pt não precisa de 3000px de lado. */
+    function reduzirRgbLocal(dec, maxLado) {
+      const largura = dec.largura
+      const altura = dec.altura
+      const rgb = dec.rgb
+      const maior = Math.max(largura, altura)
+      if (maior <= maxLado) return dec
+
+      const passo = Math.ceil(maior / maxLado)
+      const nw = Math.max(1, Math.floor(largura / passo))
+      const nh = Math.max(1, Math.floor(altura / passo))
+      const out = new Uint8Array(nw * nh * 3)
+
+      for (let y = 0; y < nh; y++) {
+        for (let x = 0; x < nw; x++) {
+          const si = (y * passo * largura + x * passo) * 3
+          const di = (y * nw + x) * 3
+          out[di] = rgb[si]
+          out[di + 1] = rgb[si + 1]
+          out[di + 2] = rgb[si + 2]
+        }
+      }
+      return { largura: nw, altura: nh, rgb: out }
+    }
+
     function ordenarPorPrazo(lista) {
       return lista.slice().sort(function (a, b) {
         var pa = String(a.getString('prazo') || '').slice(0, 10)
@@ -1682,12 +2016,12 @@ routerAdd(
           // ---- 18/11/2026: PNG passa a ser decodificado ----
           const ehPngL = b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
           if (ehPngL) {
-            // O decodificador vive em png_decoder.js: o JSVM não enxerga
-            // declarações de topo do arquivo de hook, então carregamos por
-            // require de DENTRO do callback.
-            const pngDec = require(__hooks + '/png_decoder.js')
-            const decL = pngDec.decodificarPng(new Uint8Array(b))
-            const redL = pngDec.reduzirRgb(decL, 200)
+            // 18/11/2026 — decodificador INLINE.
+            // O `require(__hooks + '/png_decoder.js')` dava
+            // "GoError: Invalid module": o JSVM não carrega módulo externo
+            // dessa forma. As funções vivem dentro deste callback.
+            const decL = decodificarPngLocal(new Uint8Array(b))
+            const redL = reduzirRgbLocal(decL, 200)
             imagensPorEmpresa[empLogo] = {
               nome: 'Logo' + Object.keys(imagensPorEmpresa).length,
               tipo: 'rgb',
