@@ -1472,37 +1472,58 @@ export function TarefaDetalheModal({
                     <Building2 className="h-3.5 w-3.5 text-gray-400" /> Empresa
                   </span>
                   {editandoInline ? (
-                    // 18/11/2026 — SELECT em vez de input+datalist.
-                    // O <datalist> não abre no Safari/iOS e não mostra as
-                    // opções de forma confiável: dava a impressão de campo
-                    // travado. Aqui a lista é explícita, com a empresa atual
-                    // garantida como opção mesmo que não esteja no cadastro.
-                    <select
-                      value={campos.empresa}
-                      onChange={(e) => setCampos({ ...campos, empresa: e.target.value })}
-                      className="w-[170px] h-7 rounded border border-gray-300 px-1 text-[11px] bg-white focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/25"
+                    // 18/11/2026 — Select do próprio sistema (Radix/shadcn).
+                    //
+                    // HISTÓRICO DESTE CAMPO:
+                    //  · 1ª tentativa: input + <datalist> — o datalist não abre
+                    //    no Safari/iOS; parecia campo travado.
+                    //  · 2ª tentativa: <select> nativo — com valor vazio o
+                    //    navegador exibe a 1ª opção mas mantém "" como valor;
+                    //    ao salvar, gravava vazio e parecia que nada mudou.
+                    //
+                    // AGORA: o Select do design system, o mesmo do formulário
+                    // de tarefa, com ícone da empresa em cada opção. Tem
+                    // aparência de campo (borda + chevron), então fica óbvio
+                    // que é clicável. Sentinel '__vazio__' porque o Radix não
+                    // aceita value vazio.
+                    <Select
+                      value={campos.empresa || '__vazio__'}
+                      onValueChange={(v) =>
+                        setCampos({ ...campos, empresa: v === '__vazio__' ? '' : v })
+                      }
                     >
-                      {(() => {
-                        const lista: string[] = []
-                        const add = (v: string) => {
-                          const nome = String(v || '').trim()
-                          if (nome && lista.indexOf(nome) < 0) lista.push(nome)
-                        }
-                        // a empresa atual primeiro (para não "sumir" da lista)
-                        add(campos.empresa)
-                        add(detalhe?.empresa)
-                        add('FoldBox')
-                        add('Extrafruti')
-                        add('Casafruti')
-                        add('LL5')
-                        add('Geral')
-                        return lista.map((nome) => (
-                          <option key={nome} value={nome}>
-                            {nome}
-                          </option>
-                        ))
-                      })()}
-                    </select>
+                      <SelectTrigger className="w-[170px] h-7 text-[11px] px-2 bg-white">
+                        <SelectValue placeholder="Escolher empresa" />
+                      </SelectTrigger>
+                      <SelectContent className="z-[120]">
+                        <SelectItem value="__vazio__">
+                          <span className="text-gray-400">(sem empresa)</span>
+                        </SelectItem>
+                        {(() => {
+                          const lista: string[] = []
+                          const add = (v: string) => {
+                            const nome = String(v || '').trim()
+                            if (nome && lista.indexOf(nome) < 0) lista.push(nome)
+                          }
+                          // a empresa atual primeiro (para não "sumir" da lista)
+                          add(campos.empresa)
+                          add(detalhe?.empresa)
+                          add('FoldBox')
+                          add('Extrafruti')
+                          add('Casafruti')
+                          add('LL5')
+                          add('Geral')
+                          return lista.map((nome) => (
+                            <SelectItem key={nome} value={nome}>
+                              <span className="flex items-center gap-1.5">
+                                <EmpresaIcon nome={nome} className="h-3.5 w-3.5 shrink-0" />
+                                {nome}
+                              </span>
+                            </SelectItem>
+                          ))
+                        })()}
+                      </SelectContent>
+                    </Select>
                   ) : (
                     <button
                       type="button"
