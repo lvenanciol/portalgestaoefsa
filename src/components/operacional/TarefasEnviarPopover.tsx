@@ -52,6 +52,36 @@ export function TarefasEnviarPopover({
       if (nLimpo) parceirosMapNome.set(nLimpo, p)
     }
 
+    // ===================================================================
+    // 18/11/2026 — DEDUPE POR TAREFA (contagem dupla corrigida).
+    //
+    // DIRETIVA: "ao filtrar o usuário LORENA para envio trouxe 10 tarefas e
+    // na barra de pesquisa só vieram 5".
+    //
+    // CAUSA: a MESMA tarefa era contada DUAS VEZES quando a pessoa é
+    // simultaneamente responsável (campo `responsavel`) e parceira vinculada
+    // (array `parceiros`). O laço de parceiros fazia `qtdTarefas += 1` e o
+    // laço do responsável, logo abaixo, somava de novo na MESMA chave (o id
+    // do parceiro) — daí 10 em vez de 5, sempre exatamente o dobro.
+    //
+    // CORREÇÃO: cada destinatário guarda o CONJUNTO dos ids de tarefas que já
+    // contaram. Antes de somar, se a tarefa já está no conjunto, não soma.
+    // A contagem passa a ser "quantas tarefas distintas citam a pessoa".
+    // ===================================================================
+    const tarefasContadas = new Map<string, Set<string>>()
+    function contabilizar(chave: string, tarefaId: string): boolean {
+      let set = tarefasContadas.get(chave)
+      if (!set) {
+        set = new Set<string>()
+        tarefasContadas.set(chave, set)
+      }
+      const idT = String(tarefaId || '')
+      if (!idT) return true // sem id, não há como deduplicar
+      if (set.has(idT)) return false // já contada para este destinatário
+      set.add(idT)
+      return true
+    }
+
     // Varre cada tarefa visível (filtrada)
     for (const t of tarefasVisiveis) {
       const respRaw = (t.responsavel || '').trim()
@@ -72,8 +102,9 @@ export function TarefasEnviarPopover({
           const chave = pObj.id || email || pObj.nome
           const itemExistente = mapa.get(chave)
           if (itemExistente) {
-            itemExistente.qtdTarefas += 1
+            if (contabilizar(chave, t.id)) itemExistente.qtdTarefas += 1
           } else {
+            contabilizar(chave, t.id)
             mapa.set(chave, {
               chave,
               id: pObj.id,
@@ -95,13 +126,28 @@ export function TarefasEnviarPopover({
           parceirosMapNome.get(respRaw.toLowerCase()) ||
           parceirosMapNome.get(respLimpo.toLowerCase())
 
+        // 18/11/2026 — a chave do responsável usa o NOME NORMALIZADO (sem
+        // acento, sem o prefixo entre colchetes) para que "LORENA",
+        // "[ MKT ] LORENA" e "Lorena" caiam no MESMO destinatário em vez de
+        // criar entradas separadas com contagens parciais.
+        const normNome = (v: string) =>
+          String(v || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-zA-Z0-9 ]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase()
         const email = pPorNome ? (pPorNome.email || '').trim().toLowerCase() : ''
-        const chave = pPorNome ? pPorNome.id : `resp-${respLimpo.toLowerCase()}`
+        const chave = pPorNome ? pPorNome.id : `resp-${normNome(respLimpo)}`
 
         const itemExistente = mapa.get(chave)
         if (itemExistente) {
-          itemExistente.qtdTarefas += 1
+          // aqui está a dedupe que faltava: se a tarefa já foi contada por
+          // este destinatário no laço de parceiros, NÃO soma de novo
+          if (contabilizar(chave, t.id)) itemExistente.qtdTarefas += 1
         } else {
+          contabilizar(chave, t.id)
           mapa.set(chave, {
             chave,
             id: pPorNome?.id,

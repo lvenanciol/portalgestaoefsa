@@ -513,17 +513,50 @@ export default function TarefasKanbanPage() {
           parceirosNomes = ''
         }
 
-        // Subtarefas textuais
+        // Subtarefas textuais — inclui o TEXTO e o RESPONSÁVEL de cada uma,
+        // para que buscar o nome de quem toca a subtarefa também encontre a
+        // tarefa-mãe.
         let subtarefasTexto = ''
         try {
           const subs = Array.isArray(t.subtarefas) ? t.subtarefas : JSON.parse(t.subtarefas || '[]')
           if (Array.isArray(subs)) {
             subtarefasTexto = subs
-              .map((s: any) => (typeof s === 'string' ? s : s?.t || ''))
+              .map((s: any) =>
+                typeof s === 'string'
+                  ? s
+                  : [s?.t, s?.responsavel, s?.resp, s?.nome].filter(Boolean).join(' '),
+              )
               .join(' ')
           }
         } catch (_) {
           subtarefasTexto = ''
+        }
+
+        // Projeto/marco e responsáveis já vêm EXPANDIDOS da API
+        // (expand=projeto_id,marco_id,responsaveis_ids), então leio do expand
+        // em vez de manter listas espelho aqui.
+        let projetoTxt = ''
+        try {
+          const exp = (t as any).expand || {}
+          if (exp.projeto_id?.nome) projetoTxt += ' ' + exp.projeto_id.nome
+          if (exp.marco_id?.nome) projetoTxt += ' ' + exp.marco_id.nome
+        } catch (_) {
+          projetoTxt = ''
+        }
+
+        // responsaveis_ids: nome e e-mail de cada usuário vinculado —
+        // buscar "Lorena" acha a tarefa mesmo que o campo `responsavel`
+        // (texto) traga outro formato.
+        let responsaveisTxt = ''
+        try {
+          const expResp = (t as any).expand?.responsaveis_ids
+          if (Array.isArray(expResp)) {
+            responsaveisTxt = expResp
+              .map((u: any) => [u?.name, u?.email].filter(Boolean).join(' '))
+              .join(' ')
+          }
+        } catch (_) {
+          responsaveisTxt = ''
         }
 
         // Labels amigáveis de prioridade e status
@@ -558,6 +591,8 @@ export default function TarefasKanbanPage() {
             t.criado_por,
             parceirosNomes,
             subtarefasTexto,
+            projetoTxt,
+            responsaveisTxt,
             prioCode,
             prioExtenso,
             statusKanban,
