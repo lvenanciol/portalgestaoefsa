@@ -211,7 +211,10 @@ export function TarefaDetalheModal({
         // meio-dia local evita virada de dia por fuso
         dados.prazo = campos.prazo + 'T12:00:00.000Z'
       }
-      if (campos.empresa) dados.empresa = campos.empresa
+      // 18/11/2026 — gravar empresa SEMPRE (inclusive vazio).
+      // Antes era `if (campos.empresa)`: limpar o campo não apagava nada no
+      // banco e a sensação era de que a empresa "não deixa editar".
+      dados.empresa = campos.empresa.trim()
 
       await pb.collection('tarefas').update(detalhe.id, dados)
       const upd = await pb.collection('tarefas').getOne(detalhe.id)
@@ -1462,15 +1465,6 @@ export function TarefaDetalheModal({
                 </div>
               )}
 
-              {/* sugestões de empresa para o campo de edição */}
-              <datalist id="empresas-sugeridas">
-                <option value="FoldBox" />
-                <option value="Extrafruti" />
-                <option value="Casafruti" />
-                <option value="LL5" />
-                <option value="Geral" />
-              </datalist>
-
               <div className="space-y-1.5 text-xs">
                 {/* Empresa */}
                 <div className="flex items-center justify-between py-1 border-b border-gray-100 text-gray-600">
@@ -1478,13 +1472,37 @@ export function TarefaDetalheModal({
                     <Building2 className="h-3.5 w-3.5 text-gray-400" /> Empresa
                   </span>
                   {editandoInline ? (
-                    <input
-                      list="empresas-sugeridas"
+                    // 18/11/2026 — SELECT em vez de input+datalist.
+                    // O <datalist> não abre no Safari/iOS e não mostra as
+                    // opções de forma confiável: dava a impressão de campo
+                    // travado. Aqui a lista é explícita, com a empresa atual
+                    // garantida como opção mesmo que não esteja no cadastro.
+                    <select
                       value={campos.empresa}
                       onChange={(e) => setCampos({ ...campos, empresa: e.target.value })}
-                      placeholder="Empresa"
-                      className="w-[170px] h-7 rounded border border-gray-300 px-2 text-[11px] text-right focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/25"
-                    />
+                      className="w-[170px] h-7 rounded border border-gray-300 px-1 text-[11px] bg-white focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/25"
+                    >
+                      {(() => {
+                        const lista: string[] = []
+                        const add = (v: string) => {
+                          const nome = String(v || '').trim()
+                          if (nome && lista.indexOf(nome) < 0) lista.push(nome)
+                        }
+                        // a empresa atual primeiro (para não "sumir" da lista)
+                        add(campos.empresa)
+                        add(detalhe?.empresa)
+                        add('FoldBox')
+                        add('Extrafruti')
+                        add('Casafruti')
+                        add('LL5')
+                        add('Geral')
+                        return lista.map((nome) => (
+                          <option key={nome} value={nome}>
+                            {nome}
+                          </option>
+                        ))
+                      })()}
+                    </select>
                   ) : (
                     <button
                       type="button"
