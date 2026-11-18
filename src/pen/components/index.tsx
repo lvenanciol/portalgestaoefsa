@@ -162,18 +162,27 @@ export function KpiCard({
   variacao?: number | null
   meta?: number | null
   semaforo?: Semaforo
-  formato?: 'numero' | 'percentual' | 'texto'
+  formato?: 'numero' | 'percentual' | 'texto' | 'moeda' | 'meses'
   casas?: number
   sufixo?: string
   className?: string
 }) {
   const semDado = valor === null || valor === undefined
+  // 'moeda': milhares em "mil", milhões em "mi" — leitura executiva
   const texto =
     formato === 'texto'
       ? String(valor ?? '—')
       : formato === 'percentual'
         ? fmtPct(valor, casas)
-        : fmtNumero(valor, casas)
+        : formato === 'moeda'
+          ? semDado
+            ? '—'
+            : Number(valor) >= 1_000_000
+              ? `R$ ${fmtNumero(Number(valor) / 1_000_000, casas || 1)} mi`
+              : Number(valor) >= 1_000
+                ? `R$ ${fmtNumero(Number(valor) / 1_000, 0)} mil`
+                : `R$ ${fmtNumero(valor, 0)}`
+          : fmtNumero(valor, casas)
 
   const atingimento =
     meta !== null && meta !== undefined && meta !== 0 && !semDado
@@ -237,7 +246,14 @@ export function KpiCard({
           <ProgressBar valor={semDado ? null : Number(valor)} max={Number(meta)} cor={cores.cor} />
           <div className="mt-1 flex items-center justify-between gap-2">
             <span className="text-[10px] font-medium" style={{ color: PEN.textoFraco }}>
-              Meta {formato === 'percentual' ? fmtPct(meta, casas) : fmtNumero(meta, casas)}
+              Meta{' '}
+              {formato === 'percentual'
+                ? fmtPct(meta, casas)
+                : formato === 'moeda'
+                  ? Number(meta) >= 1_000_000
+                    ? `R$ ${fmtNumero(Number(meta) / 1_000_000, casas || 1)} mi`
+                    : `R$ ${fmtNumero(meta, 0)}`
+                  : fmtNumero(meta, casas)}
             </span>
             <span className="text-[10px] font-bold tabular-nums" style={{ color: cores.cor }}>
               {semDado ? '—' : fmtPct(atingimento, 0)}

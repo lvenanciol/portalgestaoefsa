@@ -1068,3 +1068,199 @@ export const METAS_CICLO = {
   casafruti: 25000000,
   foldbox: 5000000,
 } as const
+
+// ---------------------------------------------------------------------------
+// FASE 2.1 — RITOS E ALERTAS DO COCKPIT
+// ---------------------------------------------------------------------------
+
+export interface PenRito {
+  id: string
+  data: string
+  rito: string
+  pauta: string
+  responsavel: string
+  frequencia: string
+  company_id: CompanyId
+}
+
+export const RITOS: PenRito[] = [
+  {
+    id: 'rito-01',
+    data: '2026-04-07',
+    rito: 'Reunião de Acompanhamento',
+    pauta: 'Progresso das iniciativas, desvios e riscos do mês',
+    responsavel: 'Leonardo Lourenço',
+    frequencia: 'Mensal',
+    company_id: 'extrafruti',
+  },
+  {
+    id: 'rito-02',
+    data: '2026-04-14',
+    rito: 'Comitê de Estratégia',
+    pauta: 'Revisão de indicadores e ajuste de rota',
+    responsavel: 'Leonardo Lourenço',
+    frequencia: 'Quinzenal',
+    company_id: 'extrafruti',
+  },
+  {
+    id: 'rito-03',
+    data: '2026-04-21',
+    rito: 'Reunião de Portfólio',
+    pauta: 'Priorização de projetos e alocação de recursos',
+    responsavel: 'Diretoria FoldBox',
+    frequencia: 'Mensal',
+    company_id: 'foldbox',
+  },
+  {
+    id: 'rito-04',
+    data: '2026-04-28',
+    rito: 'Comitê de Pessoas',
+    pauta: 'Retenção, turnover por loja e trilha de liderança',
+    responsavel: 'Gestão de Pessoas',
+    frequencia: 'Mensal',
+    company_id: 'casafruti',
+  },
+]
+
+/** Alerta de desvio exibido no painel lateral do Cockpit. */
+export interface PenAlerta {
+  id: string
+  nivel: 'critico' | 'atencao' | 'ok'
+  titulo: string
+  detalhe: string
+  company_id: CompanyId
+}
+
+/**
+ * Alertas derivados dos DESVIOS do mock — não há texto solto inventado:
+ * cada alerta aponta o desvio que o originou. Gravidade do desvio define o
+ * nível do semáforo.
+ */
+export const ALERTAS: PenAlerta[] = [
+  {
+    id: 'al-01',
+    nivel: 'critico',
+    titulo: 'Turnover operacional acima da meta',
+    detalhe: '5,4% ao mês contra meta de 3,0% — 1,8 p.p. de excesso.',
+    company_id: 'extrafruti',
+  },
+  {
+    id: 'al-02',
+    nivel: 'atencao',
+    titulo: 'Quebra de perecíveis acima do teto',
+    detalhe: '2,9% contra teto de 2,5% — inventário em ondas afeta a medição.',
+    company_id: 'extrafruti',
+  },
+  {
+    id: 'al-03',
+    nivel: 'atencao',
+    titulo: 'Receita FoldBox abaixo do plano',
+    detalhe: 'R$ 3,65 mi realizado contra meta de R$ 5,0 mi no ciclo.',
+    company_id: 'foldbox',
+  },
+  {
+    id: 'al-04',
+    nivel: 'ok',
+    titulo: 'Receita Casafruti dentro da trajetória',
+    detalhe: 'R$ 18,7 mi realizados, 74,8% da meta de R$ 25,0 mi.',
+    company_id: 'casafruti',
+  },
+]
+
+// ---------------------------------------------------------------------------
+// Indicadores de topo do Cockpit por escopo
+// ---------------------------------------------------------------------------
+
+export interface CockpitTopo {
+  receita: number
+  receitaMeta: number
+  receitaVar: number | null
+  ebitda: number
+  ebitdaMeta: number
+  ebitdaVar: number | null
+  turnover: number
+  turnoverMeta: number
+  turnoverVar: number | null
+  iniciativasNoPrazo: number
+  iniciativasTotal: number
+  iniciativasVar: number | null
+}
+
+/**
+ * Números de topo do Cockpit para o escopo escolhido no filtro global.
+ *
+ * Fonte: `penDataset(scope)`. Receita/EBITDA/turnover do consolidado vêm de
+ * CONSOLIDADO; num escopo de empresa, da pen_company correspondente. As
+ * variações são do cenário do ciclo (dado declarado, não calculado).
+ */
+export function cockpitTopo(scope: CompanyScopeId = 'all'): CockpitTopo {
+  const ds = penDataset(scope)
+
+  // receita e EBITDA
+  let receita = CONSOLIDADO.receita
+  let ebitda = CONSOLIDADO.ebitda_pct
+  let receitaVar: number | null = 10.0
+  let ebitdaVar: number | null = 0.8
+  let turnoverVar: number | null = 2.3
+
+  if (scope !== 'all') {
+    const c = companies.find((x) => x.company_id === scope)
+    receita = c?.receita ?? 0
+    ebitda = c?.ebitda_pct ?? 0
+    // variações por empresa (cenário do ciclo)
+    const vars: Record<CompanyId, number> = {
+      extrafruti: 10.0,
+      casafruti: 16.8,
+      foldbox: -3.9,
+    }
+    receitaVar = vars[scope]
+    ebitdaVar = scope === 'foldbox' ? -1.2 : scope === 'casafruti' ? 0.6 : 0.8
+  }
+
+  // receita meta por escopo
+  const receitaMeta =
+    scope === 'all'
+      ? METAS_CICLO.receita
+      : scope === 'casafruti'
+        ? METAS_CICLO.casafruti
+        : scope === 'foldbox'
+          ? METAS_CICLO.foldbox
+          : 188400000
+
+  // turnover é consolidado do grupo (a fonte é a operação): mesmo nos escopos
+  // de empresa, o indicador exibido é o do grupo — e isso fica dito na tela.
+  const turnover = CONSOLIDADO.turnover
+
+  // iniciativas no prazo = não atrasadas
+  const total = ds.initiatives.length
+  const noPrazo = ds.initiatives.filter((i) => i.status !== 'atrasado').length
+
+  return {
+    receita,
+    receitaMeta,
+    receitaVar,
+    ebitda,
+    ebitdaMeta: METAS_CICLO.ebitda_pct,
+    ebitdaVar,
+    turnover,
+    turnoverMeta: METAS_CICLO.turnover,
+    turnoverVar,
+    iniciativasNoPrazo: noPrazo,
+    iniciativasTotal: total,
+    iniciativasVar: 20.0,
+  }
+}
+
+/** Progresso de execução do plano por empresa (deriva dos status). */
+export function progressoEmpresa(companyId: CompanyId): number {
+  const ds = penDataset(companyId)
+  const objs = ds.objectives.length || 1
+  const ini = ds.initiatives.length || 1
+  const objsOk = ds.objectives.filter(
+    (o) => o.status === 'concluido' || o.status === 'em_andamento',
+  ).length
+  const iniOk = ds.initiatives.filter(
+    (i) => i.status === 'concluido' || i.status === 'em_andamento',
+  ).length
+  return Math.round(((objsOk / objs) * 50 + (iniOk / ini) * 50) * 10) / 10
+}

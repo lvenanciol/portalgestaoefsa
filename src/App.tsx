@@ -82,8 +82,11 @@ const AppRoutes = () => {
       >
         {/* Cada rota passa pelo MESMO guard do resto do portal (fail-closed):
             o módulo 'plano-estrategico' está registrado em MENU_MODULOS. */}
+        {/* 2.1 — o Cockpit tem rota própria (/pen/cockpit); /pen redireciona
+            para ela para não existirem duas URLs da mesma tela. */}
+        <Route path="/pen" element={<Navigate to="/pen/cockpit" replace />} />
         <Route
-          path="/pen"
+          path="/pen/cockpit"
           element={
             <RotaProtegida>
               <PenCockpitPage />
