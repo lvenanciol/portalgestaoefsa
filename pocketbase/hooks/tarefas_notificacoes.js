@@ -4,6 +4,7 @@
 
 // Disparador ao CRIAR tarefa
 onRecordAfterCreateSuccess(function (e) {
+  console.log('[notif-sino] create hook DISPAROU id=' + (e.record ? e.record.id : '?'))
   function normalizarStatus(s) {
     if (!s) return 'triagem'
     var val = String(s).toLowerCase().trim()
@@ -193,6 +194,7 @@ onRecordAfterCreateSuccess(function (e) {
       registrarNoChat(t.id, '📌 ' + textoMudanca + ' por ' + autor.nome + '.', autor.nome)
 
       var envolvidos = resolverEnvolvidos(t)
+      console.log('[notif-sino] envolvidos resolvidos: ' + envolvidos.length)
       for (var i = 0; i < envolvidos.length; i++) {
         var env = envolvidos[i]
         if (env.id && autor.id && env.id === autor.id) continue
