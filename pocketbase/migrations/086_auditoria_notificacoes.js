@@ -7,7 +7,9 @@
 // ============================================================================
 migrate(
   (app) => {
-    const db = $app.db()
+    // Em MIGRAÇÃO o app vem por parâmetro (app), não pelo global $app — o
+    // $app só existe dentro de hooks/routes.
+    const db = app.db()
 
     // ---- 1) CRONS registrados ----
     console.log('[audit-notif] === CRONS REGISTRADOS ===')
