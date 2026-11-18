@@ -609,21 +609,33 @@ export default function TarefasKanbanPage() {
                   ? 'bloqueado impedimento'
                   : 'concluido concluida finalizado'
 
-        // Concatena todos os campos textuais relevantes da tarefa
-        const conteudoAgregado = norm(
+        // =================================================================
+        // 18/11/2026 — SEPARAÇÃO ENTRE TEXTO LIVRE E NOME DE PESSOA.
+        //
+        // DEFEITO RELATADO: buscar "André" listava mais tarefas do que o
+        // popover do botão enviar. CAUSA: a busca usava `includes()`, e
+        // "alexandre" CONTÉM "andre" — então as 6 tarefas do Alexandre
+        // entravam junto com a única do André (7 no total). O popover mostra
+        // certo porque agrupa por pessoa.
+        //
+        // CORREÇÃO: em campos de PESSOA (responsável, parceiros, responsáveis
+        // vinculados) o termo precisa casar com o INÍCIO de uma palavra. Assim
+        // "andre" acha "André" e não acha "Alexandre"; e "andr" continua
+        // achando "André" (busca por prefixo preservada).
+        // Em texto livre (título, descrição) o `includes` permanece — ali
+        // procurar no meio da palavra é o comportamento desejado.
+        // =================================================================
+        const conteudoLivre = norm(
           [
             t.titulo,
             t.descricao,
-            t.responsavel,
             t.empresa,
             t.vinculo_tipo,
             t.vinculo_id,
             t.recorrencia,
             t.criado_por,
-            parceirosNomes,
             subtarefasTexto,
             projetoTxt,
-            responsaveisTxt,
             prioCode,
             prioExtenso,
             statusKanban,
@@ -633,9 +645,18 @@ export default function TarefasKanbanPage() {
             .join(' '),
         )
 
-        // Se o usuário digitou múltiplos termos separados por espaço, todos devem bater (busca AND)
+        const conteudoPessoa = norm(
+          [t.responsavel, parceirosNomes, responsaveisTxt].filter(Boolean).join(' '),
+        )
+
+        const palavrasPessoa = conteudoPessoa.split(/\s+/).filter(Boolean)
+
         const termos = q.split(/\s+/).filter(Boolean)
-        const matchTodos = termos.every((termo) => conteudoAgregado.includes(termo))
+        const matchTodos = termos.every((termo) => {
+          if (conteudoLivre.includes(termo)) return true
+          // nome de pessoa: só no início da palavra
+          return palavrasPessoa.some((w) => w.startsWith(termo))
+        })
         if (!matchTodos) return false
       }
 
