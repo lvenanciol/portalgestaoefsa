@@ -540,6 +540,41 @@ onRecordAfterUpdateSuccess(function (e) {
       return
     }
 
+    // =====================================================================
+    // 18/11/2026 — E-MAIL FORA DO CAMINHO CRÍTICO.
+    //
+    // MEDIDO: um PATCH de tarefa levava ~7.500 ms e a leitura da mesma tarefa
+    // 26 ms. O tempo era o envio SMTP SÍNCRONO: a resposta HTTP só voltava
+    // depois que o e-mail saía. Trocar o status de um cartão ficava "travado"
+    // 7 s para o usuário.
+    //
+    // SOLUÇÃO: enfileirar o envio em `$app.onTerminate`, que roda DEPOIS da
+    // resposta ao cliente. O usuário vê a mudança na hora; o e-mail sai em
+    // seguida, no mesmo processo.
+    // =====================================================================
+    var envelope = { dest: dest, assunto: assunto, html: html, texto: texto, tarefaRef: tarefaRef }
+    try {
+      $app.onTerminate().add(function (ev) {
+        try {
+          enviarEmailAgora(
+            envelope.dest,
+            envelope.assunto,
+            envelope.html,
+            envelope.texto,
+            envelope.tarefaRef,
+          )
+        } catch (errT) {
+          console.log('[tarefa_eventos] e-mail adiado falhou: ' + String(errT).slice(0, 140))
+        }
+      })
+      return
+    } catch (errEnc) {
+      // sem fila disponível: envia agora (comportamento antigo)
+      console.log('[tarefa_eventos] onTerminate indisponivel: ' + String(errEnc).slice(0, 100))
+    }
+  }
+
+  function enviarEmailAgora(dest, assunto, html, texto, tarefaRef) {
     var status = 'enviado'
     var erro = ''
     try {
