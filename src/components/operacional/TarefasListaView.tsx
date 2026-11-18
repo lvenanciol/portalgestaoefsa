@@ -64,6 +64,10 @@ export interface TarefasListaViewProps {
   onVincularProjeto?: (t: any) => void
   onDesvincularProjeto?: (t: any) => void
   usuarioKey?: string
+  /** 18/11/2026 — permissão por linha: admin edita/exclui tudo; usuário só as
+   *  suas e nunca exclui. Quando não informadas, tudo é permitido (compat). */
+  podeEditarTarefa?: (t: any) => boolean
+  podeExcluirTarefa?: (t: any) => boolean
 }
 
 const GRUPOS = [
@@ -141,7 +145,12 @@ export function TarefasListaView({
   onVincularProjeto,
   onDesvincularProjeto,
   usuarioKey,
+  podeEditarTarefa,
+  podeExcluirTarefa,
 }: TarefasListaViewProps) {
+  // padrão: sem restrição informada, mantém o comportamento anterior
+  const podeEditar = (t: any) => (podeEditarTarefa ? podeEditarTarefa(t) : true)
+  const podeExcluir = (t: any) => (podeExcluirTarefa ? podeExcluirTarefa(t) : true)
   const chaveU = String(usuarioKey || 'anon')
   const hoje = new Date().toISOString().slice(0, 10)
 
@@ -593,11 +602,16 @@ export function TarefasListaView({
                                         <DropdownMenuTrigger asChild>
                                           <button
                                             type="button"
+                                            disabled={!podeEditar(t)}
                                             className={cn(
-                                              'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10.5px] font-semibold hover:brightness-95',
+                                              'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10.5px] font-semibold hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50',
                                               ETAPA[stKey] || ETAPA.a_fazer,
                                             )}
-                                            title="Alterar status"
+                                            title={
+                                              podeEditar(t)
+                                                ? 'Alterar status'
+                                                : 'Só o responsável ou o admin pode alterar'
+                                            }
                                           >
                                             <span className="truncate">{stLabel}</span>
                                             <ChevronDown className="h-2.5 w-2.5 shrink-0 opacity-60" />
@@ -707,13 +721,18 @@ export function TarefasListaView({
                                         <DropdownMenuTrigger asChild>
                                           <button
                                             type="button"
+                                            disabled={!podeEditar(t)}
                                             className={cn(
-                                              'inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10.5px]',
+                                              'inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10.5px] disabled:cursor-not-allowed disabled:opacity-50',
                                               temRec
                                                 ? 'border-gray-200 bg-gray-50 font-semibold text-gray-700'
                                                 : 'border-transparent text-gray-400',
                                             )}
-                                            title={'Recorrência: ' + rec}
+                                            title={
+                                              podeEditar(t)
+                                                ? 'Recorrência: ' + rec
+                                                : 'Só o responsável ou o admin pode alterar'
+                                            }
                                           >
                                             {temRec && (
                                               <Repeat className="h-2.5 w-2.5 shrink-0 opacity-70" />
@@ -767,9 +786,17 @@ export function TarefasListaView({
                                         </button>
                                       </DropdownMenuTrigger>
                                       <DropdownMenuContent align="end" className="w-48 bg-white">
+                                        {/* 18/11/2026 — Editar só nas próprias
+                                            (Admin em todas) */}
                                         <DropdownMenuItem
-                                          onClick={() => onAbrirEditar(t)}
-                                          className="flex cursor-pointer items-center gap-2 text-xs"
+                                          disabled={!podeEditar(t)}
+                                          onClick={() => podeEditar(t) && onAbrirEditar(t)}
+                                          className="flex cursor-pointer items-center gap-2 text-xs disabled:cursor-not-allowed disabled:opacity-40"
+                                          title={
+                                            podeEditar(t)
+                                              ? 'Editar tarefa'
+                                              : 'Só o responsável ou o admin pode editar'
+                                          }
                                         >
                                           <Pencil className="h-3.5 w-3.5 text-gray-500" />
                                           Editar
@@ -796,9 +823,17 @@ export function TarefasListaView({
                                           </DropdownMenuItem>
                                         )}
                                         <DropdownMenuSeparator />
+                                        {/* 18/11/2026 — excluir é EXCLUSIVO do
+                                            Admin (diretiva do dono, item b) */}
                                         <DropdownMenuItem
-                                          onClick={() => onExcluir(t)}
-                                          className="flex cursor-pointer items-center gap-2 text-xs text-red-600"
+                                          disabled={!podeExcluir(t)}
+                                          onClick={() => podeExcluir(t) && onExcluir(t)}
+                                          className="flex cursor-pointer items-center gap-2 text-xs text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                                          title={
+                                            podeExcluir(t)
+                                              ? 'Excluir tarefa'
+                                              : 'Apenas o administrador pode excluir'
+                                          }
                                         >
                                           <Trash2 className="h-3.5 w-3.5 text-red-500" />
                                           Excluir

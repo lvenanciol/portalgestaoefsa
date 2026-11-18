@@ -119,6 +119,37 @@ export default function TarefasKanbanPage() {
   const podeEditar = podeAcao('editar')
   const podeExcluir = podeAcao('excluir')
   const grupoUsuario = permissoes?.grupoNome || ''
+
+  // ========================================================================
+  // 18/11/2026 — PERMISSÃO POR TAREFA (diretiva do dono)
+  //
+  //   b) usuário "edita tudo" SOMENTE nas tarefas em que é responsável ou
+  //      citado em Parceiros/Contatos — e NUNCA pode excluir;
+  //   d) Admin tem permissão total e irrestrita.
+  //
+  // Antes: `podeEditar`/`podeExcluir` existiam mas NÃO eram passados para a
+  // lista, então todo mundo via Editar e Excluir em toda tarefa. A matriz de
+  // permissões dizia uma coisa e a tela fazia outra.
+  //
+  // A régua de "é meu" é a MESMA de usuarioTemVinculoTarefa (parceiro_id ∈
+  // parceiros, responsaveis_ids, texto do responsável) — nada de regra nova
+  // que divergiria do filtro da lista e do envio por e-mail.
+  // ========================================================================
+  const usuarioRefTarefa = {
+    id: String((user as any)?.id || ''),
+    email: String((user as any)?.email || ''),
+    name: String((user as any)?.name || ''),
+    parceiro_id: String((user as any)?.parceiro_id || ''),
+  }
+  const souAdmin = grupoUsuario === 'Admin'
+
+  const ehMinhaTarefa = (t: any) => usuarioTemVinculoTarefa(t, usuarioRefTarefa)
+
+  /** pode editar esta tarefa? Admin tudo; demais só as próprias. */
+  const podeEditarTarefa = (t: any) => podeEditar && (souAdmin || ehMinhaTarefa(t))
+
+  /** pode excluir esta tarefa? Só Admin — o dono pediu: usuário NÃO exclui. */
+  const podeExcluirTarefa = (t: any) => podeExcluir && souAdmin
   const { empresas, selectedCompany } = useApp()
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>('__default__')
   const [itens, setItens] = useState<any[]>([])
@@ -827,6 +858,14 @@ export default function TarefasKanbanPage() {
 
   const confirmarExclusao = async () => {
     if (!excluindoTarefa) return
+    // 18/11/2026 — trava de exclusão (diretiva do dono, item b): usuário NÃO
+    // exclui tarefa; só Admin. A checagem fica AQUI também, e não só no botão,
+    // porque o handler pode ser alcançado pelo diálogo já aberto.
+    if (!podeExcluirTarefa(excluindoTarefa)) {
+      setExcluindoTarefa(null)
+      setErro('Apenas o administrador pode excluir tarefas.')
+      return
+    }
     setExcluindoEmAndamento(true)
     try {
       await pb.collection('tarefas').delete(excluindoTarefa.id)
@@ -1965,16 +2004,34 @@ export default function TarefasKanbanPage() {
         <TarefasListaView
           itens={itensLista}
           onAbrirDetalhe={abrirDetalhe}
-          onAbrirEditar={abrirEditar}
-          onExcluir={(t) => setExcluindoTarefa(t)}
-          onMoverStatus={mover}
-          onAlterarPrioridade={alterarPrioridade}
-          onAlterarRecorrencia={alterarRecorrencia}
-          onAbrirNova={abrirNova}
+          onAbrirEditar={(t) => {
+            if (!podeEditarTarefa(t)) return
+            abrirEditar(t)
+          }}
+          onExcluir={(t) => {
+            if (!podeExcluirTarefa(t)) return
+            setExcluindoTarefa(t)
+          }}
+          onMoverStatus={(t, s) => {
+            // mover de coluna é edição: só nas próprias (ou Admin)
+            if (!podeEditarTarefa(t)) return
+            mover(t, s)
+          }}
+          onAlterarPrioridade={(t, p) => {
+            if (!podeEditarTarefa(t)) return
+            alterarPrioridade(t, p)
+          }}
+          onAlterarRecorrencia={(t, r) => {
+            if (!podeEditarTarefa(t)) return
+            alterarRecorrencia(t, r)
+          }}
+          onAbrirNova={podeNovo ? abrirNova : undefined}
           obterIconeEmpresa={obterIconeEmpresa}
           onVincularProjeto={abrirVincularProjeto}
           onDesvincularProjeto={abrirDesvincularProjeto}
           usuarioKey={String((user as any)?.id || (user as any)?.email || '')}
+          podeEditarTarefa={podeEditarTarefa}
+          podeExcluirTarefa={podeExcluirTarefa}
         />
       )}
 

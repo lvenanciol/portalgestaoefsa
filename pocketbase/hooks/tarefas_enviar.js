@@ -410,6 +410,21 @@ routerAdd(
       }
     }
 
+    // 18/11/2026 — `responsaveis_ids` é a outra forma estrutural de vínculo.
+    // O popover já considerava o campo `responsavel` e `parceiros`; a tela
+    // também filtra por `responsaveis_ids`. Usar as três réguas aqui mantém o
+    // e-mail idêntico ao que a pessoa vê na lista.
+    function idsResponsaveis(t) {
+      var raw = t.getString('responsaveis_ids')
+      if (!raw) return []
+      try {
+        var arr = JSON.parse(raw)
+        return Array.isArray(arr) ? arr.map(String) : []
+      } catch (_) {
+        return []
+      }
+    }
+
     const _cacheDest = {}
     function tarefasDoDestinatario(d) {
       var chave = String(d.id || '') + '|' + normPessoa(d.nome)
@@ -421,9 +436,11 @@ routerAdd(
         var t = listaFinalTarefas[i]
         var respNorm = normPessoa(t.getString('responsavel'))
         var pIds = idsParceiros(t)
+        var rIds = idsResponsaveis(t)
         var ehResp = alvoNorm && respNorm && respNorm === alvoNorm
         var ehParceiro = alvoId && pIds.indexOf(alvoId) >= 0
-        if (ehResp || ehParceiro) out.push(t)
+        var ehRespId = alvoId && rIds.indexOf(alvoId) >= 0
+        if (ehResp || ehParceiro || ehRespId) out.push(t)
       }
       _cacheDest[chave] = out
       return out
