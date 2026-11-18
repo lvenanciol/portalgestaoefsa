@@ -468,6 +468,12 @@ routerAdd(
       // mantém a ordem recebida dentro de cada empresa (a tela já ordenou)
       const listaFinalTarefas = lista
 
+      // 18/11/2026 — TDZ: `assunto` era usado no <title> (bloco 1 do HTML) e só
+      // era declarado no fim da função, o que lançava "Cannot access a variable
+      // before initialization" e derrubava TODO envio. Declarado aqui, antes do
+      // primeiro uso.
+      const assunto = 'Acompanhamento de Tarefas — ' + lista.length + ' tarefa(s)'
+
       let nTotal = 0
       let nVencidas = 0
       let nSemPrazo = 0
@@ -844,9 +850,8 @@ routerAdd(
         textoPlano += '\n'
       }
 
-      // assunto e saudação DESTE destinatário (antes usavam destinatarios[0])
-      const assunto = 'Acompanhamento de Tarefas — ' + listaFinalTarefas.length + ' tarefa(s)'
-
+      // (o `assunto` já foi declarado no topo da função — aqui não redeclara,
+      // senão é outro TDZ)
       return {
         html: html,
         textoPlano: textoPlano,
