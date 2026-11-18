@@ -148,20 +148,23 @@ routerAdd(
         // REGRA CORRETA: o último inventário **POR PRODUTO**, dentro da
         // janela. Como CODINV é sequencial, MAX(CODINV) por produto é a
         // contagem mais recente daquele produto.
-        'SELECT CB.CODPARC, NVL(PM.CODPROD,0), 3, SUM(V.QTD), 0 ' +
-        'FROM SANKHYA.AD_CABINVENTARIO CB ' +
-        'JOIN SANKHYA.AD_ITEINVENTARIO V ON CB.CODINV=V.CODINV ' +
+        // OTIMIZAÇÃO (18/11/2026): a versão anterior usava subquery
+        // CORRELACIONADA por linha de produto e passava de 5 minutos no
+        // DbExplorer (a conexão morria antes de responder). Aqui o "último
+        // inventário por produto" é calculado UMA vez, numa agregação, e só
+        // depois juntado. Mesmo resultado, tempo viável.
+        'SELECT K.CODPARC, NVL(PM.CODPROD,0), 3, SUM(V.QTD), 0 ' +
+        'FROM (SELECT CB2.CODPARC, I2.CODPROD, MAX(CB2.CODINV) AS CODINV ' +
+        '      FROM SANKHYA.AD_CABINVENTARIO CB2 ' +
+        '      JOIN SANKHYA.AD_ITEINVENTARIO I2 ON I2.CODINV=CB2.CODINV ' +
+        "      WHERE CB2.STATUS='F' AND CB2.DTINVENTARIO < " +
+        iniMes +
+        (lojaFiltro ? ' AND CB2.CODPARC = ' + Number(lojaFiltro) + ' ' : ' ') +
+        '      GROUP BY CB2.CODPARC, I2.CODPROD) K ' +
+        'JOIN SANKHYA.AD_ITEINVENTARIO V ON V.CODINV=K.CODINV AND V.CODPROD=K.CODPROD ' +
         'LEFT JOIN SANKHYA.TGFPRO P ON V.CODPROD=P.CODPROD AND P.CODPROD<>195 ' +
         'LEFT JOIN SANKHYA.TGFPRO PM ON PM.CODPROD=CASE WHEN P.AD_CODGRUPOABC IS NOT NULL THEN P.AD_CODGRUPOABC ELSE P.AD_CODPRODGRUP END ' +
-        "WHERE CB.STATUS='F' " +
-        'AND CB.CODINV=(SELECT MAX(C2.CODINV) FROM SANKHYA.AD_CABINVENTARIO C2 ' +
-        ' JOIN SANKHYA.AD_ITEINVENTARIO I2 ON I2.CODINV=C2.CODINV ' +
-        " WHERE C2.CODPARC=CB.CODPARC AND C2.STATUS='F' AND I2.CODPROD=V.CODPROD " +
-        ' AND C2.DTINVENTARIO < ' +
-        iniMes +
-        ')' +
-        (lojaFiltro ? ' AND CB.CODPARC = ' + Number(lojaFiltro) + ' ' : ' ') +
-        'GROUP BY CB.CODPARC, NVL(PM.CODPROD,0) ' +
+        'GROUP BY K.CODPARC, NVL(PM.CODPROD,0) ' +
         'UNION ALL ' +
         // 4) ESTOQUE FINAL
         // ATENÇÃO (bug de 13/11): se a janela final do mês ainda não tem
@@ -170,22 +173,20 @@ routerAdd(
         // Agora usa o último inventário fechado ATÉ O FIM DO MÊS, mesmo que
         // fora da janela; só devolve vazio se não houver nenhum no mês.
         // Mesma regra do EI: último inventário POR PRODUTO dentro do mês.
-        'SELECT CB.CODPARC, NVL(PM.CODPROD,0), 4, SUM(V.QTD), 0 ' +
-        'FROM SANKHYA.AD_CABINVENTARIO CB ' +
-        'JOIN SANKHYA.AD_ITEINVENTARIO V ON CB.CODINV=V.CODINV ' +
-        'LEFT JOIN SANKHYA.TGFPRO P ON V.CODPROD=P.CODPROD AND P.CODPROD<>195 ' +
-        'LEFT JOIN SANKHYA.TGFPRO PM ON PM.CODPROD=CASE WHEN P.AD_CODGRUPOABC IS NOT NULL THEN P.AD_CODGRUPOABC ELSE P.AD_CODPRODGRUP END ' +
-        "WHERE CB.STATUS='F' " +
-        'AND CB.CODINV=(SELECT MAX(C2.CODINV) FROM SANKHYA.AD_CABINVENTARIO C2 ' +
-        ' JOIN SANKHYA.AD_ITEINVENTARIO I2 ON I2.CODINV=C2.CODINV ' +
-        " WHERE C2.CODPARC=CB.CODPARC AND C2.STATUS='F' AND I2.CODPROD=V.CODPROD " +
-        ' AND C2.DTINVENTARIO BETWEEN ' +
+        'SELECT K.CODPARC, NVL(PM.CODPROD,0), 4, SUM(V.QTD), 0 ' +
+        'FROM (SELECT CB2.CODPARC, I2.CODPROD, MAX(CB2.CODINV) AS CODINV ' +
+        '      FROM SANKHYA.AD_CABINVENTARIO CB2 ' +
+        '      JOIN SANKHYA.AD_ITEINVENTARIO I2 ON I2.CODINV=CB2.CODINV ' +
+        "      WHERE CB2.STATUS='F' AND CB2.DTINVENTARIO BETWEEN " +
         iniMes +
         ' AND ' +
         fimMes +
-        ')' +
-        (lojaFiltro ? ' AND CB.CODPARC = ' + Number(lojaFiltro) + ' ' : ' ') +
-        'GROUP BY CB.CODPARC, NVL(PM.CODPROD,0) ' +
+        (lojaFiltro ? ' AND CB2.CODPARC = ' + Number(lojaFiltro) + ' ' : ' ') +
+        '      GROUP BY CB2.CODPARC, I2.CODPROD) K ' +
+        'JOIN SANKHYA.AD_ITEINVENTARIO V ON V.CODINV=K.CODINV AND V.CODPROD=K.CODPROD ' +
+        'LEFT JOIN SANKHYA.TGFPRO P ON V.CODPROD=P.CODPROD AND P.CODPROD<>195 ' +
+        'LEFT JOIN SANKHYA.TGFPRO PM ON PM.CODPROD=CASE WHEN P.AD_CODGRUPOABC IS NOT NULL THEN P.AD_CODGRUPOABC ELSE P.AD_CODPRODGRUP END ' +
+        'GROUP BY K.CODPARC, NVL(PM.CODPROD,0) ' +
         'UNION ALL ' +
         // 5) CONSUMO
         'SELECT CC.CODPARC, NVL(PM.CODPROD,0), 5, SUM(IT.QUANTIDADE), 0 ' +
