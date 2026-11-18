@@ -46,8 +46,9 @@ import PenComponentsPage from './pen/pages/PenComponentsPage'
 import PenNortePage from './pen/pages/PenNortePage'
 // 2.3 — Diagnóstico de Ambiente (somente leitura)
 import PenDiagnosticoPage from './pen/pages/PenDiagnosticoPage'
+// 2.4 — Ishikawa (causa e efeito)
+import PenIshikawaPage from './pen/pages/PenIshikawaPage'
 import {
-  PenIshikawaPage,
   PenBscPage,
   PenCincoW2hPage,
   PenAcompanhamentoPage,

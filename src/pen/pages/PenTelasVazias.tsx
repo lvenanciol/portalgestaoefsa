@@ -12,20 +12,7 @@ import { PenTelaVazia } from './PenTelaVazia'
 
 // 2.3 — PenDiagnosticoPage saiu daqui: tem arquivo próprio.
 
-export function PenIshikawaPage() {
-  return (
-    <PenTelaVazia
-      titulo="Ishikawa"
-      descricao="Diagrama de causa e efeito por problema priorizado."
-      recebe={[
-        'Espinha com as 6 categorias (método, mão de obra, material, máquina, medida, meio)',
-        'Causas levantadas por frente',
-        'Causa raiz marcada',
-        'Vínculo com o 5W2H',
-      ]}
-    />
-  )
-}
+// 2.4 — PenIshikawaPage saiu daqui: tem arquivo próprio.
 
 export function PenBscPage() {
   return (
