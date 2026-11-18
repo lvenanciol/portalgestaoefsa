@@ -211,6 +211,16 @@ onRecordAfterCreateSuccess(function (e) {
       console.log('[notif-sino] envolvidos resolvidos: ' + envolvidos.length)
       for (var i = 0; i < envolvidos.length; i++) {
         var env = envolvidos[i]
+        console.log(
+          '[notif-laco] id=' +
+            String(env.id) +
+            ' email=' +
+            String(env.email) +
+            ' desativadas=' +
+            String(env.desativadas) +
+            ' autorId=' +
+            String(autor.id),
+        )
         if (env.id && autor.id && env.id === autor.id) continue
         if (env.email && autor.email && env.email.toLowerCase() === autor.email.toLowerCase())
           continue
