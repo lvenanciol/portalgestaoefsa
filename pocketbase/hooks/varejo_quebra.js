@@ -277,23 +277,45 @@ routerAdd(
       for (const r of det.rows || []) {
         const qtdCmv = n(v(r, 9)) || 0
         const qtdQuebra = n(v(r, 10)) || 0
+        // 18/11/2026 — HONESTIDADE DO PERCENTUAL.
+        // Com a regra "ausente = 0", produtos que NÃO foram contados no
+        // inventário (nem EI nem EF) ficam com QTDCMV igual só ao recebido e
+        // produzem percentuais sem sentido (-1741%, por exemplo).
+        // Aqui eles continuam na lista (o valor em R$ é real), mas marcados
+        // com `sem_inventario` e com percentual NULO em vez de um número
+        // absurdo — a tela consegue avisar em vez de exibir ficção.
+        const eiV = n(v(r, 5)) || 0
+        const efV = n(v(r, 7)) || 0
+        const semInv = eiV === 0 && efV === 0
         produtos.push({
           codprod: n(v(r, 1)),
           produto: v(r, 2) || 'Produto ' + String(v(r, 1)),
           qtd_vendas: n(v(r, 3)) || 0,
           vlr_venda: n(v(r, 4)) || 0,
-          ei: n(v(r, 5)) || 0,
+          ei: eiV,
           recebido: n(v(r, 6)) || 0,
-          ef: n(v(r, 7)) || 0,
+          ef: efV,
           consumo: n(v(r, 8)) || 0,
           qtd_cmv: Number(qtdCmv.toFixed(3)),
           qtd_quebra: Number(qtdQuebra.toFixed(3)),
           custo_unit: n(v(r, 11)) || 0,
           vlr_quebra: n(v(r, 12)) || 0,
-          perc_quebra_qtd: qtdCmv > 0 ? Number(((qtdQuebra / qtdCmv) * 100).toFixed(2)) : null,
+          sem_inventario: semInv,
+          // percentual só quando a base (QTDCMV) é positiva E o produto tem
+          // pelo menos uma ponta de inventário
+          perc_quebra_qtd:
+            !semInv && qtdCmv > 0 ? Number(((qtdQuebra / qtdCmv) * 100).toFixed(2)) : null,
         })
       }
       for (const L of lojas) L.produtos = produtos
+      // transparência: quantos itens do detalhe não têm nenhuma ponta de
+      // inventário (contribuem em R$, mas o % deles não é confiável)
+      const semInv = produtos.filter((p) => p.sem_inventario).length
+      resp.cobertura_produtos = {
+        total: produtos.length,
+        com_inventario: produtos.length - semInv,
+        sem_inventario: semInv,
+      }
     }
 
     const resp = {
