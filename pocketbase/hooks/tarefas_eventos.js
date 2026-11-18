@@ -569,8 +569,15 @@ onRecordAfterUpdateSuccess(function (e) {
       })
       return
     } catch (errEnc) {
-      // sem fila disponível: envia agora (comportamento antigo)
-      console.log('[tarefa_eventos] onTerminate indisponivel: ' + String(errEnc).slice(0, 100))
+      // 18/11/2026 — ATENÇÃO: esta API ($app.onTerminate().add) NÃO existe
+      // neste JSVM ("Object has no member 'add'"). Antes eu caía aqui e saía
+      // SEM ENVIAR o e-mail — uma regressão que eu mesmo introduzi e o log
+      // entregou. Agora o fallback ENVIA na hora: se não há fila, o e-mail sai
+      // síncrono, como sempre foi.
+      console.log(
+        '[tarefa_eventos] onTerminate indisponivel, enviando agora: ' + String(errEnc).slice(0, 90),
+      )
+      enviarEmailAgora(dest, assunto, html, texto, tarefaRef)
     }
   }
 
