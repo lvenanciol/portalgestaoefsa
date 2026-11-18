@@ -140,9 +140,11 @@ routerAdd(
       'SELECT COALESCE(EI.CODPARC, EF.CODPARC) CODPARC, ' +
       ' COALESCE(EI.CODPROD, EF.CODPROD) CODPROD, ' +
       ' NVL(EI.QEI,0) QEI, NVL(EF.QEF,0) QEF, ' +
-      ' NVL(EF.CUSTOINV,0) CUSTOINV, ' +
+      // custo: EF (inventário do mês) e, se vazio, o do EI (inventário anterior)
+      ' COALESCE(NULLIF(NVL(EF.CUSTOINV,0),0), NVL(EI.CUSTOINV,0)) CUSTOINV, ' +
       ' NVL(V.QV,0) QV, NVL(V.VLR,0) VLR ' +
-      'FROM (SELECT K.CODPARC, K.CODPROD, SUM(VV.QTD) QEI ' +
+      'FROM (SELECT K.CODPARC, K.CODPROD, SUM(VV.QTD) QEI, ' +
+      '        MAX(CASE WHEN NVL(VV.CUSTO,0) > 0 THEN VV.CUSTO END) CUSTOINV ' +
       '      FROM ' +
       EI_SUB +
       ' K JOIN SANKHYA.AD_ITEINVENTARIO VV ON VV.CODINV=K.CODINV AND VV.CODPROD=K.CODPROD ' +
@@ -236,7 +238,12 @@ routerAdd(
         '      GROUP BY CC.CODPARC, IT.CODPROD) CON ON CON.CODPARC=X.CODPARC AND CON.CODPROD=X.CODPROD ' +
         'WHERE X.CODPARC = ' +
         Number(lojaFiltro) +
-        ' ORDER BY 12 DESC'
+        // 18/11/2026 — ordenar pelo VALOR ABSOLUTO da quebra.
+        // Antes o card abria com produtos de quantidade alta, custo zero e
+        // R$ 0 no topo (100% de quebra e nenhum impacto). Quem manda no topo
+        // é o impacto em reais.
+        ' ORDER BY ABS(COALESCE(NULLIF(X.CUSTOINV,0), NVL(X.VLR,0) / NULLIF(X.QV,0)) * ' +
+        ' (X.QEI + NVL(REC.Q,0) - X.QEF - NVL(X.QV,0) - NVL(CON.Q,0))) DESC NULLS LAST'
       : ''
 
     const grade = rodar(sqlLoja)
