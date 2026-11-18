@@ -24,6 +24,9 @@
 // AO CRIAR
 // ---------------------------------------------------------------------------
 onRecordAfterCreateSuccess((e) => {
+  // 18/11/2026 — instrumentação de diagnóstico: saber se este hook roda e
+  // termina no CREATE (suspeito de quebrar a cadeia e reverter a transação).
+  console.log('[sem-triagem] create INICIO')
   try {
     const t = e.record
     if (!t) return e.next()
@@ -32,6 +35,7 @@ onRecordAfterCreateSuccess((e) => {
       .trim()
       .toLowerCase()
     const id = String(t.id)
+    console.log('[sem-triagem] create status_kanban=' + raw)
 
     if (raw === 'triagem') {
       // pedido explícito do dono: apagar
