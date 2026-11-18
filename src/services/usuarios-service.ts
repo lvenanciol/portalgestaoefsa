@@ -54,6 +54,15 @@ export const criarUsuario = (data: {
   observacao?: string
 }) => pb.send('/backend/v1/usuarios', { method: 'POST', body: JSON.stringify(data) })
 
+// 18/11/2026 — Exclusão de usuário (botão "Excluir" da coluna AÇÕES).
+// O endpoint aplica duas proteções no servidor: não excluir a si próprio e não
+// excluir o último Admin ativo. Aqui só cuidamos do transporte.
+export const excluirUsuario = (id: string) =>
+  pb.send(`/backend/v1/usuarios/${id}`, { method: 'DELETE' }) as Promise<{
+    ok: boolean
+    email?: string
+  }>
+
 // CAC (11/11/2026) — "Enviar Login": dispara o e-mail com o endereço do Portal,
 // o login e o passo a passo de primeiro acesso. A senha NÃO é enviada.
 export const enviarLoginUsuario = (id: string) =>

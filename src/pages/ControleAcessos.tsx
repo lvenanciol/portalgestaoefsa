@@ -9,6 +9,8 @@ import {
   Mail,
   CheckCircle2,
   AlertTriangle,
+  Trash2,
+  UserX,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import {
@@ -22,6 +24,7 @@ import {
   criarUsuario,
   editarUsuario,
   enviarLoginUsuario,
+  excluirUsuario,
   listarGrupos,
   listarEmpresas,
   listarUnidades,
@@ -549,6 +552,25 @@ export default function ControleAcessos() {
     motivo?: string
   } | null>(null)
 
+  // ---- 18/11/2026: exclusão com confirmação (CRUD completo na coluna AÇÕES) ----
+  const [confirmarExclusao, setConfirmarExclusao] = useState<UsuarioLista | null>(null)
+  const [excluindoId, setExcluindoId] = useState<string | null>(null)
+
+  const executarExclusao = async (u: UsuarioLista) => {
+    setConfirmarExclusao(null)
+    setExcluindoId(u.id)
+    setErro('')
+    try {
+      await excluirUsuario(u.id)
+      await carregar()
+      setResultadoLogin(null)
+    } catch (e) {
+      setErro(getErrorMessage(e) || 'Não foi possível excluir o usuário.')
+    } finally {
+      setExcluindoId(null)
+    }
+  }
+
   const executarEnvioLogin = async (u: UsuarioLista) => {
     setConfirmarLogin(null)
     setEnviandoLoginId(u.id)
@@ -815,6 +837,24 @@ export default function ControleAcessos() {
                               onClick={() => abrirEditar(u)}
                             >
                               Editar
+                            </Button>
+                            {/* 18/11/2026 — CRUD completo: faltava o Excluir.
+                               O endpoint não existia e por isso foi criado
+                               (pocketbase/hooks/usuarios_excluir.js). */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 text-xs text-red-600 hover:text-red-700"
+                              title="Excluir usuário"
+                              disabled={excluindoId === u.id}
+                              onClick={() => setConfirmarExclusao(u)}
+                            >
+                              {excluindoId === u.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                              )}
+                              Excluir
                             </Button>
                           </div>
                         )}
@@ -1571,6 +1611,46 @@ export default function ControleAcessos() {
               }}
             >
               Enviar Acesso
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 18/11/2026 — Confirmação de EXCLUSÃO (CRUD na coluna AÇÕES) */}
+      <AlertDialog
+        open={confirmarExclusao !== null}
+        onOpenChange={(o) => !o && setConfirmarExclusao(null)}
+      >
+        <AlertDialogContent className="bg-white max-w-md rounded-2xl border border-gray-200">
+          <AlertDialogHeader>
+            <div className="h-11 w-11 rounded-full bg-rose-50 flex items-center justify-center text-rose-700 mb-1">
+              <UserX className="h-5 w-5" />
+            </div>
+            <AlertDialogTitle className="text-base font-bold text-gray-900">
+              Excluir este usuário?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-gray-600 leading-relaxed">
+              O acesso de <strong className="text-gray-900">{confirmarExclusao?.nome}</strong> (
+              <span className="font-mono text-[11px]">{confirmarExclusao?.email}</span>) será
+              removido e a pessoa não conseguirá mais entrar no Portal.
+              <br />
+              <br />
+              <span className="text-rose-700 font-medium">
+                Esta ação não pode ser desfeita.
+              </span> O
+              histórico de tarefas e atas permanece — eles guardam o nome, não o vínculo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-9 text-xs">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="h-9 text-xs bg-rose-600 hover:bg-rose-700 text-white"
+              onClick={(ev) => {
+                ev.preventDefault()
+                if (confirmarExclusao) void executarExclusao(confirmarExclusao)
+              }}
+            >
+              Excluir usuário
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
