@@ -146,8 +146,12 @@ async function buscarIncremental<T extends { id: string; updated: string }>(
   colecao: Colecao,
   escopo: CompanyScopeId,
 ): Promise<{ itens: T[]; completo: boolean }> {
-  const marca = lerMarca(colecao, escopo)
   const cache = lerCache<T>(colecao, escopo)
+  // 18/11/2026 — se existe marca mas o CACHE está vazio (usuário que já tinha
+  // marca de uma versão anterior sem cache), um incremental devolveria só o
+  // delta e a tela ficaria vazia para sempre. Nesse caso a marca é descartada
+  // e a carga é completa UMA vez; a partir daí volta a ser incremental.
+  const marca = cache.length ? lerMarca(colecao, escopo) : null
 
   // filtros: escopo de empresa + marca temporal
   const partes: string[] = []
