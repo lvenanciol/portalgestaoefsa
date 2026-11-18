@@ -50,11 +50,9 @@ import PenDiagnosticoPage from './pen/pages/PenDiagnosticoPage'
 import PenIshikawaPage from './pen/pages/PenIshikawaPage'
 // 2.5 — BSC (consome objetivo/KPI/iniciativa do banco)
 import PenBscPage from './pen/pages/PenBscPage'
-import {
-  PenCincoW2hPage,
-  PenAcompanhamentoPage,
-  PenGovernancaPage,
-} from './pen/pages/PenTelasVazias'
+// 2.6 — Plano de Ação 5W2H (única tela com escrita)
+import PenPlanoPage from './pen/pages/PenPlanoPage'
+import { PenAcompanhamentoPage, PenGovernancaPage } from './pen/pages/PenTelasVazias'
 
 // Fase 3 — Rotas protegidas por autenticação; /login pública.
 
@@ -141,7 +139,7 @@ const AppRoutes = () => {
           path="/pen/5w2h"
           element={
             <RotaProtegida>
-              <PenCincoW2hPage />
+              <PenPlanoPage />
             </RotaProtegida>
           }
         />

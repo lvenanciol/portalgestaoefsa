@@ -106,6 +106,18 @@ export interface PenInitiative extends PenBase, PenMedicao {
   objetivo_id: string
   prazo: string
   progresso: number | null
+  // ---- Fase 2.6: 5W2H, GUT e janela de execução (migração 078) ----
+  // Opcionais: registros criados antes da 078 não têm esses campos, e a tela
+  // mostra "não informado" em vez de inventar valor.
+  w_what?: string
+  w_why?: string
+  w_where?: string
+  w_how?: string
+  w_howmuch?: number | null
+  inicio?: string
+  gut_g?: number | null
+  gut_u?: number | null
+  gut_t?: number | null
 }
 
 // ---- pen_cause -------------------------------------------------------------

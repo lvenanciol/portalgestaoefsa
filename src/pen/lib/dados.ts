@@ -281,6 +281,16 @@ function paraInitiative(r: any): PenInitiative {
     weight: num(r.weight, 0) as number,
     status: txt(r.status, 'em_andamento') as any,
     progresso: num(r.progresso),
+    // Fase 2.6 — 5W2H, GUT e janela (migração 078)
+    w_what: txt(r.w_what),
+    w_why: txt(r.w_why),
+    w_where: txt(r.w_where),
+    w_how: txt(r.w_how),
+    w_howmuch: num(r.w_howmuch),
+    inicio: txt(r.inicio),
+    gut_g: num(r.gut_g),
+    gut_u: num(r.gut_u),
+    gut_t: num(r.gut_t),
   }
 }
 
@@ -502,6 +512,60 @@ export function progressoDosDados(d: PenDados, companyId: CompanyId): number {
     inis.filter((i) => avancado(i.status)).reduce((s, x) => s + peso(x), 0)
 
   return Math.round((pesoOk / pesoTotal) * 1000) / 10
+}
+
+/**
+ * Atualiza o % concluído de uma iniciativa e grava em pen_audit.
+ * Fase 2.6 — "Alterar % concluído grava em pen_audit com usuário, timestamp e
+ * justificativa obrigatória".
+ *
+ * A auditoria é gravada ANTES do update: se o registro de auditoria falhar,
+ * nada muda no dado (não pode existir alteração sem rastro).
+ */
+export async function atualizarProgresso(
+  iniciativa: { id: string; titulo: string; progresso: number | null },
+  novoProgresso: number,
+  justificativa: string,
+  usuario: string,
+  workspace: string,
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const pct = Math.max(0, Math.min(100, Math.round(novoProgresso)))
+  if (!justificativa || justificativa.trim().length < 10) {
+    return { ok: false, erro: 'A justificativa precisa ter ao menos 10 caracteres.' }
+  }
+
+  try {
+    await pb.collection('pen_audit').create({
+      workspace_id: workspace,
+      company_id: '',
+      cycle_id: 'ciclo-2026',
+      user_id: usuario,
+      tabela: 'pen_initiative',
+      registro_id: iniciativa.id,
+      campo: 'progresso',
+      valor_anterior: String(iniciativa.progresso ?? 0),
+      valor_novo: String(pct),
+      justificativa: justificativa.trim(),
+      status: 'alterado',
+    })
+  } catch (e: any) {
+    return {
+      ok: false,
+      erro:
+        'Não foi possível gravar a auditoria: ' +
+        String(e?.response?.data?.message || e?.message || 'erro desconhecido'),
+    }
+  }
+
+  try {
+    await pb.collection('pen_initiative').update(iniciativa.id, { progresso: pct })
+    return { ok: true }
+  } catch (e: any) {
+    return {
+      ok: false,
+      erro: String(e?.response?.data?.message || e?.message || 'Falha ao gravar o progresso'),
+    }
+  }
 }
 
 /** Registra uma exportação em pen_audit (exigência da Fase 3.2). */

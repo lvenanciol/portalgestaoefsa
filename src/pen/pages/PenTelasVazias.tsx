@@ -16,20 +16,7 @@ import { PenTelaVazia } from './PenTelaVazia'
 
 // 2.5 — PenBscPage saiu daqui: tem arquivo próprio.
 
-export function PenCincoW2hPage() {
-  return (
-    <PenTelaVazia
-      titulo="5W2H"
-      descricao="Plano de ação: o que, por que, quem, quando, onde, como e quanto."
-      recebe={[
-        'Ações derivadas das causas raiz',
-        'Os 7 campos por ação',
-        'Prazo e responsável',
-        'Status de validação',
-      ]}
-    />
-  )
-}
+// 2.6 — PenCincoW2hPage saiu daqui: a tela é PenPlanoPage.tsx.
 
 export function PenAcompanhamentoPage() {
   return (
