@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { History, AlertTriangle, Users, BarChart3 } from 'lucide-react'
 import { PEN, SEMAFORO_CORES, type Semaforo } from '@/pen/tokens'
 import { SectionHeader, ProgressBar } from '@/pen/components'
+import { BotaoExportar, tabelaHtml, secao, esc } from '@/pen/components/BotaoExportar'
 import { SkeletonTabela, ErroBloco, AvisoFallback } from '@/pen/components/estados'
 import { usePenFiltro } from '@/pen/PenShell'
 import { useAuth } from '@/hooks/use-auth'
@@ -206,9 +207,71 @@ export default function PenPlanoPage() {
         titulo="Plano de Ação 5W2H"
         descricao={`Iniciativas, Gantt e capacidade por dono — ${empresa} · ${ciclo}`}
         acao={
-          <span className="text-[10.5px] font-semibold" style={{ color: PEN.textoFraco }}>
-            {iniciativas.length} iniciativas
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10.5px] font-semibold" style={{ color: PEN.textoFraco }}>
+              {iniciativas.length} iniciativas
+            </span>
+            <BotaoExportar
+              titulo="Plano de Ação 5W2H"
+              pronto={!carregando}
+              corpo={() =>
+                secao(
+                  'Iniciativas — 5W2H, GUT e progresso',
+                  tabelaHtml(
+                    [
+                      'Iniciativa',
+                      'What',
+                      'Why',
+                      'Where',
+                      'Who',
+                      'When',
+                      'Quanto',
+                      'GUT',
+                      '%',
+                      'Status',
+                    ],
+                    iniciativas.map((i) => {
+                      const g = gutDe(i)
+                      const cs = corStatus(i.progresso ?? null)
+                      return [
+                        esc(i.titulo),
+                        esc(i.w_what || '—'),
+                        esc(i.w_why || '—'),
+                        esc(i.w_where || '—'),
+                        esc(i.owner_id || '—'),
+                        fmtPrazo(i.prazo),
+                        i.w_howmuch ? `R$ ${Number(i.w_howmuch).toLocaleString('pt-BR')}` : '—',
+                        g === null ? '—' : String(g),
+                        {
+                          v: `${i.progresso ?? 0}%`,
+                          cls: cs.nivel === 'vermelho' ? 'vermelho' : '',
+                        },
+                        esc(cs.rotulo),
+                      ]
+                    }),
+                    [6, 7, 8],
+                  ),
+                ) +
+                secao(
+                  'Capacidade por dono',
+                  tabelaHtml(
+                    ['Dono', 'Iniciativas', 'Em aberto', 'Carga', 'Situação'],
+                    capacidade.map((c) => [
+                      esc(c.dono),
+                      String(c.qtd),
+                      String(c.aberta),
+                      `${c.carga}%`,
+                      {
+                        v: c.carga > 80 ? 'Sobrecarga' : 'Ok',
+                        cls: c.carga > 80 ? 'vermelho' : 'verde',
+                      },
+                    ]),
+                    [1, 2, 3],
+                  ),
+                )
+              }
+            />
+          </div>
         }
       />
 

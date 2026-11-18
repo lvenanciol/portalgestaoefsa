@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Eye, TrendingUp, TrendingDown, Minus, ChevronRight, Link2 } from 'lucide-react'
 import { PEN, SEMAFORO_CORES, type Semaforo } from '@/pen/tokens'
 import { SectionHeader } from '@/pen/components'
+import { BotaoExportar, tabelaHtml, secao, esc } from '@/pen/components/BotaoExportar'
 import { usePenFiltro } from '@/pen/PenShell'
 
 // ============================================================================
@@ -369,13 +370,95 @@ export default function PenDiagnosticoPage() {
         titulo="Diagnóstico de Ambiente"
         descricao={`PESTEL, SWOT, FOFA, Porter e cadeia de valor — ${empresa} · ${ciclo}`}
         acao={
-          <span
-            className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-bold"
-            style={{ background: '#F1F3F5', color: PEN.textoSecundario, borderRadius: 6 }}
-          >
-            <Eye className="h-3 w-3" />
-            somente leitura
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-bold"
+              style={{ background: '#F1F3F5', color: PEN.textoSecundario, borderRadius: 6 }}
+            >
+              <Eye className="h-3 w-3" />
+              somente leitura
+            </span>
+            <BotaoExportar
+              titulo="Diagnóstico de Ambiente"
+              corpo={() =>
+                secao(
+                  'PESTEL — 6 dimensões',
+                  tabelaHtml(
+                    ['Dimensão', 'Fator', 'Impacto'],
+                    PESTEL.flatMap((d) =>
+                      d.fatores.map((f) => [
+                        esc(d.nome),
+                        esc(f.texto),
+                        {
+                          v: COR_IMPACTO[f.impacto].rotulo,
+                          cls:
+                            f.impacto === 'alto'
+                              ? 'vermelho'
+                              : f.impacto === 'medio'
+                                ? 'ambar'
+                                : 'verde',
+                        },
+                      ]),
+                    ),
+                  ),
+                ) +
+                secao(
+                  'Matriz SWOT',
+                  tabelaHtml(
+                    ['Tipo', 'Item', 'Empresa', 'Evidência', 'Responsável'],
+                    swotVisivel.map((s) => [
+                      esc(ESTILO_SWOT[s.origem].titulo),
+                      esc(s.texto),
+                      esc(s.empresa),
+                      esc(s.evidencia),
+                      esc(s.responsavel),
+                    ]),
+                  ),
+                ) +
+                secao(
+                  'Matriz FOFA — estratégias derivadas',
+                  tabelaHtml(
+                    ['Estratégia', 'Tipo', 'Descrição'],
+                    fofaVisivel.map((e) => [esc(e.nome), esc(e.tipo), esc(e.descricao)]),
+                  ),
+                ) +
+                secao(
+                  '5 Forças de Porter',
+                  tabelaHtml(
+                    ['Força', 'Intensidade', 'Resumo', 'Evidência'],
+                    PORTER.map((f) => [
+                      esc(f.nome),
+                      {
+                        v: COR_IMPACTO[f.intensidade].rotulo,
+                        cls:
+                          f.intensidade === 'alto'
+                            ? 'vermelho'
+                            : f.intensidade === 'medio'
+                              ? 'ambar'
+                              : 'verde',
+                      },
+                      esc(f.resumo),
+                      esc(f.evidencia),
+                    ]),
+                  ),
+                ) +
+                secao(
+                  'Cadeia de valor',
+                  tabelaHtml(
+                    ['Bloco', 'Elo', 'Crítico', 'Observação'],
+                    CADEIA.flatMap((b) =>
+                      b.elos.map((e) => [
+                        esc(b.bloco),
+                        esc(e.nome),
+                        { v: e.critico ? 'Sim' : 'Não', cls: e.critico ? 'vermelho' : '' },
+                        esc(e.nota),
+                      ]),
+                    ),
+                  ),
+                )
+              }
+            />
+          </div>
         }
       />
 

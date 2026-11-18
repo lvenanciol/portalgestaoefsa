@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { CheckCircle2, AlertTriangle, XCircle, History, Save, ShieldCheck } from 'lucide-react'
 import { PEN, SEMAFORO_CORES, type Semaforo } from '@/pen/tokens'
 import { SectionHeader, Badge, SemaforoDot } from '@/pen/components'
+import { BotaoExportar, tabelaHtml, secao, esc } from '@/pen/components/BotaoExportar'
 import { usePenFiltro } from '@/pen/PenShell'
 import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
@@ -279,12 +280,49 @@ export default function PenNortePage() {
         titulo="Norte Estratégico"
         descricao={`Missão, visão, valores e BHAG — ${rotuloEmpresa} · ${ciclo}`}
         acao={
-          <span
-            className="px-2 py-1 text-[10.5px] font-bold"
-            style={{ background: PEN.acentoClaro, color: PEN.acento, borderRadius: 6 }}
-          >
-            {aprovados}/3 checks
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className="px-2 py-1 text-[10.5px] font-bold"
+              style={{ background: PEN.acentoClaro, color: PEN.acento, borderRadius: 6 }}
+            >
+              {aprovados}/3 checks
+            </span>
+            {/* 3.2 — exportação com cabeçalho + registro em pen_audit */}
+            <BotaoExportar
+              titulo="Norte Estratégico"
+              corpo={() =>
+                secao('BHAG — 12 meses', `<p>${esc(norte.bhag12)}</p>`) +
+                secao('BHAG — 10 anos', `<p>${esc(norte.bhag10)}</p>`) +
+                secao('Missão', `<p>${esc(norte.missao)}</p>`) +
+                secao('Visão', `<p>${esc(norte.visao)}</p>`) +
+                secao(
+                  'Valores e comportamento observável',
+                  tabelaHtml(
+                    ['Valor', 'Na prática'],
+                    VALORES.map((v) => [esc(v.nome), esc(v.comportamento)]),
+                  ),
+                ) +
+                secao(
+                  'Proposta de valor por empresa',
+                  tabelaHtml(
+                    ['Empresa', 'Proposta', 'Para quem'],
+                    PROPOSTAS.map((p) => [esc(p.nome), esc(p.proposta), esc(p.para)]),
+                  ),
+                ) +
+                secao(
+                  'Teste de consistência',
+                  tabelaHtml(
+                    ['Verificação', 'Situação', 'Detalhe'],
+                    checks.map((c) => [
+                      esc(c.titulo),
+                      { v: c.ok ? 'OK' : 'Falha', cls: c.ok ? 'verde' : 'vermelho' },
+                      esc(c.detalhe),
+                    ]),
+                  ),
+                )
+              }
+            />
+          </div>
         }
       />
 

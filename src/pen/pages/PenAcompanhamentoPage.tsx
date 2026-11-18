@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Eye, AlertTriangle, ShieldAlert, Gavel, Database, Info } from 'lucide-react'
 import { PEN, SEMAFORO_CORES, type Semaforo } from '@/pen/tokens'
 import { SectionHeader, ProgressBar } from '@/pen/components'
+import { BotaoExportar, tabelaHtml, secao, esc } from '@/pen/components/BotaoExportar'
 import { SkeletonCard, SkeletonTabela, ErroBloco, AvisoFallback } from '@/pen/components/estados'
 import { usePenFiltro } from '@/pen/PenShell'
 import { carregarPen, type PenDados } from '@/pen/lib/dados'
@@ -311,13 +312,86 @@ export default function PenAcompanhamentoPage() {
         titulo="Acompanhamento e Rituais"
         descricao={`Ritos, indicadores, RAID e decisões — ${empresa} · ${ciclo}`}
         acao={
-          <span
-            className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-bold"
-            style={{ background: '#F1F3F5', color: PEN.textoSecundario, borderRadius: 6 }}
-          >
-            <Eye className="h-3 w-3" />
-            somente leitura
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-bold"
+              style={{ background: '#F1F3F5', color: PEN.textoSecundario, borderRadius: 6 }}
+            >
+              <Eye className="h-3 w-3" />
+              somente leitura
+            </span>
+            <BotaoExportar
+              titulo="Acompanhamento e Rituais"
+              pronto={!carregando}
+              corpo={() =>
+                secao(
+                  'Rituais de gestão',
+                  tabelaHtml(
+                    ['Cadência', 'Rito', 'Periodicidade', 'Dono'],
+                    RITOS.map((r) => [esc(r.freq), esc(r.nome), esc(r.periodicidade), esc(r.dono)]),
+                  ),
+                ) +
+                secao(
+                  'Termômetro por empresa',
+                  tabelaHtml(
+                    ['Empresa', 'Atingimento'],
+                    termometro.map((t) => [
+                      esc(t.nome),
+                      t.ating === null
+                        ? '—'
+                        : {
+                            v: `${Math.round(t.ating)}%`,
+                            cls: t.ating >= 100 ? 'verde' : t.ating >= 70 ? 'ambar' : 'vermelho',
+                          },
+                    ]),
+                    [1],
+                  ),
+                ) +
+                secao(
+                  'Quadro RAID',
+                  tabelaHtml(
+                    ['Tipo', 'Item', 'Probabilidade', 'Impacto', 'Mitigação', 'Dono'],
+                    riscos.map((r) => [
+                      esc(r.tipo),
+                      esc(r.titulo),
+                      esc(r.probabilidade),
+                      esc(r.impacto),
+                      esc(r.mitigacao || '—'),
+                      esc(r.owner_id || '—'),
+                    ]),
+                  ),
+                ) +
+                secao(
+                  'Decisões do ciclo',
+                  tabelaHtml(
+                    ['Tema', 'Decisão', 'Dono', 'Prazo', 'Status'],
+                    DECISOES.map((d) => [
+                      esc(d.tema),
+                      esc(d.decisao),
+                      esc(d.dono),
+                      fmtData(d.prazo),
+                      {
+                        v: STATUS_DEC[d.status].rotulo,
+                        cls: d.status === 'atrasada' ? 'vermelho' : '',
+                      },
+                    ]),
+                  ),
+                ) +
+                secao(
+                  'Qualidade do dado',
+                  tabelaHtml(
+                    ['Verificação', 'Situação', '%'],
+                    qualidade.map((q) => [
+                      esc(q.nome),
+                      esc(q.texto),
+                      { v: `${q.pct}%`, cls: q.ok ? 'verde' : q.pct >= 60 ? 'ambar' : 'vermelho' },
+                    ]),
+                    [2],
+                  ),
+                )
+              }
+            />
+          </div>
         }
       />
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Eye, ShieldCheck, History, Filter, Lock, FileClock, AlertTriangle } from 'lucide-react'
 import { PEN, SEMAFORO_CORES } from '@/pen/tokens'
 import { SectionHeader } from '@/pen/components'
+import { BotaoExportar, tabelaHtml, secao, esc } from '@/pen/components/BotaoExportar'
 import { SkeletonTabela, ErroBloco } from '@/pen/components/estados'
 import { usePenFiltro } from '@/pen/PenShell'
 import { useAuth } from '@/hooks/use-auth'
@@ -239,13 +240,61 @@ export default function PenGovernancaPage() {
         titulo="Governança"
         descricao={`RACI, versionamento e trilha de auditoria — ${empresa} · ${ciclo}`}
         acao={
-          <span
-            className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-bold"
-            style={{ background: '#F1F3F5', color: PEN.textoSecundario, borderRadius: 6 }}
-          >
-            <Eye className="h-3 w-3" />
-            somente leitura
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-bold"
+              style={{ background: '#F1F3F5', color: PEN.textoSecundario, borderRadius: 6 }}
+            >
+              <Eye className="h-3 w-3" />
+              somente leitura
+            </span>
+            <BotaoExportar
+              titulo="Governança"
+              pronto={!carregando}
+              corpo={() =>
+                secao(
+                  'Matriz RACI',
+                  tabelaHtml(
+                    ['Processo', ...PAPEIS],
+                    PROCESSOS.map((p) => [
+                      esc(p.nome),
+                      ...PAPEIS.map((papel) => p.raci[papel] || '—'),
+                    ]),
+                  ),
+                ) +
+                secao(
+                  'Versionamento do plano',
+                  tabelaHtml(
+                    ['Versão', 'Data', 'Autor', 'Tipo', 'Resumo'],
+                    VERSOES.map((v) => [
+                      esc(v.v),
+                      v.data.split('-').reverse().join('/'),
+                      esc(v.autor),
+                      esc(TIPO_VERSAO[v.tipo].rotulo),
+                      esc(v.resumo),
+                    ]),
+                  ),
+                ) +
+                secao(
+                  'Trilha de auditoria (últimos registros)',
+                  tabelaHtml(
+                    ['Data e hora', 'Usuário', 'Tabela', 'Campo', 'De', 'Para', 'Justificativa'],
+                    filtrada
+                      .slice(0, 80)
+                      .map((a) => [
+                        esc(fmtDataHora(a.created)),
+                        esc(a.user_id),
+                        esc(a.tabela),
+                        esc(a.campo),
+                        esc(a.valor_anterior || '—'),
+                        esc(a.valor_novo || '—'),
+                        esc(a.justificativa || '—'),
+                      ]),
+                  ),
+                )
+              }
+            />
+          </div>
         }
       />
 

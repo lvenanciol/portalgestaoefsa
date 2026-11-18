@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Eye, ChevronDown, ArrowRight, Crosshair, FileSearch } from 'lucide-react'
 import { PEN, SEMAFORO_CORES } from '@/pen/tokens'
 import { SectionHeader } from '@/pen/components'
+import { BotaoExportar, tabelaHtml, secao, esc } from '@/pen/components/BotaoExportar'
 import { usePenFiltro } from '@/pen/PenShell'
 
 // ============================================================================
@@ -441,13 +442,51 @@ export default function PenIshikawaPage() {
         titulo="Ishikawa — causa e efeito"
         descricao={`Diagrama de espinha de peixe e priorização GUT — ${empresa} · ${ciclo}`}
         acao={
-          <span
-            className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-bold"
-            style={{ background: '#F1F3F5', color: PEN.textoSecundario, borderRadius: 6 }}
-          >
-            <Eye className="h-3 w-3" />
-            somente leitura
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10.5px] font-bold"
+              style={{ background: '#F1F3F5', color: PEN.textoSecundario, borderRadius: 6 }}
+            >
+              <Eye className="h-3 w-3" />
+              somente leitura
+            </span>
+            <BotaoExportar
+              titulo="Ishikawa — causa e efeito"
+              corpo={() =>
+                secao('Desvio em análise', `<p><strong>${esc(desvio.nome)}</strong></p>`) +
+                secao(
+                  'Causas por ramo',
+                  tabelaHtml(
+                    ['Ramo', 'Causa', 'Status', 'G', 'U', 'T', 'GUT', 'Evidência'],
+                    ordenadas.map((c) => [
+                      esc(RAMOS.find((r) => r.key === c.ramo)?.nome || c.ramo),
+                      esc(c.texto),
+                      {
+                        v: STATUS_COR[c.status].rotulo,
+                        cls:
+                          c.status === 'validada'
+                            ? 'verde'
+                            : c.status === 'a_validar'
+                              ? 'ambar'
+                              : '',
+                      },
+                      String(c.G),
+                      String(c.U),
+                      String(c.T),
+                      String(gut(c)),
+                      esc(c.evidencia),
+                    ]),
+                    [3, 4, 5, 6],
+                  ),
+                ) +
+                secao(
+                  '5 Porquês — ' + causa.texto,
+                  `<ol>${causa.porques.map((p) => `<li>${esc(p)}</li>`).join('')}</ol>` +
+                    `<p><strong>Causa raiz do desvio:</strong> ${esc(desvio.causaRaiz)}</p>`,
+                )
+              }
+            />
+          </div>
         }
       />
 

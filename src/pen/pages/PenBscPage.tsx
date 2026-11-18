@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Eye, X, TrendingUp, TrendingDown, Target, Activity } from 'lucide-react'
 import { PEN, SEMAFORO_CORES, type Semaforo } from '@/pen/tokens'
 import { SectionHeader, ProgressBar } from '@/pen/components'
+import { BotaoExportar, tabelaHtml, secao, esc } from '@/pen/components/BotaoExportar'
 import { Skeleton, SkeletonTabela, ErroBloco, AvisoFallback } from '@/pen/components/estados'
 import { usePenFiltro } from '@/pen/PenShell'
 import { carregarPen, type PenDados } from '@/pen/lib/dados'
@@ -242,6 +243,61 @@ export default function PenBscPage() {
               <Eye className="h-3 w-3" />
               somente leitura
             </span>
+            {/* 3.2 — exportação com cabeçalho + registro em pen_audit */}
+            <BotaoExportar
+              titulo="BSC — Balanced Scorecard"
+              pronto={!carregando}
+              corpo={() =>
+                secao(
+                  'Atingimento por perspectiva',
+                  tabelaHtml(
+                    ['Perspectiva', 'Objetivos', 'Atingimento'],
+                    PERSPECTIVAS.map((p) => {
+                      const m = resumoPerspectiva(p.key)
+                      return [
+                        esc(p.nome),
+                        String(porPerspectiva[p.key].length),
+                        m === null
+                          ? '—'
+                          : {
+                              v: `${m.toFixed(0)}%`,
+                              cls: m >= 100 ? 'verde' : m >= 70 ? 'ambar' : 'vermelho',
+                            },
+                      ]
+                    }),
+                    [1, 2],
+                  ),
+                ) +
+                secao(
+                  'Metas SMART',
+                  tabelaHtml(
+                    ['Objetivo', 'Perspectiva', 'Dono', 'Indicador', 'Baseline', 'Meta', 'Ating.'],
+                    objetivos.map((o) => {
+                      const k = kpiDe(o)
+                      const a = atingDe(o)
+                      return [
+                        esc(o.titulo),
+                        esc(
+                          PERSPECTIVAS.find((x) => x.key === o.perspectiva)?.nome ||
+                            String(o.perspectiva),
+                        ),
+                        esc(o.owner_id || '—'),
+                        esc(k?.nome || '—'),
+                        fmtValor(o.baseline ?? k?.baseline ?? null, k?.unidade),
+                        fmtValor(o.target ?? k?.target ?? null, k?.unidade),
+                        a === null
+                          ? 'sem dado'
+                          : {
+                              v: `${a.toFixed(0)}%`,
+                              cls: a >= 100 ? 'verde' : a >= 70 ? 'ambar' : 'vermelho',
+                            },
+                      ]
+                    }),
+                    [4, 5, 6],
+                  ),
+                )
+              }
+            />
           </div>
         }
       />
