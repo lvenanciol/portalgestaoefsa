@@ -124,13 +124,22 @@ onRecordAfterCreateSuccess(function (e) {
               10,
               0,
             )
+            // 18/11/2026 — EXIGE NOME EXATO.
+            // Antes era `respNorm.indexOf(nomeUser) !== -1`, e "leonardo
+            // lourenco".indexOf("leonardo") === 0: a tarefa de "Leonardo
+            // Lourenço" era enviada também para "[ CEO ] Leonardo" (outra
+            // pessoa). Com dois "Leonardo" na base, ninguém é escolhido por
+            // aproximação — melhor não enviar do que enviar para o errado.
             var respNorm = semAcento(respNome)
+            var casados = []
             for (var b = 0; b < usersNome.length; b++) {
               var nomeUser = semAcento(limparNome(usersNome[b].getString('name')))
-              if (respNorm === nomeUser || respNorm.indexOf(nomeUser) !== -1) {
-                pushUser(usersNome[b])
-              }
+              if (respNorm === nomeUser) casados.push(usersNome[b])
             }
+            if (casados.length === 0 && usersNome.length === 1) {
+              casados.push(usersNome[0])
+            }
+            for (var b2 = 0; b2 < casados.length; b2++) pushUser(casados[b2])
           } catch (_) {}
         }
       }
@@ -575,12 +584,15 @@ onRecordAfterUpdateSuccess(function (e) {
           10,
           0,
         )
+        // 18/11/2026 — mesmo critério do create: NOME EXATO apenas.
+        // `indexOf` fazia "leonardo lourenco" casar com "leonardo".
+        var casados2 = []
         for (var b = 0; b < usersNome.length; b++) {
           var nu = limparNome2(usersNome[b].getString('name')).toLowerCase()
-          if (respNovo.toLowerCase() === nu || respNovo.toLowerCase().indexOf(nu) !== -1) {
-            pushUser2(usersNome[b])
-          }
+          if (respNovo.toLowerCase() === nu) casados2.push(usersNome[b])
         }
+        if (casados2.length === 0 && usersNome.length === 1) casados2.push(usersNome[0])
+        for (var b3 = 0; b3 < casados2.length; b3++) pushUser2(casados2[b3])
       } catch (_) {}
     }
 

@@ -76,33 +76,68 @@ onRecordAfterCreateSuccess(function (e) {
       } catch (_) {}
     }
 
+    // =====================================================================
+    // 18/11/2026 — CASAMENTO ESTRITO POR NOME.
+    //
+    // DEFEITO ENCONTRADO NO LOG: a busca era `name ~ "<primeiroNome>"`, então
+    // "Leonardo Lourenço" (responsável) casava TAMBÉM com "[ CEO ] Leonardo".
+    // A tarefa de uma pessoa notificava a outra — notificação para quem não é
+    // responsável nem parceiro, exatamente o que a diretiva proíbe.
+    //
+    // Correção: primeiro tenta o NOME COMPLETO normalizado (sem tag, sem
+    // acento, case-insensitive). Só aceita o casamento por primeiro nome se
+    // houver UM único candidato — com dois "Leonardo" na base, ninguém é
+    // notificado por aproximação (melhor não avisar do que avisar errado).
+    // =====================================================================
+    function normNome(v) {
+      return String(v || '')
+        .replace(/^\[[^\]]+\]\s*/, '')
+        .replace(/\[[^\]]*\]/g, ' ')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9 ]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase()
+    }
+
     var todosNomes = [respNome].concat(nomesParceiros).filter(Boolean)
     for (var k = 0; k < todosNomes.length; k++) {
       var n = todosNomes[k]
-      var nLimpo = n.replace(/^\[[^\]]+\]\s*/, '').trim()
-      if (!nLimpo) continue
+      var alvoNorm = normNome(n)
+      if (!alvoNorm) continue
 
       try {
-        var primeiroNome = nLimpo.split(/\s+/)[0]
-        if (primeiroNome && primeiroNome.length >= 3) {
-          var usersAchados = $app.findRecordsByFilter(
-            'users',
-            'name ~ "' + primeiroNome + '"',
-            '',
-            10,
-            0,
-          )
-          for (var u = 0; u < usersAchados.length; u++) {
-            var usr = usersAchados[u]
-            if (!vistos[usr.id]) {
-              vistos[usr.id] = true
-              envolvidos.push({
-                id: usr.id,
-                email: usr.getString('email'),
-                nome: usr.getString('name') || usr.getString('email'),
-                desativadas: !!usr.getBool('notificacoes_desativadas'),
-              })
+        // 1) nome completo exato
+        var exatos = []
+        var candidatos = $app.findRecordsByFilter('users', "id != ''", '', 500, 0)
+        for (var c = 0; c < candidatos.length; c++) {
+          if (normNome(candidatos[c].getString('name')) === alvoNorm) exatos.push(candidatos[c])
+        }
+
+        // 2) sem exato, primeiro nome — só se for único
+        if (exatos.length === 0) {
+          var primeiroNome = alvoNorm.split(' ')[0]
+          if (primeiroNome && primeiroNome.length >= 3) {
+            var porPrimeiro = []
+            for (var c2 = 0; c2 < candidatos.length; c2++) {
+              if (normNome(candidatos[c2].getString('name')).split(' ')[0] === primeiroNome)
+                porPrimeiro.push(candidatos[c2])
             }
+            if (porPrimeiro.length === 1) exatos = porPrimeiro
+          }
+        }
+
+        for (var u = 0; u < exatos.length; u++) {
+          var usr = exatos[u]
+          if (!vistos[usr.id]) {
+            vistos[usr.id] = true
+            envolvidos.push({
+              id: usr.id,
+              email: usr.getString('email'),
+              nome: usr.getString('name') || usr.getString('email'),
+              desativadas: !!usr.getBool('notificacoes_desativadas'),
+            })
           }
         }
       } catch (_) {}
@@ -361,33 +396,52 @@ onRecordAfterUpdateSuccess(function (e) {
       } catch (_) {}
     }
 
+    // 18/11/2026 — mesmo casamento ESTRITO do create (ver explicação lá):
+    // nome completo primeiro; primeiro nome só se for único na base.
+    function normNome(v) {
+      return String(v || '')
+        .replace(/^\[[^\]]+\]\s*/, '')
+        .replace(/\[[^\]]*\]/g, ' ')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9 ]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase()
+    }
+
     var todosNomes = [respNome].concat(nomesParceiros).filter(Boolean)
     for (var k = 0; k < todosNomes.length; k++) {
-      var n = todosNomes[k]
-      var nLimpo = n.replace(/^\[[^\]]+\]\s*/, '').trim()
-      if (!nLimpo) continue
+      var alvoNorm = normNome(todosNomes[k])
+      if (!alvoNorm) continue
 
       try {
-        var primeiroNome = nLimpo.split(/\s+/)[0]
-        if (primeiroNome && primeiroNome.length >= 3) {
-          var usersAchados = $app.findRecordsByFilter(
-            'users',
-            'name ~ "' + primeiroNome + '"',
-            '',
-            10,
-            0,
-          )
-          for (var u = 0; u < usersAchados.length; u++) {
-            var usr = usersAchados[u]
-            if (!vistos[usr.id]) {
-              vistos[usr.id] = true
-              envolvidos.push({
-                id: usr.id,
-                email: usr.getString('email'),
-                nome: usr.getString('name') || usr.getString('email'),
-                desativadas: !!usr.getBool('notificacoes_desativadas'),
-              })
+        var exatos = []
+        var candidatos = $app.findRecordsByFilter('users', "id != ''", '', 500, 0)
+        for (var c = 0; c < candidatos.length; c++) {
+          if (normNome(candidatos[c].getString('name')) === alvoNorm) exatos.push(candidatos[c])
+        }
+        if (exatos.length === 0) {
+          var primeiroNome = alvoNorm.split(' ')[0]
+          if (primeiroNome && primeiroNome.length >= 3) {
+            var porPrimeiro = []
+            for (var c2 = 0; c2 < candidatos.length; c2++) {
+              if (normNome(candidatos[c2].getString('name')).split(' ')[0] === primeiroNome)
+                porPrimeiro.push(candidatos[c2])
             }
+            if (porPrimeiro.length === 1) exatos = porPrimeiro
+          }
+        }
+        for (var u = 0; u < exatos.length; u++) {
+          var usr = exatos[u]
+          if (!vistos[usr.id]) {
+            vistos[usr.id] = true
+            envolvidos.push({
+              id: usr.id,
+              email: usr.getString('email'),
+              nome: usr.getString('name') || usr.getString('email'),
+              desativadas: !!usr.getBool('notificacoes_desativadas'),
+            })
           }
         }
       } catch (_) {}
