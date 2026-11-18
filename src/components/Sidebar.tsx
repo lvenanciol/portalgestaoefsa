@@ -250,9 +250,23 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
       'PLATAFORMA',
       'INTEGRAÇÕES',
     ]
+
+    // ------------------------------------------------------------------
+    // 18/11/2026 — FUSÃO banco + estático POR SEÇÃO.
+    //
+    // ANTES: `return out.length ? out : navSections` — ou vinha TUDO do
+    // banco, ou tudo do estático. Se a coleção `menus` tinha registros mas
+    // faltava uma seção (ex.: PLANO ESTRATÉGICO, recém-criada), essa seção
+    // simplesmente não aparecia, mesmo estando no fallback.
+    //
+    // AGORA: cada seção usa o banco quando ele tem itens; quando não tem, cai
+    // na definição estática daquela seção. Também são acrescentadas as rotas
+    // do estático que o banco não cobre — assim uma tela nova no código nunca
+    // fica invisível só porque alguém esqueceu de criar a linha em `menus`.
+    // ------------------------------------------------------------------
     const out: NavSection[] = []
     for (const sec of ordemSecoes) {
-      const itens = menusDb
+      const doBanco = (menusDb || [])
         .filter((m) => m.secao === sec && m.ativo)
         .sort((a, b) => (a.ordem || 99) - (b.ordem || 99))
         .map((m) => ({
@@ -267,7 +281,19 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
           icon: ICONES[m.icone] || FolderKanban,
         }))
         .filter((i) => i.rota)
-      if (itens.length) out.push({ title: sec, items: itens })
+
+      const estatica = navSections.find((s) => s.title === sec)?.items || []
+
+      if (!doBanco.length) {
+        // seção ausente no banco: usa a definição do código
+        if (estatica.length) out.push({ title: sec, items: estatica })
+        continue
+      }
+
+      // completa com as rotas do código que o banco não trouxe
+      const rotasBanco = new Set(doBanco.map((i) => i.rota))
+      const faltantes = estatica.filter((i) => !rotasBanco.has(i.rota))
+      out.push({ title: sec, items: [...doBanco, ...faltantes] })
     }
     return out.length ? out : navSections
   })()
