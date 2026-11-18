@@ -125,6 +125,10 @@ const MODULOS_COM_MATRIZ: Record<string, boolean> = {
   ia: true,
   menus: true,
   acessos: true,
+  // 18/11/2026 — o /pen passa a ter linha na matriz do Controle de Acessos.
+  // Sem isto, grupo não-Admin com matriz configurada não enxergava o módulo
+  // (o fallback da matriz só vale para telas listadas aqui).
+  'plano-estrategico': true,
 }
 
 // A matriz do grupo já foi configurada pelo admin? A chave "botoes" existe no
@@ -156,6 +160,8 @@ function MODULO_TELA_LOOKUP(): Record<string, string> {
     'arvore-menus': 'menus',
     'controle-acessos': 'acessos',
     configuracoes: 'configuracoes',
+    // 18/11/2026 — módulo do Plano Estratégico (/pen)
+    'plano-estrategico': 'plano-estrategico',
   }
 }
 const MODULO_TELA = MODULO_TELA_LOOKUP()
@@ -201,6 +207,20 @@ export const MENU_MODULOS: Record<string, string> = {
   '/menus': 'arvore-menus',
   '/acessos': 'controle-acessos',
   '/configuracoes': 'configuracoes',
+  // 18/11/2026 — MÓDULO /pen (Plano Estratégico).
+  // Sem estas entradas a Sidebar esconderia a seção inteira para qualquer
+  // grupo que não fosse Admin (menuVisivel é FAIL-CLOSED para rota sem
+  // módulo). Todas apontam para o mesmo módulo 'plano-estrategico': quem vê
+  // uma tela do plano vê o módulo, que é uma unidade de permissão só.
+  '/pen': 'plano-estrategico',
+  '/pen/norte': 'plano-estrategico',
+  '/pen/diagnostico': 'plano-estrategico',
+  '/pen/ishikawa': 'plano-estrategico',
+  '/pen/bsc': 'plano-estrategico',
+  '/pen/5w2h': 'plano-estrategico',
+  '/pen/acompanhamento': 'plano-estrategico',
+  '/pen/governanca': 'plano-estrategico',
+  '/pen/components': 'plano-estrategico',
 }
 
 export function menuVisivel(p: Permissoes | null, rota: string): boolean {

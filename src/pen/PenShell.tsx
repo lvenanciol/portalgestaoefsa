@@ -13,6 +13,7 @@ import {
   X,
   Building2,
   CalendarRange,
+  ArrowLeft,
 } from 'lucide-react'
 import { PEN } from '@/pen/tokens'
 import { cn } from '@/lib/utils'
@@ -152,6 +153,17 @@ export default function PenShell() {
           </NavLink>
         ))}
       </nav>
+
+      {/* 18/11/2026 — volta ao portal. Sem isto o /pen é um beco sem saída:
+          o shell tem menu próprio e não há caminho de volta às telas do PGE. */}
+      <NavLink
+        to="/"
+        className="mx-2 mb-1 flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[12.5px] font-medium transition-colors hover:bg-white/5"
+        style={{ color: PEN.sidebarTexto }}
+      >
+        <ArrowLeft className="h-4 w-4 shrink-0" />
+        <span className="truncate">Voltar ao portal</span>
+      </NavLink>
 
       <div
         className="px-4 py-3 text-[10px] leading-relaxed"

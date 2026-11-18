@@ -23,6 +23,14 @@ import {
   Plug,
   Database,
   MessageCircle,
+  // 18/11/2026 — ícones da seção PLANO ESTRATÉGICO (/pen)
+  Compass,
+  Navigation,
+  Stethoscope,
+  GitBranch,
+  Target,
+  ListChecks,
+  TrendingUp,
 } from 'lucide-react'
 import { useApp } from '@/context/AppContext'
 import { useAuth } from '@/hooks/use-auth'
@@ -70,6 +78,22 @@ const ROTULOS_POR_ROTA: Record<string, string> = {
 
 // SPEC mockup: menu seccionado completo — rota casa com MENU_MODULOS
 const navSections: NavSection[] = [
+  {
+    // 18/11/2026 — PLANO ESTRATÉGICO entra no TOPO: é a seção de direção do
+    // grupo, não uma tela operacional. Fica no fallback estático para a
+    // sidebar nunca depender só do banco.
+    title: 'PLANO ESTRATÉGICO',
+    items: [
+      { label: 'Cockpit', rota: '/pen', icon: Compass },
+      { label: 'Norte', rota: '/pen/norte', icon: Navigation },
+      { label: 'Diagnóstico', rota: '/pen/diagnostico', icon: Stethoscope },
+      { label: 'Ishikawa', rota: '/pen/ishikawa', icon: GitBranch },
+      { label: 'BSC', rota: '/pen/bsc', icon: Target },
+      { label: '5W2H', rota: '/pen/5w2h', icon: ListChecks },
+      { label: 'Acompanhamento', rota: '/pen/acompanhamento', icon: TrendingUp },
+      { label: 'Governança', rota: '/pen/governanca', icon: ShieldCheck },
+    ],
+  },
   {
     title: 'GESTÃO',
     items: [
@@ -206,10 +230,26 @@ export function SidebarContent({ onItemClick }: { onItemClick?: () => void }) {
       plug: Plug,
       database: Database,
       message: MessageCircle,
+      // 18/11/2026 — ícones da seção PLANO ESTRATÉGICO
+      navigation: Navigation,
+      search: Stethoscope,
+      'git-branch': GitBranch,
+      target: Target,
+      'list-check': ListChecks,
+      'trending-up': TrendingUp,
     }
     // LL5 entra na frente: são assuntos pessoais do titular, separados do
     // corporativo por decisão de produto (briefing da seção).
-    const ordemSecoes = ['LL5', 'GESTÃO', 'OPERAÇÃO', 'RELACIONAMENTO', 'PLATAFORMA', 'INTEGRAÇÕES']
+    // 18/11/2026 — PLANO ESTRATÉGICO antes de tudo: é a direção do grupo.
+    const ordemSecoes = [
+      'PLANO ESTRATÉGICO',
+      'LL5',
+      'GESTÃO',
+      'OPERAÇÃO',
+      'RELACIONAMENTO',
+      'PLATAFORMA',
+      'INTEGRAÇÕES',
+    ]
     const out: NavSection[] = []
     for (const sec of ordemSecoes) {
       const itens = menusDb

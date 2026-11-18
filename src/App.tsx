@@ -80,15 +80,80 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       >
-        <Route path="/pen" element={<PenCockpitPage />} />
-        <Route path="/pen/components" element={<PenComponentsPage />} />
-        <Route path="/pen/norte" element={<PenNortePage />} />
-        <Route path="/pen/diagnostico" element={<PenDiagnosticoPage />} />
-        <Route path="/pen/ishikawa" element={<PenIshikawaPage />} />
-        <Route path="/pen/bsc" element={<PenBscPage />} />
-        <Route path="/pen/5w2h" element={<PenCincoW2hPage />} />
-        <Route path="/pen/acompanhamento" element={<PenAcompanhamentoPage />} />
-        <Route path="/pen/governanca" element={<PenGovernancaPage />} />
+        {/* Cada rota passa pelo MESMO guard do resto do portal (fail-closed):
+            o módulo 'plano-estrategico' está registrado em MENU_MODULOS. */}
+        <Route
+          path="/pen"
+          element={
+            <RotaProtegida>
+              <PenCockpitPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/pen/components"
+          element={
+            <RotaProtegida>
+              <PenComponentsPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/pen/norte"
+          element={
+            <RotaProtegida>
+              <PenNortePage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/pen/diagnostico"
+          element={
+            <RotaProtegida>
+              <PenDiagnosticoPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/pen/ishikawa"
+          element={
+            <RotaProtegida>
+              <PenIshikawaPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/pen/bsc"
+          element={
+            <RotaProtegida>
+              <PenBscPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/pen/5w2h"
+          element={
+            <RotaProtegida>
+              <PenCincoW2hPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/pen/acompanhamento"
+          element={
+            <RotaProtegida>
+              <PenAcompanhamentoPage />
+            </RotaProtegida>
+          }
+        />
+        <Route
+          path="/pen/governanca"
+          element={
+            <RotaProtegida>
+              <PenGovernancaPage />
+            </RotaProtegida>
+          }
+        />
       </Route>
 
       <Route
