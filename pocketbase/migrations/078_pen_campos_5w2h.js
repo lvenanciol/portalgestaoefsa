@@ -20,7 +20,8 @@ migrate(
 
     try {
       const col = app.findCollectionByNameOrId('pen_initiative')
-      let criados: string[] = []
+      // sem anotação de tipo: migração é .js puro, não TypeScript
+      const criados = []
 
       const existe = (nome: string) => {
         for (let i = 0; i < col.fields.length; i++) {
@@ -163,7 +164,7 @@ migrate(
     // conferência: o campo existe de verdade no schema?
     try {
       const col = app.findCollectionByNameOrId('pen_initiative')
-      const nomes: string[] = []
+      const nomes = []
       for (let i = 0; i < col.fields.length; i++) nomes.push(String(col.fields[i].name))
       console.log('[w2h] campos atuais: ' + nomes.join(','))
     } catch (_) {}
