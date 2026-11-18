@@ -20,17 +20,6 @@ import { PenTelaVazia } from './PenTelaVazia'
 
 // 2.7 — PenAcompanhamentoPage saiu daqui: tem arquivo próprio.
 
-export function PenGovernancaPage() {
-  return (
-    <PenTelaVazia
-      titulo="Governança"
-      descricao="Rituais, aprovações e trilha de decisão."
-      recebe={[
-        'Calendário de rituais (mensal, trimestral)',
-        'Aprovações e validações do ciclo',
-        'Registro de decisões e trade-offs',
-        'Trilha de auditoria das alterações',
-      ]}
-    />
-  )
-}
+// 2.8 — PenGovernancaPage saiu daqui: tem arquivo próprio.
+// Este arquivo agora está VAZIO de telas: as 8 do Portão 2 têm implementação
+// própria. Mantido apenas para não quebrar import antigo.

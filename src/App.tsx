@@ -54,7 +54,8 @@ import PenBscPage from './pen/pages/PenBscPage'
 import PenPlanoPage from './pen/pages/PenPlanoPage'
 // 2.7 — Acompanhamento e Rituais
 import PenAcompanhamentoPage from './pen/pages/PenAcompanhamentoPage'
-import { PenGovernancaPage } from './pen/pages/PenTelasVazias'
+// 2.8 — Governança (RACI, versionamento, política e auditoria)
+import PenGovernancaPage from './pen/pages/PenGovernancaPage'
 
 // Fase 3 — Rotas protegidas por autenticação; /login pública.
 
