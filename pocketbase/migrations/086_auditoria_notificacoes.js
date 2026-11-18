@@ -9,41 +9,31 @@ migrate(
   (app) => {
     // Em MIGRAÇÃO o app vem por parâmetro (app), não pelo global $app — o
     // $app só existe dentro de hooks/routes.
+    // Em migração o global $app EXISTE (ao contrário do que dizem os tipos),
+    // mas o parâmetro `app` é a forma documentada. Uso app.db() para dados e
+    // $app.cron() para listar jobs (não há equivalente no parâmetro).
     const db = app.db()
 
-    // ---- 1) CRONS registrados ----
+    // ---- 1) JOBS REGISTRADOS (API do PocketBase, sem depender de tabela) ----
     console.log('[audit-notif] === CRONS REGISTRADOS ===')
     try {
-      const r = db.newQuery('SELECT jobname, schedule, active FROM cron_job ORDER BY jobname').all()
-      if (r.length === 0) console.log('[audit-notif] nenhum cron registrado')
-      for (const x of r) {
+      const jobs = $app.cron().jobs()
+      let n = 0
+      for (const id in jobs) {
+        const j = jobs[id]
+        n++
         console.log(
           '[audit-notif] ' +
-            String(x.get('jobname')) +
-            ' | ' +
-            String(x.get('schedule')) +
+            id +
+            ' | cron=' +
+            String(j.expression) +
             ' | ativo=' +
-            String(x.get('active')),
+            String(j.active),
         )
       }
+      if (n === 0) console.log('[audit-notif] NENHUM cron ativo')
     } catch (e) {
-      // no PocketBase os crons ficam em cron.job (extensão) ou registro interno
-      console.log('[audit-notif] cron_job: ' + String(e).slice(0, 100))
-      try {
-        const r2 = db.newQuery('SELECT jobname, schedule, active FROM cron.job').all()
-        for (const x of r2) {
-          console.log(
-            '[audit-notif] cron.job: ' +
-              String(x.get('jobname')) +
-              ' | ' +
-              String(x.get('schedule')) +
-              ' | ativo=' +
-              String(x.get('active')),
-          )
-        }
-      } catch (e2) {
-        console.log('[audit-notif] cron.job indisponivel: ' + String(e2).slice(0, 100))
-      }
+      console.log('[audit-notif] $app.cron falhou: ' + String(e).slice(0, 120))
     }
 
     // ---- 2) E-MAILS enviados nos últimos 5 dias ----
