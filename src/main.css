@@ -125,6 +125,18 @@
     padding: 0 !important;
     margin: 0 !important;
   }
+
+  /* 18/11/2026 — animação do skeleton do módulo /pen (Fase 3.1).
+     O keyframe vive no CSS global porque é usado por componentes de
+     varredura (Skeleton) que não podem declarar @keyframes inline. */
+  @keyframes pen-skeleton {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
 }
 
 @layer utilities {
