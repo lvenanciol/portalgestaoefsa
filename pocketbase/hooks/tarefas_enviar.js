@@ -384,7 +384,13 @@ routerAdd(
     // tudo — os dois extremos errados.
     // ---------------------------------------------------------------------
     function normPessoa(v) {
+      // Remove o PREFIXO de área entre colchetes antes de normalizar:
+      // no banco a pessoa está gravada como "[ MKT ] Lorena" e o parceiro como
+      // "Lorena". Sem tirar o prefixo, "mkt lorena" != "lorena" e a pessoa
+      // recebe zero tarefas — ou, pior, o filtro não acha ninguém e o envio
+      // cai no comportamento "manda tudo".
       return String(v || '')
+        .replace(/\[[^\]]*\]/g, ' ')
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-zA-Z0-9 ]/g, ' ')
