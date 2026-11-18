@@ -652,6 +652,58 @@ export default function TarefasKanbanPage() {
     carregarChat(t.id)
   }
 
+  // ------------------------------------------------------------------
+  // 18/11/2026 — (a) e (e) da diretiva da tela de tarefas:
+  //   (a) Prioridade vira DROPDOWN na lista  → precisa gravar
+  //   (e) Recorrência vira COLUNA            → precisa gravar
+  //
+  // Seguem o MESMO padrão do `mover` (status): atualização otimista no
+  // estado para a tela reagir na hora e, em caso de falha, o item volta ao
+  // valor anterior com o erro exposto — nunca deixa a tela mentindo.
+  // ------------------------------------------------------------------
+  const alterarPrioridade = async (t: any, novaPrioridade: string) => {
+    const anterior = String(t.prioridade_p || 'P2')
+    if (anterior === novaPrioridade) return
+
+    setItens((prev) =>
+      prev.map((item) => (item.id === t.id ? { ...item, prioridade_p: novaPrioridade } : item)),
+    )
+
+    try {
+      await pb.collection('tarefas').update(t.id, { prioridade_p: novaPrioridade })
+      await carregar()
+    } catch (e: any) {
+      // desfaz a mudança otimista
+      setItens((prev) =>
+        prev.map((item) => (item.id === t.id ? { ...item, prioridade_p: anterior } : item)),
+      )
+      setErro(
+        'Falha ao alterar prioridade: ' + String(e?.response?.data?.message || e?.message || e),
+      )
+    }
+  }
+
+  const alterarRecorrencia = async (t: any, nova: string) => {
+    const anterior = String(t.recorrencia || 'Nenhuma')
+    if (anterior === nova) return
+
+    setItens((prev) =>
+      prev.map((item) => (item.id === t.id ? { ...item, recorrencia: nova } : item)),
+    )
+
+    try {
+      await pb.collection('tarefas').update(t.id, { recorrencia: nova })
+      await carregar()
+    } catch (e: any) {
+      setItens((prev) =>
+        prev.map((item) => (item.id === t.id ? { ...item, recorrencia: anterior } : item)),
+      )
+      setErro(
+        'Falha ao alterar recorrência: ' + String(e?.response?.data?.message || e?.message || e),
+      )
+    }
+  }
+
   const mover = async (t: any, novo: string) => {
     // Atualização otimista imediata para que contadores e colunas reajam na hora
     const statusAntigo = t.status_kanban || 'triagem'
@@ -1916,6 +1968,8 @@ export default function TarefasKanbanPage() {
           onAbrirEditar={abrirEditar}
           onExcluir={(t) => setExcluindoTarefa(t)}
           onMoverStatus={mover}
+          onAlterarPrioridade={alterarPrioridade}
+          onAlterarRecorrencia={alterarRecorrencia}
           onAbrirNova={abrirNova}
           obterIconeEmpresa={obterIconeEmpresa}
           onVincularProjeto={abrirVincularProjeto}
