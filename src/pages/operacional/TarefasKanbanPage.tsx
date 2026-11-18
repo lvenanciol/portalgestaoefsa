@@ -2124,7 +2124,12 @@ export default function TarefasKanbanPage() {
                   setColunaHover(null)
                   const id = e.dataTransfer.getData('text/plain')
                   const tarefaArrastada = itens.find((t) => t.id === id) || arrastandoTarefa
-                  if (tarefaArrastada && tarefaArrastada.status_kanban !== col.key) {
+                  // 18/11/2026 — arrastar também é edição: só nas próprias.
+                  if (
+                    tarefaArrastada &&
+                    tarefaArrastada.status_kanban !== col.key &&
+                    podeEditarTarefa(tarefaArrastada)
+                  ) {
                     mover(tarefaArrastada, col.key)
                   }
                   setArrastandoTarefa(null)
@@ -2253,8 +2258,13 @@ export default function TarefasKanbanPage() {
                       return (
                         <div
                           key={t.id}
-                          draggable
+                          draggable={podeEditarTarefa(t)}
                           onDragStart={(e) => {
+                            // cartão de outra pessoa não sai do lugar
+                            if (!podeEditarTarefa(t)) {
+                              e.preventDefault()
+                              return
+                            }
                             e.dataTransfer.setData('text/plain', t.id)
                             e.dataTransfer.effectAllowed = 'move'
                             setArrastandoTarefa(t)
@@ -2309,12 +2319,19 @@ export default function TarefasKanbanPage() {
                                 <div className="px-2 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                                   Mudar status
                                 </div>
+                                {/* 18/11/2026 — PERMISSÃO POR TAREFA NO KANBAN.
+                                    Antes o menu usava `podeEditar`/`podeExcluir`
+                                    GLOBAIS: qualquer usuário via "Editar" e
+                                    "Excluir" em todo cartão. A regra do dono é
+                                    por tarefa — editar só as próprias, excluir
+                                    só o Admin. A lista já tinha; o board não. */}
                                 {COLUNAS.map((destino) => (
                                   <DropdownMenuItem
                                     key={destino.key}
-                                    onClick={() => mover(t, destino.key)}
+                                    disabled={!podeEditarTarefa(t)}
+                                    onClick={() => podeEditarTarefa(t) && mover(t, destino.key)}
                                     className={cn(
-                                      'text-xs font-medium cursor-pointer flex items-center justify-between',
+                                      'text-xs font-medium cursor-pointer flex items-center justify-between disabled:opacity-40 disabled:cursor-not-allowed',
                                       (t.status_kanban || 'triagem') === destino.key &&
                                         'bg-emerald-50 text-[#1B5E20] font-bold',
                                     )}
@@ -2328,7 +2345,7 @@ export default function TarefasKanbanPage() {
 
                                 <div className="my-1 border-t border-gray-100" />
 
-                                {podeEditar && (
+                                {podeEditarTarefa(t) && (
                                   <DropdownMenuItem
                                     onClick={() => abrirEditar(t)}
                                     className="text-xs font-medium cursor-pointer flex items-center gap-2 text-gray-700"
@@ -2338,7 +2355,8 @@ export default function TarefasKanbanPage() {
                                   </DropdownMenuItem>
                                 )}
 
-                                {podeExcluir && (
+                                {/* excluir é EXCLUSIVO do Admin (regra do dono) */}
+                                {podeExcluirTarefa(t) && (
                                   <DropdownMenuItem
                                     onClick={() => setExcluindoTarefa(t)}
                                     className="text-xs font-medium cursor-pointer flex items-center gap-2 text-red-600 focus:text-red-700 focus:bg-red-50"
