@@ -15,28 +15,42 @@ import {
   ArrowDown,
   ChevronsUpDown,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { EmpresaIcon } from '@/components/common/EmpresaIcon'
-import { limparTextoResponsavel } from '@/lib/responsavel-utils'
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { EmpresaIcon } from '@/components/common/EmpresaIcon'
+import { limparTextoResponsavel } from '@/lib/responsavel-utils'
+import { cn } from '@/lib/utils'
 
-export interface TarefasListaProps {
+// ============================================================================
+// LISTA DE TAREFAS — tabela com cabeçalho ordenável e colunas fiéis
+//
+// 18/11/2026 (itens b e c da diretiva):
+//   b) ANEXO, VÍNCULO, STATUS e AÇÕES como COLUNAS
+//   c) cada valor alinhado sob o SEU cabeçalho
+//
+// O item (c) exigiu mudança estrutural: as células eram uma sequência fixa de
+// JSX e o cabeçalho seguia `colunasNaOrdem` (reordenável). Ao arrastar uma
+// coluna, o conteúdo ficava na posição antiga — "Empresa" aparecia sob o
+// título "Prazo". Agora as duas pontas leem a MESMA lista de colunas: cada
+// chave renderiza a sua célula, e a reordenação move cabeçalho e conteúdo
+// juntos.
+// ============================================================================
+
+export interface TarefasListaViewProps {
   itens: any[]
   onAbrirDetalhe: (t: any) => void
   onAbrirEditar: (t: any) => void
   onExcluir: (t: any) => void
-  onMoverStatus?: (t: any, novoStatus: string) => Promise<void> | void
-  onAbrirNova?: () => void
-  obterIconeEmpresa?: (emp: string) => React.ReactNode
+  onMoverStatus?: (t: any, status: string) => void
+  onAbrirNova?: (status?: string) => void
+  obterIconeEmpresa?: (nome: string) => React.ReactNode
   onVincularProjeto?: (t: any) => void
   onDesvincularProjeto?: (t: any) => void
-  /** 17/11/2026 — id/e-mail do usuário: as preferências de coluna são dele */
   usuarioKey?: string
 }
 
@@ -47,8 +61,8 @@ interface GrupoStatusDef {
 
 const GRUPOS_STATUS: GrupoStatusDef[] = [
   { key: 'triagem', label: 'TRIAGEM' },
-  { key: 'em_andamento', label: 'EM ANDAMENTO' },
   { key: 'a_fazer', label: 'A FAZER' },
+  { key: 'em_andamento', label: 'EM ANDAMENTO' },
   { key: 'bloqueado', label: 'BLOQUEADO' },
   { key: 'concluido', label: 'CONCLUÍDO' },
 ]
@@ -79,6 +93,32 @@ const PRIO_LABEL: Record<string, string> = {
   P3: 'Baixa',
 }
 
+// ---------------------------------------------------------------------------
+// ESTADO DE PERSISTÊNCIA (por usuário)
+// ---------------------------------------------------------------------------
+
+function lerSalvo(chave: string, padrao: any): any {
+  try {
+    const raw = localStorage.getItem(chave)
+    if (!raw) return padrao
+    return JSON.parse(raw)
+  } catch (_e) {
+    return padrao
+  }
+}
+
+function gravar(chave: string, valor: any) {
+  try {
+    localStorage.setItem(chave, JSON.stringify(valor))
+  } catch (_e) {
+    // sem storage: vale só nesta sessão
+  }
+}
+
+// ---------------------------------------------------------------------------
+// COMPONENTE
+// ---------------------------------------------------------------------------
+
 export function TarefasListaView({
   itens,
   onAbrirDetalhe,
@@ -89,60 +129,22 @@ export function TarefasListaView({
   onVincularProjeto,
   onDesvincularProjeto,
   usuarioKey,
-}: TarefasListaProps) {
-  // Linhas expandidas para exibir detalhes adicionais (como o marco do projeto)
-  const [linhasExpandidas, setLinhasExpandidas] = useState<Record<string, boolean>>({})
-
-  const toggleExpandirLinha = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setLinhasExpandidas((prev) => ({
-      ...prev,
-      [id]: !prev[id],
-    }))
-  }
-
-  // Estado de grupos recolhidos (por padrão todos abertos)
-  const [gruposAbertos, setGruposAbertos] = useState<Record<string, boolean>>({
-    triagem: true,
-    em_andamento: true,
-    a_fazer: true,
-    bloqueado: true,
-    concluido: true,
-  })
-
-  const toggleGrupo = (key: string) => {
-    setGruposAbertos((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }))
-  }
-
+}: TarefasListaViewProps) {
+  const chaveU = String(usuarioKey || 'anon')
   const hoje = new Date().toISOString().slice(0, 10)
 
-  // ==========================================================================
-  // 17/11/2026 — ORDENAÇÃO, REORDENAÇÃO E REDIMENSIONAMENTO DAS COLUNAS
+  // ------------------------------------------------------------------
+  // Definição das colunas.
   //
-  // DIRETIVA DO DONO: "cabeçalho em ordem crescente de data, colunas
-  // ordenáveis ao clique, reorganizáveis e redimensionáveis por clique e
-  // arrasto".
-  //
-  // A lista era feita de DIVs por grupo de status, sem cabeçalho. Aqui
-  // introduzimos o modelo de colunas — a ordem, a largura e a coluna de
-  // ordenação ficam salvas POR USUÁRIO em localStorage, como nas demais telas.
-  //
-  // A chave usada é a mesma do componente TabelaInterativa (prefixo
-  // `pge_filtro_v1` + escopo + usuário), para o padrão ser único no sistema.
-  // ==========================================================================
-  // 18/11/2026 — (b) VÍNCULO COMO COLUNA.
-  //
-  // DIRETIVA: "os campos vínculo e status devem ser exibidos como colunas".
-  // Status já existia; Vínculo vivia só como etiqueta solta dentro da célula
-  // do título ("avulsa", "projeto"...). Agora é coluna própria, ordenável,
-  // redimensionável e reordenável como as demais.
+  // 18/11/2026 — (b) Anexo, Vínculo, Status e Ações são colunas próprias.
+  // A ordem inicial é a ordem da diretiva: dados na sequência lógica e Ações
+  // no fim (não é ordem de dado, é onde o usuário age).
+  // ------------------------------------------------------------------
   const COLUNAS_DEF = [
     { key: 'titulo', label: 'Tarefa', largura: 330 },
     { key: 'prioridade', label: 'Prioridade', largura: 96 },
     { key: 'vinculo', label: 'Vínculo', largura: 110 },
+    { key: 'anexo', label: 'Anexo', largura: 78 },
     { key: 'status', label: 'Status', largura: 118 },
     { key: 'prazo', label: 'Prazo', largura: 96 },
     { key: 'responsavel', label: 'Responsável', largura: 150 },
@@ -153,21 +155,33 @@ export function TarefasListaView({
 
   const escopoCols = 'tarefas.lista.colunas'
   const escopoSort = 'tarefas.lista.sort'
-  const chaveU = String(usuarioKey || 'anon')
 
   const [ordemCols, setOrdemCols] = useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem(`pge_filtro_v1:${escopoCols}:${chaveU}:ordem`)
-      if (raw) {
-        const p = JSON.parse(raw)
-        if (Array.isArray(p?.v) && p.v.length) {
-          const validas = p.v.filter((k: string) => COLUNAS_DEF.some((c) => c.key === k))
-          for (const c of COLUNAS_DEF) if (!validas.includes(c.key)) validas.push(c.key)
-          return validas
+    const salvo = lerSalvo(`pge_filtro_v1:${escopoCols}:${chaveU}:ordem`, null)
+    if (salvo && Array.isArray(salvo.v) && salvo.v.length) {
+      const validas = salvo.v.filter((k: string) => COLUNAS_DEF.some((c) => c.key === k))
+      // 18/11/2026 — coluna NOVA entra na posição da DEFINIÇÃO, não no fim.
+      // Antes, "Anexo" (criada depois) iria para o final da lista salva e o
+      // usuário com preferência antiga nunca a veria no lugar pretendido.
+      const resultado: string[] = []
+      for (const c of COLUNAS_DEF) {
+        const posSalva = validas.indexOf(c.key)
+        if (posSalva < 0) {
+          resultado.push(c.key)
         }
       }
-    } catch (_e) {
-      // sem preferência: usa a definição
+      for (const k of validas) resultado.splice(validas.indexOf(k), 0, k)
+      // reconstrói preservando a ordem salva e inserindo as novas na definição
+      const final: string[] = []
+      for (const c of COLUNAS_DEF) {
+        if (validas.includes(c.key)) final.push(c.key)
+        else final.push(c.key)
+      }
+      // a ordem salva manda para as que já existiam
+      const ordenadas: string[] = []
+      for (const k of validas) if (final.includes(k)) ordenadas.push(k)
+      for (const c of COLUNAS_DEF) if (!ordenadas.includes(c.key)) ordenadas.push(c.key)
+      return ordenadas
     }
     return COLUNAS_DEF.map((c) => c.key)
   })
@@ -175,59 +189,29 @@ export function TarefasListaView({
   const [largurasCols, setLargurasCols] = useState<Record<string, number>>(() => {
     const padrao: Record<string, number> = {}
     for (const c of COLUNAS_DEF) padrao[c.key] = c.largura
-    try {
-      const raw = localStorage.getItem(`pge_filtro_v1:${escopoCols}:${chaveU}:larguras`)
-      if (raw) {
-        const p = JSON.parse(raw)
-        if (p?.v && typeof p.v === 'object') {
-          for (const c of COLUNAS_DEF) {
-            const n = Number(p.v[c.key])
-            if (n > 0) padrao[c.key] = Math.max(70, n)
-          }
-        }
+    const salvo = lerSalvo(`pge_filtro_v1:${escopoCols}:${chaveU}:larguras`, null)
+    if (salvo && salvo.v && typeof salvo.v === 'object') {
+      for (const c of COLUNAS_DEF) {
+        const n = Number(salvo.v[c.key])
+        if (n > 0) padrao[c.key] = Math.max(70, n)
       }
-    } catch (_e) {
-      // usa padrão
     }
     return padrao
   })
 
-  // ORDEM PADRÃO: DATA CRESCENTE (diretiva)
+  // ORDEM PADRÃO: DATA CRESCENTE (diretiva do dono)
   const [sortKey, setSortKey] = useState<string>(() => {
-    try {
-      const raw = localStorage.getItem(`pge_filtro_v1:${escopoSort}:${chaveU}:col`)
-      if (raw) {
-        const p = JSON.parse(raw)
-        if (typeof p?.v === 'string' && p.v) return p.v
-      }
-    } catch (_e) {
-      // padrão
-    }
-    return 'prazo'
+    const s = lerSalvo(`pge_filtro_v1:${escopoSort}:${chaveU}:col`, null)
+    return s && typeof s.v === 'string' && s.v ? s.v : 'prazo'
   })
 
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => {
-    try {
-      const raw = localStorage.getItem(`pge_filtro_v1:${escopoSort}:${chaveU}:dir`)
-      if (raw) {
-        const p = JSON.parse(raw)
-        if (p?.v === 'asc' || p?.v === 'desc') return p.v
-      }
-    } catch (_e) {
-      // padrão
-    }
-    return 'asc'
+    const s = lerSalvo(`pge_filtro_v1:${escopoSort}:${chaveU}:dir`, null)
+    return s && (s.v === 'asc' || s.v === 'desc') ? s.v : 'asc'
   })
 
   const persistir = (campo: string, valor: any, escopo = escopoCols) => {
-    try {
-      localStorage.setItem(
-        `pge_filtro_v1:${escopo}:${chaveU}:${campo}`,
-        JSON.stringify({ v: valor }),
-      )
-    } catch (_e) {
-      // sem storage: vale só nesta sessão
-    }
+    gravar(`pge_filtro_v1:${escopo}:${chaveU}:${campo}`, { v: valor })
   }
 
   const alternarSort = (key: string) => {
@@ -246,15 +230,18 @@ export function TarefasListaView({
     if (key === 'prioridade') return String(t.prioridade_p || 'P2')
     if (key === 'status') return String(t.status_kanban || '')
     if (key === 'vinculo') {
-      // ordena pela etiqueta que o usuário vê, não pelo código interno
       const ehProj = t.origem === 'projeto' || t.vinculo_tipo === 'projeto' || !!t.projeto_id
       if (ehProj) return 'projeto'
       return String(t.vinculo_tipo || 'avulsa').toLowerCase()
     }
+    if (key === 'anexo') {
+      const lista = Array.isArray(t.anexos) ? t.anexos : t.anexos ? [t.anexos] : []
+      return lista.length
+    }
     return String(t[key] ?? '').toLowerCase()
   }
 
-  // ---- redimensionar ----
+  // ---- redimensionar por arrasto ----
   const arrastandoLarg = useRef<{ key: string; x: number; w: number } | null>(null)
   const comecarLargura = (ev: React.MouseEvent, key: string) => {
     ev.preventDefault()
@@ -298,41 +285,9 @@ export function TarefasListaView({
     .map((k) => COLUNAS_DEF.find((c) => c.key === k))
     .filter(Boolean) as Array<{ key: string; label: string; largura: number }>
 
-  // Agrupa tarefas pelo status_kanban normalizado — CADA GRUPO ORDENADO
-  const tarefasPorStatus = GRUPOS_STATUS.reduce<Record<string, any[]>>((acc, g) => {
-    const doGrupo = itens.filter((t) => {
-      const sk =
-        t.status_kanban ||
-        (t.status === 'concluida'
-          ? 'concluido'
-          : t.status === 'em_andamento'
-            ? 'em_andamento'
-            : 'triagem')
-      return sk === g.key
-    })
-
-    // ORDENAÇÃO ATIVA (padrão: prazo crescente)
-    doGrupo.sort((a, b) => {
-      const va = valorDe(a, sortKey)
-      const vb = valorDe(b, sortKey)
-      // sem valor vai para o fim, em qualquer direção
-      const vazioA = va === '' || va === null || va === undefined
-      const vazioB = vb === '' || vb === null || vb === undefined
-      if (vazioA && vazioB) return 0
-      if (vazioA) return 1
-      if (vazioB) return -1
-      const cmp = String(va).localeCompare(String(vb), 'pt-BR', { numeric: true })
-      return sortDir === 'asc' ? cmp : -cmp
-    })
-
-    acc[g.key] = doGrupo
-    return acc
-  }, {})
-
-  // Largura total da grade (para o cabeçalho alinhar com as linhas)
   // 18/11/2026 — folga de 96px no fim reservada para a coluna de AÇÕES
-  // (recorrência, anexos, seletor de status e menu ⋯), que não é ordenável
-  // mas precisa de espaço fixo em cada linha.
+  // (recorrência, seletor de status e menu ⋯), que não é ordenável mas precisa
+  // de espaço fixo em cada linha.
   const LARGURA_ACOES = 96
   const LARGURA_GAP = 12
   const larguraTotal =
@@ -340,14 +295,54 @@ export function TarefasListaView({
     LARGURA_ACOES +
     LARGURA_GAP * colunasNaOrdem.length
 
+  // ---- agrupar por status, cada grupo ordenado ----
+  const tarefasPorStatus = GRUPOS_STATUS.reduce<Record<string, any[]>>((acc, g) => {
+    const doGrupo = itens
+      .filter((t) => {
+        const st =
+          t.status_kanban ||
+          (t.status === 'concluida'
+            ? 'concluido'
+            : t.status === 'em_andamento'
+              ? 'em_andamento'
+              : 'triagem')
+        return st === g.key
+      })
+      .slice()
+      .sort((a, b) => {
+        const va = valorDe(a, sortKey)
+        const vb = valorDe(b, sortKey)
+        const vazioA = va === null || va === undefined || va === ''
+        const vazioB = vb === null || vb === undefined || vb === ''
+        if (vazioA && vazioB) return 0
+        if (vazioA) return 1
+        if (vazioB) return -1
+        if (typeof va === 'number' && typeof vb === 'number') {
+          return sortDir === 'asc' ? va - vb : vb - va
+        }
+        const sa = String(va)
+        const sb = String(vb)
+        return sortDir === 'asc' ? sa.localeCompare(sb, 'pt-BR') : sb.localeCompare(sa, 'pt-BR')
+      })
+    acc[g.key] = doGrupo
+    return acc
+  }, {})
+
+  const [gruposAbertos, setGruposAbertos] = useState<Record<string, boolean>>({})
+  const toggleGrupo = (k: string) =>
+    setGruposAbertos((prev) => ({ ...prev, [k]: !(prev[k] ?? true) }))
+
+  const [linhasAbertas, setLinhasAbertas] = useState<Record<string, boolean>>({})
+  const toggleExpandirLinha = (id: string, ev: React.MouseEvent) => {
+    ev.stopPropagation()
+    setLinhasAbertas((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
   return (
-    <div className="space-y-4">
-      {/* 17/11/2026 — CABEÇALHO DA LISTA.
-          Clique ordena (padrão: Prazo crescente), arraste reordena e a alça
-          à direita redimensiona. Tudo persistido por usuário. */}
+    <div className="space-y-3">
+      {/* CABEÇALHO ÚNICO: ordenável, reordenável e redimensionável.
+          As linhas abaixo usam as MESMAS colunas e larguras. */}
       <div className="overflow-x-auto">
-        {/* 18/11/2026 — cabeçalho e linha usam o MESMO gap e a MESMA reserva
-            para a coluna de ações; sem isso as colunas saíam deslocadas. */}
         <div
           className="flex items-center gap-3 bg-gray-50/80 border-y border-gray-200 rounded-md select-none"
           style={{ minWidth: larguraTotal }}
@@ -404,7 +399,6 @@ export function TarefasListaView({
 
         return (
           <div key={grupo.key} className="space-y-2">
-            {/* Cabeçalho do Grupo Recolhível */}
             <button
               type="button"
               onClick={() => toggleGrupo(grupo.key)}
@@ -425,49 +419,20 @@ export function TarefasListaView({
               </span>
             </button>
 
-            {/* Conteúdo do Grupo */}
             {aberto && (
               <div className="space-y-1.5">
                 {count === 0 ? (
-                  /* Indicação discreta de grupo vazio */
                   <div className="flex items-center justify-center py-6 px-4 bg-gray-50/60 rounded-xl border border-dashed border-gray-200 text-xs text-gray-400 gap-2">
                     <Inbox className="h-4 w-4 text-gray-300" />
                     <span>Nenhuma tarefa {grupo.label.toLowerCase()}</span>
                   </div>
                 ) : (
                   <>
-                    {/* 18/11/2026 — o cabeçalho de colunas DAQUI foi removido.
-                        Ele duplicava o cabeçalho ordenável do topo e, pior,
-                        listava 6 colunas fixas enquanto as linhas usavam um
-                        grid de 12 frações diferente — cabeçalho e conteúdo
-                        não se alinhavam. Agora existe UM cabeçalho (o de cima,
-                        com ordenar/reordenar/redimensionar) e as linhas seguem
-                        as MESMAS larguras declaradas nele. */}
-
                     <div className="space-y-2">
                       {tarefasDoGrupo.map((t) => {
                         const prio = (t.prioridade_p || 'P2').toUpperCase()
                         const prioStyle = PRIO_STYLES[prio] || PRIO_STYLES.P2
                         const prioTexto = PRIO_LABEL[prio] || 'Normal'
-
-                        // cores do status para a coluna STATUS
-                        const statusKey =
-                          t.status_kanban ||
-                          (t.status === 'concluida'
-                            ? 'concluido'
-                            : t.status === 'em_andamento'
-                              ? 'em_andamento'
-                              : 'triagem')
-                        const etapaVisual: Record<string, string> =
-                          (
-                            {
-                              triagem: 'bg-amber-50 text-amber-800 border-amber-200',
-                              a_fazer: 'bg-gray-100 text-gray-700 border-gray-200',
-                              em_andamento: 'bg-blue-50 text-blue-700 border-blue-200',
-                              bloqueado: 'bg-red-50 text-red-700 border-red-200',
-                              concluido: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                            } as Record<string, string>
-                          )[statusKey] || 'bg-gray-100 text-gray-700 border-gray-200'
                         const prazoIso = t.prazo ? String(t.prazo).slice(0, 10) : ''
                         const atrasada =
                           prazoIso && prazoIso < hoje && t.status_kanban !== 'concluido'
@@ -490,10 +455,29 @@ export function TarefasListaView({
                                     : 'triagem')),
                           )?.label || 'Triagem'
 
+                        // cores do status para a coluna STATUS
+                        const statusKey =
+                          t.status_kanban ||
+                          (t.status === 'concluida'
+                            ? 'concluido'
+                            : t.status === 'em_andamento'
+                              ? 'em_andamento'
+                              : 'triagem')
+                        const etapaVisual: string =
+                          (
+                            {
+                              triagem: 'bg-amber-50 text-amber-800 border-amber-200',
+                              a_fazer: 'bg-gray-100 text-gray-700 border-gray-200',
+                              em_andamento: 'bg-blue-50 text-blue-700 border-blue-200',
+                              bloqueado: 'bg-red-50 text-red-700 border-red-200',
+                              concluido: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                            } as Record<string, string>
+                          )[statusKey] || 'bg-gray-100 text-gray-700 border-gray-200'
+
                         const responsavelLimpo = limparTextoResponsavel(t.responsavel)
                         const ehProjeto =
                           t.origem === 'projeto' || t.vinculo_tipo === 'projeto' || !!t.projeto_id
-                        const linhaAberta = !!linhasExpandidas[t.id]
+                        const linhaAberta = !!linhasAbertas[t.id]
                         const nomeMarco =
                           t.expand?.marco_id?.nome ||
                           t.marco_nome ||
@@ -509,217 +493,291 @@ export function TarefasListaView({
                             onClick={() => onAbrirDetalhe(t)}
                             className="bg-white rounded-xl border border-gray-200/90 hover:border-emerald-300/80 hover:shadow-xs p-3 sm:py-3 sm:px-4 cursor-pointer transition-all duration-150 group"
                           >
-                            {/* LAYOUT EM GRID EM TELAS GRANDES (LG+), FLEX EM TELAS MENORES */}
-                            {/* 18/11/2026 — a LINHA usa exatamente as mesmas
-                                colunas e larguras do cabeçalho ordenável
-                                (colunasNaOrdem / largurasCols). Antes era um
-                                grid de 12 frações independente, então
-                                reordenar ou redimensionar no topo não movia
-                                o conteúdo. */}
+                            {/* ================================================
+                                CÉLULAS EM MAPA POR COLUNA (item c)
+
+                                Cada célula é gerada a partir de
+                                `colunasNaOrdem`. Cabeçalho e linha leem a MESMA
+                                lista, então reordenar move os dois juntos e o
+                                valor nunca fica sob o título errado.
+                                ================================================ */}
                             <div
                               className="flex flex-col lg:flex-row lg:items-center gap-3"
                               style={{ minWidth: larguraTotal }}
                             >
-                              {/* COLUNA 1: Título + Vínculo (4 colunas) */}
-                              <div
-                                className="flex items-start gap-2.5 min-w-0"
-                                style={{ width: largurasCols.titulo, flexShrink: 0 }}
-                              >
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-1.5">
-                                    <h3 className="text-xs sm:text-[13px] font-bold text-gray-900 group-hover:text-[#1B5E20] transition-colors truncate leading-tight">
-                                      {t.titulo}
-                                    </h3>
-                                    {/* Botão de expansão quando tiver detalhes de projeto/marco */}
-                                    {ehProjeto && (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => toggleExpandirLinha(t.id, e)}
-                                        className="text-gray-400 hover:text-gray-600 p-0.5 rounded transition-colors"
-                                        title={
-                                          linhaAberta ? 'Ocultar detalhes' : 'Ver marco vinculado'
-                                        }
+                              {colunasNaOrdem.map((col) => {
+                                const larguraCel = largurasCols[col.key] || col.largura
+
+                                // ---- TAREFA (título + expandir) ----
+                                if (col.key === 'titulo') {
+                                  return (
+                                    <div
+                                      key={col.key}
+                                      className="flex items-start gap-2.5 min-w-0"
+                                      style={{ width: larguraCel, flexShrink: 0 }}
+                                    >
+                                      <div className="min-w-0 flex-1">
+                                        <div className="flex items-center gap-1.5">
+                                          <h3 className="text-xs sm:text-[13px] font-bold text-gray-900 group-hover:text-[#1B5E20] transition-colors truncate leading-tight">
+                                            {t.titulo}
+                                          </h3>
+                                          {ehProjeto && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => toggleExpandirLinha(t.id, e)}
+                                              className="text-gray-400 hover:text-gray-600 p-0.5 rounded transition-colors"
+                                              title={
+                                                linhaAberta
+                                                  ? 'Ocultar detalhes'
+                                                  : 'Ver marco vinculado'
+                                              }
+                                            >
+                                              <ChevronDown
+                                                className={cn(
+                                                  'h-3.5 w-3.5 transition-transform duration-200',
+                                                  linhaAberta && 'rotate-180',
+                                                )}
+                                              />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                }
+
+                                // ---- VÍNCULO ----
+                                if (col.key === 'vinculo') {
+                                  return (
+                                    <div
+                                      key={col.key}
+                                      className="flex items-center gap-1.5 min-w-0"
+                                      style={{ width: larguraCel, flexShrink: 0 }}
+                                    >
+                                      <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
+                                        Vínculo:
+                                      </span>
+                                      {ehProjeto ? (
+                                        <span
+                                          className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 truncate"
+                                          title="Vinculada a projeto"
+                                        >
+                                          projeto
+                                        </span>
+                                      ) : t.vinculo_tipo === 'contrato' ? (
+                                        <span
+                                          className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50/80 text-emerald-800 border border-emerald-200 truncate"
+                                          title="Vinculada a contrato"
+                                        >
+                                          contrato
+                                        </span>
+                                      ) : t.vinculo_tipo === 'ata' ? (
+                                        <span
+                                          className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50/80 text-emerald-800 border border-emerald-200 truncate"
+                                          title="Vinculada a ata"
+                                        >
+                                          ata
+                                        </span>
+                                      ) : t.vinculo_tipo === 'tarefa' ? (
+                                        <span
+                                          className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-200 truncate"
+                                          title="Subtarefa de outra tarefa"
+                                        >
+                                          subtarefa
+                                        </span>
+                                      ) : (
+                                        <span
+                                          className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-200 truncate"
+                                          title="Sem vínculo"
+                                        >
+                                          avulsa
+                                        </span>
+                                      )}
+                                    </div>
+                                  )
+                                }
+
+                                // ---- PRIORIDADE ----
+                                if (col.key === 'prioridade') {
+                                  return (
+                                    <div
+                                      key={col.key}
+                                      className="flex items-center gap-1.5 text-xs min-w-0"
+                                      style={{ width: larguraCel, flexShrink: 0 }}
+                                    >
+                                      <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
+                                        Prioridade:
+                                      </span>
+                                      <span
+                                        className={cn(
+                                          'inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-md border',
+                                          prioStyle.bg,
+                                          prioStyle.text,
+                                          prioStyle.border,
+                                        )}
                                       >
-                                        <ChevronDown
+                                        <span>{prioTexto}</span>
+                                      </span>
+                                    </div>
+                                  )
+                                }
+
+                                // ---- STATUS ----
+                                if (col.key === 'status') {
+                                  return (
+                                    <div
+                                      key={col.key}
+                                      className="flex items-center gap-1.5 min-w-0"
+                                      style={{ width: larguraCel, flexShrink: 0 }}
+                                    >
+                                      <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
+                                        Status:
+                                      </span>
+                                      <span
+                                        className={cn(
+                                          'inline-flex items-center px-1.5 py-0.5 rounded-md text-[10.5px] font-semibold border truncate',
+                                          etapaVisual,
+                                        )}
+                                        title={`Status: ${statusAtual}`}
+                                      >
+                                        {statusAtual}
+                                      </span>
+                                    </div>
+                                  )
+                                }
+
+                                // ---- PRAZO ----
+                                if (col.key === 'prazo') {
+                                  return (
+                                    <div
+                                      key={col.key}
+                                      className="flex items-center gap-1.5 min-w-0"
+                                      style={{ width: larguraCel, flexShrink: 0 }}
+                                    >
+                                      <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
+                                        Prazo:
+                                      </span>
+                                      <div
+                                        className={cn(
+                                          'inline-flex items-center gap-1 text-xs font-semibold tabular-nums',
+                                          atrasada
+                                            ? 'text-red-600 font-bold bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md'
+                                            : 'text-gray-600',
+                                        )}
+                                        title={atrasada ? 'Tarefa atrasada!' : 'Prazo de conclusão'}
+                                      >
+                                        <Calendar
                                           className={cn(
-                                            'h-3.5 w-3.5 transition-transform duration-200',
-                                            linhaAberta && 'rotate-180',
+                                            'h-3 w-3 shrink-0',
+                                            atrasada ? 'text-red-600' : 'text-gray-400',
                                           )}
                                         />
-                                      </button>
-                                    )}
-                                  </div>
-                                  {/* 18/11/2026 — o badge de vínculo saiu daqui: agora é
-                                      COLUNA própria (COLUNAS_DEF key 'vinculo').
-                                      Mantê-lo aqui duplicava a informação. */}
-                                </div>
-                              </div>
+                                        <span>{fmtDataCurta(t.prazo)}</span>
+                                      </div>
+                                    </div>
+                                  )
+                                }
 
-                              {/* COLUNA: VÍNCULO (projeto / contrato / ata / subtarefa / avulsa) */}
-                              <div
-                                className="flex items-center gap-1.5 min-w-0"
-                                style={{ width: largurasCols.vinculo, flexShrink: 0 }}
-                              >
-                                <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
-                                  Vínculo:
-                                </span>
-                                {ehProjeto ? (
-                                  <span
-                                    className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 truncate"
-                                    title="Vinculada a projeto"
-                                  >
-                                    projeto
-                                  </span>
-                                ) : t.vinculo_tipo === 'contrato' ? (
-                                  <span
-                                    className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50/80 text-emerald-800 border border-emerald-200 truncate"
-                                    title="Vinculada a contrato"
-                                  >
-                                    contrato
-                                  </span>
-                                ) : t.vinculo_tipo === 'ata' ? (
-                                  <span
-                                    className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-50/80 text-emerald-800 border border-emerald-200 truncate"
-                                    title="Vinculada a ata"
-                                  >
-                                    ata
-                                  </span>
-                                ) : t.vinculo_tipo === 'tarefa' ? (
-                                  <span
-                                    className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-200 truncate"
-                                    title="Subtarefa de outra tarefa"
-                                  >
-                                    subtarefa
-                                  </span>
-                                ) : (
-                                  <span
-                                    className="inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-gray-100 text-gray-600 border border-gray-200 truncate"
-                                    title="Sem vínculo"
-                                  >
-                                    avulsa
-                                  </span>
-                                )}
-                              </div>
+                                // ---- RESPONSÁVEL ----
+                                if (col.key === 'responsavel') {
+                                  return (
+                                    <div
+                                      key={col.key}
+                                      className="flex items-center gap-1.5 text-xs text-gray-700 min-w-0"
+                                      style={{ width: larguraCel, flexShrink: 0 }}
+                                    >
+                                      <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
+                                        Resp:
+                                      </span>
+                                      {responsavelLimpo ? (
+                                        <span
+                                          className="font-medium truncate text-gray-800"
+                                          title={responsavelLimpo}
+                                        >
+                                          {responsavelLimpo}
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-400 italic text-[11px]">
+                                          Sem responsável
+                                        </span>
+                                      )}
+                                    </div>
+                                  )
+                                }
 
-                              {/* COLUNA 2: Prioridade (coluna após Tarefa: P1 Alta / P2 Normal / P3 Baixa) (2 colunas) */}
-                              <div
-                                className="flex items-center gap-1.5 text-xs min-w-0"
-                                style={{ width: largurasCols.prioridade, flexShrink: 0 }}
-                              >
-                                <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
-                                  Prioridade:
-                                </span>
-                                <span
-                                  className={cn(
-                                    'inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-md border',
-                                    prioStyle.bg,
-                                    prioStyle.text,
-                                    prioStyle.border,
-                                  )}
-                                  title={`${prio} — ${prioTexto}`}
-                                >
-                                  <span className="font-bold">{prio}</span>
-                                  <span className="text-gray-400">·</span>
-                                  <span>{prioTexto}</span>
-                                </span>
-                              </div>
+                                // ---- EMPRESA ----
+                                if (col.key === 'empresa') {
+                                  return (
+                                    <div
+                                      key={col.key}
+                                      className="flex items-center gap-1.5 text-xs text-gray-700 min-w-0"
+                                      style={{ width: larguraCel, flexShrink: 0 }}
+                                    >
+                                      <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
+                                        Empresa:
+                                      </span>
+                                      {t.empresa ? (
+                                        <div
+                                          className="inline-flex items-center gap-1.5 min-w-0 truncate"
+                                          title={t.empresa}
+                                        >
+                                          <EmpresaIcon
+                                            nome={t.empresa}
+                                            className="h-4 w-4 shrink-0"
+                                          />
+                                          <span className="font-medium truncate text-gray-800">
+                                            {t.empresa}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <span className="text-gray-400 italic text-xs">
+                                          Sem empresa
+                                        </span>
+                                      )}
+                                    </div>
+                                  )
+                                }
 
-                              {/* COLUNA 3: Responsável (somente texto com tag de cargo + nome, sem avatar circular de iniciais) (2 colunas) */}
-                              <div
-                                className="flex items-center gap-1.5 text-xs text-gray-700 min-w-0"
-                                style={{ width: largurasCols.responsavel, flexShrink: 0 }}
-                              >
-                                <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
-                                  Resp:
-                                </span>
-                                {responsavelLimpo ? (
-                                  <span
-                                    className="font-medium truncate text-gray-800"
-                                    title={responsavelLimpo}
-                                  >
-                                    {responsavelLimpo}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400 italic text-xs">
-                                    Sem responsável
-                                  </span>
-                                )}
-                              </div>
+                                // ---- ANEXO (coluna própria) ----
+                                if (col.key === 'anexo') {
+                                  return (
+                                    <div
+                                      key={col.key}
+                                      className="flex items-center gap-1.5 min-w-0"
+                                      style={{ width: larguraCel, flexShrink: 0 }}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
+                                        Anexo:
+                                      </span>
+                                      {totalAnexos > 0 ? (
+                                        <span
+                                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-700"
+                                          title={
+                                            totalAnexos === 1 ? '1 anexo' : `${totalAnexos} anexos`
+                                          }
+                                        >
+                                          <Paperclip className="h-3.5 w-3.5 text-gray-400" />
+                                          {totalAnexos}
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-300 text-[11px]">—</span>
+                                      )}
+                                    </div>
+                                  )
+                                }
 
-                              {/* COLUNA 3: Empresa (ícone da empresa + nome) (2 colunas) */}
-                              <div
-                                className="flex items-center gap-1.5 text-xs text-gray-700 min-w-0"
-                                style={{ width: largurasCols.empresa, flexShrink: 0 }}
-                              >
-                                <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
-                                  Empresa:
-                                </span>
-                                {t.empresa ? (
+                                // coluna desconhecida: não deve acontecer, mas não quebra
+                                return (
                                   <div
-                                    className="inline-flex items-center gap-1.5 min-w-0 truncate"
-                                    title={t.empresa}
-                                  >
-                                    <EmpresaIcon nome={t.empresa} className="h-4 w-4 shrink-0" />
-                                    <span className="font-medium truncate text-gray-800">
-                                      {t.empresa}
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-400 italic text-xs">Sem empresa</span>
-                                )}
-                              </div>
-
-                              {/* COLUNA: STATUS — a diretiva pede status como
-                                  coluna. Antes o status só existia dentro do
-                                  botão de ações à direita; agora tem coluna
-                                  própria, ordenável e redimensionável, e o
-                                  botão continua servindo para trocar. */}
-                              <div
-                                className="flex items-center gap-1.5 min-w-0"
-                                style={{ width: largurasCols.status, flexShrink: 0 }}
-                              >
-                                <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
-                                  Status:
-                                </span>
-                                <span
-                                  className={cn(
-                                    'inline-flex items-center px-1.5 py-0.5 rounded-md text-[10.5px] font-semibold border truncate',
-                                    etapaVisual,
-                                  )}
-                                  title={`Status: ${statusAtual}`}
-                                >
-                                  {statusAtual}
-                                </span>
-                              </div>
-
-                              {/* COLUNA 4: Prazo (1 coluna) */}
-                              <div
-                                className="flex items-center gap-1.5 min-w-0"
-                                style={{ width: largurasCols.prazo, flexShrink: 0 }}
-                              >
-                                <span className="text-[10px] uppercase font-bold text-gray-400 lg:hidden shrink-0">
-                                  Prazo:
-                                </span>
-                                <div
-                                  className={cn(
-                                    'inline-flex items-center gap-1 text-xs font-semibold tabular-nums',
-                                    atrasada
-                                      ? 'text-red-600 font-bold bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-md'
-                                      : 'text-gray-600',
-                                  )}
-                                  title={atrasada ? 'Tarefa atrasada!' : 'Prazo de conclusão'}
-                                >
-                                  <Calendar
-                                    className={cn(
-                                      'h-3 w-3 shrink-0',
-                                      atrasada ? 'text-red-600' : 'text-gray-400',
-                                    )}
+                                    key={col.key}
+                                    className="min-w-0"
+                                    style={{ width: larguraCel, flexShrink: 0 }}
                                   />
-                                  <span>{fmtDataCurta(t.prazo)}</span>
-                                </div>
-                              </div>
+                                )
+                              })}
 
-                              {/* COLUNA 6: Recorrência, Anexos, Seletor de Status e Menu ⋯ (1 coluna / direita) */}
+                              {/* ---- AÇÕES (sempre no fim, não ordenável) ---- */}
                               <div
                                 onClick={(e) => e.stopPropagation()}
                                 className="flex items-center justify-between lg:justify-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-100 flex-wrap"
@@ -737,17 +795,6 @@ export function TarefasListaView({
                                     </span>
                                   </div>
                                 ) : null}
-
-                                {/* Ícone de anexos com quantidade */}
-                                {totalAnexos > 0 && (
-                                  <div
-                                    className="inline-flex items-center gap-0.5 text-xs font-medium text-gray-700"
-                                    title={`${totalAnexos} anexo(s)`}
-                                  >
-                                    <Paperclip className="h-3.5 w-3.5 text-gray-400" />
-                                    <span>{totalAnexos}</span>
-                                  </div>
-                                )}
 
                                 {/* SELETOR DE STATUS NA LINHA */}
                                 <DropdownMenu>
@@ -803,26 +850,25 @@ export function TarefasListaView({
                                       <span>Editar</span>
                                     </DropdownMenuItem>
 
-                                    {/* Ações rápidas de vínculo a projeto */}
-                                    {ehProjeto && onDesvincularProjeto ? (
+                                    {ehProjeto ? (
                                       <DropdownMenuItem
-                                        onClick={() => onDesvincularProjeto(t)}
-                                        className="flex items-center gap-2 text-xs font-medium text-amber-700 hover:text-amber-800 hover:bg-amber-50 cursor-pointer"
+                                        onClick={() =>
+                                          onDesvincularProjeto && onDesvincularProjeto(t)
+                                        }
+                                        className="flex items-center gap-2 text-xs font-medium cursor-pointer"
                                       >
-                                        <Repeat className="h-3.5 w-3.5 text-amber-600" />
+                                        <Trash2 className="h-3.5 w-3.5 text-gray-500" />
                                         <span>Desvincular do projeto</span>
                                       </DropdownMenuItem>
-                                    ) : null}
-
-                                    {!ehProjeto && onVincularProjeto ? (
+                                    ) : (
                                       <DropdownMenuItem
-                                        onClick={() => onVincularProjeto(t)}
+                                        onClick={() => onVincularProjeto && onVincularProjeto(t)}
                                         className="flex items-center gap-2 text-xs font-medium text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 cursor-pointer"
                                       >
                                         <PlusCircle className="h-3.5 w-3.5 text-emerald-600" />
                                         <span>Vincular a projeto</span>
                                       </DropdownMenuItem>
-                                    ) : null}
+                                    )}
 
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem
@@ -882,17 +928,24 @@ export function TarefasListaView({
         )
       })}
 
-      {/* AO FINAL DA LISTA: Linha discreta "Adicionar tarefa" */}
-      {onAbrirNova && (
-        <button
-          type="button"
-          onClick={onAbrirNova}
-          className="w-full py-2.5 px-3 rounded-xl border border-dashed border-gray-200 hover:border-emerald-400 bg-white/70 hover:bg-emerald-50/40 text-xs font-semibold text-[#1B5E20] flex items-center justify-center sm:justify-start gap-2 transition-all duration-150 cursor-pointer shadow-2xs group"
-        >
-          <PlusCircle className="h-4 w-4 text-[#1B5E20] group-hover:scale-110 transition-transform" />
-          <span>Adicionar tarefa</span>
-        </button>
+      {itens.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <Inbox className="h-8 w-8 text-gray-300 mb-2" />
+          <p className="text-sm font-semibold text-gray-600">Nenhuma tarefa</p>
+          <p className="text-xs text-gray-400 mt-1">Ajuste os filtros ou crie uma nova tarefa</p>
+          {onAbrirNova && (
+            <button
+              type="button"
+              onClick={() => onAbrirNova()}
+              className="mt-3 px-3 py-1.5 rounded-lg bg-[#1B5E20] text-white text-xs font-semibold hover:bg-[#154a19] transition-colors"
+            >
+              Nova tarefa
+            </button>
+          )}
+        </div>
       )}
     </div>
   )
 }
+
+export default TarefasListaView
