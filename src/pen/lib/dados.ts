@@ -85,6 +85,8 @@ export function invalidarSincronizacao() {
     const remover: string[] = []
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i)
+      // remove marcas E caches: com marca zerada e cache cheio, o próximo load
+      // pediria tudo de novo e duplicaria — os dois andam juntos.
       if (k && k.indexOf(PREFIXO) === 0) remover.push(k)
     }
     for (const k of remover) localStorage.removeItem(k)
@@ -104,11 +106,48 @@ export function invalidarSincronizacao() {
  * Retorna o que mudou desde a última marca. Nunca faz full refresh depois da
  * primeira carga.
  */
+/**
+ * CACHE LOCAL POR COLEÇÃO+ESCOPO.
+ *
+ * 18/11/2026 — DEFEITO GRAVE ENCONTRADO COM A TELA NO AR: eu tratava o DELTA
+ * como se fosse o estado. A segunda carga (incremental) devolvia só os
+ * registros alterados; os não alterados DESAPARECIAM da tela — receita virou
+ * "—", iniciativas "0 de 0", e o card da empresa mostrou "extrafruti"
+ * minúsculo porque o bloco de empresas veio vazio.
+ *
+ * Incremental correto = SNAPSHOT local + aplicação do delta por `id`. O delta
+ * continua sendo o único tráfego depois da primeira carga (proibido full
+ * refresh), mas a tela sempre lê o estado completo do cache.
+ */
+function chaveCache(c: Colecao, escopo: CompanyScopeId): string {
+  return `${PREFIXO}:cache:${c}:${escopo}`
+}
+
+function lerCache<T>(c: Colecao, escopo: CompanyScopeId): T[] {
+  try {
+    const raw = localStorage.getItem(chaveCache(c, escopo))
+    if (!raw) return []
+    const arr = JSON.parse(raw)
+    return Array.isArray(arr) ? arr : []
+  } catch (_e) {
+    return []
+  }
+}
+
+function gravarCache<T>(c: Colecao, escopo: CompanyScopeId, itens: T[]) {
+  try {
+    localStorage.setItem(chaveCache(c, escopo), JSON.stringify(itens))
+  } catch (_e) {
+    /* sem storage: a próxima carga será completa */
+  }
+}
+
 async function buscarIncremental<T extends { id: string; updated: string }>(
   colecao: Colecao,
   escopo: CompanyScopeId,
 ): Promise<{ itens: T[]; completo: boolean }> {
   const marca = lerMarca(colecao, escopo)
+  const cache = lerCache<T>(colecao, escopo)
 
   // filtros: escopo de empresa + marca temporal
   const partes: string[] = []
@@ -125,17 +164,25 @@ async function buscarIncremental<T extends { id: string; updated: string }>(
   const opcoes: any = { sort: 'updated' }
   if (filtro) opcoes.filter = filtro
 
-  const registros = await pb.collection(colecao).getFullList(opcoes)
+  const delta = (await pb.collection(colecao).getFullList(opcoes)) as T[]
 
-  // atualiza a marca com o maior updated recebido
+  // aplica o delta sobre o snapshot, por id (upsert)
+  const mapa = new Map<string, T>()
+  for (const r of cache) mapa.set(String(r.id), r)
+  for (const r of delta) mapa.set(String(r.id), r)
+
+  const estado = Array.from(mapa.values())
+  gravarCache(colecao, escopo, estado)
+
+  // a marca avança com o maior updated já visto (do delta OU do snapshot)
   let maior = marca || ''
-  for (const r of registros as any[]) {
+  for (const r of estado) {
     const u = String(r.updated || '')
     if (u && u > maior) maior = u
   }
   if (maior && maior !== marca) gravarMarca(colecao, escopo, maior)
 
-  return { itens: registros as T[], completo: !marca }
+  return { itens: estado, completo: !marca }
 }
 
 // ---------------------------------------------------------------------------

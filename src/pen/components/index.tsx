@@ -173,7 +173,9 @@ export function KpiCard({
     formato === 'texto'
       ? String(valor ?? '—')
       : formato === 'percentual'
-        ? fmtPct(valor, casas)
+        ? // 18/11/2026 — sem "+": fmtPct prefixa o sinal e a tela mostrava
+          // "+8,6%" e "+5,4%" como se fosse variação. Valor não leva sinal.
+          `${fmtNumero(valor, casas)}%`
         : formato === 'moeda'
           ? semDado
             ? '—'
