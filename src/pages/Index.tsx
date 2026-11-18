@@ -172,7 +172,10 @@ export default function Index() {
         proximas.map((t: any, i: number) => {
           const d = String(t.prazo).slice(0, 10).split('-')
           return {
-            id: 'com-' + i,
+            // 18/11/2026 — o id tem de ser o da TAREFA, não um índice.
+            // Estava 'com-' + i: o card abria /tarefas sem ?tarefa= porque o
+            // CardsGrid trata 'com-N' como "sem destino" e cai na lista.
+            id: String(t.id || 'com-' + i),
             day: d[2] || '01',
             monthShort: MES_CURTO[parseInt(d[1] || '1', 10) - 1] || 'Out',
             title: t.titulo,
