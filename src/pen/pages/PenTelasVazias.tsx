@@ -14,20 +14,7 @@ import { PenTelaVazia } from './PenTelaVazia'
 
 // 2.4 — PenIshikawaPage saiu daqui: tem arquivo próprio.
 
-export function PenBscPage() {
-  return (
-    <PenTelaVazia
-      titulo="BSC"
-      descricao="Balanced Scorecard: 4 perspectivas com metas e responsáveis."
-      recebe={[
-        'Perspectivas financeira, cliente, processos e aprendizado',
-        'Objetivo, indicador, meta e prazo por linha',
-        'Responsável por objetivo',
-        'Atingimento com semáforo',
-      ]}
-    />
-  )
-}
+// 2.5 — PenBscPage saiu daqui: tem arquivo próprio.
 
 export function PenCincoW2hPage() {
   return (

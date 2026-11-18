@@ -48,8 +48,9 @@ import PenNortePage from './pen/pages/PenNortePage'
 import PenDiagnosticoPage from './pen/pages/PenDiagnosticoPage'
 // 2.4 — Ishikawa (causa e efeito)
 import PenIshikawaPage from './pen/pages/PenIshikawaPage'
+// 2.5 — BSC (consome objetivo/KPI/iniciativa do banco)
+import PenBscPage from './pen/pages/PenBscPage'
 import {
-  PenBscPage,
   PenCincoW2hPage,
   PenAcompanhamentoPage,
   PenGovernancaPage,
