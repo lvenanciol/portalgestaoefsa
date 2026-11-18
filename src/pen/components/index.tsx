@@ -246,9 +246,12 @@ export function KpiCard({
           <ProgressBar valor={semDado ? null : Number(valor)} max={Number(meta)} cor={cores.cor} />
           <div className="mt-1 flex items-center justify-between gap-2">
             <span className="text-[10px] font-medium" style={{ color: PEN.textoFraco }}>
+              {/* 18/11/2026 — meta e atingimento SEM sinal de "+":
+                  a tela mostrava "Meta +9,1%" e "Meta +3,0%" porque fmtPct
+                  prefixa "+" em qualquer positivo. Meta não é variação. */}
               Meta{' '}
               {formato === 'percentual'
-                ? fmtPct(meta, casas)
+                ? `${fmtNumero(meta, casas)}%`
                 : formato === 'moeda'
                   ? Number(meta) >= 1_000_000
                     ? `R$ ${fmtNumero(Number(meta) / 1_000_000, casas || 1)} mi`
@@ -256,7 +259,7 @@ export function KpiCard({
                   : fmtNumero(meta, casas)}
             </span>
             <span className="text-[10px] font-bold tabular-nums" style={{ color: cores.cor }}>
-              {semDado ? '—' : fmtPct(atingimento, 0)}
+              {semDado || atingimento === null ? '—' : `${fmtNumero(atingimento, 0)}%`}
             </span>
           </div>
         </div>

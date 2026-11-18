@@ -417,11 +417,18 @@ export default function PenCockpitPage() {
                       className="mt-2.5 flex items-center gap-3 text-[10.5px]"
                       style={{ color: PEN.textoSecundario }}
                     >
-                      <span>{objs.length} objetivos</span>
+                      {/* 18/11/2026 — plural correto: a tela mostrava "1 objetivos". */}
+                      <span>
+                        {objs.length} {objs.length === 1 ? 'objetivo' : 'objetivos'}
+                      </span>
                       <span>·</span>
-                      <span>{inis.length} iniciativas</span>
+                      <span>
+                        {inis.length} {inis.length === 1 ? 'iniciativa' : 'iniciativas'}
+                      </span>
                       <span>·</span>
-                      <span>{concl} concluídas</span>
+                      <span>
+                        {concl} {concl === 1 ? 'concluída' : 'concluídas'}
+                      </span>
                     </div>
                   </div>
                 )

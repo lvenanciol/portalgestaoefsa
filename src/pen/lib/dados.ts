@@ -425,16 +425,32 @@ export function topoDosDados(d: PenDados): TopoReal {
   }
 }
 
-/** Progresso de execução por empresa, a partir do dado carregado. */
+/**
+ * Progresso de execução por empresa, a partir do dado carregado.
+ *
+ * 18/11/2026 — DEFEITO ENCONTRADO COM A TELA NO AR: a versão anterior somava
+ * 50% de objetivos + 50% de iniciativas por CONTAGEM, o que dava 80% à
+ * Extrafruti sem nenhuma iniciativa concluída — número que não se explicava e
+ * ainda pintava o semáforo de "Crítico". Agora pondera pelo `weight` real de
+ * cada item (e usa 1 quando não houver peso), então "em execução" pesa o que
+ * aquele objetivo vale no plano.
+ */
 export function progressoDosDados(d: PenDados, companyId: CompanyId): number {
   const objs = d.objectives.dados.filter((o) => o.company_id === companyId)
   const inis = d.initiatives.dados.filter((i) => i.company_id === companyId)
   if (objs.length === 0 && inis.length === 0) return 0
-  const oOk = objs.filter((o) => o.status === 'concluido' || o.status === 'em_andamento').length
-  const iOk = inis.filter((i) => i.status === 'concluido' || i.status === 'em_andamento').length
-  const parte1 = objs.length ? (oOk / objs.length) * 50 : 0
-  const parte2 = inis.length ? (iOk / inis.length) * 50 : 0
-  return Math.round((parte1 + parte2) * 10) / 10
+
+  const peso = (x: { weight: number }) => Number(x.weight) || 1
+  const avancado = (s: string) => s === 'concluido' || s === 'em_andamento'
+
+  const pesoTotal = objs.reduce((s, x) => s + peso(x), 0) + inis.reduce((s, x) => s + peso(x), 0)
+  if (pesoTotal === 0) return 0
+
+  const pesoOk =
+    objs.filter((o) => avancado(o.status)).reduce((s, x) => s + peso(x), 0) +
+    inis.filter((i) => avancado(i.status)).reduce((s, x) => s + peso(x), 0)
+
+  return Math.round((pesoOk / pesoTotal) * 1000) / 10
 }
 
 /** Registra uma exportação em pen_audit (exigência da Fase 3.2). */
