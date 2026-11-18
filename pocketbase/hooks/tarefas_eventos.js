@@ -675,13 +675,19 @@ onRecordAfterUpdateSuccess(function (e) {
       mudancas.unshift('status de "' + labelStatus(stAnt) + '" para "' + labelStatus(stNov) + '"')
     }
 
-    try {
-      var sA = orig.get('subtarefas')
-      var sB = t.get('subtarefas')
-      var nA = Array.isArray(sA) ? sA.length : 0
-      var nB = Array.isArray(sB) ? sB.length : 0
-      if (nA !== nB) mudancas.push('subtarefas (' + nA + ' → ' + nB + ')')
-    } catch (_) {}
+    // 18/11/2026 — SUBTAREFA NÃO DISPARA E-MAIL.
+    // Medido: um PATCH de subtarefa levava ~7-8 s. O tempo era todo do envio
+    // SÍNCRONO de e-mail: marcar um item de checklist mandava e-mail para
+    // todos os envolvidos. Subtarefa é trabalho DENTRO da tarefa, não um
+    // recado para terceiros — o sino registra, o e-mail não.
+    // (Mantido comentado para não confundir quem ler o histórico.)
+    // try {
+    //   var sA = orig.get('subtarefas')
+    //   var sB = t.get('subtarefas')
+    //   var nA = Array.isArray(sA) ? sA.length : 0
+    //   var nB = Array.isArray(sB) ? sB.length : 0
+    //   if (nA !== nB) mudancas.push('subtarefas (' + nA + ' → ' + nB + ')')
+    // } catch (_) {}
     try {
       var cA = orig.get('comentarios')
       var cB = t.get('comentarios')
