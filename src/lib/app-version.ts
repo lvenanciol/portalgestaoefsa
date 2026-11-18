@@ -28,5 +28,10 @@
 // 15/11/2026 — REGRA (memorizada): escrever aqui o número que o build VAI
 // produzir (package.json + 1), não o atual. O apply_changes incrementa o
 // package.json a cada commit; escrever o atual deixa a sidebar 1 atrás.
-export const APP_VERSION = '0.0.635'
-export const APP_BUILD = 'ea60de1'
+// 18/11/2026 — SINCRONIZADO no REBUILD (v0.0.663, commit 90b293f).
+// Estava em 0.0.635 enquanto o app já rodava 0.0.661/0.0.663: o dono via
+// "v0.0.635" na sidebar e concluía (com razão) que o navegador servia bundle
+// antigo. O número vai aqui com +1 do package.json atual, porque este commit
+// incrementa o package.json mais uma vez antes do build.
+export const APP_VERSION = '0.0.664'
+export const APP_BUILD = '90b293f'
