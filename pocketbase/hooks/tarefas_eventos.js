@@ -582,6 +582,7 @@ onRecordAfterUpdateSuccess(function (e) {
   }
 
   function enviarEmailAgora(dest, assunto, html, texto, tarefaRef) {
+    var tInicio = new Date().getTime()
     var status = 'enviado'
     var erro = ''
     try {
@@ -640,7 +641,16 @@ onRecordAfterUpdateSuccess(function (e) {
         text: texto,
         inlineAttachments: anexosInline,
       })
+      // 18/11/2026 — mede o custo real do SMTP no caminho da resposta HTTP
+      var tEnvio = new Date().getTime()
       $app.newMailClient().send(msg)
+      console.log(
+        '[tarefa_eventos] SMTP levou ' +
+          String(new Date().getTime() - tEnvio) +
+          'ms (total no hook: ' +
+          String(new Date().getTime() - tInicio) +
+          'ms)',
+      )
 
       // fecha os readers depois do envio
       for (var ai = 0; ai < readers.length; ai++) {
