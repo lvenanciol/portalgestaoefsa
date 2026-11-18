@@ -7,20 +7,8 @@ import { PenTelaVazia } from './PenTelaVazia'
 // ela vai receber. Nenhuma tem dado, cálculo ou consulta.
 // ============================================================================
 
-export function PenNortePage() {
-  return (
-    <PenTelaVazia
-      titulo="Norte"
-      descricao="Direção estratégica do ciclo: onde o grupo quer chegar."
-      recebe={[
-        'Visão, missão e valores do ciclo',
-        'Objetivos estratégicos por empresa',
-        'Metas de faturamento, margem e turnover',
-        'Trade-offs priorizados pela diretoria',
-      ]}
-    />
-  )
-}
+// 2.2 — PenNortePage saiu daqui: tem arquivo próprio (PenNortePage.tsx).
+// A tela vazia era o que aparecia na rota /pen/norte antes da fase 2.2.
 
 export function PenDiagnosticoPage() {
   return (

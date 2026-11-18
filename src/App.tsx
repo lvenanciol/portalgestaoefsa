@@ -42,8 +42,9 @@ import Layout from './components/Layout'
 import PenShell from './pen/PenShell'
 import PenCockpitPage from './pen/pages/PenCockpitPage'
 import PenComponentsPage from './pen/pages/PenComponentsPage'
+// 2.2 — Norte Estratégico implementado em arquivo próprio
+import PenNortePage from './pen/pages/PenNortePage'
 import {
-  PenNortePage,
   PenDiagnosticoPage,
   PenIshikawaPage,
   PenBscPage,

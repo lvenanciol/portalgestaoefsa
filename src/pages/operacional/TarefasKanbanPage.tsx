@@ -2454,8 +2454,19 @@ export default function TarefasKanbanPage() {
           )
         }}
         onSubtarefasAtualizadas={(upd) => {
+          // 18/11/2026 — DEFEITO (f): "ao inserir uma subtarefa a tela pisca e
+          // dá uma travada como se abrisse nova tela".
+          //
+          // CAUSA: este callback chamava `carregar()`, que é a RECARGA DA
+          // PÁGINA INTEIRA (setCarregando(true) → busca todas as tarefas →
+          // re-render completo). Inserir uma subtarefa disparava um ciclo de
+          // rede e um remount de toda a lista, com o modal aberto por cima.
+          //
+          // CORREÇÃO: atualiza SÓ o item alterado no estado. A subtarefa é um
+          // campo da própria tarefa; o resto da lista não mudou. Sem rede, sem
+          // pisca, sem travada.
           setDetalhe(upd)
-          carregar()
+          setItens((prev) => prev.map((it) => (it.id === upd.id ? { ...it, ...upd } : it)))
         }}
         onVincularProjeto={(t) => abrirVincularProjeto(t)}
         onDesvincularProjeto={(t) => abrirDesvincularProjeto(t)}
