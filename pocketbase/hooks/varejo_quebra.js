@@ -117,15 +117,36 @@ routerAdd(
     //   A venda por produto entra por LEFT JOIN; o custo unitário é o
     //   preço médio de venda daquele produto no mês (proxy do dono).
     // ----------------------------------------------------------------
+    // ==================================================================
+    // 18/11/2026 — REGRA DO DONO: AUSENTE = ZERO.
+    //
+    // "pode ser que um item tenha EI = 0 ou não tenha EI e deve ser assumido
+    //  como = 0, de igual forma pode ter EF = 0, ou não tenha EF e deve-se
+    //  assumir como igual a 0."
+    //
+    // Antes eu EXCLUÍA o produto quando faltava uma das pontas (regra de
+    // 13/11, criada para evitar % absurdo). Agora o produto ENTRA com 0 na
+    // ponta ausente. Consequências, que ficam registradas para quem ler:
+    //   · produto sem EI e com EF  → QTDCMV = 0 + REC - EF (pode ficar
+    //     NEGATIVO quando EF > REC, e a quebra acompanha o sinal);
+    //   · produto com EI e sem EF  → QTDCMV = EI + REC (quebra máxima).
+    // Isso só é problema se o inventário da loja for PARCIAL (ondas). Com
+    // inventário completo a conta fecha; com parcial, o número infla.
+    //
+    // Implementação: FULL OUTER JOIN entre EI e EF + NVL(...,0). O JOIN
+    // interno anterior era o que descartava o produto.
+    // ==================================================================
     const BASE =
-      'SELECT EI.CODPARC, EI.CODPROD, EI.QEI, EF.QEF, ' +
+      'SELECT COALESCE(EI.CODPARC, EF.CODPARC) CODPARC, ' +
+      ' COALESCE(EI.CODPROD, EF.CODPROD) CODPROD, ' +
+      ' NVL(EI.QEI,0) QEI, NVL(EF.QEF,0) QEF, ' +
       ' NVL(V.QV,0) QV, NVL(V.VLR,0) VLR ' +
       'FROM (SELECT K.CODPARC, K.CODPROD, SUM(VV.QTD) QEI ' +
       '      FROM ' +
       EI_SUB +
       ' K JOIN SANKHYA.AD_ITEINVENTARIO VV ON VV.CODINV=K.CODINV AND VV.CODPROD=K.CODPROD ' +
       '      GROUP BY K.CODPARC, K.CODPROD) EI ' +
-      'JOIN (SELECT K.CODPARC, K.CODPROD, SUM(VV.QTD) QEF ' +
+      'FULL OUTER JOIN (SELECT K.CODPARC, K.CODPROD, SUM(VV.QTD) QEF ' +
       '      FROM ' +
       EF_SUB +
       ' K JOIN SANKHYA.AD_ITEINVENTARIO VV ON VV.CODINV=K.CODINV AND VV.CODPROD=K.CODPROD ' +
@@ -136,8 +157,8 @@ routerAdd(
       iniMes +
       ' AND ' +
       fimMes +
-      '      GROUP BY PLV.CODPARC, PLV.CODPROD) V ON V.CODPARC=EI.CODPARC AND V.CODPROD=EI.CODPROD ' +
-      'WHERE EI.QEI > 0 AND EF.QEF > 0'
+      '      GROUP BY PLV.CODPARC, PLV.CODPROD) V ' +
+      ' ON V.CODPARC=COALESCE(EI.CODPARC,EF.CODPARC) AND V.CODPROD=COALESCE(EI.CODPROD,EF.CODPROD) '
 
     // ---- 1) GRADE: uma linha por LOJA (76 linhas) ----
     const sqlLoja =
