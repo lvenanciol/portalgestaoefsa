@@ -303,6 +303,8 @@ routerAdd(
       if ((d1.rows || []).length >= 4990) linhasComposicao.tetoLote = true
     }
 
+    // sem corte global: o teto já é aplicado por LOTE (8 lojas), garantindo
+    // que toda loja tenha itens. O limite total vira só um aviso de tamanho.
     for (const r of linhasComposicao) {
       const cpDet = String(n(v(r, 0)) || '')
       const qtdCmv = n(v(r, 9)) || 0
