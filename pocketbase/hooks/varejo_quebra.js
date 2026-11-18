@@ -189,7 +189,9 @@ routerAdd(
       'GROUP BY X.CODPARC ORDER BY 4 DESC'
 
     // ---- COMPOSIÇÃO: uma linha por loja+produto, ordenada por impacto ----
-    const sqlProduto = function (filtroLoja) {
+    // `filtroLoja`: id único (opcional) | `lote`: array de CODPARC do lote
+    const sqlProduto = function (filtroLoja, lote) {
+      const filtroIn = lote && lote.length ? ' AND X.CODPARC IN (' + lote.join(',') + ') ' : ''
       return (
         'SELECT X.CODPARC, X.CODPROD, PR.DESCRPROD, ' +
         ' ROUND(NVL(X.QV,0),3) QVEND, ROUND(NVL(X.VLR,0),2) VENDA, ' +
@@ -211,7 +213,11 @@ routerAdd(
         ',0),2) VLRQUEBRA ' +
         'FROM (' +
         BASE +
-        (filtroLoja ? ' WHERE COALESCE(EI.CODPARC,EF.CODPARC) = ' + Number(filtroLoja) + ' ' : '') +
+        (filtroLoja
+          ? ' WHERE COALESCE(EI.CODPARC,EF.CODPARC) = ' + Number(filtroLoja) + ' '
+          : lote && lote.length
+            ? ' WHERE COALESCE(EI.CODPARC,EF.CODPARC) IN (' + lote.join(',') + ') '
+            : '') +
         ') X ' +
         'LEFT JOIN SANKHYA.TGFPRO PR ON PR.CODPROD=X.CODPROD ' +
         'LEFT JOIN ' +
@@ -260,10 +266,44 @@ routerAdd(
     const itensPorLoja = {}
     let qtdProdutos = 0
     let qtdSemInv = 0
-    const det = rodar(sqlProduto(lojaFiltro))
-    if (det.erro) falhas.composicao = det.erro
-    for (const r of det.rows || []) {
-      if (qtdProdutos >= limite) break
+
+    // ==================================================================
+    // CORTE POR LOJA, NÃO GLOBAL (18/11/2026)
+    //
+    // Medido: uma única consulta ordenada por impacto devolvia 4.000 linhas
+    // e as lojas grandes consumiam tudo — a loja 37 ficava com 2 itens e a
+    // tela dizia "quase sem inventário", o que é FALSO.
+    //
+    // Solução: pedir a composição em LOTES de lojas. Cada lote tem seu
+    // próprio teto, então toda loja recebe itens. 8 lojas por lote mantém a
+    // resposta bem abaixo do teto de 5.000 linhas do DbExplorer.
+    // ==================================================================
+    const LOJAS_POR_LOTE = 8
+    let lotes = []
+    if (lojaFiltro) {
+      lotes = [[Number(lojaFiltro)]]
+    } else {
+      const todos = lojas.map(function (l) {
+        return Number(l.codparc)
+      })
+      for (let i = 0; i < todos.length; i += LOJAS_POR_LOTE) {
+        lotes.push(todos.slice(i, i + LOJAS_POR_LOTE))
+      }
+    }
+
+    let linhasComposicao = []
+    for (const lote of lotes) {
+      const d1 = rodar(sqlProduto('', lote))
+      if (d1.erro) {
+        falhas.composicao = d1.erro
+        continue
+      }
+      for (const r of d1.rows || []) linhasComposicao.push(r)
+      // se o lote veio no teto, é provável truncamento daquele lote
+      if ((d1.rows || []).length >= 4990) linhasComposicao.tetoLote = true
+    }
+
+    for (const r of linhasComposicao) {
       const cpDet = String(n(v(r, 0)) || '')
       const qtdCmv = n(v(r, 9)) || 0
       const qtdQuebra = n(v(r, 10)) || 0
