@@ -332,7 +332,7 @@ export default function PenCockpitPage() {
           <span>
             Atingimento:{' '}
             <strong style={{ color: SEMAFORO_CORES[semaforoPorAtingimento(atingReceita)].cor }}>
-              {atingReceita === null ? '—' : fmtPct(atingReceita, 1)}
+              {atingReceita === null ? '—' : `${fmtNumero(atingReceita, 1)}%`}
             </strong>
           </span>
           <span>
