@@ -1779,16 +1779,42 @@ export function TarefaFormDialog({
                     </span>
                   )}
                 </Label>
+                {/* 18/11/2026 — PRAZO COM DATA E HORA.
+                    Antes era type="date" (só dia) e a hora se perdia; o campo
+                    `prazo` no banco é do tipo `date`, que guarda o instante —
+                    a limitação estava na interface, não no schema.
+                    `datetime-local` devolve "AAAA-MM-DDTHH:mm"; o envio ao
+                    backend converte para ISO (ver salvar()).
+                    Uma tarefa sem hora marcada continua às 00:00 do dia, então
+                    nada muda para quem só quer a data. */}
                 <Input
-                  type="date"
+                  type="datetime-local"
                   value={form.prazo || ''}
                   onChange={(e) => setForm({ ...form, prazo: e.target.value })}
+                  step={300}
                   className={cn(
                     'h-10 bg-gray-50/80 border-gray-200 transition-all',
                     camposDestacados.prazo &&
                       'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-300 shadow-xs',
                   )}
                 />
+                {form.prazo ? (
+                  <span className="text-[10px] text-gray-400">
+                    {(() => {
+                      try {
+                        const d = new Date(form.prazo)
+                        if (isNaN(d.getTime())) return ''
+                        const temHora =
+                          /T\d{2}:\d{2}/.test(form.prazo) && !form.prazo.endsWith('T00:00')
+                        return temHora
+                          ? d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+                          : 'Dia inteiro (sem hora marcada)'
+                      } catch {
+                        return ''
+                      }
+                    })()}
+                  </span>
+                ) : null}
               </div>
 
               {/* RECORRÊNCIA */}

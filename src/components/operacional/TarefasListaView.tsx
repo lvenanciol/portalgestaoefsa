@@ -110,11 +110,28 @@ const RECORRENCIAS = [
   'Anual',
 ]
 
-const fmtData = (s?: string) => {
+// 18/11/2026 — fmtDataCurta estava sendo CHAMADA (linha da coluna PRAZO) mas
+// o arquivo só definia `fmtData`: a lista quebrava nessa coluna. Além disso,
+// com data+hora o rótulo passa a mostrar "dd/mm HH:mm" quando há horário.
+const fmtDataCurta = (s?: string) => {
   if (!s) return '—'
-  const d = String(s).slice(0, 10).split('-')
-  return d.length === 3 ? `${d[2]}/${d[1]}` : s
+  const bruto = String(s)
+  const d = bruto.slice(0, 10).split('-')
+  const dataBR = d.length === 3 ? `${d[2]}/${d[1]}` : bruto
+  try {
+    const dt = new Date(bruto.includes('T') ? bruto : bruto.replace(' ', 'T'))
+    if (isNaN(dt.getTime())) return dataBR
+    const hh = dt.getHours()
+    const mm = dt.getMinutes()
+    if (hh === 0 && mm === 0) return dataBR
+    return `${dataBR} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+  } catch {
+    return dataBR
+  }
 }
+
+// mantido para quem já importa `fmtData` deste módulo
+const fmtData = fmtDataCurta
 
 function lerSalvo(chave: string, padrao: any): any {
   try {

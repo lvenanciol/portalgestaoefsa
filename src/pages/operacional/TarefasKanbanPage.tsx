@@ -103,10 +103,27 @@ const PRIO_COR: Record<string, string> = {
   P3: 'bg-gray-100 text-gray-600',
 }
 
+// 18/11/2026 — DATA E HORA NA TELA.
+// Antes mostrava só "dd/mm". Quando a tarefa tem horário marcado, exibe
+// "dd/mm HH:mm"; sem hora (meia-noite exata), segue só "dd/mm" para não
+// poluir o cartão com um horário que ninguém marcou.
 const fmtData = (s?: string) => {
   if (!s) return '—'
-  const d = String(s).slice(0, 10).split('-')
-  return d.length === 3 ? `${d[2]}/${d[1]}` : s
+  const bruto = String(s)
+  const d = bruto.slice(0, 10).split('-')
+  const dataBR = d.length === 3 ? `${d[2]}/${d[1]}` : bruto
+  try {
+    // Interpreta em UTC quando a string vem do backend e converte para o
+    // fuso do usuário; strings locais ("2026-11-19T14:30") seguem o fuso.
+    const dt = new Date(bruto.includes('T') ? bruto : bruto.replace(' ', 'T'))
+    if (isNaN(dt.getTime())) return dataBR
+    const hh = dt.getHours()
+    const mm = dt.getMinutes()
+    if (hh === 0 && mm === 0) return dataBR
+    return `${dataBR} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+  } catch {
+    return dataBR
+  }
 }
 
 export default function TarefasKanbanPage() {
@@ -854,7 +871,31 @@ export default function TarefasKanbanPage() {
     setForm({
       titulo: t.titulo || '',
       responsavel: t.responsavel || '',
-      prazo: t.prazo ? String(t.prazo).slice(0, 10) : '',
+      // 18/11/2026 — devolve "AAAA-MM-DDTHH:mm" para o datetime-local,
+      // preservando a hora gravada. Antes cortava em slice(0,10) e a hora
+      // sumia ao reabrir a tarefa para edição.
+      prazo: (() => {
+        if (!t.prazo) return ''
+        const s = String(t.prazo)
+        // A data vem do backend em UTC ("2026-11-19T14:30:00.000Z" ou com
+        // espaço). Converte para o fuso do usuário antes de mostrar, senão a
+        // hora aparece deslocada.
+        const d = new Date(s.replace(' ', 'T'))
+        if (isNaN(d.getTime())) return s.slice(0, 10)
+        const p = (n: number) => String(n).padStart(2, '0')
+        const iso =
+          d.getFullYear() +
+          '-' +
+          p(d.getMonth() + 1) +
+          '-' +
+          p(d.getDate()) +
+          'T' +
+          p(d.getHours()) +
+          ':' +
+          p(d.getMinutes())
+        // meia-noite exata = tarefa de dia inteiro: mostra só a data
+        return iso.endsWith('T00:00') ? iso.slice(0, 10) : iso
+      })(),
       recorrencia: t.recorrencia || 'Nenhuma',
       prioridade_p:
         t.prioridade_p || (t.prioridade === 'alta' ? 'P1' : t.prioridade === 'baixa' ? 'P3' : 'P2'),
@@ -1337,10 +1378,21 @@ export default function TarefasKanbanPage() {
       const fd = new FormData()
       fd.append('titulo', form.titulo.trim())
       fd.append('responsavel', form.responsavel || '')
-      if (form.prazo) {
-        fd.append('prazo', form.prazo + ' 00:00:00.000Z')
-      } else {
+      // 18/11/2026 — DATA E HORA.
+      // Antes era `form.prazo + ' 00:00:00.000Z'`: mesmo que a tela tivesse
+      // hora, ela era zerada na gravação. Agora:
+      //   · veio do datetime-local ("2026-11-19T14:30") → vira ISO local
+      //   · veio só como data ("2026-11-19") → 00:00 do dia, como antes
+      const prazoLimpo = String(form.prazo || '').trim()
+      if (!prazoLimpo) {
         fd.append('prazo', '')
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(prazoLimpo)) {
+        fd.append('prazo', prazoLimpo + ' 00:00:00.000Z')
+      } else {
+        // Valor de datetime-local: monta o ISO mantendo o horário do usuário.
+        // (new Date("2026-11-19T14:30") já interpreta como hora local.)
+        const d = new Date(prazoLimpo)
+        fd.append('prazo', isNaN(d.getTime()) ? prazoLimpo : d.toISOString())
       }
       fd.append('recorrencia', form.recorrencia || 'Nenhuma')
       fd.append('prioridade_p', form.prioridade_p || 'P2')
