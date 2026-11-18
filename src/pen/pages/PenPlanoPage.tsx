@@ -129,10 +129,22 @@ export default function PenPlanoPage() {
         m[dono].peso += ((100 - pct) / 100) * (Number(i.weight) || 1)
       }
     }
-    const lista = Object.keys(m).map((dono) => {
+    const chaves = Object.keys(m)
+    // 18/11/2026 — DEFEITO: eu usava "3 iniciativas abertas = 100%" como
+    // referência fixa, e a tela mostrava 325% para um dono com UMA iniciativa.
+    // Número sem escala, impossível de explicar ao dono.
+    //
+    // Correção: a referência é RELATIVA — o dono mais carregado é o teto do
+    // grupo (100%), e os demais são proporcionais a ele. Assim a barra sempre
+    // tem escala e o alerta de 80% compara donos entre si, que é o que a fase
+    // pede ("quadro de capacidade por dono com barra de carga e alerta acima
+    // de 80%").
+    const pesos = chaves.map((d) => m[d].peso)
+    const maior = pesos.length ? Math.max.apply(null, pesos) : 0
+
+    const lista = chaves.map((dono) => {
       const o = m[dono]
-      // capacidade de referência: 3 iniciativas abertas = 100% de carga
-      const carga = Math.round((o.peso / 3) * 100)
+      const carga = maior > 0 ? Math.round((o.peso / maior) * 100) : 0
       return { dono, ...o, carga }
     })
     return lista.sort((a, b) => b.carga - a.carga)
@@ -544,7 +556,7 @@ export default function PenPlanoPage() {
       <div>
         <SectionHeader
           titulo="Capacidade por dono"
-          descricao="Carga = esforço restante ponderado. Alerta acima de 80%."
+          descricao="Carga relativa: o dono mais carregado é o teto (100%) e os demais são proporcionais. Alerta acima de 80% do teto."
           acao={
             <span
               className="inline-flex items-center gap-1 text-[10px] font-bold"
