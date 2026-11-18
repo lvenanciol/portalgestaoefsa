@@ -2,6 +2,8 @@ import { useEffect, useState, useMemo } from 'react'
 import { Calendar, RefreshCw, Database, FlaskConical, Loader2, AlertCircle } from 'lucide-react'
 import pb from '@/lib/pocketbase/client'
 import { useApp } from '@/context/AppContext'
+import { useAuth } from '@/hooks/use-auth'
+import { CardsGrid, type CardDef } from '@/components/dashboard/CardsGrid'
 import { MOCK_DATA, KPI, CriticalAlert, Commitment } from '@/data/mockData'
 import { KpiCard } from '@/components/dashboard/KpiCard'
 import { RevenueBarChart } from '@/components/dashboard/RevenueBarChart'
@@ -48,6 +50,8 @@ const MES_CURTO = [
 
 export default function Index() {
   const { selectedCompany, empresas } = useApp()
+  // 18/11/2026 — id do usuário é a chave do layout salvo do dashboard
+  const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [fonte, setFonte] = useState<'real' | 'mock'>('real')
   const [snapshotDados, setSnapshotDados] = useState<SankhyaSnapshotDados | null>(null)
@@ -123,6 +127,8 @@ export default function Index() {
           const dias = Math.ceil((f.getTime() - hoje.getTime()) / 86400000)
           if (dias <= 90) {
             als.push({
+              // 18/11/2026 — o id carrega o contrato; o card usa o prefixo
+              // "alt-contr-" para abrir o documento vinculado no clique.
               id: 'alt-contr-' + c.id,
               title:
                 dias <= 0
@@ -307,6 +313,87 @@ export default function Index() {
   const isMock = fonte === 'mock'
   const dataAtualizacao = processed?.geradoEmFormatado || formatarDataHoraBR(geradoEm)
 
+  // ==========================================================================
+  // CARDS DO DASHBOARD — 18/11/2026
+  // Ordem padrão de fábrica. O CardsGrid persiste ordem e ocultação POR
+  // USUÁRIO (localStorage com o id na chave); esta lista é o ponto de partida.
+  // ==========================================================================
+  const cardsDashboard: CardDef[] = [
+    {
+      id: 'kpis',
+      titulo: 'Indicadores (KPIs)',
+      className: 'lg:col-span-2',
+      node: (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {kpis.map((kpi, idx) => (
+            <KpiCard key={kpi.id} kpi={kpi} index={idx} />
+          ))}
+        </div>
+      ),
+    },
+    {
+      id: 'faturamento',
+      titulo: 'Faturamento 12 meses',
+      className: 'lg:col-span-2',
+      node: (
+        <RevenueBarChart
+          data={processed?.monthlyRevenues || []}
+          empresaSelecionada={nomeEmpresaSelecionada}
+          ultimaAtualizacao={dataAtualizacao}
+        />
+      ),
+    },
+    {
+      id: 'margem',
+      titulo: 'Margem Bruta 12 meses',
+      node: <MarginLineChart semDados={true} empresaSelecionada={nomeEmpresaSelecionada} />,
+    },
+    {
+      id: 'aging',
+      titulo: 'Composição A/R por Faixa',
+      node: (
+        <ExpenseDonutChart
+          data={processed?.arAging || []}
+          total={fmtMilhoes(processed?.arTotal || 0)}
+          titulo="Composição A/R por Faixa"
+          subtitulo="Distribuição de títulos a receber no Sankhya"
+          fonteReal={!isMock}
+        />
+      ),
+    },
+    {
+      id: 'unidades',
+      titulo: 'Top Unidades',
+      node: (
+        <TopUnitsChart
+          data={processed?.topEmpresas || []}
+          subtitulo={`Ranking acumulado 12 meses — ${nomeEmpresaSelecionada}`}
+        />
+      ),
+    },
+    {
+      id: 'compromissos',
+      titulo: 'Próximos Compromissos',
+      node: <UpcomingCommitmentsCard commitments={compromissos} />,
+    },
+    {
+      id: 'alertas',
+      titulo: 'Alertas Críticos',
+      node: <CriticalAlertsCard alerts={alertas} />,
+    },
+    {
+      id: 'parecer',
+      titulo: 'Parecer IA',
+      node: (
+        <ParecerIaCard
+          titulo="Parecer IA — Análise Executiva"
+          contexto={contextoIa}
+          prompt="Você é o diretor executivo do Grupo Extrafruti. Com base nos dados reais do ERP Sankhya apresentados no contexto (faturamento 12m, títulos a receber e a pagar em aberto e vencidos, ranking de unidades e empresas), forneça um parecer executivo sucinto apontando os principais destaques financeiros, riscos de inadimplência/liquidez e 3 recomendações estratégicas."
+        />
+      ),
+    },
+  ]
+
   return (
     <div className="space-y-6 pb-8">
       {/* 1) CABEÇALHO COM BADGE DE FONTE E SELETOR / STATUS */}
@@ -386,66 +473,18 @@ export default function Index() {
         </div>
       )}
 
-      {/* 2) 6 KPIS */}
-      <section aria-label="Indicadores-Chave de Desempenho">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {kpis.map((kpi, idx) => (
-            <KpiCard key={kpi.id} kpi={kpi} index={idx} />
-          ))}
-        </div>
-      </section>
-
-      {/* 3) GRÁFICOS: FATURAMENTO 12M, MARGEM BRUTA 12M, COMPOSIÇÃO DE DESPESAS / AGING */}
-      <section aria-label="Demonstrativos Gráficos">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Gráfico de Barras — Faturamento 12m por Empresa */}
-          <div className="lg:col-span-2">
-            <RevenueBarChart
-              data={processed?.monthlyRevenues || []}
-              empresaSelecionada={nomeEmpresaSelecionada}
-              ultimaAtualizacao={dataAtualizacao}
-            />
-          </div>
-
-          {/* Coluna direita: Margem Bruta (estado honesto) + Rosca A/R Aging Real */}
-          <div className="space-y-4">
-            {/* Margem Bruta 12m (exibe aviso honesto) */}
-            <MarginLineChart semDados={true} empresaSelecionada={nomeEmpresaSelecionada} />
-
-            {/* Composição de Carteira / Aging A/R Real */}
-            <ExpenseDonutChart
-              data={processed?.arAging || []}
-              total={fmtMilhoes(processed?.arTotal || 0)}
-              titulo="Composição A/R por Faixa"
-              subtitulo="Distribuição de títulos a receber no Sankhya"
-              fonteReal={!isMock}
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* 4) TOP UNIDADES + PRÓXIMOS COMPROMISSOS */}
-      <section aria-label="Unidades e Agenda">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <TopUnitsChart
-            data={processed?.topEmpresas || []}
-            subtitulo={`Ranking acumulado 12 meses — ${nomeEmpresaSelecionada}`}
-          />
-          <UpcomingCommitmentsCard commitments={compromissos} />
-        </div>
-      </section>
-
-      {/* 5) ALERTAS CRÍTICOS + PARECER IA */}
-      <section aria-label="Alertas e IA">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <CriticalAlertsCard alerts={alertas} />
-          <ParecerIaCard
-            titulo="Parecer IA — Análise Executiva"
-            contexto={contextoIa}
-            prompt="Você é o diretor executivo do Grupo Extrafruti. Com base nos dados reais do ERP Sankhya apresentados no contexto (faturamento 12m, títulos a receber e a pagar em aberto e vencidos, ranking de unidades e empresas), forneça um parecer executivo sucinto apontando os principais destaques financeiros, riscos de inadimplência/liquidez e 3 recomendações estratégicas."
-          />
-        </div>
-      </section>
+      {/* ===================================================================
+          18/11/2026 — CARDS PERSONALIZÁVEIS.
+          Diretiva do dono: permitir ocultar cards e reorganizá-los com arrasto.
+          Cada card é uma entrada de `cardsDashboard`; o CardsGrid cuida de
+          ordem, ocultação e persistência POR USUÁRIO (localStorage com o id
+          do usuário na chave). A ordem abaixo é só o padrão de fábrica.
+          =================================================================== */}
+      <CardsGrid
+        usuarioId={String((user as any)?.id || '')}
+        className="grid grid-cols-1 lg:grid-cols-2 gap-4"
+        cards={cardsDashboard}
+      />
     </div>
   )
 }

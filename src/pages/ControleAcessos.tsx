@@ -956,8 +956,12 @@ export default function ControleAcessos() {
               CORREÇÃO: o erro passa a aparecer DENTRO do diálogo, acima dos
               campos, com destaque. O modal continua aberto para correção.
               ================================================================ */}
+          {/* O erro fica FIXO no topo do diálogo (sticky): o formulário é
+              longo e rolável e, na posição anterior, a mensagem nascia no
+              título e saía da vista — medido: topo 4565 com o diálogo
+              terminando em 4570, ou seja, cortada. */}
           {erro && (
-            <div className="mx-0 mb-1 p-2.5 rounded-lg bg-red-50 border border-red-200 text-[12.5px] text-red-700 font-medium flex items-start gap-2">
+            <div className="sticky top-0 z-20 p-2.5 rounded-lg bg-red-50 border border-red-200 text-[12.5px] text-red-700 font-medium flex items-start gap-2 shadow-sm">
               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
               <span className="flex-1">{erro}</span>
             </div>
@@ -1328,6 +1332,17 @@ export default function ControleAcessos() {
               <Switch checked={fAtivo} onCheckedChange={setFAtivo} />
             </div>
           </div>
+          {/* 18/11/2026 — o erro REPETIDO AO LADO DO BOTÃO.
+              O formulário é longo; quem clica em "Criar Usuário" está olhando
+              para o rodapé. Um aviso só no topo (mesmo fixo) obriga a rolar
+              para cima para descobrir o que houve. Aqui ele aparece onde o
+              olho está, sem que o diálogo feche. */}
+          {erro && (
+            <div className="px-1 pb-1 -mt-1 text-[12px] text-red-700 font-medium flex items-start gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span className="flex-1">{erro}</span>
+            </div>
+          )}
           <DialogFooter>
             <Button
               variant="outline"

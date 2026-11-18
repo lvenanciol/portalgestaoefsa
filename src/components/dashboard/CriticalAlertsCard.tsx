@@ -1,4 +1,5 @@
-import { AlertCircle, Clock } from 'lucide-react'
+import { AlertCircle, Clock, ArrowUpRight } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { CriticalAlert } from '@/data/mockData'
 import { cn } from '@/lib/utils'
 
@@ -6,7 +7,41 @@ interface CriticalAlertsCardProps {
   alerts: CriticalAlert[]
 }
 
+// ============================================================================
+// CARD "ALERTAS CRÍTICOS" — 18/11/2026
+//
+// DIRETIVA DO DONO: "ao clicar no alerta abre a tela do documento vinculado".
+//
+// O alerta de contrato nasce com id 'alt-contr-<idDoContrato>'. No clique, o
+// prefixo é removido e o usuário vai para a tela de Contratos já aberta no
+// registro. Alerta de tarefas atrasadas ('alt-tar') leva para a lista de
+// tarefas filtrada por atrasadas. Alerta sem origem conhecida (mock) não
+// navega — melhor não levar a lugar nenhum do que a uma tela errada.
+// ============================================================================
 export function CriticalAlertsCard({ alerts }: CriticalAlertsCardProps) {
+  const navigate = useNavigate()
+
+  const abrir = (id: string) => {
+    const vid = String(id || '')
+    if (vid.startsWith('alt-contr-')) {
+      const contratoId = vid.replace('alt-contr-', '')
+      if (contratoId) {
+        navigate('/contratos?contrato=' + encodeURIComponent(contratoId))
+        return
+      }
+    }
+    if (vid === 'alt-tar') {
+      navigate('/tarefas?filtro=atrasadas')
+      return
+    }
+    // alerta de origem desconhecida (mock): não navega
+  }
+
+  const clicavel = (id: string) => {
+    const vid = String(id || '')
+    return vid.startsWith('alt-contr-') || vid === 'alt-tar'
+  }
+
   return (
     <div
       className="bg-white rounded-xl border border-[#E5E7EB] p-5 shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-[3px] flex flex-col justify-between"
@@ -30,12 +65,28 @@ export function CriticalAlertsCard({ alerts }: CriticalAlertsCardProps) {
         </span>
       </div>
 
-      {/* Lista: 3 itens da SPEC */}
+      {/* Lista: alerta com origem abre o registro vinculado */}
       <div className="space-y-3">
         {alerts.map((alert) => (
           <div
             key={alert.id}
-            className="p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-gray-50 transition-colors flex items-center justify-between gap-3"
+            role={clicavel(alert.id) ? 'button' : undefined}
+            tabIndex={clicavel(alert.id) ? 0 : undefined}
+            onClick={() => clicavel(alert.id) && abrir(alert.id)}
+            onKeyDown={(e) => {
+              if (!clicavel(alert.id)) return
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                abrir(alert.id)
+              }
+            }}
+            title={clicavel(alert.id) ? 'Abrir o documento vinculado' : undefined}
+            className={cn(
+              'p-3 rounded-lg border border-gray-100 bg-gray-50/50 transition-colors flex items-center justify-between gap-3',
+              clicavel(alert.id)
+                ? 'hover:bg-gray-50 hover:border-gray-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1B5E20]/30'
+                : '',
+            )}
           >
             <div className="flex items-start gap-2.5 min-w-0">
               <span
@@ -58,10 +109,16 @@ export function CriticalAlertsCard({ alerts }: CriticalAlertsCardProps) {
               <span className="text-[11px] font-semibold text-gray-500 shrink-0 flex items-center gap-1">
                 <Clock className="h-3 w-3" />
                 {alert.detail}
+                {clicavel(alert.id) && <ArrowUpRight className="h-3 w-3" />}
               </span>
             )}
           </div>
         ))}
+        {alerts.length === 0 && (
+          <p className="text-center text-[12px] text-gray-400 py-8">
+            Nenhum alerta crítico no momento.
+          </p>
+        )}
       </div>
     </div>
   )
