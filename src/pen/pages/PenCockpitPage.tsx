@@ -23,6 +23,7 @@ import {
   SkeletonKpi,
   SkeletonCard,
   SkeletonTabela,
+  Skeleton,
   ErroBloco,
   AvisoFallback,
 } from '@/pen/components/estados'
