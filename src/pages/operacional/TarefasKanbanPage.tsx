@@ -793,8 +793,20 @@ export default function TarefasKanbanPage() {
     // Agora: nada de recarregar. O estado já está correto otimisticamente.
     // Só em caso de ERRO voltamos ao estado do servidor para não mentir.
     // =====================================================================
-    try {
-      await pb.collection('tarefas').update(t.id, {
+    // 18/11/2026 — NÃO ESPERAR O ENVIO DO E-MAIL.
+    //
+    // MEDIDO no log de produção: `SMTP levou 3160ms (total no hook: 3160ms)`
+    // — 100% do tempo do PATCH é o envio do e-mail de notificação, que é
+    // síncrono no servidor e não tem fila assíncrona neste JSVM
+    // (`$app.onTerminate()` não tem `.add`).
+    //
+    // Como o email é uma consequência — e não parte do dado que o usuário
+    // está mudando — o clique não deve esperar por ele. Disparamos o update
+    // e seguimos: o cartão já mudou de coluna pelo update otimista acima.
+    //
+    // Em caso de falha REAL do save, o estado volta (reload) e o erro aparece.
+    pb.collection('tarefas')
+      .update(t.id, {
         status_kanban: novo,
         status:
           novo === 'concluido'
@@ -803,10 +815,10 @@ export default function TarefasKanbanPage() {
               ? 'em_andamento'
               : 'pendente',
       })
-    } catch (e) {
-      setErro('Não foi possível mudar o status: ' + String(e))
-      await carregar()
-    }
+      .catch((e) => {
+        setErro('Não foi possível mudar o status: ' + String(e))
+        void carregar()
+      })
   }
 
   const abrirNova = (statusPadrao: string = 'triagem') => {
