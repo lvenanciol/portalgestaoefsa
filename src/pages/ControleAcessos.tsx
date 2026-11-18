@@ -461,6 +461,22 @@ export default function ControleAcessos() {
   }
 
   const salvarNovo = async () => {
+    // 18/11/2026 — validação explícita ANTES de chamar a API.
+    // Antes, sem e-mail o backend devolvia "Email e senha (min 8) são
+    // obrigatórios" e o usuário não sabia que o problema era o campo vazio.
+    setErro('')
+    if (!fNome.trim()) {
+      setErro('Informe o nome do usuário.')
+      return
+    }
+    if (!fEmail.trim() || !fEmail.includes('@')) {
+      setErro('Informe um e-mail de acesso válido — ele será o login do usuário.')
+      return
+    }
+    if (!fSenha || fSenha.length < 8) {
+      setErro('A senha inicial precisa ter no mínimo 8 caracteres.')
+      return
+    }
     setSalvando(true)
     try {
       await criarUsuario({
@@ -968,30 +984,36 @@ export default function ControleAcessos() {
                 className="h-10 bg-gray-50"
               />
             </div>
-            {/* ===== 3. E-MAIL: DERIVADO DO PARCEIRO =====
-                (11/11/2026) O e-mail de acesso deixou de ser digitado: ele vem
-                do vínculo com Parceiros & Contatos, que é a fonte de verdade do
-                cadastro. Sem vínculo não há e-mail — a conta não pode ser criada. */}
+            {/* ===== 3. E-MAIL =====
+                18/11/2026 — DEFEITO CORRIGIDO: "ao criar novo usuário e clicar em
+                Criar Usuário o app não está criando".
+                O botão funcionava; o formulário BLOQUEAVA o envio. O e-mail era
+                `disabled` e só existia via vínculo com Parceiros. Sem vínculo, o
+                campo ia vazio, o backend recusava com "email e senha são
+                obrigatórios" — e a tela não dizia que a causa era o vínculo.
+                Agora o e-mail é DIGITÁVEL; o vínculo com parceiro é OPCIONAL e,
+                quando usado, preenche o campo automaticamente. */}
             <div className="grid gap-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                3. E-mail de acesso
+                3. E-mail de acesso <span className="text-red-600">*</span>
               </Label>
               <Input
                 type="email"
                 value={fEmail}
-                readOnly
-                disabled
-                placeholder="Selecione um parceiro para obter o e-mail"
-                className="h-10 bg-gray-100 text-gray-700 cursor-not-allowed"
+                onChange={(e) => setFEmail(e.target.value)}
+                placeholder="nome@empresa.com.br"
+                className="h-10 bg-gray-50"
+                required
               />
               {fEmail ? (
-                <span className="text-[11px] text-emerald-700 font-medium">
-                  Vem do parceiro vinculado. Para alterar, edite o e-mail em Parceiros &amp;
-                  Contatos.
+                <span className="text-[11px] text-gray-500">
+                  {fParceiro
+                    ? 'Preenchido pelo parceiro vinculado. Você pode digitar outro e-mail.'
+                    : 'Este será o login do usuário.'}
                 </span>
               ) : (
                 <span className="text-[11px] text-amber-700">
-                  Obrigatório: vincule um parceiro que tenha e-mail cadastrado.
+                  Obrigatório: digite o e-mail (ou vincule um parceiro para preencher).
                 </span>
               )}
             </div>
