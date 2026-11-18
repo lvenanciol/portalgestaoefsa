@@ -4,7 +4,6 @@
 
 // Disparador ao CRIAR tarefa
 onRecordAfterCreateSuccess(function (e) {
-  console.log('[notif-sino] create hook DISPAROU id=' + (e.record ? e.record.id : '?'))
   function normalizarStatus(s) {
     if (!s) return 'triagem'
     var val = String(s).toLowerCase().trim()
@@ -147,6 +146,54 @@ onRecordAfterCreateSuccess(function (e) {
   }
 
   function criarNotificacao(destinatario, dados) {
+    // ===================================================================
+    // 18/11/2026 — GRAVAÇÃO POR SQL DIRETO.
+    //
+    // DIAGNÓSTICO (com log em produção): no CREATE o hook disparava,
+    // resolvia o envolvido corretamente (1 pessoa) e NÃO pulava ninguém —
+    // mas nada era gravado e nenhum erro aparecia. Via API REST os mesmos
+    // campos gravavam 200. Ou seja: o `$app.save(new Record(...))` dentro
+    // deste callback de CREATE não persistia, sem exceção.
+    //
+    // Solução: INSERT direto, que não depende de getter/setter nem da
+    // validação da coleção — mesmo padrão já usado na auditoria deste
+    // projeto. O UPDATE continua pelo caminho normal (funciona).
+    // ===================================================================
+    try {
+      var nid = $security.randomString(15)
+      var agora = new DateTime().string()
+      $app
+        .db()
+        .newQuery(
+          'INSERT INTO notificacoes (id, usuario_id, usuario_email, titulo, mensagem, tipo, tarefa_id, rota, autor_nome, autor_email, lida, created, updated) ' +
+            'VALUES ({:id}, {:uid}, {:uemail}, {:tit}, {:msg}, {:tipo}, {:tarefa}, {:rota}, {:anome}, {:aemail}, false, {:now}, {:now})',
+        )
+        .bind({
+          id: nid,
+          uid: String(destinatario.id || ''),
+          uemail: String(destinatario.email || ''),
+          tit: String(dados.titulo || '').slice(0, 250),
+          msg: String(dados.mensagem || '').slice(0, 2000),
+          tipo: String(dados.tipo || 'sistema'),
+          tarefa: String(dados.tarefa_id || ''),
+          rota: String(dados.rota || '/tarefas'),
+          anome: String(dados.autor_nome || ''),
+          aemail: String(dados.autor_email || ''),
+          now: agora,
+        })
+        .execute()
+      console.log(
+        '[notif-sino] GRAVOU via SQL: ' +
+          String(destinatario.email) +
+          ' tipo=' +
+          String(dados.tipo),
+      )
+    } catch (errSql) {
+      console.log('[notif-sino] FALHA SQL: ' + String(errSql))
+    }
+  }
+
+  function criarNotificacaoAntiga(destinatario, dados) {
     try {
       var col = $app.findCollectionByNameOrId('notificacoes')
       var reg = new Record(col)
@@ -208,19 +255,8 @@ onRecordAfterCreateSuccess(function (e) {
       registrarNoChat(t.id, '📌 ' + textoMudanca + ' por ' + autor.nome + '.', autor.nome)
 
       var envolvidos = resolverEnvolvidos(t)
-      console.log('[notif-sino] envolvidos resolvidos: ' + envolvidos.length)
       for (var i = 0; i < envolvidos.length; i++) {
         var env = envolvidos[i]
-        console.log(
-          '[notif-laco] id=' +
-            String(env.id) +
-            ' email=' +
-            String(env.email) +
-            ' desativadas=' +
-            String(env.desativadas) +
-            ' autorId=' +
-            String(autor.id),
-        )
         if (env.id && autor.id && env.id === autor.id) continue
         if (env.email && autor.email && env.email.toLowerCase() === autor.email.toLowerCase())
           continue
