@@ -403,7 +403,7 @@ export function TarefaDetalheModal({
     } finally {
       setSubSalvando(false)
     }
-  }  }
+  }
 
   /** (2) remove uma subtarefa */
   const handleRemoverSub = async (idx: number) => {
