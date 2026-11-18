@@ -135,14 +135,29 @@ routerAdd(
         // out/2026 como EI, só 35 produtos tinham EI e EF; usando set/2026,
         // 174 produtos fecham as duas pontas. A janela errada era a causa da
         // composição vazia e do % de quebra absurdo.
+        // 18/11/2026 — CAUSA RAIZ DA QUEBRA VAZIA (era 0 lojas, 4.739
+        // produtos descartados por "sem estoque inicial").
+        //
+        // O inventário NÃO é um retrato único por loja/dia: a loja roda
+        // VÁRIAS contagens parciais no mesmo dia (medido na 03-CR-GVT: 7
+        // inventários em 08/09, um com 35 itens, outro com 88). A subquery
+        // antiga pegava `MAX(DTINVENTARIO)` — a data — e com isso trazia
+        // apenas UM dos vários inventários do dia, perdendo quase todos os
+        // produtos.
+        //
+        // REGRA CORRETA: o último inventário **POR PRODUTO**, dentro da
+        // janela. Como CODINV é sequencial, MAX(CODINV) por produto é a
+        // contagem mais recente daquele produto.
         'SELECT CB.CODPARC, NVL(PM.CODPROD,0), 3, SUM(V.QTD), 0 ' +
         'FROM SANKHYA.AD_CABINVENTARIO CB ' +
         'JOIN SANKHYA.AD_ITEINVENTARIO V ON CB.CODINV=V.CODINV ' +
         'LEFT JOIN SANKHYA.TGFPRO P ON V.CODPROD=P.CODPROD AND P.CODPROD<>195 ' +
         'LEFT JOIN SANKHYA.TGFPRO PM ON PM.CODPROD=CASE WHEN P.AD_CODGRUPOABC IS NOT NULL THEN P.AD_CODGRUPOABC ELSE P.AD_CODPRODGRUP END ' +
         "WHERE CB.STATUS='F' " +
-        'AND CB.DTINVENTARIO=(SELECT MAX(C2.DTINVENTARIO) FROM SANKHYA.AD_CABINVENTARIO C2 ' +
-        " WHERE C2.CODPARC=CB.CODPARC AND C2.STATUS='F' AND C2.DTINVENTARIO < " +
+        'AND CB.CODINV=(SELECT MAX(C2.CODINV) FROM SANKHYA.AD_CABINVENTARIO C2 ' +
+        ' JOIN SANKHYA.AD_ITEINVENTARIO I2 ON I2.CODINV=C2.CODINV ' +
+        " WHERE C2.CODPARC=CB.CODPARC AND C2.STATUS='F' AND I2.CODPROD=V.CODPROD " +
+        ' AND C2.DTINVENTARIO < ' +
         iniMes +
         ')' +
         (lojaFiltro ? ' AND CB.CODPARC = ' + Number(lojaFiltro) + ' ' : ' ') +
@@ -154,14 +169,17 @@ routerAdd(
         // QTDCMV = EI + RECEBIDO - 0, gerando % de 64%, 229%, -66%.
         // Agora usa o último inventário fechado ATÉ O FIM DO MÊS, mesmo que
         // fora da janela; só devolve vazio se não houver nenhum no mês.
+        // Mesma regra do EI: último inventário POR PRODUTO dentro do mês.
         'SELECT CB.CODPARC, NVL(PM.CODPROD,0), 4, SUM(V.QTD), 0 ' +
         'FROM SANKHYA.AD_CABINVENTARIO CB ' +
         'JOIN SANKHYA.AD_ITEINVENTARIO V ON CB.CODINV=V.CODINV ' +
         'LEFT JOIN SANKHYA.TGFPRO P ON V.CODPROD=P.CODPROD AND P.CODPROD<>195 ' +
         'LEFT JOIN SANKHYA.TGFPRO PM ON PM.CODPROD=CASE WHEN P.AD_CODGRUPOABC IS NOT NULL THEN P.AD_CODGRUPOABC ELSE P.AD_CODPRODGRUP END ' +
         "WHERE CB.STATUS='F' " +
-        'AND CB.DTINVENTARIO=(SELECT MAX(C2.DTINVENTARIO) FROM SANKHYA.AD_CABINVENTARIO C2 ' +
-        " WHERE C2.CODPARC=CB.CODPARC AND C2.STATUS='F' AND C2.DTINVENTARIO BETWEEN " +
+        'AND CB.CODINV=(SELECT MAX(C2.CODINV) FROM SANKHYA.AD_CABINVENTARIO C2 ' +
+        ' JOIN SANKHYA.AD_ITEINVENTARIO I2 ON I2.CODINV=C2.CODINV ' +
+        " WHERE C2.CODPARC=CB.CODPARC AND C2.STATUS='F' AND I2.CODPROD=V.CODPROD " +
+        ' AND C2.DTINVENTARIO BETWEEN ' +
         iniMes +
         ' AND ' +
         fimMes +
