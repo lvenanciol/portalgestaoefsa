@@ -749,8 +749,20 @@ onRecordAfterUpdateSuccess(function (e) {
           autor_email: autor.email,
         }
         criarNotificacao(env, dadosNotif)
-        // (4) e-mail além do sino, na mesma atualização
-        enviarEmailAlerta(env, dadosNotif, tituloTarefa)
+        // =================================================================
+        // 18/11/2026 — E-MAIL DUPLICADO REMOVIDO DAQUI.
+        //
+        // DEFEITO MEDIDO: cada alteração de tarefa enviava DOIS e-mails para
+        // a mesma pessoa — um deste hook (`enviarEmailAlerta`) e outro de
+        // `tarefas_eventos.js` (`enviarEmail`). E cada envio é SMTP síncrono,
+        // então a resposta HTTP levava ~7 s.
+        //
+        // A responsabilidade fica dividida: ESTE hook cuida do SINO
+        // (notificação interna, não custa rede) e `tarefas_eventos.js` cuida
+        // do E-MAIL (que tem o layout rico, o gate de tratamento e as logos).
+        //
+        // enviarEmailAlerta(env, dadosNotif, tituloTarefa)  ← removido
+        // =================================================================
       }
     }
   } catch (err) {
