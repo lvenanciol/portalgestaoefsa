@@ -162,7 +162,21 @@ onRecordAfterCreateSuccess(function (e) {
       reg.set('lida', false)
       $app.save(reg)
     } catch (err) {
-      console.warn('Erro ao criar registro em notificacoes:', err)
+      // 18/11/2026 — o catch anterior engolia a causa com console.warn e o
+      // registro simplesmente não existia. Agora sobe o motivo real.
+      console.log('[notif-sino] FALHA ao salvar notificacao: ' + String(err))
+      try {
+        console.log(
+          '[notif-sino] campos: usuario_id=' +
+            String(destinatario.id) +
+            ' email=' +
+            String(destinatario.email) +
+            ' tipo=' +
+            String(dados.tipo) +
+            ' tarefa_id=' +
+            String(dados.tarefa_id),
+        )
+      } catch (_) {}
     }
   }
 
