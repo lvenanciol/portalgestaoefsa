@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-18T00:34:29.575Z",
+  "generatedAt": "2026-11-18T00:37:24.968Z",
   "collections": [
     {
       "name": "users",
@@ -130,6 +130,12 @@
           "required": false,
           "system": false,
           "collectionRef": "parceiros"
+        },
+        {
+          "name": "workspace_id",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
