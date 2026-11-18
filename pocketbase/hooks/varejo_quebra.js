@@ -268,43 +268,24 @@ routerAdd(
     let qtdSemInv = 0
 
     // ==================================================================
-    // CORTE POR LOJA, NÃO GLOBAL (18/11/2026)
+    // CARGA SOB DEMANDA POR LOJA (18/11/2026)
     //
-    // Medido: uma única consulta ordenada por impacto devolvia 4.000 linhas
-    // e as lojas grandes consumiam tudo — a loja 37 ficava com 2 itens e a
-    // tela dizia "quase sem inventário", o que é FALSO.
+    // MEDIDO: buscar a composição de TODAS as 77 lojas (47.647 itens) levava
+    // 67 segundos — a tela desistia antes de pintar. Não é limitação de SQL:
+    // é volume. Compor 77 lojas de uma vez nunca será rápido neste gateway.
     //
-    // Solução: pedir a composição em LOTES de lojas. Cada lote tem seu
-    // próprio teto, então toda loja recebe itens. 8 lojas por lote mantém a
-    // resposta bem abaixo do teto de 5.000 linhas do DbExplorer.
+    // SOLUÇÃO: a grade (77 linhas, ~6s) vem sempre; a composição vem só da
+    // loja que o usuário ABRIU (`?loja=<codparc>`). É exatamente o que o
+    // drilldown Rede → Bandeira → Loja → Produto já faz na tela: o dado só
+    // é necessário quando alguém clica na loja.
     // ==================================================================
-    const LOJAS_POR_LOTE = 8
-    let lotes = []
-    if (lojaFiltro) {
-      lotes = [[Number(lojaFiltro)]]
-    } else {
-      const todos = lojas.map(function (l) {
-        return Number(l.codparc)
-      })
-      for (let i = 0; i < todos.length; i += LOJAS_POR_LOTE) {
-        lotes.push(todos.slice(i, i + LOJAS_POR_LOTE))
-      }
-    }
-
     let linhasComposicao = []
-    for (const lote of lotes) {
-      const d1 = rodar(sqlProduto('', lote))
-      if (d1.erro) {
-        falhas.composicao = d1.erro
-        continue
-      }
-      for (const r of d1.rows || []) linhasComposicao.push(r)
-      // se o lote veio no teto, é provável truncamento daquele lote
-      if ((d1.rows || []).length >= 4990) linhasComposicao.tetoLote = true
+    if (lojaFiltro) {
+      const d1 = rodar(sqlProduto(lojaFiltro, null))
+      if (d1.erro) falhas.composicao = d1.erro
+      linhasComposicao = d1.rows || []
     }
 
-    // sem corte global: o teto já é aplicado por LOTE (8 lojas), garantindo
-    // que toda loja tenha itens. O limite total vira só um aviso de tamanho.
     for (const r of linhasComposicao) {
       const cpDet = String(n(v(r, 0)) || '')
       const qtdCmv = n(v(r, 9)) || 0

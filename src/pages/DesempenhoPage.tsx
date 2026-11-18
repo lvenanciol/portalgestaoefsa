@@ -503,6 +503,38 @@ export default function DesempenhoPage() {
   // item i2: drilldown da quebra (Rede -> Bandeira -> Loja -> Produto)
   const [drillQuebra, setDrillQuebra] = useState(false)
   const [drillAberto, setDrillAberto] = useState<string[]>(['rede:'])
+  // 18/11/2026 — composição carregada SOB DEMANDA, por loja.
+  // Buscar as 77 lojas de uma vez dá 47 mil itens e leva ~67s (a tela
+  // desiste). O dado só é necessário quando o usuário abre a loja no
+  // drilldown, então buscamos naquele momento e guardamos no cache.
+  const [itensCarregados, setItensCarregados] = useState<Record<string, any[]>>({})
+  const [carregandoLoja, setCarregandoLoja] = useState<string | null>(null)
+  const [erroComposicao, setErroComposicao] = useState<string>('')
+
+  const carregarComposicao = async (codparc: number | string) => {
+    const chave = String(codparc)
+    if (itensCarregados[chave] || carregandoLoja === chave) return
+    setCarregandoLoja(chave)
+    setErroComposicao('')
+    try {
+      const r: any = await pb.send(
+        '/backend/v1/varejo/quebra?ano=' + f.ano + '&mes=' + f.mes + '&loja=' + chave,
+        { method: 'GET' },
+      )
+      const itens =
+        (r && r.quebra_produtos && r.quebra_produtos[chave]) ||
+        (r && r.lojas && r.lojas[0] && r.lojas[0].produtos) ||
+        []
+      setItensCarregados((p) => ({ ...p, [chave]: itens }))
+    } catch (err: any) {
+      setErroComposicao(
+        'Não foi possível carregar a composição desta loja: ' +
+          String(err?.message || err).slice(0, 120),
+      )
+    } finally {
+      setCarregandoLoja(null)
+    }
+  }
   const [parecerAberto, setParecerAberto] = useState(false)
   const [parecerLoja, setParecerLoja] = useState<Loja | null>(null)
   const [busca, setBusca] = useState('')
@@ -1837,13 +1869,22 @@ export default function DesempenhoPage() {
                           b.lojas.map((l) => {
                             const chL = chB + '|' + l.codparc
                             const abL = drillAberto.includes(chL)
-                            const itens = itensPorLoja[String(l.codparc)] || []
+                            // itens da loja: já carregados (cache) ou o que
+                            // veio no payload (quando `?loja=` foi usado)
+                            const itens =
+                              itensCarregados[String(l.codparc)] ||
+                              itensPorLoja[String(l.codparc)] ||
+                              []
                             const tot = itens.reduce((a, x) => a + (Number(x.valor) || 0), 0)
                             return (
                               <div key={chL} className="ml-3">
                                 <button
                                   type="button"
-                                  onClick={() => alternarDrill(chL)}
+                                  onClick={() => {
+                                    // ao ABRIR a loja, busca a composição sob demanda
+                                    if (!abL) void carregarComposicao(l.codparc)
+                                    alternarDrill(chL)
+                                  }}
                                   className="w-full flex items-center gap-2 px-2 py-1 rounded text-left hover:bg-gray-50"
                                 >
                                   <span
@@ -1855,21 +1896,42 @@ export default function DesempenhoPage() {
                                   <span className="text-[11px]" style={{ color: T.text }}>
                                     {l.loja}
                                   </span>
+                                  {/* 18/11/2026 — este rótulo mostrava "0 itens · R$ 0"
+                                      porque a composição não vinha no payload. Agora,
+                                      enquanto a loja não foi aberta, mostramos a
+                                      contagem e o valor da GRADE (que sempre vêm);
+                                      ao abrir, o número passa a ser o da composição. */}
                                   <span
                                     className="text-[10px] ml-auto tabular-nums"
                                     style={{ color: T.muted }}
                                   >
-                                    quebra {pct(l.quebra)} · {itens.length} itens · {brl(tot)}
+                                    quebra {pct(l.quebra)}
+                                    {itens.length > 0
+                                      ? ' · ' + itens.length + ' itens · ' + brl(tot)
+                                      : l.itens
+                                        ? ' · ' + l.itens + ' itens'
+                                        : ''}
                                   </span>
                                 </button>
-                                {abL && itens.length === 0 && (
+                                {abL && carregandoLoja === String(l.codparc) && (
                                   <div
-                                    className="ml-6 px-2 py-1 text-[10px]"
+                                    className="ml-6 px-2 py-1.5 text-[10px] flex items-center gap-1.5"
                                     style={{ color: T.muted }}
                                   >
-                                    sem inventário lançado nesse mês
+                                    <span className="inline-block h-2.5 w-2.5 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                                    carregando a composição da loja…
                                   </div>
                                 )}
+                                {abL &&
+                                  carregandoLoja !== String(l.codparc) &&
+                                  itens.length === 0 && (
+                                    <div
+                                      className="ml-6 px-2 py-1 text-[10px]"
+                                      style={{ color: T.muted }}
+                                    >
+                                      {erroComposicao || 'sem inventário lançado nesse mês'}
+                                    </div>
+                                  )}
                                 {abL && itens.length > 0 && (
                                   <table className="ml-6 my-1 w-[calc(100%-1.5rem)] text-[11px]">
                                     <thead>
