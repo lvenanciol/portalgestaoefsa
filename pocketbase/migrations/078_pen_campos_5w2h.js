@@ -23,7 +23,7 @@ migrate(
       // sem anotação de tipo: migração é .js puro, não TypeScript
       const criados = []
 
-      const existe = (nome: string) => {
+      const existe = (nome) => {
         for (let i = 0; i < col.fields.length; i++) {
           if (String(col.fields[i].name || '') === nome) return true
         }
@@ -51,7 +51,7 @@ migrate(
     // ------------------------------------------------------------------
     // semeia 5W2H + GUT + janela nas 8 iniciativas existentes
     // ------------------------------------------------------------------
-    const DADOS: Record<string, any> = {
+    const DADOS = {
       'Recuperar 400 clientes inativos no atacado': {
         w_what: 'Reativar base inativa do atacado com oferta e visita programada',
         w_why: 'Base inativa representa 18% do faturamento potencial do canal',
