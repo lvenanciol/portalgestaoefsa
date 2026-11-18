@@ -18,20 +18,7 @@ import { PenTelaVazia } from './PenTelaVazia'
 
 // 2.6 — PenCincoW2hPage saiu daqui: a tela é PenPlanoPage.tsx.
 
-export function PenAcompanhamentoPage() {
-  return (
-    <PenTelaVazia
-      titulo="Acompanhamento"
-      descricao="Execução mês a mês contra o plano."
-      recebe={[
-        'Realizado x meta por indicador',
-        'Evolução no ciclo',
-        'Desvios e plano de recuperação',
-        'Histórico de medições',
-      ]}
-    />
-  )
-}
+// 2.7 — PenAcompanhamentoPage saiu daqui: tem arquivo próprio.
 
 export function PenGovernancaPage() {
   return (

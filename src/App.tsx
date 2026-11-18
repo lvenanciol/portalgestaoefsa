@@ -52,7 +52,9 @@ import PenIshikawaPage from './pen/pages/PenIshikawaPage'
 import PenBscPage from './pen/pages/PenBscPage'
 // 2.6 — Plano de Ação 5W2H (única tela com escrita)
 import PenPlanoPage from './pen/pages/PenPlanoPage'
-import { PenAcompanhamentoPage, PenGovernancaPage } from './pen/pages/PenTelasVazias'
+// 2.7 — Acompanhamento e Rituais
+import PenAcompanhamentoPage from './pen/pages/PenAcompanhamentoPage'
+import { PenGovernancaPage } from './pen/pages/PenTelasVazias'
 
 // Fase 3 — Rotas protegidas por autenticação; /login pública.
 
