@@ -123,6 +123,38 @@ export default function CrudPage({ config }: { config: CrudConfig }) {
     carregar()
   }, [])
 
+  // ========================================================================
+  // 18/11/2026 — ABRIR O REGISTRO DIRETO PELA URL.
+  //
+  // O card "Alertas Críticos" do Dashboard navega para
+  // /contratos?contrato=<id>. Antes, esta tela (CRUD genérico) ignorava o
+  // parâmetro: o usuário clicava no alerta e caía na LISTA, sem o registro
+  // aberto — o clique parecia não funcionar.
+  //
+  // Aqui o primeiro item da URL é tratado como "abrir este registro":
+  // o nome da chave vem de `config.colecao` sem o "s" final (contratos →
+  // contrato, documentos → documento). Funciona para todas as telas CRUD.
+  // ========================================================================
+  useEffect(() => {
+    if (loading || !itens.length) return
+    try {
+      const chave = String(config.colecao || '').replace(/s$/, '')
+      const alvo =
+        new URLSearchParams(window.location.search).get(chave) ||
+        new URLSearchParams(window.location.search).get('id')
+      if (!alvo) return
+      const achado = itens.find((i) => String(i.id) === String(alvo))
+      if (achado) {
+        abrirEditar(achado)
+      } else {
+        setErro('O registro solicitado não está disponível (pode ter sido excluído).')
+      }
+    } catch (_) {
+      /* URL inválida não quebra a tela */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, itens])
+
   const filtrados = useMemo(
     () =>
       itens.filter(
