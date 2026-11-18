@@ -140,13 +140,15 @@ routerAdd(
       'SELECT COALESCE(EI.CODPARC, EF.CODPARC) CODPARC, ' +
       ' COALESCE(EI.CODPROD, EF.CODPROD) CODPROD, ' +
       ' NVL(EI.QEI,0) QEI, NVL(EF.QEF,0) QEF, ' +
+      ' NVL(EF.CUSTOINV,0) CUSTOINV, ' +
       ' NVL(V.QV,0) QV, NVL(V.VLR,0) VLR ' +
       'FROM (SELECT K.CODPARC, K.CODPROD, SUM(VV.QTD) QEI ' +
       '      FROM ' +
       EI_SUB +
       ' K JOIN SANKHYA.AD_ITEINVENTARIO VV ON VV.CODINV=K.CODINV AND VV.CODPROD=K.CODPROD ' +
       '      GROUP BY K.CODPARC, K.CODPROD) EI ' +
-      'FULL OUTER JOIN (SELECT K.CODPARC, K.CODPROD, SUM(VV.QTD) QEF ' +
+      'FULL OUTER JOIN (SELECT K.CODPARC, K.CODPROD, SUM(VV.QTD) QEF, ' +
+      '        MAX(CASE WHEN NVL(VV.CUSTO,0) > 0 THEN VV.CUSTO END) CUSTOINV ' +
       '      FROM ' +
       EF_SUB +
       ' K JOIN SANKHYA.AD_ITEINVENTARIO VV ON VV.CODINV=K.CODINV AND VV.CODPROD=K.CODPROD ' +
@@ -165,7 +167,9 @@ routerAdd(
       'SELECT X.CODPARC, ' +
       ' ROUND(SUM(NVL(X.VLR,0)),2) VENDA, ' +
       ' ROUND(SUM(X.QEI + NVL(REC.Q,0) - X.QEF),3) QTDCMV, ' +
-      ' ROUND(SUM(NVL(X.VLR,0) / NULLIF(X.QV,0) * NULLIF(X.QEI + NVL(REC.Q,0) - X.QEF - NVL(X.QV,0) - NVL(CON.Q,0),0)),2) VLRQUEBRA ' +
+      // mesmo critério de custo da composição: inventário primeiro, venda como reserva
+      ' ROUND(SUM(COALESCE(NULLIF(X.CUSTOINV,0), NVL(X.VLR,0) / NULLIF(X.QV,0)) * ' +
+      '   NULLIF(X.QEI + NVL(REC.Q,0) - X.QEF - NVL(X.QV,0) - NVL(CON.Q,0),0)),2) VLRQUEBRA ' +
       'FROM (' +
       BASE +
       ') X ' +
@@ -199,8 +203,14 @@ routerAdd(
         ' ROUND(NVL(CON.Q,0),3) QCONS, ' +
         ' ROUND(X.QEI + NVL(REC.Q,0) - X.QEF,3) QTDCMV, ' +
         ' ROUND(X.QEI + NVL(REC.Q,0) - X.QEF - NVL(X.QV,0) - NVL(CON.Q,0),3) QTDQUEBRA, ' +
-        ' ROUND(NVL(X.VLR,0) / NULLIF(X.QV,0),4) CUSTO, ' +
-        ' ROUND(NVL(X.VLR,0) / NULLIF(X.QV,0) * NULLIF(X.QEI + NVL(REC.Q,0) - X.QEF - NVL(X.QV,0) - NVL(CON.Q,0),0),2) VLRQUEBRA ' +
+        // 18/11/2026 — CUSTO REAL DO INVENTÁRIO.
+        // Antes o custo era só "preço médio de venda" (proxy do dono), e
+        // produto SEM venda no mês ficava com custo 0 → vlr_quebra 0 e, pior,
+        // aparecia no TOPO da composição com 100% de quebra e R$ 0.
+        // Agora: custo do último inventário (AD_ITEINVENTARIO.CUSTO) e, só
+        // quando ele é nulo/zero, o preço médio de venda como reserva.
+        ' ROUND(COALESCE(NULLIF(X.CUSTOINV,0), NVL(X.VLR,0) / NULLIF(X.QV,0)),4) CUSTO, ' +
+        ' ROUND(COALESCE(NULLIF(X.CUSTOINV,0), NVL(X.VLR,0) / NULLIF(X.QV,0)) * NULLIF(X.QEI + NVL(REC.Q,0) - X.QEF - NVL(X.QV,0) - NVL(CON.Q,0),0),2) VLRQUEBRA ' +
         'FROM (' +
         BASE +
         ') X ' +
