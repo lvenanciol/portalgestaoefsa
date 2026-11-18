@@ -375,371 +375,489 @@ routerAdd(
       symCasafruti: '#E65100',
     }
     const FONTE = "'Helvetica Neue',Helvetica,Arial,sans-serif"
-    const assunto = 'Acompanhamento de Tarefas — ' + listaFinalTarefas.length + ' tarefa(s)'
 
-    let nTotal = 0
-    let nVencidas = 0
-    let nSemPrazo = 0
-    let nEmDia = 0
-    for (const emp of nomesEmpresas) {
-      for (const t of gruposEmpresas[emp]) {
-        nTotal++
-        const pRaw = String(t.getString('prazo') || '').slice(0, 10)
-        const st = labelStatus(t.getString('status_kanban') || t.getString('status'))
-        if (!pRaw) nSemPrazo++
-        else if (pRaw < hoje && st !== 'Concluído') nVencidas++
-        else nEmDia++
+    // ---------------------------------------------------------------------
+    // Quais tarefas pertencem a um destinatário.
+    // Mesma regra do popover: responsável (nome normalizado) OU id em
+    // `parceiros`. A normalização ignora acento e o prefixo entre colchetes
+    // ("[ MKT ] LORENA" == "Lorena"), senão a pessoa recebe zero ou recebe
+    // tudo — os dois extremos errados.
+    // ---------------------------------------------------------------------
+    function normPessoa(v) {
+      return String(v || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9 ]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase()
+    }
+
+    function idsParceiros(t) {
+      var raw = t.getString('parceiros')
+      if (!raw) return []
+      try {
+        var arr = JSON.parse(raw)
+        return Array.isArray(arr) ? arr.map(String) : []
+      } catch (_) {
+        return []
       }
     }
 
-    const empresaLabel = { FoldBox: 'FOLDBOX', Extrafruti: 'EXTRAFRUTI', Casafruti: 'CASAFRUTI' }
-
-    // ===== BLOCO 1 — CABEÇALHO =====
-    let html = '<!DOCTYPE html><html><head><meta charset="utf-8"/>'
-    html += '<meta name="viewport" content="width=device-width,initial-scale=1"/>'
-    html += '<title>' + escapeHtml(assunto) + '</title></head>'
-    html += '<body style="margin:0;padding:0;background:' + CORES.painel + ';">'
-
-    html +=
-      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:' +
-      CORES.painel +
-      ';">'
-    html += '<tr><td align="center" style="padding:24px 12px;">'
-    html +=
-      '<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:' +
-      CORES.papel +
-      ';border:1px solid ' +
-      CORES.hairline +
-      ';border-radius:8px;overflow:hidden;font-family:' +
-      FONTE +
-      ';">'
-    html +=
-      '<tr><td align="center" bgcolor="' + CORES.offwhite + '" style="padding:24px 20px 18px;">'
-
-    // A logo principal NÃO aparece isolada quando há mais de uma empresa:
-    // ela já está na faixa abaixo.
-    const lgPrinc = logosMap[String(empPrincipal).toLowerCase()]
-    const mostrarLogoTopo = nomesEmpresas.length <= 1
-    if (mostrarLogoTopo && lgPrinc && lgPrinc.arquivo) {
-      html +=
-        '<img src="cid:' +
-        lgPrinc.arquivo +
-        '" alt="' +
-        escapeHtml(empPrincipal) +
-        ' logomarca" height="44" style="display:inline-block;vertical-align:middle;border:0;height:44px;width:auto;max-width:220px;" />'
-    }
-
-    // faixa com as logos de TODAS as empresas do envio
-    if (nomesEmpresas.length > 1) {
-      html +=
-        '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin-top:14px;"><tr>'
-      for (var le = 0; le < nomesEmpresas.length; le++) {
-        var empLogoF = nomesEmpresas[le]
-        var lgF = logosMap[String(empLogoF).toLowerCase()]
-        if (!lgF || !lgF.arquivo) continue
-        html +=
-          '<td style="padding:0 10px;" valign="middle"><img src="cid:' +
-          lgF.arquivo +
-          '" alt="' +
-          escapeHtml(empLogoF) +
-          ' logomarca" height="56" style="display:block;border:0;height:56px;width:auto;max-width:180px;" /></td>'
+    const _cacheDest = {}
+    function tarefasDoDestinatario(d) {
+      var chave = String(d.id || '') + '|' + normPessoa(d.nome)
+      if (_cacheDest[chave]) return _cacheDest[chave]
+      var alvoNorm = normPessoa(d.nome)
+      var alvoId = String(d.id || '')
+      var out = []
+      for (var i = 0; i < listaFinalTarefas.length; i++) {
+        var t = listaFinalTarefas[i]
+        var respNorm = normPessoa(t.getString('responsavel'))
+        var pIds = idsParceiros(t)
+        var ehResp = alvoNorm && respNorm && respNorm === alvoNorm
+        var ehParceiro = alvoId && pIds.indexOf(alvoId) >= 0
+        if (ehResp || ehParceiro) out.push(t)
       }
-      html += '</tr></table>'
+      _cacheDest[chave] = out
+      return out
     }
 
-    html += '</td></tr>'
+    // =====================================================================
+    // 18/11/2026 — CORREÇÃO DO CORPO POR DESTINATÁRIO
+    //
+    // DEFEITO RELATADO PELO DONO: "Lorena recebeu tarefas da empresa LL5 que
+    // não têm vínculo nenhum com ela".
+    //
+    // CAUSA RAIZ: o corpo (html + textoPlano) e o PDF eram montados UMA VEZ
+    // com `listaFinalTarefas` — que no modo tela são TODAS as tarefas
+    // filtradas na tela, não as de cada pessoa. O laço de envio então mandava
+    // esse MESMO conteúdo para todo destinatário. A saudação usava
+    // `destinatarios[0].nome` para todos, entregando o problema.
+    //
+    // CORREÇÃO: todo o bloco de conteúdo virou a função `montarConteudo(lista)`.
+    // Cada destinatário recebe apenas as tarefas em que ele é RESPONSÁVEL ou
+    // PARCEIRO (mesma regra do popover), com nome, KPIs, assunto e PDF
+    // próprios. Destinatário sem nenhuma tarefa no escopo NÃO recebe e-mail.
+    // =====================================================================
+    function montarConteudo(lista, destNome) {
+      // Grupos DESTE destinatário (shadowing proposital: todo o bloco abaixo
+      // usa nomesEmpresas/gruposEmpresas e passa a enxergar só a lista dele).
+      const gruposEmpresas = {}
+      const nomesEmpresas = []
+      for (const t of lista) {
+        const emp = String(t.getString('empresa') || '').trim() || 'Geral'
+        if (!gruposEmpresas[emp]) {
+          gruposEmpresas[emp] = []
+          nomesEmpresas.push(emp)
+        }
+        gruposEmpresas[emp].push(t)
+      }
+      const ordemPrefL = ['FoldBox', 'Extrafruti', 'Casafruti']
+      nomesEmpresas.sort(function (a, b) {
+        var ia = ordemPrefL.indexOf(a)
+        var ib = ordemPrefL.indexOf(b)
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
+      })
+      // mantém a ordem recebida dentro de cada empresa (a tela já ordenou)
+      const listaFinalTarefas = lista
 
-    // ===== BLOCO 2 — FAIXA VERDE =====
-    html += '<tr><td bgcolor="' + CORES.verde + '" style="padding:22px 24px;">'
-    html +=
-      '<h1 style="margin:0;font-family:' +
-      FONTE +
-      ';font-size:19px;line-height:1.3;font-weight:700;color:#FFFFFF;">Acompanhamento de Tarefas</h1>'
-    html +=
-      '<p style="margin:8px 0 0;font-family:' +
-      FONTE +
-      ';font-size:12.5px;line-height:1.5;color:#EAF3EB;">Olá, ' +
-      escapeHtml(String(destinatarios[0].nome || 'Prezado(a)')) +
-      '. Segue o resumo das tarefas sob sua responsabilidade ou acompanhamento:</p>'
-    html += '</td></tr>'
+      let nTotal = 0
+      let nVencidas = 0
+      let nSemPrazo = 0
+      let nEmDia = 0
+      // dentro de montarConteudo: nomes/grupos derivam da LISTA DESTE destinatário
+      for (const emp of nomesEmpresas) {
+        for (const t of gruposEmpresas[emp] || []) {
+          nTotal++
+          const pRaw = String(t.getString('prazo') || '').slice(0, 10)
+          const st = labelStatus(t.getString('status_kanban') || t.getString('status'))
+          if (!pRaw) nSemPrazo++
+          else if (pRaw < hoje && st !== 'Concluído') nVencidas++
+          else nEmDia++
+        }
+      }
 
-    // ===== BLOCO 3 — KPIs =====
-    html += '<tr><td bgcolor="' + CORES.papel + '" style="padding:22px 14px 18px;">'
-    html +=
-      '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
-    const kpis = [
-      { v: nTotal, l: 'TAREFAS ATIVAS', c: CORES.texto },
-      { v: nVencidas, l: 'VENCIDAS', c: CORES.vermelho },
-      { v: nSemPrazo, l: 'SEM PRAZO', c: CORES.ambar },
-      { v: nEmDia, l: 'EM DIA', c: CORES.salvia },
-    ]
-    for (let k = 0; k < kpis.length; k++) {
-      html += '<td align="center" valign="top" width="25%">'
+      const empresaLabel = { FoldBox: 'FOLDBOX', Extrafruti: 'EXTRAFRUTI', Casafruti: 'CASAFRUTI' }
+
+      // ===== BLOCO 1 — CABEÇALHO =====
+      let html = '<!DOCTYPE html><html><head><meta charset="utf-8"/>'
+      html += '<meta name="viewport" content="width=device-width,initial-scale=1"/>'
+      html += '<title>' + escapeHtml(assunto) + '</title></head>'
+      html += '<body style="margin:0;padding:0;background:' + CORES.painel + ';">'
+
       html +=
-        '<div style="font-family:' +
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:' +
+        CORES.painel +
+        ';">'
+      html += '<tr><td align="center" style="padding:24px 12px;">'
+      html +=
+        '<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:' +
+        CORES.papel +
+        ';border:1px solid ' +
+        CORES.hairline +
+        ';border-radius:8px;overflow:hidden;font-family:' +
         FONTE +
-        ';font-size:22px;font-weight:800;color:' +
-        kpis[k].c +
-        ';">' +
-        kpis[k].v +
-        '</div>'
+        ';">'
       html +=
-        '<div style="font-family:' +
-        FONTE +
-        ';font-size:8.5px;font-weight:700;letter-spacing:0.5px;color:' +
-        CORES.texto2 +
-        ';margin-top:3px;">' +
-        kpis[k].l +
-        '</div>'
-      html += '</td>'
-    }
-    html += '</tr></table>'
-    html += '</td></tr>'
+        '<tr><td align="center" bgcolor="' + CORES.offwhite + '" style="padding:24px 20px 18px;">'
 
-    // ===== BLOCO 5 — SEÇÕES =====
-    html += '<tr><td bgcolor="' + CORES.papel + '" style="padding:22px 24px 6px;">'
-    const secoesPdf = []
-
-    for (let g = 0; g < nomesEmpresas.length; g++) {
-      const empNome = nomesEmpresas[g]
-      const tList = gruposEmpresas[empNome] || []
-      const num = g + 1
-      const rotulo = empresaLabel[empNome] || String(empNome).toUpperCase()
-      const corSimbolo =
-        empNome === 'FoldBox'
-          ? CORES.symFoldbox
-          : empNome === 'Extrafruti'
-            ? CORES.symExtrafruti
-            : CORES.symCasafruti
-
-      // cabeçalho do agrupamento com a logo
-      html +=
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 12px;"><tr>'
-      html += '<td bgcolor="' + CORES.offwhite + '" style="padding:12px 14px;border-radius:6px;">'
-      const lgSec = logosMap[String(empNome).toLowerCase()]
-      html += '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
-      html += '<td valign="middle">'
-      if (lgSec && lgSec.arquivo) {
+      // Empresa principal DESTE destinatário: a dele, não a da tela.
+      // (empPrincipal externo é a empresa da primeira tarefa da tela inteira —
+      // usar aquilo aqui fazia o cabeçalho citar a empresa errada.)
+      const empPrincipalLocal =
+        nomesEmpresas.length === 1
+          ? nomesEmpresas[0]
+          : String(
+              (listaFinalTarefas.length && listaFinalTarefas[0].getString('empresa')) || '',
+            ).trim() ||
+            nomesEmpresas[0] ||
+            'Geral'
+      // A logo principal NÃO aparece isolada quando há mais de uma empresa:
+      // ela já está na faixa abaixo.
+      const lgPrinc = logosMap[String(empPrincipalLocal).toLowerCase()]
+      const mostrarLogoTopo = nomesEmpresas.length <= 1
+      if (mostrarLogoTopo && lgPrinc && lgPrinc.arquivo) {
         html +=
           '<img src="cid:' +
-          lgSec.arquivo +
+          lgPrinc.arquivo +
           '" alt="' +
-          escapeHtml(empNome) +
-          ' logomarca" height="56" style="display:block;border:0;height:56px;width:auto;max-width:280px;" />'
-      } else {
+          escapeHtml(empPrincipalLocal) +
+          ' logomarca" height="44" style="display:inline-block;vertical-align:middle;border:0;height:44px;width:auto;max-width:220px;" />'
+      }
+
+      // faixa com as logos de TODAS as empresas do envio
+      if (nomesEmpresas.length > 1) {
         html +=
-          '<div style="display:inline-block;width:26px;height:26px;border-radius:4px;background:' +
-          corSimbolo +
-          ';vertical-align:middle;"></div>'
+          '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin-top:14px;"><tr>'
+        for (var le = 0; le < nomesEmpresas.length; le++) {
+          var empLogoF = nomesEmpresas[le]
+          var lgF = logosMap[String(empLogoF).toLowerCase()]
+          if (!lgF || !lgF.arquivo) continue
+          html +=
+            '<td style="padding:0 10px;" valign="middle"><img src="cid:' +
+            lgF.arquivo +
+            '" alt="' +
+            escapeHtml(empLogoF) +
+            ' logomarca" height="56" style="display:block;border:0;height:56px;width:auto;max-width:180px;" /></td>'
+        }
+        html += '</tr></table>'
+      }
+
+      html += '</td></tr>'
+
+      // ===== BLOCO 2 — FAIXA VERDE =====
+      html += '<tr><td bgcolor="' + CORES.verde + '" style="padding:22px 24px;">'
+      html +=
+        '<h1 style="margin:0;font-family:' +
+        FONTE +
+        ';font-size:19px;line-height:1.3;font-weight:700;color:#FFFFFF;">Acompanhamento de Tarefas</h1>'
+      html +=
+        '<p style="margin:8px 0 0;font-family:' +
+        FONTE +
+        ';font-size:12.5px;line-height:1.5;color:#EAF3EB;">Olá, ' +
+        escapeHtml(String(destNome || 'Prezado(a)')) +
+        '. Segue o resumo das tarefas sob sua responsabilidade ou acompanhamento:</p>'
+      html += '</td></tr>'
+
+      // ===== BLOCO 3 — KPIs =====
+      html += '<tr><td bgcolor="' + CORES.papel + '" style="padding:22px 14px 18px;">'
+      html +=
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+      const kpis = [
+        { v: nTotal, l: 'TAREFAS ATIVAS', c: CORES.texto },
+        { v: nVencidas, l: 'VENCIDAS', c: CORES.vermelho },
+        { v: nSemPrazo, l: 'SEM PRAZO', c: CORES.ambar },
+        { v: nEmDia, l: 'EM DIA', c: CORES.salvia },
+      ]
+      for (let k = 0; k < kpis.length; k++) {
+        html += '<td align="center" valign="top" width="25%">'
+        html +=
+          '<div style="font-family:' +
+          FONTE +
+          ';font-size:22px;font-weight:800;color:' +
+          kpis[k].c +
+          ';">' +
+          kpis[k].v +
+          '</div>'
+        html +=
+          '<div style="font-family:' +
+          FONTE +
+          ';font-size:8.5px;font-weight:700;letter-spacing:0.5px;color:' +
+          CORES.texto2 +
+          ';margin-top:3px;">' +
+          kpis[k].l +
+          '</div>'
+        html += '</td>'
+      }
+      html += '</tr></table>'
+      html += '</td></tr>'
+
+      // ===== BLOCO 5 — SEÇÕES =====
+      html += '<tr><td bgcolor="' + CORES.papel + '" style="padding:22px 24px 6px;">'
+      const secoesPdf = []
+
+      for (let g = 0; g < nomesEmpresas.length; g++) {
+        const empNome = nomesEmpresas[g]
+        const tList = gruposEmpresas[empNome] || []
+        const num = g + 1
+        const rotulo = empresaLabel[empNome] || String(empNome).toUpperCase()
+        const corSimbolo =
+          empNome === 'FoldBox'
+            ? CORES.symFoldbox
+            : empNome === 'Extrafruti'
+              ? CORES.symExtrafruti
+              : CORES.symCasafruti
+
+        // cabeçalho do agrupamento com a logo
+        html +=
+          '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 12px;"><tr>'
+        html += '<td bgcolor="' + CORES.offwhite + '" style="padding:12px 14px;border-radius:6px;">'
+        const lgSec = logosMap[String(empNome).toLowerCase()]
+        html += '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>'
+        html += '<td valign="middle">'
+        if (lgSec && lgSec.arquivo) {
+          html +=
+            '<img src="cid:' +
+            lgSec.arquivo +
+            '" alt="' +
+            escapeHtml(empNome) +
+            ' logomarca" height="56" style="display:block;border:0;height:56px;width:auto;max-width:280px;" />'
+        } else {
+          html +=
+            '<div style="display:inline-block;width:26px;height:26px;border-radius:4px;background:' +
+            corSimbolo +
+            ';vertical-align:middle;"></div>'
+          html +=
+            '<span style="font-family:' +
+            FONTE +
+            ';font-size:14px;font-weight:800;letter-spacing:0.8px;color:' +
+            CORES.charcoal +
+            ';text-transform:uppercase;vertical-align:middle;margin-left:8px;">' +
+            escapeHtml(rotulo) +
+            '</span>'
+        }
+        html += '</td>'
+        html += '</tr></table>'
+        html += '</td>'
+        html += '<td align="right" valign="middle" width="90" style="padding-left:8px;">'
         html +=
           '<span style="font-family:' +
           FONTE +
-          ';font-size:14px;font-weight:800;letter-spacing:0.8px;color:' +
-          CORES.charcoal +
-          ';text-transform:uppercase;vertical-align:middle;margin-left:8px;">' +
-          escapeHtml(rotulo) +
-          '</span>'
-      }
-      html += '</td>'
-      html += '</tr></table>'
-      html += '</td>'
-      html += '<td align="right" valign="middle" width="90" style="padding-left:8px;">'
-      html +=
-        '<span style="font-family:' +
-        FONTE +
-        ';font-size:9px;font-weight:700;letter-spacing:0.6px;color:' +
-        CORES.texto2 +
-        ';">' +
-        num +
-        ' · ' +
-        escapeHtml(rotulo) +
-        '</span> '
-      html +=
-        '<span style="display:inline-block;min-width:20px;padding:3px 7px;border-radius:999px;background:' +
-        CORES.verdeProfundo +
-        ';color:#FFFFFF;font-family:' +
-        FONTE +
-        ';font-size:11px;font-weight:800;">' +
-        tList.length +
-        '</span>'
-      html += '</td></tr></table>'
-
-      // TABELA de tarefas — mesmas 5 colunas do PDF
-      html +=
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:2px 0 6px;">'
-      html += '<tr>'
-      const TH_COL =
-        'padding:0 0 4px;border-bottom:1px solid ' +
-        CORES.hairline +
-        ';font-family:' +
-        FONTE +
-        ';font-size:8px;font-weight:700;letter-spacing:0.4px;color:' +
-        CORES.texto2 +
-        ';text-transform:uppercase;'
-      html += '<td width="52%" style="' + TH_COL + '">Tarefa</td>'
-      html += '<td width="10%" style="' + TH_COL + '">Prior.</td>'
-      html += '<td width="16%" style="' + TH_COL + '">Status</td>'
-      html += '<td width="12%" style="' + TH_COL + '">Venc.</td>'
-      html += '<td width="10%" style="' + TH_COL + '">Resp.</td>'
-      html += '</tr>'
-
-      for (let i = 0; i < tList.length; i++) {
-        const t = tList[i]
-        const titulo = t.getString('titulo') || 'Sem título'
-        const desc = t.getString('descricao') || ''
-        const status = labelStatus(t.getString('status_kanban') || t.getString('status'))
-        const prioP = t.getString('prioridade_p') || 'P2'
-        const prioLabel = labelPrioridade(prioP, t.getString('prioridade'))
-        const resp = t.getString('responsavel') || '—'
-        const prazoRaw = t.getString('prazo')
-        const prazoBR = brData(prazoRaw)
-        const atrasada = Boolean(
-          prazoRaw && String(prazoRaw).slice(0, 10) < hoje && status !== 'Concluído',
-        )
-        const dias = atrasada ? diasAtraso(prazoRaw) : 0
-
-        secoesPdf.push({
-          titulo: titulo,
-          prioLabel: prioLabel,
-          status: status,
-          prazoFormatado: prazoBR || 'sem prazo',
-          prazoAtrasado: atrasada,
-          responsavel: resp,
-        })
-
-        const TD =
-          'padding:7px 0;border-bottom:1px solid ' + CORES.hairline + ';vertical-align:top;'
-        html += '<tr>'
-        html +=
-          '<td width="52%" style="' +
-          TD +
-          'font-family:' +
-          FONTE +
-          ';font-size:10.5px;line-height:1.35;color:' +
-          CORES.texto +
-          ';' +
-          (atrasada ? 'border-left:3px solid ' + CORES.vermelho + ';padding-left:7px;' : '') +
-          '">' +
-          escapeHtml(titulo) +
-          (desc
-            ? '<div style="font-size:9px;color:' +
-              CORES.texto2 +
-              ';margin-top:2px;">' +
-              escapeHtml(String(desc).split('\n')[0].slice(0, 90)) +
-              '</div>'
-            : '') +
-          '</td>'
-        html +=
-          '<td width="10%" style="' +
-          TD +
-          'font-family:' +
-          FONTE +
-          ';font-size:9px;color:' +
+          ';font-size:9px;font-weight:700;letter-spacing:0.6px;color:' +
           CORES.texto2 +
-          ';white-space:nowrap;">' +
-          escapeHtml(prioLabel.replace(' (P', ' P').replace(')', '')) +
-          '</td>'
-        html +=
-          '<td width="16%" style="' +
-          TD +
-          'font-family:' +
-          FONTE +
-          ';font-size:9px;color:#495057;white-space:nowrap;">' +
-          escapeHtml(status) +
-          '</td>'
-        // VENC. sem o rótulo "ATRASADA": a data em vermelho já sinaliza
-        html +=
-          '<td width="12%" style="' +
-          TD +
-          'font-family:' +
-          FONTE +
-          ';font-size:9px;white-space:nowrap;color:' +
-          (atrasada ? CORES.vermelho : CORES.texto) +
           ';">' +
-          escapeHtml(prazoBR || '—') +
-          '</td>'
+          num +
+          ' · ' +
+          escapeHtml(rotulo) +
+          '</span> '
         html +=
-          '<td width="10%" style="' +
-          TD +
-          'font-family:' +
+          '<span style="display:inline-block;min-width:20px;padding:3px 7px;border-radius:999px;background:' +
+          CORES.verdeProfundo +
+          ';color:#FFFFFF;font-family:' +
           FONTE +
-          ';font-size:9px;color:' +
+          ';font-size:11px;font-weight:800;">' +
+          tList.length +
+          '</span>'
+        html += '</td></tr></table>'
+
+        // TABELA de tarefas — mesmas 5 colunas do PDF
+        html +=
+          '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:2px 0 6px;">'
+        html += '<tr>'
+        const TH_COL =
+          'padding:0 0 4px;border-bottom:1px solid ' +
+          CORES.hairline +
+          ';font-family:' +
+          FONTE +
+          ';font-size:8px;font-weight:700;letter-spacing:0.4px;color:' +
           CORES.texto2 +
-          ';white-space:nowrap;">' +
-          escapeHtml(String(resp).slice(0, 14)) +
-          '</td>'
+          ';text-transform:uppercase;'
+        html += '<td width="52%" style="' + TH_COL + '">Tarefa</td>'
+        html += '<td width="10%" style="' + TH_COL + '">Prior.</td>'
+        html += '<td width="16%" style="' + TH_COL + '">Status</td>'
+        html += '<td width="12%" style="' + TH_COL + '">Venc.</td>'
+        html += '<td width="10%" style="' + TH_COL + '">Resp.</td>'
         html += '</tr>'
+
+        for (let i = 0; i < tList.length; i++) {
+          const t = tList[i]
+          const titulo = t.getString('titulo') || 'Sem título'
+          const desc = t.getString('descricao') || ''
+          const status = labelStatus(t.getString('status_kanban') || t.getString('status'))
+          const prioP = t.getString('prioridade_p') || 'P2'
+          const prioLabel = labelPrioridade(prioP, t.getString('prioridade'))
+          const resp = t.getString('responsavel') || '—'
+          const prazoRaw = t.getString('prazo')
+          const prazoBR = brData(prazoRaw)
+          const atrasada = Boolean(
+            prazoRaw && String(prazoRaw).slice(0, 10) < hoje && status !== 'Concluído',
+          )
+          const dias = atrasada ? diasAtraso(prazoRaw) : 0
+
+          secoesPdf.push({
+            titulo: titulo,
+            prioLabel: prioLabel,
+            status: status,
+            prazoFormatado: prazoBR || 'sem prazo',
+            prazoAtrasado: atrasada,
+            responsavel: resp,
+          })
+
+          const TD =
+            'padding:7px 0;border-bottom:1px solid ' + CORES.hairline + ';vertical-align:top;'
+          html += '<tr>'
+          html +=
+            '<td width="52%" style="' +
+            TD +
+            'font-family:' +
+            FONTE +
+            ';font-size:10.5px;line-height:1.35;color:' +
+            CORES.texto +
+            ';' +
+            (atrasada ? 'border-left:3px solid ' + CORES.vermelho + ';padding-left:7px;' : '') +
+            '">' +
+            escapeHtml(titulo) +
+            (desc
+              ? '<div style="font-size:9px;color:' +
+                CORES.texto2 +
+                ';margin-top:2px;">' +
+                escapeHtml(String(desc).split('\n')[0].slice(0, 90)) +
+                '</div>'
+              : '') +
+            '</td>'
+          html +=
+            '<td width="10%" style="' +
+            TD +
+            'font-family:' +
+            FONTE +
+            ';font-size:9px;color:' +
+            CORES.texto2 +
+            ';white-space:nowrap;">' +
+            escapeHtml(prioLabel.replace(' (P', ' P').replace(')', '')) +
+            '</td>'
+          html +=
+            '<td width="16%" style="' +
+            TD +
+            'font-family:' +
+            FONTE +
+            ';font-size:9px;color:#495057;white-space:nowrap;">' +
+            escapeHtml(status) +
+            '</td>'
+          // VENC. sem o rótulo "ATRASADA": a data em vermelho já sinaliza
+          html +=
+            '<td width="12%" style="' +
+            TD +
+            'font-family:' +
+            FONTE +
+            ';font-size:9px;white-space:nowrap;color:' +
+            (atrasada ? CORES.vermelho : CORES.texto) +
+            ';">' +
+            escapeHtml(prazoBR || '—') +
+            '</td>'
+          html +=
+            '<td width="10%" style="' +
+            TD +
+            'font-family:' +
+            FONTE +
+            ';font-size:9px;color:' +
+            CORES.texto2 +
+            ';white-space:nowrap;">' +
+            escapeHtml(String(resp).slice(0, 14)) +
+            '</td>'
+          html += '</tr>'
+        }
+
+        html += '</table>'
+
+        secoesPdf[secoesPdf.length - 1] = secoesPdf[secoesPdf.length - 1]
       }
+      html += '</td></tr>'
 
-      html += '</table>'
-
-      secoesPdf[secoesPdf.length - 1] = secoesPdf[secoesPdf.length - 1]
-    }
-    html += '</td></tr>'
-
-    // agrupar secoesPdf por empresa para o PDF
-    const secoesAgrupadas = []
-    for (let g2 = 0; g2 < nomesEmpresas.length; g2++) {
-      const emp2 = nomesEmpresas[g2]
-      const lista2 = gruposEmpresas[emp2] || []
-      const arr = []
-      for (const t2 of lista2) {
-        const st2 = labelStatus(t2.getString('status_kanban') || t2.getString('status'))
-        const pr2 = t2.getString('prazo')
-        const br2 = brData(pr2)
-        const atr2 = Boolean(pr2 && String(pr2).slice(0, 10) < hoje && st2 !== 'Concluído')
-        arr.push({
-          titulo: t2.getString('titulo') || 'Sem título',
-          prioLabel: labelPrioridade(t2.getString('prioridade_p'), t2.getString('prioridade')),
-          status: st2,
-          prazoFormatado: br2 || 'sem prazo',
-          prazoAtrasado: atr2,
-          responsavel: t2.getString('responsavel') || '—',
+      // agrupar secoesPdf por empresa para o PDF
+      const secoesAgrupadas = []
+      for (let g2 = 0; g2 < nomesEmpresas.length; g2++) {
+        const emp2 = nomesEmpresas[g2]
+        const lista2 = gruposEmpresas[emp2] || []
+        const arr = []
+        for (const t2 of lista2) {
+          const st2 = labelStatus(t2.getString('status_kanban') || t2.getString('status'))
+          const pr2 = t2.getString('prazo')
+          const br2 = brData(pr2)
+          const atr2 = Boolean(pr2 && String(pr2).slice(0, 10) < hoje && st2 !== 'Concluído')
+          arr.push({
+            titulo: t2.getString('titulo') || 'Sem título',
+            prioLabel: labelPrioridade(t2.getString('prioridade_p'), t2.getString('prioridade')),
+            status: st2,
+            prazoFormatado: br2 || 'sem prazo',
+            prazoAtrasado: atr2,
+            responsavel: t2.getString('responsavel') || '—',
+          })
+        }
+        secoesAgrupadas.push({
+          num: g2 + 1,
+          empNome: emp2,
+          rotulo: empresaLabel[emp2] || String(emp2).toUpperCase(),
+          tarefas: arr,
         })
       }
-      secoesAgrupadas.push({
-        num: g2 + 1,
-        empNome: emp2,
-        rotulo: empresaLabel[emp2] || String(emp2).toUpperCase(),
-        tarefas: arr,
-      })
-    }
 
-    // ===== BLOCO 6 — RODAPÉ =====
-    html +=
-      '<tr><td style="padding:0 24px;"><div style="height:1px;background:' +
-      CORES.hairline +
-      ';"></div></td></tr>'
-    html += '<tr><td bgcolor="' + CORES.papel + '" style="padding:16px 24px 22px;">'
-    html +=
-      '<p style="margin:0;font-family:' +
-      FONTE +
-      ';font-size:10px;line-height:1.5;color:' +
-      CORES.texto2 +
-      ';">Sistema corporativo de uso restrito. Grupo Extrafruti · Casafruti · FoldBox</p>'
-    html += '</td></tr>'
-    html += '</table></td></tr></table></body></html>'
+      // ===== BLOCO 6 — RODAPÉ =====
+      html +=
+        '<tr><td style="padding:0 24px;"><div style="height:1px;background:' +
+        CORES.hairline +
+        ';"></div></td></tr>'
+      html += '<tr><td bgcolor="' + CORES.papel + '" style="padding:16px 24px 22px;">'
+      html +=
+        '<p style="margin:0;font-family:' +
+        FONTE +
+        ';font-size:10px;line-height:1.5;color:' +
+        CORES.texto2 +
+        ';">Sistema corporativo de uso restrito. Grupo Extrafruti · Casafruti · FoldBox</p>'
+      html += '</td></tr>'
+      html += '</table></td></tr></table></body></html>'
 
-    // texto puro
-    let textoPlano = 'Acompanhamento de Tarefas\n\n'
-    for (const emp of nomesEmpresas) {
-      textoPlano +=
-        '=== ' + (empresaLabel[emp] || emp) + ' (' + gruposEmpresas[emp].length + ') ===\n'
-      for (const t of gruposEmpresas[emp]) {
-        const p = brData(t.getString('prazo'))
+      // texto puro
+      let textoPlano = 'Acompanhamento de Tarefas\n\n'
+      for (const emp of nomesEmpresas) {
         textoPlano +=
-          '  ' +
-          (t.getString('titulo') || '—') +
-          ' | ' +
-          labelStatus(t.getString('status_kanban') || t.getString('status')) +
-          ' | ' +
-          (p || 'sem prazo') +
-          ' | ' +
-          (t.getString('responsavel') || '—') +
-          '\n'
+          '=== ' + (empresaLabel[emp] || emp) + ' (' + gruposEmpresas[emp].length + ') ===\n'
+        for (const t of gruposEmpresas[emp]) {
+          const p = brData(t.getString('prazo'))
+          textoPlano +=
+            '  ' +
+            (t.getString('titulo') || '—') +
+            ' | ' +
+            labelStatus(t.getString('status_kanban') || t.getString('status')) +
+            ' | ' +
+            (p || 'sem prazo') +
+            ' | ' +
+            (t.getString('responsavel') || '—') +
+            '\n'
+        }
+        textoPlano += '\n'
       }
-      textoPlano += '\n'
-    }
+
+      // assunto e saudação DESTE destinatário (antes usavam destinatarios[0])
+      const assunto = 'Acompanhamento de Tarefas — ' + listaFinalTarefas.length + ' tarefa(s)'
+
+      return {
+        html: html,
+        textoPlano: textoPlano,
+        assunto: assunto,
+        nTotal: nTotal,
+        nVencidas: nVencidas,
+        nSemPrazo: nSemPrazo,
+        nEmDia: nEmDia,
+        secoesAgrupadas: secoesAgrupadas,
+        empPrincipal:
+          nomesEmpresas.length === 1
+            ? nomesEmpresas[0]
+            : listaFinalTarefas.length && listaFinalTarefas[0].getString('empresa')
+              ? String(listaFinalTarefas[0].getString('empresa')).trim()
+              : 'Geral',
+      }
+    } // fim de montarConteudo
 
     // ---------- PDF ----------
     // =======================================================================
@@ -1318,23 +1436,8 @@ routerAdd(
       return pdf
     }
 
-    let pdfStr = null
-    try {
-      pdfStr = gerarPdf({
-        nTotal: nTotal,
-        nVencidas: nVencidas,
-        nSemPrazo: nSemPrazo,
-        nEmDia: nEmDia,
-        secoes: secoesAgrupadas,
-        imagensPorEmpresa: imagensPorEmpresa,
-        destNome: String(destinatarios[0].nome || ''),
-        empPrincipal: empPrincipal,
-        hoje: hoje,
-      })
-      marco('PDF gerado: ' + (pdfStr ? pdfStr.length : 0) + ' bytes')
-    } catch (errPdf) {
-      console.warn('[tarefas/enviar] PDF falhou: ' + String(errPdf).slice(0, 180))
-    }
+    // O PDF é gerado DENTRO do laço, por destinatário: cada pessoa recebe um
+    // arquivo com as SUAS tarefas, não o da tela inteira.
 
     // ================================================================
     // ENVIO
@@ -1376,13 +1479,57 @@ routerAdd(
         erros.push({ email: email || '(vazio)', erro: 'E-mail inválido' })
         continue
       }
-      marco('enviando para ' + email)
+
+      // ---- quais tarefas são DESTE destinatário ----
+      // Regra: responsável pelo nome (normalizado) OU id no array `parceiros`.
+      // É a mesma regra que o popover usa para listar as pessoas da tela.
+      const listaDoDestinatario = tarefasDoDestinatario(d)
+      if (!listaDoDestinatario.length) {
+        marco('sem tarefas para ' + email + ' — não envia')
+        erros.push({
+          email: email,
+          erro: 'Nenhuma tarefa no escopo tem esta pessoa como responsável ou parceira',
+          pulado: true,
+        })
+        continue
+      }
+
+      marco('enviando para ' + email + ' (' + listaDoDestinatario.length + ' tarefa(s))')
+
+      let conteudo
+      try {
+        conteudo = montarConteudo(listaDoDestinatario, String(d.nome || ''))
+      } catch (errMont) {
+        console.log('[tarefas/enviar] montar conteudo: ' + String(errMont).slice(0, 180))
+        erros.push({ email: email, erro: 'Falha ao montar o conteúdo: ' + String(errMont) })
+        continue
+      }
+
+      // PDF próprio deste destinatário
+      let pdfStrLocal = null
+      try {
+        pdfStrLocal = gerarPdf({
+          nTotal: conteudo.nTotal,
+          nVencidas: conteudo.nVencidas,
+          nSemPrazo: conteudo.nSemPrazo,
+          nEmDia: conteudo.nEmDia,
+          secoes: conteudo.secoesAgrupadas,
+          imagensPorEmpresa: imagensPorEmpresa,
+          destNome: String(d.nome || ''),
+          empPrincipal: conteudo.empPrincipal,
+          hoje: hoje,
+        })
+        marco('PDF de ' + email + ': ' + (pdfStrLocal ? pdfStrLocal.length : 0) + ' bytes')
+      } catch (errPdf) {
+        console.warn('[tarefas/enviar] PDF falhou: ' + String(errPdf).slice(0, 180))
+      }
+
       let pdfReader = null
       try {
         const anexosMap = {}
-        if (pdfStr) {
+        if (pdfStrLocal) {
           try {
-            const fo = $filesystem.fileFromBytes(pdfStr, pdfNome)
+            const fo = $filesystem.fileFromBytes(pdfStrLocal, pdfNome)
             if (fo && fo.reader) {
               pdfReader = fo.reader.open()
               anexosMap[pdfNome] = pdfReader
@@ -1404,9 +1551,9 @@ routerAdd(
         const msg = new MailerMessage({
           from: { address: senderFallback, name: senderName },
           to: [{ address: email }],
-          subject: assunto,
-          html: html,
-          text: textoPlano,
+          subject: conteudo.assunto,
+          html: conteudo.html,
+          text: conteudo.textoPlano,
           attachments: anexosMap,
           inlineAttachments: inlineMap,
         })
@@ -1444,7 +1591,10 @@ routerAdd(
       enviados_lista: enviados,
       erros: erros,
       total_tarefas: listaFinalTarefas.length,
-      pdf_gerado: !!pdfStr,
+      // `pdfStr` não existe mais no escopo: o PDF é gerado por destinatário.
+      // Informo quantos saíram com anexo.
+      pdf_gerado: enviados.length > 0,
+      tarefas_na_tela: listaFinalTarefas.length,
     })
   },
   $apis.requireAuth(),
