@@ -944,6 +944,24 @@ export default function ControleAcessos() {
           <DialogHeader>
             <DialogTitle>{dialogEditar ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle>
           </DialogHeader>
+          {/* =================================================================
+              18/11/2026 — "CRIAR USUÁRIO NÃO CRIA / PARECE TRAVADO".
+              
+              CAUSA RAIZ: quando o backend recusa (ex.: "E-mail já cadastrado",
+              HTTP 400 — comum ao vincular um parceiro cujo e-mail já tem
+              usuário), o diálogo NÃO fecha e o erro era renderizado apenas na
+              PÁGINA, atrás do modal. O usuário via o botão sem resposta e
+              concluía que travou. Ao cancelar, a lista não tinha o cadastro.
+              
+              CORREÇÃO: o erro passa a aparecer DENTRO do diálogo, acima dos
+              campos, com destaque. O modal continua aberto para correção.
+              ================================================================ */}
+          {erro && (
+            <div className="mx-0 mb-1 p-2.5 rounded-lg bg-red-50 border border-red-200 text-[12.5px] text-red-700 font-medium flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span className="flex-1">{erro}</span>
+            </div>
+          )}
           <div className="grid gap-3 py-2">
             {/* ===== 1) PRIMEIRO CAMPO: vínculo com Parceiros & Contatos =====
                 O parceiro é a FONTE DE VERDADE do cadastro: ao selecioná-lo, a

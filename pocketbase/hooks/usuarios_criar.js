@@ -27,7 +27,15 @@ routerAdd(
     }
     try {
       $app.findAuthRecordByEmail('users', email)
-      return e.badRequestError('E-mail já cadastrado')
+      // 18/11/2026 — mensagem acionável. O caso mais comum é vincular um
+      // parceiro cujo e-mail já tem usuário (ex.: "[ FBX ] Tiago"): a tela
+      // preenche o e-mail do parceiro e o cadastro falha. Sem dizer o que
+      // fazer, parecia "travado".
+      return e.badRequestError(
+        'Já existe um usuário com o e-mail ' +
+          email +
+          '. Para dar acesso a esta pessoa, edite o usuário existente em vez de criar outro.',
+      )
     } catch (_) {}
 
     // Lista de empresas: aceita array novo OU empresa_id isolado (compatibilidade)
