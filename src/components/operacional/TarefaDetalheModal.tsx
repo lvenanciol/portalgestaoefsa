@@ -392,17 +392,18 @@ export function TarefaDetalheModal({
     const clone = [...subs]
     clone[idx] = { ...clone[idx], ok: !clone[idx].ok }
     try {
-      // ARRAY, não string (ver comentário em handleAddSub)
+      // 18/11/2026 — sem getOne de volta: o array `clone` É o estado que
+      // acabamos de gravar. Refazer a leitura só adicionava uma ida à rede
+      // por clique, e a tela já tinha o valor otimista.
       await pb.collection('tarefas').update(detalhe.id, { subtarefas: clone })
-      const upd = await pb.collection('tarefas').getOne(detalhe.id)
-      if (onSubtarefasAtualizadas) onSubtarefasAtualizadas(upd)
+      if (onSubtarefasAtualizadas) onSubtarefasAtualizadas({ ...detalhe, subtarefas: clone })
     } catch (err: any) {
       setSubErro(String(err?.response?.data?.message || err?.message || 'Falha ao atualizar.'))
       console.error('Falha ao atualizar subtarefa:', err)
     } finally {
       setSubSalvando(false)
     }
-  }
+  }  }
 
   /** (2) remove uma subtarefa */
   const handleRemoverSub = async (idx: number) => {

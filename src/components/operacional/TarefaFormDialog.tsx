@@ -54,6 +54,9 @@ export interface TarefaFormData {
   marco_id?: string
   empresa: string
   parceiro_ids: string[]
+  /** 18/11/2026 — subtarefas já na CRIAÇÃO (antes só existiam depois de
+   *  gravar e abrir o detalhe — o dono pediu para criar junto). */
+  subtarefas?: { t: string; ok: boolean }[]
 }
 
 export interface TarefaFormDialogProps {
@@ -227,6 +230,26 @@ export function TarefaFormDialog({
   }, [form.marco_id])
 
   // Salvar novo marco enxuto inline
+  // 18/11/2026 — subtarefas na criação
+  const [novaSubtarefa, setNovaSubtarefa] = useState('')
+
+  function adicionarSubtarefa() {
+    const texto = novaSubtarefa.trim()
+    if (!texto) return
+    setForm((f) => ({
+      ...f,
+      subtarefas: [...(f.subtarefas || []), { t: texto, ok: false }],
+    }))
+    setNovaSubtarefa('')
+  }
+
+  function removerSubtarefa(idx: number) {
+    setForm((f) => ({
+      ...f,
+      subtarefas: (f.subtarefas || []).filter((_x, i) => i !== idx),
+    }))
+  }
+
   const salvarNovoMarcoInline = async () => {
     if (!novoMarcoNome.trim()) {
       setErroNovoMarco('Informe o nome do marco.')
@@ -2443,6 +2466,66 @@ export function TarefaFormDialog({
                 )}
               />
             </div>
+
+            {/* 18/11/2026 — SUBTAREFAS NA CRIAÇÃO.
+                Antes só era possível adicionar subtarefa DEPOIS de gravar e
+                abrir o detalhe da tarefa. Aqui o checklist já nasce junto. */}
+            {!editando && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Subtarefas
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={novaSubtarefa}
+                    onChange={(e) => setNovaSubtarefa(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        adicionarSubtarefa()
+                      }
+                    }}
+                    placeholder="Descreva a subtarefa e pressione Enter"
+                    className="h-9 bg-gray-50 text-xs sm:text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={adicionarSubtarefa}
+                    disabled={!novaSubtarefa.trim()}
+                    className="h-9 px-3 shrink-0"
+                    title="Adicionar subtarefa"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {(form.subtarefas || []).length > 0 && (
+                  <ul className="space-y-1 pt-1">
+                    {(form.subtarefas || []).map((s, i) => (
+                      <li
+                        key={`nova-sub-${i}`}
+                        className="flex items-center gap-2 text-xs rounded-md border border-gray-200 bg-white px-2 py-1.5"
+                      >
+                        <span className="flex-1 text-gray-700 truncate">{s.t}</span>
+                        <button
+                          type="button"
+                          onClick={() => removerSubtarefa(i)}
+                          className="text-gray-400 hover:text-red-600 shrink-0"
+                          title="Remover"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {!(form.subtarefas || []).length && (
+                  <span className="text-[11px] text-gray-400">
+                    Opcional — pode adicionar quantas quiser agora.
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* 4) ANEXOS: linha compacta com ícone de clipe e contador dinâmico */}
             <div className="space-y-2">

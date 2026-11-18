@@ -634,6 +634,21 @@ onRecordAfterUpdateSuccess(function (e) {
       }
     }
 
+    // =====================================================================
+    // 18/11/2026 — LENTIDÃO AO MARCAR SUBTAREFA (7 s por clique)
+    //
+    // CAUSA MEDIDA: um PATCH de subtarefa levava ~7.000 ms, enquanto a mesma
+    // leitura levava 26 ms. O tempo ia todo no envio SÍNCRONO de e-mail
+    // disparado porque `subtarefas` estava entre os campos vigiados — marcar
+    // um item de checklist mandava e-mail para todos os envolvidos.
+    //
+    // REGRA NOVA: subtarefa e anexo são trabalho DENTRO da tarefa, não
+    // "atualização da tarefa" para terceiros. Mudam o registro e o sino fica
+    // silencioso; e-mail só para o que a pessoa precisa saber (título,
+    // descrição, prazo, prioridade, recorrência, empresa).
+    //
+    // O SINO continua registrando a alteração (não custa rede).
+    // =====================================================================
     var camposVigiados = [
       ['titulo', 'título'],
       ['descricao', 'descrição'],
@@ -641,8 +656,6 @@ onRecordAfterUpdateSuccess(function (e) {
       ['prioridade_p', 'prioridade'],
       ['recorrencia', 'recorrência'],
       ['empresa', 'empresa'],
-      ['subtarefas', 'subtarefas'],
-      ['anexos', 'anexos'],
     ]
 
     var mudancas = []

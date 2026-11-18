@@ -778,6 +778,21 @@ export default function TarefasKanbanPage() {
       ),
     )
 
+    // =====================================================================
+    // 18/11/2026 — LENTIDÃO AO TROCAR STATUS.
+    //
+    // CAUSA 1 (servidor): o PATCH levava ~7 s porque o hook de notificação
+    // enviava e-mail SÍNCRONO a cada alteração. Corrigido no hook (subtarefa
+    // e anexo não disparam mais e-mail).
+    //
+    // CAUSA 2 (tela): aqui havia `await carregar()` — a RECARGA DA PÁGINA
+    // INTEIRA (setLoading(true) → getFullList → remount da lista). O usuário
+    // já viu o cartão mudar de coluna (update otimista acima) e então a tela
+    // inteira piscava e travava esperando rede de novo.
+    //
+    // Agora: nada de recarregar. O estado já está correto otimisticamente.
+    // Só em caso de ERRO voltamos ao estado do servidor para não mentir.
+    // =====================================================================
     try {
       await pb.collection('tarefas').update(t.id, {
         status_kanban: novo,
@@ -788,9 +803,8 @@ export default function TarefasKanbanPage() {
               ? 'em_andamento'
               : 'pendente',
       })
-      await carregar()
     } catch (e) {
-      setErro(String(e))
+      setErro('Não foi possível mudar o status: ' + String(e))
       await carregar()
     }
   }
@@ -808,6 +822,7 @@ export default function TarefasKanbanPage() {
       vinculo_id: '',
       empresa: empresaFiltroAtiva !== 'todas' ? empresaFiltroAtiva : '',
       parceiro_ids: [],
+      subtarefas: [],
     })
     setArquivosNovos([])
     setAnexosExistentes([])
@@ -1364,6 +1379,12 @@ export default function TarefasKanbanPage() {
         })
       } else {
         fd.append('criado_por', user?.email || '')
+        // 18/11/2026 — subtarefas criadas junto com a tarefa.
+        // O campo é JSON: enviar ARRAY (não string), senão a subtarefa
+        // "desaparece" na leitura seguinte.
+        if (Array.isArray(form.subtarefas) && form.subtarefas.length > 0) {
+          fd.append('subtarefas', JSON.stringify(form.subtarefas))
+        }
         const novaTarefa = await pb.collection('tarefas').create(fd)
         tarefaGravadaId = novaTarefa.id
         toast({
