@@ -36,6 +36,22 @@ import { Ll5Provider } from '@/ll5/Ll5Context'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 
+// FASE 0 — módulo /pen (Plano Estratégico). Shell próprio, independente do
+// Layout principal: sidebar escura fixa, topbar com filtro global e telas
+// vazias nesta fase.
+import PenShell from './pen/PenShell'
+import PenCockpitPage from './pen/pages/PenCockpitPage'
+import PenComponentsPage from './pen/pages/PenComponentsPage'
+import {
+  PenNortePage,
+  PenDiagnosticoPage,
+  PenIshikawaPage,
+  PenBscPage,
+  PenCincoW2hPage,
+  PenAcompanhamentoPage,
+  PenGovernancaPage,
+} from './pen/pages/PenTelasVazias'
+
 // Fase 3 — Rotas protegidas por autenticação; /login pública.
 
 const AppRoutes = () => {
@@ -52,6 +68,29 @@ const AppRoutes = () => {
           {RESET_URL}) e a rota não existia — o link caía no NotFound. Quem chega
           aqui ainda não tem sessão, por isso NÃO fica dentro do ProtectedRoute. */}
       <Route path="/reset-password" element={<ResetPassword />} />
+      {/* ============ FASE 0 — MÓDULO /pen (Plano Estratégico) ============
+          Fica DENTRO do ProtectedRoute (exige sessão) mas FORA do Layout:
+          o módulo tem shell próprio com sidebar escura e topbar, conforme a
+          especificação da fundação. As 9 rotas abaixo são o Portão 0:
+          8 telas + a vitrine de componentes. */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <PenShell />
+          </ProtectedRoute>
+        }
+      >
+        <Route path="/pen" element={<PenCockpitPage />} />
+        <Route path="/pen/components" element={<PenComponentsPage />} />
+        <Route path="/pen/norte" element={<PenNortePage />} />
+        <Route path="/pen/diagnostico" element={<PenDiagnosticoPage />} />
+        <Route path="/pen/ishikawa" element={<PenIshikawaPage />} />
+        <Route path="/pen/bsc" element={<PenBscPage />} />
+        <Route path="/pen/5w2h" element={<PenCincoW2hPage />} />
+        <Route path="/pen/acompanhamento" element={<PenAcompanhamentoPage />} />
+        <Route path="/pen/governanca" element={<PenGovernancaPage />} />
+      </Route>
+
       <Route
         element={
           <ProtectedRoute>
