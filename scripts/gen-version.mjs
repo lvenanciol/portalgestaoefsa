@@ -27,9 +27,21 @@ const raiz = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const pkgPath = resolve(raiz, 'package.json')
 const destino = resolve(raiz, 'src/lib/app-version.ts')
 
+// ORDEM REAL MEDIDA (18/11/2026, build 0.0.682): durante o prebuild o
+// package.json ainda trazia 0.0.681 — o Skip incrementa a versão DEPOIS de
+// rodar o prebuild e antes de fechar o commit. Prova: este script gerou
+// 0.0.681, e o apply_changes devolveu 0.0.682.
+//
+// Portanto a versão do build que está saindo é `package.json + 1 patch`.
+// É a mesma regra que eu aplicava à mão, agora dentro do script — só que
+// automática e sem depender de eu lembrar.
 let versao = '0.0.0'
 try {
-  versao = String(JSON.parse(readFileSync(pkgPath, 'utf8')).version || '0.0.0')
+  const bruta = String(JSON.parse(readFileSync(pkgPath, 'utf8')).version || '0.0.0')
+  const p = bruta.split('.').map((n) => parseInt(n, 10) || 0)
+  while (p.length < 3) p.push(0)
+  p[2] = p[2] + 1
+  versao = p.join('.')
 } catch (e) {
   console.warn('[gen-version] falha ao ler package.json: ' + e.message)
 }
@@ -66,7 +78,7 @@ try {
 }
 
 if (atual === conteudo) {
-  console.log(`[gen-version] sem mudanca (v${versao})`)
+  console.log(`[gen-version] sem mudanca para v${versao} (ja correto)`)
 } else {
   writeFileSync(destino, conteudo, 'utf8')
   console.log(`[gen-version] escrito: v${versao}${hash ? ' (' + hash + ')' : ''}`)
