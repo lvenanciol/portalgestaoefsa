@@ -118,12 +118,16 @@ const fmtDataCurta = (s?: string) => {
   const bruto = String(s)
   const d = bruto.slice(0, 10).split('-')
   const dataBR = d.length === 3 ? `${d[2]}/${d[1]}` : bruto
+  // 18/11/2026 — meia-noite UTC é convenção de "dia inteiro", não horário:
+  // converter para BRT mostraria "21:00" do dia anterior. Só exibe hora
+  // quando existe hora de verdade gravada.
+  const somenteData = /[T ]00:00(:00)?(\.0+)?Z?$/.test(bruto) || bruto.length === 10
+  if (somenteData) return dataBR
   try {
     const dt = new Date(bruto.includes('T') ? bruto : bruto.replace(' ', 'T'))
     if (isNaN(dt.getTime())) return dataBR
     const hh = dt.getHours()
     const mm = dt.getMinutes()
-    if (hh === 0 && mm === 0) return dataBR
     return `${dataBR} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
   } catch {
     return dataBR

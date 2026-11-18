@@ -112,14 +112,18 @@ const fmtData = (s?: string) => {
   const bruto = String(s)
   const d = bruto.slice(0, 10).split('-')
   const dataBR = d.length === 3 ? `${d[2]}/${d[1]}` : bruto
+  // 18/11/2026 — DEFEITO CORRIGIDO: tarefas SEM hora (gravadas como
+  // "00:00:00.000Z") apareciam como "21:00" do dia anterior em BRT, porque
+  // eu convertia a meia-noite UTC para o fuso local. Meia-noite UTC aqui é
+  // convenção de "dia inteiro", não um horário — nesse caso mostro só a data.
+  // Hora de verdade (ex.: 19:45Z = 16:45 BRT) é convertida normalmente.
+  const somenteData = /[T ]00:00(:00)?(\.0+)?Z?$/.test(bruto) || bruto.length === 10
+  if (somenteData) return dataBR
   try {
-    // Interpreta em UTC quando a string vem do backend e converte para o
-    // fuso do usuário; strings locais ("2026-11-19T14:30") seguem o fuso.
     const dt = new Date(bruto.includes('T') ? bruto : bruto.replace(' ', 'T'))
     if (isNaN(dt.getTime())) return dataBR
     const hh = dt.getHours()
     const mm = dt.getMinutes()
-    if (hh === 0 && mm === 0) return dataBR
     return `${dataBR} ${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
   } catch {
     return dataBR
