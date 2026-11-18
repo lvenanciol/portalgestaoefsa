@@ -10,20 +10,7 @@ import { PenTelaVazia } from './PenTelaVazia'
 // 2.2 — PenNortePage saiu daqui: tem arquivo próprio (PenNortePage.tsx).
 // A tela vazia era o que aparecia na rota /pen/norte antes da fase 2.2.
 
-export function PenDiagnosticoPage() {
-  return (
-    <PenTelaVazia
-      titulo="Diagnóstico"
-      descricao="Situação atual por frente, com evidência."
-      recebe={[
-        'As 6 frentes de diagnóstico',
-        'Indicadores de partida por empresa',
-        'Gargalos identificados e evidências',
-        'Semáforo por frente',
-      ]}
-    />
-  )
-}
+// 2.3 — PenDiagnosticoPage saiu daqui: tem arquivo próprio.
 
 export function PenIshikawaPage() {
   return (

@@ -44,8 +44,9 @@ import PenCockpitPage from './pen/pages/PenCockpitPage'
 import PenComponentsPage from './pen/pages/PenComponentsPage'
 // 2.2 — Norte Estratégico implementado em arquivo próprio
 import PenNortePage from './pen/pages/PenNortePage'
+// 2.3 — Diagnóstico de Ambiente (somente leitura)
+import PenDiagnosticoPage from './pen/pages/PenDiagnosticoPage'
 import {
-  PenDiagnosticoPage,
   PenIshikawaPage,
   PenBscPage,
   PenCincoW2hPage,

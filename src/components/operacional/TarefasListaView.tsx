@@ -272,9 +272,26 @@ export function TarefasListaView({
   }>
 
   // ÚNICA fonte de geometria: cabeçalho e linha usam esta string.
-  const template = colunas.map((c) => `${larguras[c.key] || c.largura}px`).join(' ')
+  //
+  // 18/11/2026 — DEFEITO (b): "coluna Ações e conteúdo fora do container".
+  // CAUSA: todas as colunas eram px fixos. Somadas passavam da largura
+  // disponível, então o grid estourava e as ÚLTIMAS colunas (Ações) ficavam
+  // fora da área visível — o usuário via o cabeçalho "Ações" cortado.
+  //
+  // CORREÇÃO: a coluna Tarefa passa a ser elástica — `minmax(<largura>, 1fr)`.
+  // Ela absorve a sobra e, quando falta espaço, encolhe até o mínimo. As
+  // demais ficam em px (precisam do valor exato para ordenar/medir). Assim o
+  // grid sempre cabe no container, e a barra de rolagem só aparece se a soma
+  // dos mínimos realmente passar da tela.
+  const template = colunas
+    .map((c) => {
+      const w = larguras[c.key] || c.largura
+      return c.key === 'titulo' ? `minmax(${c.min}px, 1fr)` : `${w}px`
+    })
+    .join(' ')
   const larguraMin =
-    colunas.reduce((s, c) => s + (larguras[c.key] || c.largura), 0) + 12 * (colunas.length - 1)
+    colunas.reduce((s, c) => s + (c.key === 'titulo' ? c.min : larguras[c.key] || c.largura), 0) +
+    12 * (colunas.length - 1)
 
   const porStatus = GRUPOS.reduce<Record<string, any[]>>((acc, g) => {
     acc[g.key] = itens
