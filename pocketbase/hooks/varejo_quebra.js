@@ -270,6 +270,8 @@ routerAdd(
     }
 
     // composição (só quando a loja é informada — mantém a resposta pequena)
+    let qtdProdutos = 0
+    let qtdSemInv = 0
     if (lojaFiltro) {
       const det = rodar(sqlProduto)
       if (det.erro) falhas.composicao = det.erro
@@ -310,12 +312,10 @@ routerAdd(
       for (const L of lojas) L.produtos = produtos
       // transparência: quantos itens do detalhe não têm nenhuma ponta de
       // inventário (contribuem em R$, mas o % deles não é confiável)
-      const semInv = produtos.filter((p) => p.sem_inventario).length
-      resp.cobertura_produtos = {
-        total: produtos.length,
-        com_inventario: produtos.length - semInv,
-        sem_inventario: semInv,
-      }
+      qtdSemInv = produtos.filter(function (p) {
+        return p.sem_inventario
+      }).length
+      qtdProdutos = produtos.length
     }
 
     const resp = {
@@ -323,6 +323,13 @@ routerAdd(
       periodo: 'Mês ' + mm + '/' + ano,
       cobertura: { lojas_com_quebra: lojas.length },
       lojas: lojas,
+    }
+    if (lojaFiltro && qtdProdutos) {
+      resp.cobertura_produtos = {
+        total: qtdProdutos,
+        com_inventario: qtdProdutos - qtdSemInv,
+        sem_inventario: qtdSemInv,
+      }
     }
     if (Object.keys(falhas).length) {
       resp.falhas = Object.keys(falhas).map(function (k) {
