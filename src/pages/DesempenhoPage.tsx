@@ -1999,6 +1999,80 @@ export default function DesempenhoPage() {
               depende da contagem de inventário (AD_ITEINVENTARIO) — nada é estimado.
             </div>
           )}
+          {/* 19/11/2026 — NÍVEL CANAL ACIMA DA REDE.
+              Pedido do dono: CANAL → REDE → BANDEIRA → LOJA → ITEM, com
+              totalizado (itens, R$, % quebra) em cada nível.
+              A quebra por inventário só existe para o VAREJO: a contagem é por
+              loja (AD_CABINVENTARIO.CODPARC). Atacado e distribuição não têm
+              inventário por loja nesta base, então o nível CANAL mostra apenas
+              Varejo com os totais reais, em vez de inventar os outros dois. */}
+          {(() => {
+            const chCanal = 'qr:canal'
+            const abCanal = drillAberto.includes(chCanal)
+            const totItens = grupos.reduce(
+              (a, g) =>
+                a +
+                g.bandeiras.reduce(
+                  (b, bd) =>
+                    b +
+                    bd.lojas.reduce(
+                      (c, l) =>
+                        c + ((itensCarregados[String(l.codparc)] || []).length || l.itens || 0),
+                      0,
+                    ),
+                  0,
+                ),
+              0,
+            )
+            const totValor = grupos.reduce(
+              (a, g) =>
+                a +
+                g.bandeiras.reduce(
+                  (b, bd) =>
+                    b +
+                    bd.lojas.reduce(
+                      (c, l) =>
+                        c +
+                        ((itensCarregados[String(l.codparc)] || []) as any[]).reduce(
+                          (d2, x: any) => d2 + (Number(x.valor) || 0),
+                          0,
+                        ),
+                      0,
+                    ),
+                  0,
+                ),
+              0,
+            )
+            return (
+              <div className="mb-1">
+                <button
+                  type="button"
+                  onClick={() => alternarDrill(chCanal)}
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left"
+                  style={{ background: '#dbe7ee' }}
+                >
+                  <span
+                    className="inline-flex items-center justify-center h-4 w-4 rounded border text-[11px] font-bold"
+                    style={{ borderColor: T.border, color: T.muted }}
+                  >
+                    {abCanal ? '−' : '+'}
+                  </span>
+                  <span className="text-[12px] font-bold" style={{ color: T.text }}>
+                    Varejo (Redes)
+                  </span>
+                  <span className="text-[10px] ml-auto tabular-nums" style={{ color: T.muted }}>
+                    {totItens} itens · {brl(totValor)}
+                  </span>
+                </button>
+                {abCanal && (
+                  <p className="ml-6 px-2 py-1 text-[10px]" style={{ color: T.muted }}>
+                    Quebra por inventário existe apenas para o varejo (contagem por loja). Atacado e
+                    distribuição não têm inventário por loja no Sankhya.
+                  </p>
+                )}
+              </div>
+            )
+          })()}
           {grupos.map((g) => {
             const chR = 'qr:' + g.rede
             const abR = drillAberto.includes(chR)
