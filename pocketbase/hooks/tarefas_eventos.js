@@ -718,7 +718,13 @@ onRecordAfterCreateSuccess(function (e) {
       r.set('usuario_email', dest.email || '')
       r.set('titulo', String(dados.titulo).slice(0, 250))
       r.set('mensagem', String(dados.mensagem).slice(0, 2000))
-      r.set('tipo', 'tarefa_chat')
+      // 19/11/2026 — o select de `notificacoes.tipo` aceita apenas
+      // tarefa_status | tarefa_atribuicao | tarefa_triagem | sistema.
+      // Eu gravava 'tarefa_chat' e o PocketBase rejeitava a gravação
+      // ("tipo: Invalid value tarefa_chat") — o sino do chat nunca entrava.
+      // Uso 'sistema' (valor válido); o vínculo com a tarefa segue em
+      // `tarefa_id` + `rota`.
+      r.set('tipo', 'sistema')
       r.set('tarefa_id', String(dados.tarefa_id || ''))
       r.set('rota', '/tarefas')
       r.set('autor_nome', dados.autor_nome || '')
