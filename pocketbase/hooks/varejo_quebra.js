@@ -298,8 +298,20 @@ routerAdd(
       itensPorLoja[cpDet].push({
         codprod: n(v(r, 1)),
         produto: v(r, 2) || 'Produto ' + String(v(r, 1)),
+        // 19/11/2026 — a coluna "Vendas" do popup aparecia VAZIA ("—") porque
+        // o front lê `it.vendas` e o endpoint mandava `qtd_vendas`.
+        // Mantenho os dois nomes: `vendas` para a tela e `qtd_vendas` para
+        // quem já consome a API.
         qtd_vendas: n(v(r, 3)) || 0,
+        vendas: n(v(r, 3)) || 0,
         vlr_venda: n(v(r, 4)) || 0,
+        // % Quebra pela fórmula pedida pelo dono:
+        //   % quebra = QTD QUEBRA / (EI + RECEBIDO - EF)
+        perc_quebra_estoque: (function () {
+          const base = eiV + (n(v(r, 6)) || 0) - efV
+          if (!(base > 0)) return null
+          return Number(((qtdQuebra / base) * 100).toFixed(2))
+        })(),
         ei: eiV,
         recebido: n(v(r, 6)) || 0,
         ef: efV,

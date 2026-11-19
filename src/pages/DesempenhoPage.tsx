@@ -1935,16 +1935,66 @@ export default function DesempenhoPage() {
                                 {abL && itens.length > 0 && (
                                   <table className="ml-6 my-1 w-[calc(100%-1.5rem)] text-[11px]">
                                     <thead>
+                                      {/* 19/11/2026 — ORIGEM DO DADO EM CADA COLUNA.
+                                          O dono pediu tooltip no cabeçalho: quem lê a
+                                          tabela precisa saber de que tabela veio o número
+                                          e como ele é calculado, sem adivinhar. */}
                                       <tr style={{ color: T.muted }}>
                                         <th className="text-left font-semibold py-0.5">Produto</th>
-                                        <th className="text-right font-semibold">EI</th>
-                                        <th className="text-right font-semibold">Recebido</th>
-                                        <th className="text-right font-semibold">EF</th>
-                                        <th className="text-right font-semibold">Vendas</th>
-                                        <th className="text-right font-semibold">Consumo</th>
-                                        <th className="text-right font-semibold">Qtd Quebra</th>
-                                        <th className="text-right font-semibold">Custo Unit</th>
-                                        <th className="text-right font-semibold">Valor Quebra</th>
+                                        <th
+                                          className="text-right font-semibold cursor-help"
+                                          title="Estoque Inicial — AD_CABINVENTARIO + AD_ITEINVENTARIO, último inventário fechado do produto ANTES do mês. Produto não contado = 0."
+                                        >
+                                          EI
+                                        </th>
+                                        <th
+                                          className="text-right font-semibold cursor-help"
+                                          title="Recebido — TGFCAB + TGFITE + TGFTOP (TIPMOV V/D), notas liberadas no mês. Transferência de entrada menos a de saída."
+                                        >
+                                          Recebido
+                                        </th>
+                                        <th
+                                          className="text-right font-semibold cursor-help"
+                                          title="Estoque Final — último inventário fechado do produto DENTRO do mês. Produto não contado = 0."
+                                        >
+                                          EF
+                                        </th>
+                                        <th
+                                          className="text-right font-semibold cursor-help"
+                                          title="Vendas — AD_VENDASPLV (SUM(QTDNEG) por loja e produto) no mês. É a mesma base do Power BI Acompanhamento Varejo."
+                                        >
+                                          Vendas
+                                        </th>
+                                        <th
+                                          className="text-right font-semibold cursor-help"
+                                          title="Consumo — AD_CABCONSUMO + AD_ITECONSUMO (quebra declarada/baixa interna) no mês."
+                                        >
+                                          Consumo
+                                        </th>
+                                        <th
+                                          className="text-right font-semibold cursor-help"
+                                          title="Qtd Quebra = (EI + Recebido − EF) − Vendas − Consumo. Pode ficar negativa quando o recebimento não cobre a venda (transferência não lançada)."
+                                        >
+                                          Qtd Quebra
+                                        </th>
+                                        <th
+                                          className="text-right font-semibold cursor-help"
+                                          title="% Quebra = Qtd Quebra ÷ (EI + Recebido − EF). É a base de estoque disponível. Vazio quando a base é zero."
+                                        >
+                                          % Quebra
+                                        </th>
+                                        <th
+                                          className="text-right font-semibold cursor-help"
+                                          title="Custo Unit — AD_ITEINVENTARIO.CUSTO do último inventário. Reserva: preço médio de venda do mês quando o custo do inventário é zero."
+                                        >
+                                          Custo Unit
+                                        </th>
+                                        <th
+                                          className="text-right font-semibold cursor-help"
+                                          title="Valor Quebra = Qtd Quebra × Custo Unit."
+                                        >
+                                          Valor Quebra
+                                        </th>
                                       </tr>
                                     </thead>
                                     <tbody>
@@ -2005,6 +2055,17 @@ export default function DesempenhoPage() {
                                             >
                                               {n(it.qtd_quebra, 0)}
                                             </td>
+                                            {/* % Quebra = Qtd Quebra / (EI + Recebido − EF),
+                                                a fórmula pedida pelo dono em 19/11. */}
+                                            <td
+                                              className="text-right tabular-nums"
+                                              style={{ color: T.text }}
+                                            >
+                                              {it.perc_quebra_estoque === null ||
+                                              it.perc_quebra_estoque === undefined
+                                                ? '—'
+                                                : pct(it.perc_quebra_estoque)}
+                                            </td>
                                             <td
                                               className="text-right tabular-nums"
                                               style={{ color: T.muted }}
@@ -2036,7 +2097,11 @@ export default function DesempenhoPage() {
           className="px-4 py-2 border-t text-[10px] flex items-center justify-between"
           style={{ borderColor: T.border, color: T.muted }}
         >
-          <span>Fonte: AD_CABINVENTARIO + AD_ITEINVENTARIO · custo médio por produto</span>
+          <span>
+            Fontes: AD_CABINVENTARIO + AD_ITEINVENTARIO (EI/EF e custo) · TGFCAB + TGFITE + TGFTOP
+            (recebido) · AD_VENDASPLV (vendas) · AD_CABCONSUMO + AD_ITECONSUMO (consumo). Passe o
+            mouse no cabeçalho de cada coluna para ver a origem.
+          </span>
           <button type="button" onClick={() => setDrillQuebra(false)} className="underline">
             fechar
           </button>
