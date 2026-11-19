@@ -75,7 +75,13 @@ routerAdd(
         // cache antigo (com os números errados) continua sendo servido por até
         // 7 dias. Foi o que aconteceu em 13/11: a tela mostrava "cache 350 min"
         // com o faturamento de 59,6 Mi de uma versão anterior do cálculo.
-        if (p && p.schema_v === 5 && idade >= 0 && idade < TTL_STALE) {
+        // 19/11/2026 — SUBIU PARA 6: a fonte de cupons passou de
+        // AD_TICKETMEDIOCR (proxy por slot, que superestimava) para
+        // AD_TKTMEDLOJA (SUM(QTDTICKET), a query do Power BI). Sem subir a
+        // chave, o cache de até 7 dias continuaria servindo o número antigo
+        // DEPOIS do deploy — o dono veria o card "igual" e concluiria que
+        // nada foi corrigido.
+        if (p && p.schema_v === 6 && idade >= 0 && idade < TTL_STALE) {
           return e.json(
             200,
             Object.assign({}, p, {
@@ -991,7 +997,7 @@ routerAdd(
     }
 
     const out = {
-      schema_v: 5,
+      schema_v: 6,
       ok: true,
       aba: aba,
       periodo: 'Mês ' + mm + '/' + ano,
