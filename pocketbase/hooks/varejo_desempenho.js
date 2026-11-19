@@ -85,7 +85,10 @@ routerAdd(
         // (649.929) para NOMEPARC '%-CR -%' (354.830, o número do BI).
         // Sem subir a chave, o cache de até 7 dias serviria o ticket de
         // R$ 41,55 DEPOIS do deploy.
-        if (p && p.schema_v === 7 && idade >= 0 && idade < TTL_STALE) {
+        // 19/11/2026 — SUBIU PARA 8: ticket passou a dividir o VALOR DO CUPOM
+        // (AD_TKTMEDLOJA) pelos cupons da mesma tabela. Sem subir a chave, o
+        // cache serviria o ticket de R$ 76,11 depois do deploy.
+        if (p && p.schema_v === 8 && idade >= 0 && idade < TTL_STALE) {
           return e.json(
             200,
             Object.assign({}, p, {
@@ -509,10 +512,23 @@ routerAdd(
         BANDEIRA_CUPOM,
     )
     const cuponsBI = n(v(cupomRowsPlv[0] || null, 0))
+    // 19/11/2026 — TICKET TEM DE SAIR DA MESMA BASE DO CUPOM.
+    //
+    // MEDIDO out/2026 (Carone, bandeira -CR-):
+    //   AD_TKTMEDLOJA -> 354.830 cupons e R$ 16.030.819
+    //   AD_VENDASPLV  -> R$ 27.009.809  (base diferente, inclui mais coisa)
+    //
+    // Eu dividia a venda da AD_VENDASPLV pelos cupons da AD_TKTMEDLOJA:
+    // ticket R$ 76,11. O BI usa valor ÷ cupons da MESMA tabela:
+    //   R$ 16.030.819 ÷ 354.830 = **R$ 45,18** — o número que o dono citou.
+    // Ticket é venda POR CUPOM: numerador e denominador têm de vir do
+    // mesmo universo, senão a razão não significa nada.
+    const valorCupomBI = n(v(cupomRowsPlv[0] || null, 1))
     if (cuponsBI) {
       plvCupons = cuponsBI
       cupomFonte = 'AD_TKTMEDLOJA (SUM(QTDTICKET) — mesma query do Power BI)'
       cupomObs = ''
+      if (valorCupomBI && valorCupomBI > 0) plvVenda = valorCupomBI
     } else {
       cupomFonte = 'pendente'
       cupomObs = 'AD_TKTMEDLOJA não retornou dados para o período/recorte.'
@@ -1016,7 +1032,7 @@ routerAdd(
     }
 
     const out = {
-      schema_v: 7,
+      schema_v: 8,
       ok: true,
       aba: aba,
       periodo: 'Mês ' + mm + '/' + ano,
