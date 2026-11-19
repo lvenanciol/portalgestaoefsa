@@ -199,6 +199,42 @@ routerAdd(
       )
     }
 
+    // ==================================================================
+    // CACHE (19/11/2026) — item 4 do dono: "o sistema está lento".
+    //
+    // MEDIDO: a composição por canal leva ~20 s SEM cache (são 6 consultas
+    // sequenciais ao DbExplorer: atacado, distribuição, varejo, ano anterior
+    // e metas). Com cache o mesmo painel responde em milissegundos.
+    // A chave inclui a metrica e o período; o payload guarda schema_v para
+    // invalidar quando o cálculo muda (mesma regra do varejo_desempenho).
+    // ==================================================================
+    const chaveCache = 'canais_v1_' + metrica + '_' + ano + '_' + mm
+    if (String(q.forcar || '') !== '1') {
+      try {
+        const rec = $app.findFirstRecordByFilter('sankhya_cache', 'chave = {:c}', { c: chaveCache })
+        const ge = rec.getString('gerado_em') || ''
+        const idade = ge ? new Date().getTime() - new Date(ge).getTime() : 1e12
+        let p = {}
+        try {
+          p = JSON.parse(rec.getString('payload') || '{}')
+        } catch (_) {
+          p = {}
+        }
+        // 6 h de validade: o mês fechado não muda; o mês corrente atualiza
+        if (p && p.schema_canais === 1 && idade >= 0 && idade < 6 * 60 * 60 * 1000) {
+          return e.json(
+            200,
+            Object.assign({}, p, {
+              do_cache: true,
+              cache_idade_min: Math.round(idade / 60000),
+            }),
+          )
+        }
+      } catch (_) {
+        /* sem cache */
+      }
+    }
+
     const out = { ok: true, periodo: 'Mês ' + mm + '/' + ano, metrica: metrica, canais: [] }
 
     // ==================================================================
@@ -439,6 +475,29 @@ routerAdd(
     if (di.erro) falhas.push('distribuicao: ' + di.erro)
     if (va.erro) falhas.push('varejo: ' + va.erro)
     if (falhas.length) out.falhas = falhas
+
+    // grava o payload para a próxima chamada (o painel reabre instantâneo)
+    try {
+      out.schema_canais = 1
+      const col = $app.findCollectionByNameOrId('sankhya_cache')
+      let rec = null
+      try {
+        rec = $app.findFirstRecordByFilter('sankhya_cache', 'chave = {:c}', { c: chaveCache })
+      } catch (_) {
+        rec = null
+      }
+      if (!rec) {
+        rec = new Record(col)
+        rec.set('chave', chaveCache)
+      }
+      rec.set('payload', JSON.stringify(out))
+      rec.set('gerado_em', new Date().toISOString())
+      $app.save(rec)
+    } catch (errC) {
+      try {
+        console.log('[varejo/canais] cache: ' + String(errC).slice(0, 120))
+      } catch (_) {}
+    }
 
     try {
       console.log(
