@@ -439,23 +439,49 @@ routerAdd(
     // AD_TKTMEDLOJA já traz QTDTICKET pronto e funciona no conector.
     // ==================================================================
     // recorte por bandeira, igual ao resto da tela
-    const PLV_REDE_CUPOM = ehCarone
-      ? ' AND PLV.CODCENCUS >= 10106000 AND PLV.CODCENCUS < 10107000 '
+    // ==================================================================
+    // 19/11/2026 — CAUSA DOS CARDS CUPOM E TICKET ZERADOS.
+    //
+    // AD_TKTMEDLOJA tem APENAS 5 colunas: CODPARC, DTTKT, HORA,
+    // QTDTICKET, VALOR. **Não existe CODCENCUS nela.**
+    // Meu recorte de rede fazia `AND CODCENCUS >= 10105000...` (depois de
+    // remover o prefixo PLV.) — coluna inexistente o Oracle rejeita a query
+    // inteira, o `lista()` devolvia vazio e o card caía em "pendente"/zero,
+    // sem erro visível.
+    //
+    // Correção: o recorte de rede é feito pelo CENTRO DE CUSTO do PARCEIRO,
+    // via JOIN em TGFPAR (AD_CODCENCUS), e a bandeira pelo NOMEPARC.
+    // ==================================================================
+    const filtroCencusCupom = ehCarone
+      ? ' AND P.AD_CODCENCUS >= 10106000 AND P.AD_CODCENCUS < 10107000 '
       : ehCoutinho
-        ? ' AND PLV.CODCENCUS >= 10105000 AND PLV.CODCENCUS < 10106000 '
-        : ' AND PLV.CODCENCUS >= 10105000 AND PLV.CODCENCUS < 10107000 '
+        ? ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10106000 '
+        : ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 '
+    // bandeira por NOMEPARC (o PLV_BANDEIRA usa PLV.CODPARC; aqui é TKT.CODPARC)
+    let BANDEIRA_CUPOM = ''
+    if (tipoGrupo === 'carone') BANDEIRA_CUPOM = " AND P.NOMEPARC LIKE '%-CR -%' "
+    else if (tipoGrupo === 'sempre_tem') BANDEIRA_CUPOM = " AND P.NOMEPARC LIKE '%-ST -%' "
+    else if (tipoGrupo === 'extrabom') BANDEIRA_CUPOM = " AND P.NOMEPARC LIKE '%-EB -%' "
+    else if (tipoGrupo === 'atacado') BANDEIRA_CUPOM = " AND P.NOMEPARC LIKE '%-ATV -%' "
+    if (lojaFiltro) BANDEIRA_CUPOM += ' AND TKT.CODPARC = ' + Number(lojaFiltro) + ' '
+    if (supervisor && supervisor.indexOf('@') < 0)
+      BANDEIRA_CUPOM +=
+        ' AND TKT.CODPARC IN (SELECT CODPARC FROM SANKHYA.TGFPAR WHERE AD_SUPERVISORLOJA = ' +
+        Number(supervisor) +
+        ') '
+
     const cupomRowsPlv = lista(
       'cupom_bi',
       'SELECT NVL(SUM(TKT.QTDTICKET),0) CUPONS, NVL(SUM(TKT.VALOR),0) VLR ' +
         'FROM SANKHYA.AD_TKTMEDLOJA TKT ' +
+        'JOIN SANKHYA.TGFPAR P ON P.CODPARC=TKT.CODPARC ' +
         'WHERE TKT.DTTKT >= ' +
         INI +
         ' AND TKT.DTTKT < ' +
         FIM +
-        ' AND TKT.CODPARC IN (' +
-        'SELECT CODPARC FROM SANKHYA.TGFPAR WHERE AD_SELECIONADO IN (1,2) AND CODPARC NOT IN (36,37,6959)) ' +
-        PLV_REDE_CUPOM.replace(/PLV\./g, '') +
-        PLV_BANDEIRA.replace(/PLV\./g, ''),
+        ' AND P.AD_SELECIONADO IN (1,2) AND TKT.CODPARC NOT IN (36,37,6959) ' +
+        filtroCencusCupom +
+        BANDEIRA_CUPOM,
     )
     const cuponsBI = n(v(cupomRowsPlv[0] || null, 0))
     if (cuponsBI) {
