@@ -1993,10 +1993,14 @@ export default function DesempenhoPage() {
           </button>
         </div>
         <div className="flex-1 overflow-auto p-3">
-          {itensQuebra.length === 0 && (
+          {/* 19/11/2026 — a mensagem antiga aparecia SEMPRE porque testava
+              `quebra_produtos`, que agora vem vazio (a composição é carregada
+              sob demanda, por loja). Aqui o aviso só aparece quando a grade
+              realmente não tem loja com quebra. */}
+          {grupos.length === 0 && (
             <div className="px-3 py-6 text-center text-[12px]" style={{ color: T.muted }}>
-              Sem inventário lançado para o período e filtros selecionados. A composição por produto
-              depende da contagem de inventário (AD_ITEINVENTARIO) — nada é estimado.
+              Nenhuma loja com quebra apurada no período e filtros selecionados. A composição por
+              produto depende da contagem de inventário (AD_ITEINVENTARIO) — nada é estimado.
             </div>
           )}
           {/* 19/11/2026 — NÍVEL CANAL ACIMA DA REDE.
@@ -2076,8 +2080,17 @@ export default function DesempenhoPage() {
           {grupos.map((g) => {
             const chR = 'qr:' + g.rede
             const abR = drillAberto.includes(chR)
+            // usa o cache sob demanda + o que vier no payload
             const itensRede = g.bandeiras.flatMap((b) =>
-              b.lojas.flatMap((l) => itensPorLoja[String(l.codparc)] || []),
+              b.lojas.flatMap(
+                (l) => itensCarregados[String(l.codparc)] || itensPorLoja[String(l.codparc)] || [],
+              ),
+            )
+            // quando nenhuma loja da rede foi aberta, mostramos a contagem e o
+            // valor da GRADE (que sempre vêm) para o nível não ficar em zeros
+            const valorRede = g.bandeiras.reduce(
+              (a, b) => a + b.lojas.reduce((c, l) => c + (Number(l.quebra_valor) || 0), 0),
+              0,
             )
             const totRede = itensRede.reduce((a, x) => a + (Number(x.valor) || 0), 0)
             return (
@@ -2098,14 +2111,21 @@ export default function DesempenhoPage() {
                     {g.rede}
                   </span>
                   <span className="text-[11px] ml-auto tabular-nums" style={{ color: T.muted }}>
-                    {itensRede.length} itens · {brl(totRede)}
+                    {itensRede.length > 0
+                      ? itensRede.length + ' itens · ' + brl(totRede)
+                      : brl(valorRede) + ' · abra a loja para ver os itens'}
                   </span>
                 </button>
                 {abR &&
                   g.bandeiras.map((b) => {
                     const chB = chR + '|' + b.chave
                     const abB = drillAberto.includes(chB)
-                    const itensB = b.lojas.flatMap((l) => itensPorLoja[String(l.codparc)] || [])
+                    const itensB = b.lojas.flatMap(
+                      (l) =>
+                        itensCarregados[String(l.codparc)] || itensPorLoja[String(l.codparc)] || [],
+                    )
+                    // fallback pela grade quando a bandeira ainda não foi aberta
+                    const valorB = b.lojas.reduce((c, l) => c + (Number(l.quebra_valor) || 0), 0)
                     const totB = itensB.reduce((a, x) => a + (Number(x.valor) || 0), 0)
                     return (
                       <div key={chB} className="ml-3">
@@ -2128,7 +2148,9 @@ export default function DesempenhoPage() {
                             className="text-[10px] ml-auto tabular-nums"
                             style={{ color: T.muted }}
                           >
-                            {itensB.length} itens · {brl(totB)}
+                            {itensB.length > 0
+                              ? itensB.length + ' itens · ' + brl(totB)
+                              : brl(valorB) + ' · abra a loja para ver os itens'}
                           </span>
                         </button>
                         {abB &&
@@ -2174,9 +2196,11 @@ export default function DesempenhoPage() {
                                     quebra {pct(l.quebra)}
                                     {itens.length > 0
                                       ? ' · ' + itens.length + ' itens · ' + brl(tot)
-                                      : l.itens
-                                        ? ' · ' + l.itens + ' itens'
-                                        : ''}
+                                      : l.quebra_valor
+                                        ? ' · ' +
+                                          brl(l.quebra_valor) +
+                                          ' · clique para ver os itens'
+                                        : ' · clique para ver os itens'}
                                   </span>
                                 </button>
                                 {abL && carregandoLoja === String(l.codparc) && (
