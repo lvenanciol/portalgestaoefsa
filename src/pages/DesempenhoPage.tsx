@@ -511,6 +511,39 @@ export default function DesempenhoPage() {
   const [carregandoLoja, setCarregandoLoja] = useState<string | null>(null)
   const [erroComposicao, setErroComposicao] = useState<string>('')
 
+  // 19/11/2026 — drilldown de FATURAMENTO e CMV por CANAL
+  // (Atacado / Distribuição / Varejo). A tela é a mesma; muda a métrica.
+  const [drillCanais, setDrillCanais] = useState<'faturamento' | 'cmv' | null>(null)
+  const [dadosCanais, setDadosCanais] = useState<any | null>(null)
+  const [carregandoCanais, setCarregandoCanais] = useState(false)
+
+  useEffect(() => {
+    if (!drillCanais) return
+    let cancelado = false
+    setCarregandoCanais(true)
+    setDadosCanais(null)
+    pb.send(
+      '/backend/v1/varejo/canais?ano=' + f.ano + '&mes=' + f.mes + '&metrica=' + drillCanais,
+      {
+        method: 'GET',
+      },
+    )
+      .then((r: any) => {
+        if (!cancelado) setDadosCanais(r)
+      })
+      .catch((err: any) => {
+        if (!cancelado)
+          setDadosCanais({ ok: false, erro: String(err?.message || err).slice(0, 140) })
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoCanais(false)
+      })
+    return () => {
+      cancelado = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drillCanais, f.ano, f.mes])
+
   const carregarComposicao = async (codparc: number | string) => {
     const chave = String(codparc)
     if (itensCarregados[chave] || carregandoLoja === chave) return
@@ -1023,8 +1056,10 @@ export default function DesempenhoPage() {
   const defs: Record<CardId, any> = {
     fat: {
       label: 'Faturamento',
+      // 19/11/2026 — clique abre a composição do faturamento POR CANAL
+      onClick: () => setDrillCanais('faturamento'),
+      contexto: brl(K.faturamento) + ' · ver por canal',
       valor: comp(K.faturamento),
-      contexto: brl(K.faturamento),
       Icone: TrendingUp,
       tom: (K.faturamento_aa ?? 0) >= 0 ? 'green' : 'red',
       vars: [
@@ -1087,8 +1122,10 @@ export default function DesempenhoPage() {
     },
     cmv: {
       label: 'CMV Parcial',
+      // 19/11/2026 — mesmo drilldown por canal, na métrica CMV
+      onClick: () => setDrillCanais('cmv'),
       valor: pct(K.cmv_pct, 2),
-      contexto: 'meta ' + pct(K.meta_cmv),
+      contexto: 'meta ' + pct(K.meta_cmv) + ' · ver por canal',
       Icone: Percent,
       tom: (K.cmv_ating ?? 100) >= 100 ? 'green' : 'amber',
       vars: [
@@ -1769,6 +1806,157 @@ export default function DesempenhoPage() {
   const alternarDrill = (ch: string) =>
     setDrillAberto((p: string[]) => (p.includes(ch) ? p.filter((x) => x !== ch) : p.concat([ch])))
 
+  // ==========================================================================
+  // MODAL: COMPOSIÇÃO DO FATURAMENTO / CMV POR CANAL (19/11/2026)
+  // Colunas pedidas pelo dono: Canal | Meta [R$] | Realizado [R$] | % Meta | % A.A.
+  // A meta por canal NÃO existe parametrizada no Sankhya; em vez de estimar,
+  // a coluna mostra "—" e o rodapé explica. O % A.A. compara com o mesmo mês
+  // do ano anterior.
+  // ==========================================================================
+  const modalCanais = drillCanais ? (
+    <div
+      className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4"
+      onClick={() => setDrillCanais(null)}
+    >
+      <div
+        className="bg-white w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl"
+        style={{ borderRadius: 8 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div
+          className="flex items-center justify-between px-4 py-3 border-b"
+          style={{ borderColor: T.border }}
+        >
+          <div>
+            <h3 className="text-[15px] font-bold" style={{ color: T.text }}>
+              {drillCanais === 'cmv' ? 'Composição do CMV' : 'Composição do Faturamento'} por canal
+            </h3>
+            <p className="text-[11px]" style={{ color: T.muted }}>
+              {MESES[f.mes - 1]}/{f.ano} · Atacado (emp 1) · Distribuição (emp 4 e 10, sem Carone e
+              Coutinho) · Varejo (redes)
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDrillCanais(null)}
+            className="p-1"
+            style={{ color: T.muted }}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-auto p-3">
+          {carregandoCanais && (
+            <p className="px-3 py-6 text-center text-[12px]" style={{ color: T.muted }}>
+              carregando a composição por canal…
+            </p>
+          )}
+          {!carregandoCanais && dadosCanais && dadosCanais.ok === false && (
+            <p className="px-3 py-6 text-center text-[12px]" style={{ color: T.neg }}>
+              Não foi possível carregar: {dadosCanais.erro || 'erro desconhecido'}
+            </p>
+          )}
+          {!carregandoCanais && dadosCanais && dadosCanais.ok && (
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr style={{ color: T.muted }}>
+                  <th
+                    className="text-left font-semibold py-1.5"
+                    title="Canal conforme a regra do dono (18/11/2026)"
+                  >
+                    Canal
+                  </th>
+                  <th
+                    className="text-right font-semibold cursor-help"
+                    title="Meta do canal. Não parametrizada no Sankhya hoje — exibida como — para não inventar número."
+                  >
+                    Meta [R$]
+                  </th>
+                  <th
+                    className="text-right font-semibold cursor-help"
+                    title={
+                      drillCanais === 'cmv'
+                        ? 'Atacado/Distribuição: TGFITE.VLRCUSTO. Varejo: AD_RESUMOLOJAS.CMVACUM (fonte do BI).'
+                        : 'Atacado/Distribuição: TGFCAB.VLRNOTA (notas liberadas). Varejo: AD_VENDASPLV.VLRTOT (base do BI).'
+                    }
+                  >
+                    Realizado [R$]
+                  </th>
+                  <th
+                    className="text-right font-semibold cursor-help"
+                    title="% Meta = Realizado ÷ Meta. Vazio porque a meta por canal não existe no Sankhya."
+                  >
+                    % Meta
+                  </th>
+                  <th
+                    className="text-right font-semibold cursor-help"
+                    title="% A.A. = variação contra o MESMO MÊS do ano anterior, calculada sobre o realizado."
+                  >
+                    % A.A
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {(dadosCanais.canais || []).map((c: any) => (
+                  <tr key={c.canal} className="border-t" style={{ borderColor: T.border }}>
+                    <td className="py-1.5 font-semibold" style={{ color: T.text }}>
+                      {c.canal}
+                    </td>
+                    <td className="text-right tabular-nums" style={{ color: T.muted }}>
+                      —
+                    </td>
+                    <td className="text-right tabular-nums font-semibold" style={{ color: T.text }}>
+                      {brl(c.realizado)}
+                    </td>
+                    <td className="text-right tabular-nums" style={{ color: T.muted }}>
+                      —
+                    </td>
+                    <td
+                      className="text-right tabular-nums font-semibold"
+                      style={{ color: (c.variacao_aa ?? 0) >= 0 ? T.pos : T.neg }}
+                    >
+                      {c.variacao_aa === null || c.variacao_aa === undefined
+                        ? '—'
+                        : (c.variacao_aa >= 0 ? '+' : '') + pct(c.variacao_aa)}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t font-bold" style={{ borderColor: T.border, color: T.text }}>
+                  <td className="py-1.5">Total</td>
+                  <td className="text-right tabular-nums" style={{ color: T.muted }}>
+                    —
+                  </td>
+                  <td className="text-right tabular-nums">{brl(dadosCanais.total?.realizado)}</td>
+                  <td className="text-right tabular-nums" style={{ color: T.muted }}>
+                    —
+                  </td>
+                  <td className="text-right tabular-nums">
+                    {dadosCanais.total?.anterior > 0
+                      ? (dadosCanais.total.realizado >= dadosCanais.total.anterior ? '+' : '') +
+                        pct(
+                          ((dadosCanais.total.realizado - dadosCanais.total.anterior) /
+                            dadosCanais.total.anterior) *
+                            100,
+                        )
+                      : '—'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div
+          className="px-4 py-2 border-t text-[10px]"
+          style={{ borderColor: T.border, color: T.muted }}
+        >
+          {dadosCanais?.obs_meta ||
+            'Meta por canal não parametrizada — % Meta exibido como — em vez de estimado.'}
+        </div>
+      </div>
+    </div>
+  ) : null
+
   const modalQuebra = drillQuebra ? (
     <div
       className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4"
@@ -2362,6 +2550,7 @@ export default function DesempenhoPage() {
         </div>
       ))}
 
+      {modalCanais}
       {modalQuebra}
 
       <ParceiroParecerDialog
