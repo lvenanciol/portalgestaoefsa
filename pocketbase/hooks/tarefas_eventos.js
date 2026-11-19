@@ -569,15 +569,49 @@ onRecordAfterUpdateSuccess(function (e) {
       })
       return
     } catch (errEnc) {
-      // 18/11/2026 — ATENÇÃO: esta API ($app.onTerminate().add) NÃO existe
-      // neste JSVM ("Object has no member 'add'"). Antes eu caía aqui e saía
-      // SEM ENVIAR o e-mail — uma regressão que eu mesmo introduzi e o log
-      // entregou. Agora o fallback ENVIA na hora: se não há fila, o e-mail sai
-      // síncrono, como sempre foi.
-      console.log(
-        '[tarefa_eventos] onTerminate indisponivel, enviando agora: ' + String(errEnc).slice(0, 90),
-      )
-      enviarEmailAgora(dest, assunto, html, texto, tarefaRef)
+      // ==================================================================
+      // 19/11/2026 — O ENVIO SÍNCRONO É O QUE TRAVA O CHAT.
+      //
+      // MEDIDO: POST /api/collections/tarefas_chat/records = **7.919 ms**
+      // (execTime no log do PocketBase). A mensagem aparece, mas o botão fica
+      // travado ~8 s esperando o e-mail sair.
+      // `$app.onTerminate().add` não existe neste JSVM, então o catch caía no
+      // envio síncrono — e era ele o gargalo.
+      //
+      // SOLUÇÃO: `$app.go()` (goroutine do runtime). O handler retorna na hora
+      // e o e-mail sai em paralelo. Se `$app.go` não existir nesta versão,
+      // tento `setTimeout(..., 0)`; em último caso, envia síncrono (nunca
+      // deixar de enviar: efeito externo tem de acontecer).
+      // ==================================================================
+      var despachado = false
+      try {
+        $app.go(function () {
+          try {
+            enviarEmailAgora(dest, assunto, html, texto, tarefaRef)
+          } catch (errG) {
+            console.log('[tarefa_eventos] envio em goroutine falhou: ' + String(errG).slice(0, 120))
+          }
+        })
+        despachado = true
+      } catch (errGo) {
+        try {
+          setTimeout(function () {
+            try {
+              enviarEmailAgora(dest, assunto, html, texto, tarefaRef)
+            } catch (errS) {
+              console.log('[tarefa_eventos] envio adiado falhou: ' + String(errS).slice(0, 120))
+            }
+          }, 0)
+          despachado = true
+        } catch (_e) {
+          despachado = false
+        }
+      }
+      if (!despachado) {
+        // último recurso: envia agora (bloqueia, mas não perde o e-mail)
+        console.log('[tarefa_eventos] sem fila assincrona, enviando sincrono')
+        enviarEmailAgora(dest, assunto, html, texto, tarefaRef)
+      }
     }
   }
 
@@ -1368,7 +1402,34 @@ onRecordAfterCreateSuccess(function (e) {
       if (ehTarefaDeTratamentoChat(tarefaDoChat)) {
         console.log('[chat_email] e-mail suprimido (tarefa de tratamento)')
       } else {
-        enviarEmail(d, assunto, html, txtPlano)
+        // ================================================================
+        // 19/11/2026 — E-MAIL DO CHAT FORA DO CAMINHO CRÍTICO.
+        // MEDIDO: POST tarefas_chat = 7.919 ms; o botão Enviar fica travado
+        // até o SMTP terminar. Envio em goroutine: responde na hora.
+        // ================================================================
+        var enviadoAsync = false
+        try {
+          $app.go(function () {
+            try {
+              enviarEmail(d, assunto, html, txtPlano)
+            } catch (errA) {
+              console.log('[chat_email] falha no envio assincrono: ' + String(errA).slice(0, 120))
+            }
+          })
+          enviadoAsync = true
+        } catch (errGo2) {
+          try {
+            setTimeout(function () {
+              try {
+                enviarEmail(d, assunto, html, txtPlano)
+              } catch (_e2) {}
+            }, 0)
+            enviadoAsync = true
+          } catch (_e3) {
+            enviadoAsync = false
+          }
+        }
+        if (!enviadoAsync) enviarEmail(d, assunto, html, txtPlano)
       }
     }
   } catch (err) {

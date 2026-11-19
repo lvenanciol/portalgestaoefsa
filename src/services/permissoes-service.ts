@@ -158,6 +158,13 @@ const MODULOS_COM_MATRIZ: Record<string, boolean> = {
   // Sem isto, grupo não-Admin com matriz configurada não enxergava o módulo
   // (o fallback da matriz só vale para telas listadas aqui).
   'plano-estrategico': true,
+  // 19/11/2026 — LL5 ganhou linhas na matriz (antes não existia NENHUMA linha
+  // para as telas de Saúde/Running/GYM/Auditoria, então nem o admin conseguia
+  // definir permissão). Módulos próprios para poder liberar separadamente.
+  'll5-saude': true,
+  'll5-running': true,
+  'll5-gym': true,
+  'll5-auditoria': true,
 }
 
 // A matriz do grupo já foi configurada pelo admin? A chave "botoes" existe no

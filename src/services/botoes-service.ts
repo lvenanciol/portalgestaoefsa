@@ -129,6 +129,73 @@ export const BUTTON_GATES: TelaBotoes[] = [
     label: 'Financeiro — aba Real (Sankhya)',
     buttons: [{ key: 'atualizar', label: 'Atualizar dados (aba Real)' }],
   },
+  // ======================================================================
+  // 19/11/2026 — TELAS DE "PLANO ESTRATÉGICO" E "LL5" NA MATRIZ
+  //
+  // DIRETIVA DO DONO: "as telas criadas nas seções LL5 e Plano Estratégico
+  // não estão na tela Controle de Acessos para definir permissões".
+  //
+  // CAUSA: esta lista (BUTTON_GATES) é o REGISTRY que a tela Controle de
+  // Acessos lê para montar a matriz. As telas do /pen foram criadas com
+  // MODULOS_COM_MATRIZ (permissões) mas nunca entraram AQUI — então a matriz
+  // não tinha a linha delas para marcar/desmarcar. A LL5 tem coleções e
+  // rotas mas nunca teve linha nenhuma.
+  //
+  // Efeito colateral que isso revelou: /pen constava como "tem matriz" no
+  // serviço de permissões, e o fallback concedia ver/criar/editar/excluir a
+  // qualquer grupo com matriz configurada — exatamente o que o dono não
+  // quer para tela nova. Com a linha aqui, a matriz passa a ser o controle
+  // real e a concessão deixa de ser implícita.
+  // ======================================================================
+  {
+    key: 'plano-estrategico',
+    label: 'Plano Estratégico (/pen)',
+    buttons: [
+      { key: 'novo', label: 'Criar (objetivos, KPIs, iniciativas, riscos)' },
+      { key: 'editar', label: 'Editar (metas, progresso, causas)' },
+      { key: 'excluir', label: 'Excluir' },
+      { key: 'exportar', label: 'Exportar PDF' },
+    ],
+  },
+  {
+    key: 'll5-saude',
+    label: 'LL5 — Saúde & Tratamentos',
+    buttons: [
+      { key: 'novo', label: 'Nova sessão / tratamento' },
+      { key: 'editar', label: 'Editar' },
+      { key: 'excluir', label: 'Excluir' },
+      { key: 'sincronizar', label: 'Sincronizar Garmin / importar' },
+      { key: 'parecer_ia', label: 'Gerar parecer com IA' },
+    ],
+  },
+  {
+    key: 'll5-running',
+    label: 'LL5 — Running',
+    buttons: [
+      { key: 'novo', label: 'Nova atividade' },
+      { key: 'editar', label: 'Editar' },
+      { key: 'excluir', label: 'Excluir' },
+      { key: 'sincronizar', label: 'Sincronizar Garmin' },
+    ],
+  },
+  {
+    key: 'll5-gym',
+    label: 'LL5 — GYM',
+    buttons: [
+      { key: 'novo', label: 'Nova sessão de academia' },
+      { key: 'editar', label: 'Editar' },
+      { key: 'excluir', label: 'Excluir' },
+      { key: 'sincronizar', label: 'Importar treino' },
+    ],
+  },
+  {
+    key: 'll5-auditoria',
+    label: 'LL5 — Auditoria',
+    buttons: [
+      { key: 'exportar_csv', label: 'Exportar CSV' },
+      { key: 'visualizar', label: 'Ver registros de acesso' },
+    ],
+  },
 ]
 
 // botoesOcultos(p) → Record<screen, string[]>
@@ -191,6 +258,14 @@ export const TELA_MODULO: Record<string, string> = {
   menus: 'arvore-menus',
   acessos: 'controle-acessos',
   configuracoes: 'configuracoes',
+  // 19/11/2026 — telas novas da matriz (Plano Estratégico e LL5). Sem esta
+  // ligação, marcar/desmarcar na tela não teria módulo correspondente e o
+  // gate cairia no fail-closed do podeVerBotao.
+  'plano-estrategico': 'plano-estrategico',
+  'll5-saude': 'll5-saude',
+  'll5-running': 'll5-running',
+  'll5-gym': 'll5-gym',
+  'll5-auditoria': 'll5-auditoria',
 }
 
 const ACOES_CRUD: Record<string, string> = {
