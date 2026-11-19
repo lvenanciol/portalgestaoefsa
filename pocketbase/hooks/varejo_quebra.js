@@ -72,14 +72,28 @@ routerAdd(
         try {
           pC = JSON.parse(recC.getString('payload') || '{}')
         } catch (_) {}
-        if (pC && pC.schema_quebra_loja === 1 && idadeC >= 0 && idadeC < 6 * 60 * 60 * 1000) {
-          return e.json(
-            200,
-            Object.assign({}, pC, {
-              do_cache: true,
-              cache_idade_min: Math.round(idadeC / 60000),
-            }),
-          )
+        // O cache guarda SÓ os itens da loja (o payload completo estoura o
+        // limite de 500 KB do campo JSON). Reconstituo o formato que a tela
+        // consome: `quebra_produtos[codparc]`.
+        if (
+          pC &&
+          pC.schema_quebra_loja === 1 &&
+          Array.isArray(pC.itens) &&
+          idadeC >= 0 &&
+          idadeC < 6 * 60 * 60 * 1000
+        ) {
+          const mapaLoja = {}
+          mapaLoja[String(Number(lojaFiltro))] = pC.itens
+          return e.json(200, {
+            ok: true,
+            periodo: 'Mês ' + String(mes).padStart(2, '0') + '/' + ano,
+            cobertura: { lojas_com_quebra: 1 },
+            quebra_produtos: mapaLoja,
+            lojas: [],
+            itens_cache: pC.itens.length,
+            do_cache: true,
+            cache_idade_min: Math.round(idadeC / 60000),
+          })
         }
       } catch (_) {
         /* sem cache */
@@ -415,26 +429,45 @@ routerAdd(
       })
     }
 
-    // grava o cache da composição por loja (a próxima abertura é imediata)
+    // ==================================================================
+    // CACHE DA COMPOSIÇÃO POR LOJA — SÓ OS ITENS (19/11/2026)
+    //
+    // PRIMEIRA TENTATIVA FALHOU e o log entregou o motivo:
+    //   "cache loja: GoError: payload: The maximum allowed JSON size is
+    //    500000 bytes."
+    // Eu serializava o `resp` INTEIRO (itens + lojas + cobertura). Com 1.209
+    // itens, o JSON passa de 500 KB e o PocketBase rejeita a gravação — por
+    // isso a rota respondia 200 em 7 s nas duas chamadas seguidas.
+    //
+    // Correção: guardo apenas o MAPA DE ITENS daquela loja (é o que custa
+    // caro para calcular e é o que a tela precisa). O resto do payload é
+    // barato e é reconstruído a cada chamada.
+    // ==================================================================
     if (chaveLojaCache) {
       try {
-        resp.schema_quebra_loja = 1
-        const colQ = $app.findCollectionByNameOrId('sankhya_cache')
-        let recQ = null
-        try {
-          recQ = $app.findFirstRecordByFilter('sankhya_cache', 'chave = {:c}', {
-            c: chaveLojaCache,
-          })
-        } catch (_) {
-          recQ = null
+        const itensDaLoja = itensPorLoja[String(Number(lojaFiltro))] || []
+        const jsonItens = JSON.stringify({ schema_quebra_loja: 1, itens: itensDaLoja })
+        if (jsonItens.length <= 480000) {
+          const colQ = $app.findCollectionByNameOrId('sankhya_cache')
+          let recQ = null
+          try {
+            recQ = $app.findFirstRecordByFilter('sankhya_cache', 'chave = {:c}', {
+              c: chaveLojaCache,
+            })
+          } catch (_) {
+            recQ = null
+          }
+          if (!recQ) {
+            recQ = new Record(colQ)
+            recQ.set('chave', chaveLojaCache)
+          }
+          recQ.set('payload', jsonItens)
+          recQ.set('gerado_em', new Date().toISOString())
+          $app.save(recQ)
+          console.log('[varejo/quebra] cache loja gravado: ' + jsonItens.length + ' bytes')
+        } else {
+          console.log('[varejo/quebra] itens grandes demais para cache: ' + jsonItens.length)
         }
-        if (!recQ) {
-          recQ = new Record(colQ)
-          recQ.set('chave', chaveLojaCache)
-        }
-        recQ.set('payload', JSON.stringify(resp))
-        recQ.set('gerado_em', new Date().toISOString())
-        $app.save(recQ)
       } catch (errQ) {
         console.log('[varejo/quebra] cache loja: ' + String(errQ).slice(0, 120))
       }
