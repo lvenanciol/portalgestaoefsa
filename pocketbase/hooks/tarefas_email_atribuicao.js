@@ -406,7 +406,7 @@ onRecordAfterCreateSuccess(function (e) {
         '<div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;color:#1f2937">' +
         '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" ' +
         'style="border-collapse:collapse">' +
-        logomarcasHtmlPara(usuario) +
+        logomarcasHtmlPara(usuario, empresa) +
         '<tr><td style="background:#1B5E20;color:#fff;padding:14px 20px">' +
         '<strong style="font-size:15px">Portal de Gestão Executivo</strong>' +
         '<span style="font-size:11px;opacity:.85;display:block;margin-top:2px">' +
