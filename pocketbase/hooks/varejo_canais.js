@@ -364,7 +364,69 @@ routerAdd(
       'EF_VIEW_METAS_LOJAS (por loja). Distribuição não tem meta em nenhuma ' +
       'tabela do Sankhya — fica vazia em vez de estimada.'
 
+    // ==================================================================
+    // HIERARQUIA POR CANAL (19/11/2026) — item 1 do dono
+    //
+    // "quando distribuição e varejo, deve expandir níveis de agrupamento
+    //  quando existente sendo: Rede, Bandeira, lojas"
+    //
+    // VAREJO tem os três níveis de verdade: Rede (Carone/Coutinho pelo
+    // centro de custo), Bandeira (sufixo do NOMEPARC: -CR-, -ST-, -EB-) e
+    // Loja (CODPARC). DISTRIBUIÇÃO não tem "rede/bandeira": o agrupamento
+    // natural é a EMPRESA (4 ou 10) e depois a loja/cliente.
+    // ==================================================================
     const falhas = []
+    if (!cmvIndisponivel) {
+      const hv = rodar(
+        'SELECT CASE WHEN PLV.CODCENCUS >= 10106000 THEN 'Carone' ELSE 'Coutinho' END REDE, ' +
+          " CASE WHEN P.NOMEPARC LIKE '%-ST -%' THEN 'Sempre Tem' " +
+          "      WHEN P.NOMEPARC LIKE '%-EB -%' THEN 'Extrabom' " +
+          "      ELSE 'Carone' END BANDEIRA, " +
+          ' PLV.CODPARC, P.NOMEPARC, ROUND(SUM(PLV.VLRTOT),2) VLR ' +
+          'FROM SANKHYA.AD_VENDASPLV PLV ' +
+          'JOIN SANKHYA.TGFPAR P ON P.CODPARC=PLV.CODPARC ' +
+          'WHERE PLV.DTNEG >= ' + iniMes + ' AND PLV.DTNEG < ' + fimMes +
+          '  AND P.AD_SELECIONADO IN (1,2) AND PLV.CODPARC NOT IN (36,37,6959) ' +
+          '  AND PLV.VLRTOT > 0 ' +
+          'GROUP BY CASE WHEN PLV.CODCENCUS >= 10106000 THEN 'Carone' ELSE 'Coutinho' END, ' +
+          " CASE WHEN P.NOMEPARC LIKE '%-ST -%' THEN 'Sempre Tem' " +
+          "      WHEN P.NOMEPARC LIKE '%-EB -%' THEN 'Extrabom' " +
+          "      ELSE 'Carone' END, PLV.CODPARC, P.NOMEPARC",
+      )
+      const varejo = []
+      for (const r of hv.rows || []) {
+        varejo.push({
+          rede: v(r, 0) || 'Outros',
+          bandeira: v(r, 1) || 'Outros',
+          codparc: n(v(r, 2)),
+          loja: v(r, 3) || String(v(r, 2)),
+          valor: n(v(r, 4)) || 0,
+        })
+      }
+      // DISTRIBUIÇÃO: empresa (4/10) → cliente
+      const hd = rodar(
+        'SELECT C.CODEMP, P.CODPARC, P.NOMEPARC, ROUND(SUM(C.VLRNOTA),2) VLR ' +
+          'FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
+          'WHERE C.DTNEG >= ' + iniMes + ' AND C.DTNEG < ' + fimMes +
+          "  AND C.STATUSNOTA='L' AND C.CODEMP IN (4,10) " +
+          '  AND NVL(P.AD_SELECIONADO,0) NOT IN (1,2) ' +
+          'GROUP BY C.CODEMP, P.CODPARC, P.NOMEPARC',
+      )
+      const distrib = []
+      for (const r of hd.rows || []) {
+        distrib.push({
+          rede: 'Empresa ' + String(v(r, 0)),
+          bandeira: 'Empresa ' + String(v(r, 0)),
+          codparc: n(v(r, 1)),
+          loja: v(r, 2) || String(v(r, 1)),
+          valor: n(v(r, 3)) || 0,
+        })
+      }
+      out.hierarquia = { varejo: varejo, distribuicao: distrib }
+      if (hv.erro) falhas.push('hierarquia_varejo: ' + hv.erro)
+      if (hd.erro) falhas.push('hierarquia_distribuicao: ' + hd.erro)
+    }
+
     if (at.erro) falhas.push('atacado: ' + at.erro)
     if (di.erro) falhas.push('distribuicao: ' + di.erro)
     if (va.erro) falhas.push('varejo: ' + va.erro)

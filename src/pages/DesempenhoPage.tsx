@@ -1898,43 +1898,110 @@ export default function DesempenhoPage() {
                 </tr>
               </thead>
               <tbody>
-                {(dadosCanais.canais || []).map((c: any) => (
-                  <tr key={c.canal} className="border-t" style={{ borderColor: T.border }}>
-                    <td className="py-1.5 font-semibold" style={{ color: T.text }}>
-                      {c.canal}
-                    </td>
-                    {/* META real quando existe (atacado e varejo) */}
-                    <td
-                      className="text-right tabular-nums"
-                      style={{ color: c.meta ? T.text : T.muted }}
-                      title={c.meta_fonte || 'Meta não parametrizada no Sankhya para este canal'}
-                    >
-                      {c.meta ? brl(c.meta) : '—'}
-                    </td>
-                    <td
-                      className="text-right tabular-nums font-semibold"
-                      style={{ color: c.sem_fonte ? T.muted : T.text }}
-                      title={c.sem_fonte ? c.obs || 'Sem fonte no Sankhya' : undefined}
-                    >
-                      {c.sem_fonte ? '—' : brl(c.realizado)}
-                    </td>
-                    {/* % META real */}
-                    <td
-                      className="text-right tabular-nums"
-                      style={{ color: c.perc_meta ? T.text : T.muted }}
-                    >
-                      {c.perc_meta === null || c.perc_meta === undefined ? '—' : pct(c.perc_meta)}
-                    </td>
-                    <td
-                      className="text-right tabular-nums font-semibold"
-                      style={{ color: (c.variacao_aa ?? 0) >= 0 ? T.pos : T.neg }}
-                    >
-                      {c.variacao_aa === null || c.variacao_aa === undefined
-                        ? '—'
-                        : (c.variacao_aa >= 0 ? '+' : '') + pct(c.variacao_aa)}
-                    </td>
-                  </tr>
-                ))}
+                {(dadosCanais.canais || []).map((c: any) => {
+                  // 19/11/2026 — item 1 do dono: expandir níveis de
+                  // agrupamento quando existirem.
+                  //   Varejo        → Rede → Bandeira → Loja
+                  //   Distribuição  → Empresa → Cliente
+                  const hier =
+                    c.canal === 'Varejo'
+                      ? dadosCanais.hierarquia?.varejo || []
+                      : c.canal === 'Distribuição'
+                        ? dadosCanais.hierarquia?.distribuicao || []
+                        : []
+                  const chaveC = 'can:' + c.canal
+                  const abertoC = drillAberto.includes(chaveC)
+                  // agrupa rede → bandeira
+                  const porRede: Record<string, Record<string, any[]>> = {}
+                  for (const it of hier) {
+                    if (!porRede[it.rede]) porRede[it.rede] = {}
+                    if (!porRede[it.rede][it.bandeira]) porRede[it.rede][it.bandeira] = []
+                    porRede[it.rede][it.bandeira].push(it)
+                  }
+                  return (
+                    <>
+                      <tr key={c.canal} className="border-t" style={{ borderColor: T.border }}>
+                        <td className="py-1.5 font-semibold" style={{ color: T.text }}>
+                          {hier.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => alternarDrill(chaveC)}
+                              className="inline-flex items-center justify-center h-3.5 w-3.5 mr-1 rounded border text-[9px] font-bold align-middle"
+                              style={{ borderColor: T.border, color: T.muted }}
+                              title="Expandir Rede → Bandeira → Loja"
+                            >
+                              {abertoC ? '−' : '+'}
+                            </button>
+                          )}
+                          {c.canal}
+                        </td>
+                        {/* META real quando existe (atacado e varejo) */}
+                        <td
+                          className="text-right tabular-nums"
+                          style={{ color: c.meta ? T.text : T.muted }}
+                          title={
+                            c.meta_fonte || 'Meta não parametrizada no Sankhya para este canal'
+                          }
+                        >
+                          {c.meta ? brl(c.meta) : '—'}
+                        </td>
+                        <td
+                          className="text-right tabular-nums font-semibold"
+                          style={{ color: c.sem_fonte ? T.muted : T.text }}
+                          title={c.sem_fonte ? c.obs || 'Sem fonte no Sankhya' : undefined}
+                        >
+                          {c.sem_fonte ? '—' : brl(c.realizado)}
+                        </td>
+                        {/* % META real */}
+                        <td
+                          className="text-right tabular-nums"
+                          style={{ color: c.perc_meta ? T.text : T.muted }}
+                        >
+                          {c.perc_meta === null || c.perc_meta === undefined
+                            ? '—'
+                            : pct(c.perc_meta)}
+                        </td>
+                        <td
+                          className="text-right tabular-nums font-semibold"
+                          style={{ color: (c.variacao_aa ?? 0) >= 0 ? T.pos : T.neg }}
+                        >
+                          {c.variacao_aa === null || c.variacao_aa === undefined
+                            ? '—'
+                            : (c.variacao_aa >= 0 ? '+' : '') + pct(c.variacao_aa)}
+                        </td>
+                      </tr>
+                      {/* Níveis de agrupamento (item 1 do dono):
+                      Varejo → Rede → Bandeira → Loja
+                      Distribuição → Empresa → Cliente */}
+                      {abertoC &&
+                        Object.keys(porRede)
+                          .sort()
+                          .map((rede) => (
+                            <tr
+                              key={chaveC + rede}
+                              className="border-t"
+                              style={{ borderColor: T.border }}
+                            >
+                              <td className="py-1 pl-4 text-[11px]" style={{ color: T.text }}>
+                                <span style={{ color: T.muted }}>└ </span>
+                                {rede}
+                              </td>
+                              <td
+                                colSpan={4}
+                                className="text-right text-[10px] tabular-nums"
+                                style={{ color: T.muted }}
+                              >
+                                {brl(
+                                  Object.values(porRede[rede])
+                                    .flat()
+                                    .reduce((a: number, x: any) => a + (Number(x.valor) || 0), 0),
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                    </>
+                  )
+                })}
                 <tr className="border-t font-bold" style={{ borderColor: T.border, color: T.text }}>
                   <td className="py-1.5">Total</td>
                   <td className="text-right tabular-nums" style={{ color: T.muted }}>
