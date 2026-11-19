@@ -1,3 +1,18 @@
+// ============================================================================
+// 19/11/2026 — TELAS NOVAS NASCEM SEM PERMISSÃO (diretiva do dono):
+// "Ao criar uma nova tela (...) a nova tela deve entrar no controle de
+//  acessos sem nenhuma permissão aos grupos atuais."
+//
+// Este arquivo tem CINCO gates (list/view/create/update/delete), cada um no
+// seu escopo. A lista fica no ESCOPO DO ARQUIVO para que todos a enxerguem —
+// declarada dentro de um gate, os outros gates de escrita não a veriam e a
+// regra só valeria para leitura (tela escondida, API gravando).
+//
+// Módulo listado aqui NÃO é concedido pela matriz: exige
+// permissoes[modulo].ver === true (liberação explícita, grupo a grupo).
+// ============================================================================
+const MODULOS_EXPLICITOS = {}
+
 // 11/11/2026 — GATE DE PERMISSÕES NA API (não só na tela)
 //
 // PROBLEMA: esconder tela e botão não protege nada no PocketBase — o cliente
