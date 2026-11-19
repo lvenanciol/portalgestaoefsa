@@ -66,8 +66,25 @@ export function can(p: Permissoes | null, modulo: string, acao: string): boolean
   if (!p || !p.permissoes) return false
   const tela = MODULO_TELA[modulo]
   if (tela && crudNegado(p, tela, acao)) return false
+  // ==================================================================
+  // 19/11/2026 — TELAS NOVAS NASCEM SEM PERMISSÃO (diretiva do dono):
+  // "Ao criar uma nova tela (...) a nova tela deve entrar no controle de
+  //  acessos sem nenhuma permissão aos grupos atuais."
+  //
+  // O modelo da matriz é de REVOGAÇÃO: o grupo com matriz configurada ganha
+  // automaticamente todo módulo de MODULOS_COM_MATRIZ que não esteja marcado
+  // ':off'. Consequência indesejada: uma tela NOVA entrava liberada para
+  // todos os grupos antigos, sem ninguém decidir isso.
+  //
+  // Regra para módulo em MODULOS_EXPLICITOS (tela nova): a matriz NÃO
+  // concede. Só passa quem tem a concessão EXPLÍCITA naquele módulo
+  // (permissoes[modulo][acao] === true) ou é Admin. Ou seja: nasce fechada
+  // e o admin libera grupo por grupo no Controle de Acessos.
+  // ==================================================================
+  const explicito = MODULOS_EXPLICITOS[modulo] === true
   const mod = p.permissoes[modulo]
   if (mod && mod[acao] === true) return true
+  if (explicito) return false
   // 11/11/2026 (pedido "só exibir telas com permissão"): o curinga '*' era
   // tratado como concessão universal em QUALQUER grupo — o grupo Suprimentos
   // tinha '*' com ver:true (herdado da seed do Auditor) e via tudo. Agora o
@@ -109,6 +126,18 @@ export function can(p: Permissoes | null, modulo: string, acao: string): boolean
 // "configuracoes") nunca foi configurável por linha e não pode ser inferido
 // como concedido — era o vazamento da tela Configurações/seção PLATAFORMA
 // para grupos sem o módulo (Suprimentos).
+// TELAS NOVAS (19/11/2026) — lista dos módulos que NASCEM SEM PERMISSÃO.
+// Diferente de MODULOS_COM_MATRIZ (onde a matriz concede o que não foi
+// revogado), aqui a matriz NÃO concede: exige liberação explícita, grupo a
+// grupo, no Controle de Acessos. Regra do dono: "a nova tela deve entrar no
+// controle de acessos sem nenhuma permissão aos grupos atuais".
+// Para liberar uma tela nova em todos os grupos já configurados, basta
+// tromover o módulo para MODULOS_COM_MATRIZ (uma linha).
+const MODULOS_EXPLICITOS: Record<string, boolean> = {
+  // (vazio hoje: as telas existentes foram liberadas na matriz antes desta
+  //  regra. Toda tela criada a partir de 19/11/2026 entra aqui primeiro.)
+}
+
 const MODULOS_COM_MATRIZ: Record<string, boolean> = {
   dashboard: true,
   financeiro: true,

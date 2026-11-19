@@ -82,8 +82,10 @@ export interface TarefaDetalheModalProps {
   chatMsgs: any[]
   novoChat: string
   setNovoChat: (v: string) => void
-  chatAnexo: File | null
-  setChatAnexo: (f: File | null) => void
+  // 19/11/2026 — vários anexos por mensagem (antes era um só e substituía)
+  chatAnexos: File[]
+  setChatAnexos: (f: File[]) => void
+  enviandoChat?: boolean
   enviarChat: () => Promise<void>
   chatErro?: string
 }
@@ -131,8 +133,9 @@ export function TarefaDetalheModal({
   chatMsgs,
   novoChat,
   setNovoChat,
-  chatAnexo,
-  setChatAnexo,
+  chatAnexos,
+  setChatAnexos,
+  enviandoChat,
   enviarChat,
   chatErro,
   aoDigitarChat,
@@ -1882,19 +1885,34 @@ export function TarefaDetalheModal({
                   )}
 
                   {/* Preview de anexo selecionado */}
-                  {chatAnexo && (
-                    <div className="px-4 py-1.5 bg-emerald-50 border-t border-emerald-100 flex items-center justify-between text-xs text-emerald-900">
-                      <span className="flex items-center gap-1 truncate font-medium">
-                        <Paperclip className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
-                        <span className="truncate">{chatAnexo.name}</span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setChatAnexo(null)}
-                        className="text-gray-400 hover:text-gray-700 ml-2"
-                      >
-                        ✕
-                      </button>
+                  {chatAnexos.length > 0 && (
+                    <div className="px-4 py-1.5 bg-emerald-50 border-t border-emerald-100 text-xs text-emerald-900 space-y-0.5">
+                      <div className="font-semibold">
+                        {chatAnexos.length} arquivo{chatAnexos.length > 1 ? 's' : ''} anexado
+                        {chatAnexos.length > 1 ? 's' : ''}
+                      </div>
+                      {chatAnexos.map((f, idx) => (
+                        <div
+                          key={f.name + f.size + idx}
+                          className="flex items-center justify-between"
+                        >
+                          <span className="flex items-center gap-1 truncate font-medium">
+                            <Paperclip className="h-3.5 w-3.5 text-[#1B5E20] shrink-0" />
+                            <span className="truncate">{f.name}</span>
+                            <span className="text-[10px] text-emerald-700 shrink-0">
+                              {(f.size / 1024).toFixed(0)} KB
+                            </span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setChatAnexos(chatAnexos.filter((_, i) => i !== idx))}
+                            className="text-gray-400 hover:text-gray-700 ml-2"
+                            title="Remover este anexo"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   )}
 
@@ -1975,16 +1993,32 @@ export function TarefaDetalheModal({
                         title="Anexar arquivo à mensagem"
                       >
                         <Paperclip className="h-4 w-4" />
+                        {/* MULTI-ANEXO: `multiple` permite escolher vários de
+                            uma vez; o onChange ACRESCENTA à lista (nunca
+                            substitui) e limpa o input para o mesmo arquivo
+                            poder ser escolhido de novo. */}
                         <input
                           type="file"
                           className="hidden"
+                          multiple
                           accept="image/*,application/pdf,.docx,.xlsx,.txt,.csv,audio/*,video/*"
-                          onChange={(e) => setChatAnexo(e.target.files?.[0] || null)}
+                          onChange={(e) => {
+                            const novos = Array.from(e.target.files || [])
+                            if (novos.length) {
+                              setChatAnexos((atual) => {
+                                const nomes = new Set(atual.map((f) => f.name + f.size))
+                                return atual.concat(
+                                  novos.filter((f) => !nomes.has(f.name + f.size)),
+                                )
+                              })
+                            }
+                            e.target.value = ''
+                          }}
                         />
                       </label>
                       <button
                         type="submit"
-                        disabled={!novoChat.trim() && !chatAnexo}
+                        disabled={(!novoChat.trim() && chatAnexos.length === 0) || !!enviandoChat}
                         className="h-10 w-10 shrink-0 rounded-full bg-[#1B5E20] hover:bg-[#0F3D13] disabled:opacity-50 disabled:cursor-not-allowed text-white flex items-center justify-center shadow-xs transition-colors"
                         title="Enviar mensagem"
                       >

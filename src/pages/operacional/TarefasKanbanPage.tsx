@@ -205,7 +205,15 @@ export default function TarefasKanbanPage() {
   const [detalhe, setDetalhe] = useState<any | null>(null)
   const [novoParceiroModalAberto, setNovoParceiroModalAberto] = useState(false)
   const [novoChat, setNovoChat] = useState('')
-  const [chatAnexo, setChatAnexo] = useState<File | null>(null)
+  // 19/11/2026 — ANEXOS: passa a aceitar VÁRIOS arquivos de uma vez.
+  // Antes era um único `File` e cada escolha SUBSTITUÍA a anterior; como o
+  // campo `anexo` da coleção tinha maxSelect=1, anexar de novo apagava o
+  // primeiro. Agora é lista, e o campo virou multi-arquivo (migração 0139).
+  const [chatAnexos, setChatAnexos] = useState<File[]>([])
+  // TRAVA DE ENVIO: sem ela, clique repetido (ou Enter + clique) criava a
+  // MESMA mensagem várias vezes. Medido no banco: 10 registros idênticos em
+  // 7 segundos na tarefa dsoickh5dy7c2yx (17/11 11:28:58 → 11:29:05).
+  const [enviandoChat, setEnviandoChat] = useState(false)
   const [chatMsgs, setChatMsgs] = useState<any[]>([])
   const [chatErro, setChatErro] = useState('')
   const [novaSub, setNovaSub] = useState('')
@@ -1622,8 +1630,18 @@ export default function TarefasKanbanPage() {
   }
 
   const enviarChat = async () => {
-    if (!detalhe || (!novoChat.trim() && !chatAnexo)) return
+    // TRAVA: se já há um envio em andamento, ignora o clique. É o que impede
+    // a mensagem duplicada (duplo clique / Enter repetido / reenvio).
+    if (enviandoChat) return
+    if (!detalhe || (!novoChat.trim() && chatAnexos.length === 0)) return
+    const textoEnviado = novoChat.trim()
+    setEnviandoChat(true)
     setChatErro('')
+    // limpa a caixa IMEDIATAMENTE: se o usuário clicar de novo, não há o que
+    // reenviar — junto com a trava, fecha as duas portas da duplicação.
+    setNovoChat('')
+    const anexosEnviados = chatAnexos.slice()
+    setChatAnexos([])
     try {
       const fd = new FormData()
       fd.append('tarefa_id', detalhe.id)
@@ -1632,8 +1650,9 @@ export default function TarefasKanbanPage() {
       fd.append('tarefa', detalhe.id)
       fd.append('autor', user?.email || '')
       fd.append('autor_tipo', 'portal')
-      if (novoChat.trim()) fd.append('texto', novoChat.trim())
-      if (chatAnexo) fd.append('anexo', chatAnexo)
+      if (textoEnviado) fd.append('texto', textoEnviado)
+      // vários anexos: o PocketBase aceita o mesmo nome de campo repetido
+      for (const arq of anexosEnviados) fd.append('anexo', arq)
       const registroChat: any = await pb.collection('tarefas_chat').create(fd)
 
       // -------------------------------------------------------------------
@@ -1647,9 +1666,9 @@ export default function TarefasKanbanPage() {
       // verdade e crio uma notificação (sino) para cada um. O e-mail sai pelo
       // hook de chat, que já existe para tarefas_chat.
       // -------------------------------------------------------------------
-      if (novoChat.trim()) {
+      if (textoEnviado) {
         try {
-          const citados = extrairMencoes(novoChat)
+          const citados = extrairMencoes(textoEnviado)
           for (const u of citados) {
             if (u.id && user?.id && u.id === user.id) continue
             if (
@@ -1692,11 +1711,14 @@ export default function TarefasKanbanPage() {
       } catch (_) {
         /* best-effort */
       }
-      setNovoChat('')
-      setChatAnexo(null)
       await carregarChat(detalhe.id)
     } catch (e) {
       setChatErro('Falha ao enviar: ' + String(e).slice(0, 80))
+      // devolve o texto para o usuário não perder a mensagem
+      setNovoChat(textoEnviado)
+      setChatAnexos(anexosEnviados)
+    } finally {
+      setEnviandoChat(false)
     }
   }
 
@@ -2658,8 +2680,8 @@ export default function TarefasKanbanPage() {
         chatMsgs={chatMsgs}
         novoChat={novoChat}
         setNovoChat={setNovoChat}
-        chatAnexo={chatAnexo}
-        setChatAnexo={setChatAnexo}
+        chatAnexos={chatAnexos}
+        setChatAnexos={setChatAnexos}
         enviarChat={enviarChat}
         chatErro={chatErro}
       />

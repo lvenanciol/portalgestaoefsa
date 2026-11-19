@@ -94,9 +94,15 @@ onRecordsListRequest((e) => {
     if (modulo === 'financeiro-contabil') return 'financeiro'
     return null
   }
+  // TELAS NOVAS: exigem concessão EXPLÍCITA (permissoes[modulo].ver === true).
+  // Toda tela criada a partir de 19/11/2026 entra aqui primeiro, para nascer
+  // fechada nos grupos existentes. Promover a MODULOS_COM_MATRIZ libera para
+  // quem tem a matriz configurada.
+  const MODULOS_EXPLICITOS = {}
   const MODULOS_COM_MATRIZ = {
     dashboard: 1,
     financeiro: 1,
+    financeiro_real: 1,
     desempenho: 1,
     indicadores: 1,
     documentos: 1,
@@ -109,12 +115,28 @@ onRecordsListRequest((e) => {
     ia: 1,
     menus: 1,
     acessos: 1,
+    // 19/11/2026 — faltava aqui: o front já concedia /pen pela matriz, mas o
+    // gate de API respondia "sem acesso ao módulo". Tela e API têm de usar a
+    // MESMA lista.
+    'plano-estrategico': 1,
   }
   // leitura: módulo concedido? (matriz configurada + não revogado; Admin já
   // tratado acima) — módulo FORA da matriz (configuracoes, logomarcas,
   // integracoes...) NÃO é inferido como concedido (fail-closed)
   function moduloVerConcedido(m, p) {
     if (!p || !p['botoes']) return false
+    // ================================================================
+    // 19/11/2026 — TELA NOVA NASCE SEM PERMISSÃO (diretiva do dono).
+    // Módulo em MODULOS_EXPLICITOS não é concedido pela matriz: exige a
+    // concessão explícita em permissoes[modulo] (o admin libera grupo por
+    // grupo no Controle de Acessos). Mesma regra do permissoes-service.ts —
+    // se as duas divergirem, a tela libera e a API nega (ou pior, o
+    // contrário).
+    // ================================================================
+    if (MODULOS_EXPLICITOS[m]) {
+      const ent = p[m]
+      return !!(ent && ent['ver'] === true)
+    }
     const tela = telaModulo(m)
     if (!tela) return false
     const b = p['botoes']
