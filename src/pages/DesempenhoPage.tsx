@@ -1903,8 +1903,13 @@ export default function DesempenhoPage() {
                     <td className="py-1.5 font-semibold" style={{ color: T.text }}>
                       {c.canal}
                     </td>
-                    <td className="text-right tabular-nums" style={{ color: T.muted }}>
-                      —
+                    {/* META real quando existe (atacado e varejo) */}
+                    <td
+                      className="text-right tabular-nums"
+                      style={{ color: c.meta ? T.text : T.muted }}
+                      title={c.meta_fonte || 'Meta não parametrizada no Sankhya para este canal'}
+                    >
+                      {c.meta ? brl(c.meta) : '—'}
                     </td>
                     <td
                       className="text-right tabular-nums font-semibold"
@@ -1913,8 +1918,12 @@ export default function DesempenhoPage() {
                     >
                       {c.sem_fonte ? '—' : brl(c.realizado)}
                     </td>
-                    <td className="text-right tabular-nums" style={{ color: T.muted }}>
-                      —
+                    {/* % META real */}
+                    <td
+                      className="text-right tabular-nums"
+                      style={{ color: c.perc_meta ? T.text : T.muted }}
+                    >
+                      {c.perc_meta === null || c.perc_meta === undefined ? '—' : pct(c.perc_meta)}
                     </td>
                     <td
                       className="text-right tabular-nums font-semibold"
@@ -1954,8 +1963,9 @@ export default function DesempenhoPage() {
           className="px-4 py-2 border-t text-[10px]"
           style={{ borderColor: T.border, color: T.muted }}
         >
-          {dadosCanais?.obs_meta ||
-            'Meta por canal não parametrizada — % Meta exibido como — em vez de estimado.'}
+          Meta: Atacado de AD_ITEMETASATACADO (por vendedor) e Varejo de EF_VIEW_METAS_LOJAS (por
+          loja). Distribuição não tem meta parametrizada no Sankhya — exibida como — em vez de
+          estimada.
         </div>
       </div>
     </div>

@@ -201,6 +201,47 @@ routerAdd(
 
     const out = { ok: true, periodo: 'Mês ' + mm + '/' + ano, metrica: metrica, canais: [] }
 
+    // ==================================================================
+    // META POR CANAL (19/11/2026)
+    //
+    // O que EXISTE de meta no Sankhya (medido):
+    //   · EF_VIEW_METAS_LOJAS — meta por LOJA (METAVENDA, METACMV,
+    //     PERCLIMITEPERDA). É a fonte do varejo (redes Carone/Coutinho).
+    //   · AD_ITEMETASATACADO  — meta por VENDEDOR do atacado, mês a mês
+    //     (METAVENDJAN...DEZ). 2026: R$ 3.108.483,15 em outubro.
+    //   · AD_REVISAOMETAS     — revisão de meta por loja (R$ 28,95M, sem data,
+    //     por isso NÃO é usada aqui).
+    // Não existe meta para DISTRIBUIÇÃO (empresas 4/10) em nenhuma tabela.
+    // ==================================================================
+    const MESES_COL = [
+      'JAN',
+      'FEV',
+      'MAR',
+      'ABR',
+      'MAI',
+      'JUN',
+      'JUL',
+      'AGO',
+      'SET',
+      'OUT',
+      'NOV',
+      'DEZ',
+    ]
+    const colMes = MESES_COL[mes - 1]
+    const metaAtacadoR = rodar(
+      'SELECT NVL(SUM(METAVEND' +
+        colMes +
+        '),0) VLR FROM SANKHYA.AD_ITEMETASATACADO WHERE ANO = ' +
+        ano,
+    )
+    const metaAtacado = n(v(primeiraLinha(metaAtacadoR), 0)) || 0
+    // varejo: meta das lojas do mês corrente na view
+    const metaVarejoR = rodar(
+      'SELECT NVL(SUM(METAVENDA),0) VLR FROM SANKHYA.EF_VIEW_METAS_LOJAS ' +
+        'WHERE CODCENCUS >= 10105000 AND CODCENCUS < 10107000',
+    )
+    const metaVarejo = n(v(primeiraLinha(metaVarejoR), 0)) || 0
+
     // --- ATACADO ---
     const at = rodar(sqlEmpresas('1', ''))
     const atAA = rodar(sqlEmpresasAA('1', ''))
@@ -227,19 +268,26 @@ routerAdd(
       const rows = (res && res.rows) || []
       return rows.length ? rows[0] : null
     }
-    const mk = function (nome, cur, aa, cmvCur, cmvAA) {
+    const mk = function (nome, cur, aa, cmvCur, cmvAA, meta) {
       const realizado =
         cmvCur !== undefined && cmvCur !== null ? cmvCur : n(v(primeiraLinha(cur), 0)) || 0
       const anterior =
         cmvAA !== undefined && cmvAA !== null ? cmvAA : n(v(primeiraLinha(aa), 0)) || 0
+      const temMeta = meta !== null && meta !== undefined && meta > 0
       return {
         canal: nome,
-        meta: null, // meta por canal não existe no Sankhya hoje — fica "—"
+        meta: temMeta ? Number(meta.toFixed(2)) : null,
         realizado: Number(realizado.toFixed(2)),
         anterior: Number(anterior.toFixed(2)),
         variacao_aa:
           anterior > 0 ? Number((((realizado - anterior) / anterior) * 100).toFixed(2)) : null,
-        perc_meta: null, // depende da meta por canal (não parametrizada)
+        // % meta = realizado ÷ meta (só quando há meta real)
+        perc_meta: temMeta ? Number(((realizado / meta) * 100).toFixed(2)) : null,
+        meta_fonte: temMeta
+          ? nome === 'Atacado'
+            ? 'AD_ITEMETASATACADO (meta por vendedor do atacado)'
+            : 'EF_VIEW_METAS_LOJAS (meta por loja)'
+          : null,
       }
     }
 
@@ -270,7 +318,12 @@ routerAdd(
         mk('Varejo', va, vaAA, vaCmv, vaCmvAA),
       ]
     } else {
-      out.canais = [mk('Atacado', at, atAA), mk('Distribuição', di, diAA), mk('Varejo', va, vaAA)]
+      out.canais = [
+        mk('Atacado', at, atAA, undefined, undefined, metaAtacado),
+        // Distribuição: não existe meta em nenhuma tabela do Sankhya
+        mk('Distribuição', di, diAA),
+        mk('Varejo', va, vaAA, undefined, undefined, metaVarejo),
+      ]
     }
     // total só sobre os canais COM fonte (null não entra como zero)
     const comFonte = out.canais.filter(function (c) {
