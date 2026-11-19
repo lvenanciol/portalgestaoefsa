@@ -81,7 +81,11 @@ routerAdd(
         // chave, o cache de até 7 dias continuaria servindo o número antigo
         // DEPOIS do deploy — o dono veria o card "igual" e concluiria que
         // nada foi corrigido.
-        if (p && p.schema_v === 6 && idade >= 0 && idade < TTL_STALE) {
+        // 19/11/2026 — SUBIU PARA 7: a base de cupons mudou de AD_CODCENCUS
+        // (649.929) para NOMEPARC '%-CR -%' (354.830, o número do BI).
+        // Sem subir a chave, o cache de até 7 dias serviria o ticket de
+        // R$ 41,55 DEPOIS do deploy.
+        if (p && p.schema_v === 7 && idade >= 0 && idade < TTL_STALE) {
           return e.json(
             200,
             Object.assign({}, p, {
@@ -458,17 +462,32 @@ routerAdd(
     // Correção: o recorte de rede é feito pelo CENTRO DE CUSTO do PARCEIRO,
     // via JOIN em TGFPAR (AD_CODCENCUS), e a bandeira pelo NOMEPARC.
     // ==================================================================
-    const filtroCencusCupom = ehCarone
-      ? ' AND P.AD_CODCENCUS >= 10106000 AND P.AD_CODCENCUS < 10107000 '
-      : ehCoutinho
-        ? ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10106000 '
-        : ' AND P.AD_CODCENCUS >= 10105000 AND P.AD_CODCENCUS < 10107000 '
-    // bandeira por NOMEPARC (o PLV_BANDEIRA usa PLV.CODPARC; aqui é TKT.CODPARC)
+    // ==================================================================
+    // 19/11/2026 — CUPONS/ TICKET ERAM CALCULADOS SOBRE A BASE ERRADA.
+    //
+    // MEDIDO no ERP (out/2026):
+    //   filtro por AD_CODCENCUS da REDE  -> 649.929 cupons, R$ 27,0M
+    //   filtro por NOMEPARC '%-CR -%'    -> **354.830 cupons, R$ 16,03M**
+    //
+    // O Power BI usa 354.830 (o próprio dono citou esse número). O
+    // AD_CODCENCUS do parceiro agrupa mais lojas do que a bandeira Carone,
+    // então o cupom inflava e o TICKET caía pela metade (R$ 41,55 em vez de
+    // R$ 45,18).
+    //
+    // REGRA: a bandeira é o SUFIXO do NOMEPARC (-CR-, -ST-, -EB-, -ATV-);
+    // é o mesmo critério do dashboard "Acompanhamento Varejo".
+    // ==================================================================
+    const filtroCencusCupom = '' // a bandeira é filtrada por NOMEPARC abaixo
     let BANDEIRA_CUPOM = ''
     if (tipoGrupo === 'carone') BANDEIRA_CUPOM = " AND P.NOMEPARC LIKE '%-CR -%' "
     else if (tipoGrupo === 'sempre_tem') BANDEIRA_CUPOM = " AND P.NOMEPARC LIKE '%-ST -%' "
     else if (tipoGrupo === 'extrabom') BANDEIRA_CUPOM = " AND P.NOMEPARC LIKE '%-EB -%' "
     else if (tipoGrupo === 'atacado') BANDEIRA_CUPOM = " AND P.NOMEPARC LIKE '%-ATV -%' "
+    // rede inteira (sem bandeira escolhida): Carone = -CR-, Coutinho = -EB-
+    if (!BANDEIRA_CUPOM) {
+      if (ehCarone) BANDEIRA_CUPOM = " AND P.NOMEPARC LIKE '%-CR -%' "
+      else if (ehCoutinho) BANDEIRA_CUPOM = " AND P.NOMEPARC LIKE '%-EB -%' "
+    }
     if (lojaFiltro) BANDEIRA_CUPOM += ' AND TKT.CODPARC = ' + Number(lojaFiltro) + ' '
     if (supervisor && supervisor.indexOf('@') < 0)
       BANDEIRA_CUPOM +=
@@ -997,7 +1016,7 @@ routerAdd(
     }
 
     const out = {
-      schema_v: 6,
+      schema_v: 7,
       ok: true,
       aba: aba,
       periodo: 'Mês ' + mm + '/' + ano,
