@@ -11,5 +11,5 @@
 // acompanhava as versões — e fazia o dono concluir que o navegador servia
 // bundle antigo.
 // ============================================================================
-export const APP_VERSION = '0.0.763'
-export const APP_BUILD = 'def784b'
+export const APP_VERSION = '0.0.764'
+export const APP_BUILD = '64215e6'

@@ -55,7 +55,12 @@ routerAdd(
     // chave por loja+período: a segunda abertura é imediata. O mês corrente
     // continua com o mesmo TTL curto (6 h) para não servir número velho.
     // ==================================================================
-    const chaveLojaCache = lojaFiltro ? 'quebra_loja_v1_' + ano + '_' + mm + '_' + lojaFiltro : ''
+    // NOTA 19/11/2026: usa `mes` (não `mm`) porque `mm` é declarado DEPOIS
+    // desta linha — `const` não sofre hoisting e usar `mm` aqui lançava TDZ,
+    // derrubando a rota com HTTP 400.
+    const chaveLojaCache = lojaFiltro
+      ? 'quebra_loja_v1_' + ano + '_' + String(mes).padStart(2, '0') + '_' + lojaFiltro
+      : ''
     if (chaveLojaCache && String(q.forcar || '') !== '1') {
       try {
         const recC = $app.findFirstRecordByFilter('sankhya_cache', 'chave = {:c}', {
