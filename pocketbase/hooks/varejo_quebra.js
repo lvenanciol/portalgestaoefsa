@@ -42,6 +42,44 @@ routerAdd(
     const ano = Number(q.ano || h.getUTCFullYear())
     const mes = Number(q.mes || h.getUTCMonth() + 1)
     const lojaFiltro = String(q.loja || '').trim()
+
+    // ==================================================================
+    // 19/11/2026 — CACHE DA COMPOSIÇÃO POR LOJA.
+    //
+    // O dono relatou "carregando a composição da loja…". MEDIDO: a
+    // composição de UMA loja leva ~6 s (≈1.200 itens, várias agregações no
+    // ERP). É rápido o bastante para não falhar, mas não é instantâneo como
+    // o usuário espera ao clicar na loja.
+    //
+    // A composição de uma loja em um mês FECHADO não muda. Cache de 6 h com
+    // chave por loja+período: a segunda abertura é imediata. O mês corrente
+    // continua com o mesmo TTL curto (6 h) para não servir número velho.
+    // ==================================================================
+    const chaveLojaCache = lojaFiltro ? 'quebra_loja_v1_' + ano + '_' + mm + '_' + lojaFiltro : ''
+    if (chaveLojaCache && String(q.forcar || '') !== '1') {
+      try {
+        const recC = $app.findFirstRecordByFilter('sankhya_cache', 'chave = {:c}', {
+          c: chaveLojaCache,
+        })
+        const geC = recC.getString('gerado_em') || ''
+        const idadeC = geC ? new Date().getTime() - new Date(geC).getTime() : 1e12
+        let pC = {}
+        try {
+          pC = JSON.parse(recC.getString('payload') || '{}')
+        } catch (_) {}
+        if (pC && pC.schema_quebra_loja === 1 && idadeC >= 0 && idadeC < 6 * 60 * 60 * 1000) {
+          return e.json(
+            200,
+            Object.assign({}, pC, {
+              do_cache: true,
+              cache_idade_min: Math.round(idadeC / 60000),
+            }),
+          )
+        }
+      } catch (_) {
+        /* sem cache */
+      }
+    }
     // limite de itens na composição: o DbExplorer corta em 5.000 linhas,
     // então pedimos só o que move o ponteiro (ordenado por impacto em R$)
     const limite = Math.min(Math.max(Number(q.limite) || 4000, 100), 4500)
@@ -370,6 +408,31 @@ routerAdd(
       resp.falhas = Object.keys(falhas).map(function (k) {
         return k + ': ' + falhas[k]
       })
+    }
+
+    // grava o cache da composição por loja (a próxima abertura é imediata)
+    if (chaveLojaCache) {
+      try {
+        resp.schema_quebra_loja = 1
+        const colQ = $app.findCollectionByNameOrId('sankhya_cache')
+        let recQ = null
+        try {
+          recQ = $app.findFirstRecordByFilter('sankhya_cache', 'chave = {:c}', {
+            c: chaveLojaCache,
+          })
+        } catch (_) {
+          recQ = null
+        }
+        if (!recQ) {
+          recQ = new Record(colQ)
+          recQ.set('chave', chaveLojaCache)
+        }
+        recQ.set('payload', JSON.stringify(resp))
+        recQ.set('gerado_em', new Date().toISOString())
+        $app.save(recQ)
+      } catch (errQ) {
+        console.log('[varejo/quebra] cache loja: ' + String(errQ).slice(0, 120))
+      }
     }
 
     try {
