@@ -194,9 +194,18 @@ routerAdd(
       vaCmvAA = n(v((r2.rows || [])[0] || null, 0)) || 0
     }
 
+    // 19/11/2026 — BUG: eu passava o RESULTADO ({rows:[...]}) para `mk`, que
+    // espera a LINHA. `v({rows:...}, 0)` devolvia undefined e todos os canais
+    // saíam zerados. Aqui extraio a primeira linha, quando houver.
+    const primeiraLinha = function (res) {
+      const rows = (res && res.rows) || []
+      return rows.length ? rows[0] : null
+    }
     const mk = function (nome, cur, aa, cmvCur, cmvAA) {
-      const realizado = cmvCur !== undefined && cmvCur !== null ? cmvCur : n(v(cur, 0)) || 0
-      const anterior = cmvAA !== undefined && cmvAA !== null ? cmvAA : n(v(aa, 0)) || 0
+      const realizado =
+        cmvCur !== undefined && cmvCur !== null ? cmvCur : n(v(primeiraLinha(cur), 0)) || 0
+      const anterior =
+        cmvAA !== undefined && cmvAA !== null ? cmvAA : n(v(primeiraLinha(aa), 0)) || 0
       return {
         canal: nome,
         meta: null, // meta por canal não existe no Sankhya hoje — fica "—"
