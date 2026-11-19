@@ -280,15 +280,20 @@ onRecordAfterCreateSuccess(function (e) {
     var empresa = t.getString('empresa') || ''
     var statusK = t.getString('status_kanban') || t.getString('status') || ''
 
+    // 19/11/2026 — link do e-mail sempre no domínio PÚBLICO.
+    // meta.appUrl no Skip é o host interno (404 na SPA) — nunca usar.
+    function urlPubBase(u) {
+      var s = String(u || '').trim()
+      if (!s) return ''
+      if (s.indexOf('internal.goskip.dev') !== -1) return ''
+      if (s.indexOf('localhost') !== -1) return ''
+      return s
+    }
     var base = ''
     try {
-      base = String($app.settings().meta.appUrl || '')
+      base = urlPubBase($secrets.get('PUBLIC_SITE_URL'))
     } catch (_) {}
-    if (!base) {
-      try {
-        base = String($os.getenv('PB_INSTANCE_URL') || '')
-      } catch (_) {}
-    }
+    if (!base) base = 'https://portalefsa.goskip.app'
     base = base.replace(/\/_\/$/, '').replace(/\/$/, '')
 
     var envolvidos = resolverEnvolvidos(t)
@@ -359,15 +364,10 @@ onRecordAfterCreateSuccess(function (e) {
         '</td></tr>' +
         '</table></div>'
 
-      var blocoLista = linhasHtml
-        ? '<p style="font-size:14px;font-weight:bold;margin:18px 0 4px">' +
-          'Suas tarefas em aberto (' +
-          lista.length +
-          ')</p>' +
-          '<ul style="font-size:13px;color:#374151;margin:0 0 0 18px;padding:0">' +
-          linhasHtml +
-          '</ul>'
-        : '<p style="font-size:13px;color:#6b7280;margin:16px 0 0">Você não tem outras tarefas em aberto no momento.</p>'
+      // 19/11/2026 — bloco "Suas tarefas em aberto" DESATIVADO.
+      // O dono relatou que o e-mail de uma tarefa nova mandava a lista
+      // inteira (15 itens). O e-mail comunica APENAS a tarefa criada.
+      var blocoLista = ''
 
       var assunto = 'Nova tarefa atribuída: ' + tituloTarefa + ' — Portal de Gestão Executivo'
 
@@ -394,9 +394,6 @@ onRecordAfterCreateSuccess(function (e) {
         (empresa ? 'Empresa: ' + empresa + '\n' : '') +
         'Atribuída por: ' +
         autorNome +
-        '\n\n' +
-        '=== SUAS TAREFAS EM ABERTO ===\n' +
-        (linhasTxt || 'Nenhuma outra tarefa em aberto.') +
         '\n\nAcesse: ' +
         (base ? base : 'https://portalefsa.goskip.app') +
         '/tarefas\n\n' +
@@ -617,15 +614,21 @@ onRecordAfterUpdateSuccess(function (e) {
     var prazo = t.getString('prazo') || ''
     var empresa = t.getString('empresa') || ''
 
+    // 19/11/2026 — mesma correção do bloco acima: NUNCA usar meta.appUrl
+    // (host interno *.shrd01.internal.goskip.dev). O link do e-mail tem de
+    // ser o domínio público do portal.
+    function urlPub(u) {
+      var s = String(u || '').trim()
+      if (!s) return ''
+      if (s.indexOf('internal.goskip.dev') !== -1) return ''
+      if (s.indexOf('localhost') !== -1) return ''
+      return s
+    }
     var base = ''
     try {
-      base = String($app.settings().meta.appUrl || '')
+      base = urlPub($secrets.get('PUBLIC_SITE_URL'))
     } catch (_) {}
-    if (!base) {
-      try {
-        base = String($os.getenv('PB_INSTANCE_URL') || '')
-      } catch (_) {}
-    }
+    if (!base) base = 'https://portalefsa.goskip.app'
     base = base.replace(/\/_\/$/, '').replace(/\/$/, '')
 
     function esc2(s) {
@@ -809,15 +812,8 @@ onRecordAfterUpdateSuccess(function (e) {
         '</td></tr>' +
         '</table></div>'
 
-      var blocoLista = linhasHtml
-        ? '<p style="font-size:14px;font-weight:bold;margin:18px 0 4px">' +
-          'Suas tarefas em aberto (' +
-          lista.length +
-          ')</p>' +
-          '<ul style="font-size:13px;color:#374151;margin:0 0 0 18px;padding:0">' +
-          linhasHtml +
-          '</ul>'
-        : '<p style="font-size:13px;color:#6b7280;margin:16px 0 0">Você não tem outras tarefas em aberto no momento.</p>'
+      // 19/11/2026 — bloco "Suas tarefas em aberto" DESATIVADO (2º bloco).
+      var blocoLista = ''
 
       var assunto = 'Nova tarefa atribuída: ' + tituloTarefa + ' — Portal de Gestão Executivo'
 
@@ -844,9 +840,8 @@ onRecordAfterUpdateSuccess(function (e) {
         (empresa ? 'Empresa: ' + empresa + '\n' : '') +
         'Atribuída por: ' +
         autorNome +
-        '\n\n' +
-        '=== SUAS TAREFAS EM ABERTO ===\n' +
-        (linhasTxt || 'Nenhuma outra tarefa em aberto.') +
+        // 19/11/2026 — lista de tarefas em aberto REMOVIDA também neste
+        // bloco: o e-mail comunica UMA tarefa, a recém-criada.
         '\n\nAcesse: ' +
         (base || 'https://portalefsa.goskip.app') +
         '/tarefas\n\n' +
