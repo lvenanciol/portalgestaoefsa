@@ -99,6 +99,40 @@ routerAdd(
         /* sem cache */
       }
     }
+    // ==================================================================
+    // CACHE DA GRADE (19/11/2026) — 77 lojas levam ~16 s.
+    // O dono relatou lentidão ao buscar dados de vendas. A grade tem uma
+    // linha por loja (pequena: cabe folgado nos 500 KB) e é estável para
+    // mês fechado. 6 h de validade, forçável com ?forcar=1.
+    // ==================================================================
+    const chaveGradeCache = !lojaFiltro
+      ? 'quebra_grade_v1_' + ano + '_' + String(mes).padStart(2, '0')
+      : ''
+    if (chaveGradeCache && String(q.forcar || '') !== '1') {
+      try {
+        const rg = $app.findFirstRecordByFilter('sankhya_cache', 'chave = {:c}', {
+          c: chaveGradeCache,
+        })
+        const geG = rg.getString('gerado_em') || ''
+        const idadeG = geG ? new Date().getTime() - new Date(geG).getTime() : 1e12
+        let pG = {}
+        try {
+          pG = JSON.parse(rg.getString('payload') || '{}')
+        } catch (_) {}
+        if (pG && pG.schema_grade === 1 && idadeG >= 0 && idadeG < 6 * 60 * 60 * 1000) {
+          return e.json(
+            200,
+            Object.assign({}, pG, {
+              do_cache: true,
+              cache_idade_min: Math.round(idadeG / 60000),
+            }),
+          )
+        }
+      } catch (_) {
+        /* sem cache */
+      }
+    }
+
     // limite de itens na composição: o DbExplorer corta em 5.000 linhas,
     // então pedimos só o que move o ponteiro (ordenado por impacto em R$)
     const limite = Math.min(Math.max(Number(q.limite) || 4000, 100), 4500)
@@ -443,6 +477,37 @@ routerAdd(
     // caro para calcular e é o que a tela precisa). O resto do payload é
     // barato e é reconstruído a cada chamada.
     // ==================================================================
+    // grade completa (sem lojaFiltro): 77 linhas, cabe nos 500 KB
+    if (chaveGradeCache) {
+      try {
+        resp.schema_grade = 1
+        const jsonGrade = JSON.stringify(resp)
+        if (jsonGrade.length <= 480000) {
+          const colG = $app.findCollectionByNameOrId('sankhya_cache')
+          let recG = null
+          try {
+            recG = $app.findFirstRecordByFilter('sankhya_cache', 'chave = {:c}', {
+              c: chaveGradeCache,
+            })
+          } catch (_) {
+            recG = null
+          }
+          if (!recG) {
+            recG = new Record(colG)
+            recG.set('chave', chaveGradeCache)
+          }
+          recG.set('payload', jsonGrade)
+          recG.set('gerado_em', new Date().toISOString())
+          $app.save(recG)
+          console.log('[varejo/quebra] cache grade gravado: ' + jsonGrade.length + ' bytes')
+        } else {
+          console.log('[varejo/quebra] grade grande demais: ' + jsonGrade.length)
+        }
+      } catch (errG2) {
+        console.log('[varejo/quebra] cache grade: ' + String(errG2).slice(0, 120))
+      }
+    }
+
     if (chaveLojaCache) {
       try {
         const itensDaLoja = itensPorLoja[String(Number(lojaFiltro))] || []
