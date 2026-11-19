@@ -829,7 +829,6 @@ onRecordAfterUpdateSuccess(function (e) {
 
       if (!canais.email) continue
 
-      var tDest = new Date().getTime()
       var html = montarHtml({
         logosHtml: faixaLogos(d.rec, empresaNome),
         tituloBarra: statusMudou ? 'Tarefa atualizada' : 'Tarefa alterada',
@@ -1184,10 +1183,37 @@ onRecordAfterCreateSuccess(function (e) {
     }
   }
 
+  // ------------------------------------------------------------------
+  // 19/11/2026 — ENFILEIRA o e-mail em vez de enviar no request.
+  // Grava na coleção `emails` com status 'pendente'; o cron
+  // `emails_fila_cron.js` envia a cada 2 minutos.
+  // ------------------------------------------------------------------
+  function enfileirarEmail(dest, assunto, html, texto) {
+    try {
+      var colF = $app.findCollectionByNameOrId('emails_fila')
+      var recF = new Record(colF)
+      recF.set('para', dest.email)
+      recF.set('assunto', assunto)
+      recF.set('corpo_texto', String(texto).slice(0, 40000))
+      recF.set('corpo_html', String(html).slice(0, 200000))
+      recF.set('status', 'pendente')
+      recF.set('modelo', 'tarefa_chat')
+      recF.set('tentativas', 0)
+      $app.save(recF)
+      console.log('[chat_email] enfileirado para ' + dest.email)
+    } catch (errF) {
+      // REGRA: efeito externo não pode se perder. Se a fila falhar, envia
+      // agora — o usuário espera mais, mas o e-mail sai.
+      console.log('[chat_email] fila falhou, enviando sincrono: ' + String(errF).slice(0, 120))
+      enviarEmail(dest, assunto, html, texto)
+    }
+  }
+
   function enviarEmail(dest, assunto, html, texto) {
     var status = 'enviado'
     var erro = ''
     try {
+      var tSm = new Date().getTime()
       var m = new MailerMessage({
         from: { address: remetente(), name: nomeRemetente() },
         to: [{ address: dest.email }],
@@ -1196,6 +1222,13 @@ onRecordAfterCreateSuccess(function (e) {
         text: texto,
       })
       $app.newMailClient().send(m)
+      // 19/11/2026 — MEDIDO: cada SMTP leva 3.600–4.900 ms (log
+      // "[tarefa_eventos] SMTP levou 3685ms"). Este é o custo real do envio;
+      // não há como paralelizar sem $app.go (inexistente no JSVM) nem
+      // setTimeout. A saída é NÃO enviar e-mail no caminho da resposta.
+      console.log(
+        '[chat_email] SMTP para ' + dest.email + ': ' + (new Date().getTime() - tSm) + 'ms',
+      )
     } catch (err) {
       status = 'erro'
       erro = String(err).slice(0, 500)
@@ -1449,19 +1482,23 @@ onRecordAfterCreateSuccess(function (e) {
             enviadoAsync = false
           }
         }
-        if (!enviadoAsync) {
-          enviarEmail(d, assunto, html, txtPlano)
-          nEmailEnviado++
-        }
-        console.log(
-          '[chat_email] destinatario ' +
-            (d.email || '?') +
-            ' processado em ' +
-            (new Date().getTime() - tDest) +
-            'ms (async=' +
-            enviadoAsync +
-            ')',
-        )
+        // ==============================================================
+        // 19/11/2026 — FILA, NÃO ENVIO SÍNCRONO (a solução definitiva).
+        //
+        // MEDIDO com instrumentação: o hook do chat gasta 3ms; o custo está
+        // em `enviarEmail` — cada SMTP leva 3.600-4.900ms e o laço envia um
+        // por destinatário (2 destinatários = ~8s travando o botão Enviar).
+        //
+        // `$app.go` NÃO existe neste JSVM ("Object has no member 'go'") e
+        // `setTimeout` também não. Não há thread nem timer disponível, então
+        // paralelizar é impossível AQUI.
+        //
+        // SOLUÇÃO: gravar o e-mail como PENDENTE na coleção `emails` e deixar
+        // um cron (a cada 2 min) enviar fora do request. A resposta volta na
+        // hora; o e-mail sai no ciclo seguinte.
+        // ==============================================================
+        enfileirarEmail(d, assunto, html, txtPlano)
+        nEmailEnviado++
       }
     }
   } catch (err) {
