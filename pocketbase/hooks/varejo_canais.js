@@ -228,19 +228,20 @@ routerAdd(
       'DEZ',
     ]
     const colMes = MESES_COL[mes - 1]
+    // NOTA 19/11/2026: as consultas de meta são disparadas AQUI, mas a
+    // extração da linha acontece depois de `primeiraLinha` ser declarada —
+    // usar a função antes da declaração (hoisting de const) derrubava a rota
+    // com HTTP 400.
     const metaAtacadoR = rodar(
       'SELECT NVL(SUM(METAVEND' +
         colMes +
         '),0) VLR FROM SANKHYA.AD_ITEMETASATACADO WHERE ANO = ' +
         ano,
     )
-    const metaAtacado = n(v(primeiraLinha(metaAtacadoR), 0)) || 0
-    // varejo: meta das lojas do mês corrente na view
     const metaVarejoR = rodar(
       'SELECT NVL(SUM(METAVENDA),0) VLR FROM SANKHYA.EF_VIEW_METAS_LOJAS ' +
         'WHERE CODCENCUS >= 10105000 AND CODCENCUS < 10107000',
     )
-    const metaVarejo = n(v(primeiraLinha(metaVarejoR), 0)) || 0
 
     // --- ATACADO ---
     const at = rodar(sqlEmpresas('1', ''))
@@ -268,6 +269,8 @@ routerAdd(
       const rows = (res && res.rows) || []
       return rows.length ? rows[0] : null
     }
+    const metaAtacado = n(v(primeiraLinha(metaAtacadoR), 0)) || 0
+    const metaVarejo = n(v(primeiraLinha(metaVarejoR), 0)) || 0
     const mk = function (nome, cur, aa, cmvCur, cmvAA, meta) {
       const realizado =
         cmvCur !== undefined && cmvCur !== null ? cmvCur : n(v(primeiraLinha(cur), 0)) || 0
@@ -355,9 +358,11 @@ routerAdd(
         out.canais.length +
         ' canais com fonte de CMV disponível.'
     }
-    // transparência: % Meta não é exibido porque a meta por canal não existe
+    // transparência: de onde vem cada meta e o que NÃO existe
     out.obs_meta =
-      'Meta por canal não está parametrizada no Sankhya. O % Meta fica vazio em vez de estimado.'
+      'Meta: Atacado de AD_ITEMETASATACADO (por vendedor) e Varejo de ' +
+      'EF_VIEW_METAS_LOJAS (por loja). Distribuição não tem meta em nenhuma ' +
+      'tabela do Sankhya — fica vazia em vez de estimada.'
 
     const falhas = []
     if (at.erro) falhas.push('atacado: ' + at.erro)
