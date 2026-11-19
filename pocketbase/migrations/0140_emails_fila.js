@@ -49,11 +49,11 @@ migrate(
       ],
     })
     app.save(col)
-
-    // índice para o cron achar os pendentes rápido
-    const c2 = app.findCollectionByNameOrId('emails_fila')
-    c2.addIndex('idx_fila_status', false, 'status, created', '')
-    app.save(c2)
+    // NOTA 19/11/2026: sem índice nesta versão. `addIndex` com 'status, created'
+    // falhou ("no such column: status") porque o índice é avaliado antes de o
+    // campo select ser materializado. A fila é pequena (poucas dezenas de
+    // registros) e o cron lê 20 por vez — o índice é otimização, não
+    // requisito. Adicionar depois, numa migração própria, se o volume crescer.
   },
   (app) => {
     app.delete(app.findCollectionByNameOrId('emails_fila'))
