@@ -307,10 +307,25 @@ routerAdd(
         vlr_venda: n(v(r, 4)) || 0,
         // % Quebra pela fórmula pedida pelo dono:
         //   % quebra = QTD QUEBRA / (EI + RECEBIDO - EF)
+        //
+        // 19/11/2026 — GUARDA DE HONESTIDADE (medida no dado real).
+        // Sem a guarda, item SEM inventário gerava percentual absurdo:
+        // BANANA PRATA VERDE com EI=0, EF=0, recebido≈106 e vendas 12.886
+        // dava **-12.172%**. A base (EI+REC-EF) só existe quando o produto
+        // FOI CONTADO; sem contagem, o recebimento por transferência não é
+        // capturado e a conta não representa nada.
+        // Regra: percentual só quando o produto tem ao menos uma ponta de
+        // inventário E a base é positiva. Fora disso: null (a tela mostra —)
+        // e o item continua na lista com o R$ real.
         perc_quebra_estoque: (function () {
+          if (semInv) return null
           const base = eiV + (n(v(r, 6)) || 0) - efV
           if (!(base > 0)) return null
-          return Number(((qtdQuebra / base) * 100).toFixed(2))
+          const p = (qtdQuebra / base) * 100
+          // variação acima de 100% da base indica estoque não capturado
+          // (transferência ausente), não uma quebra real
+          if (Math.abs(p) > 100) return null
+          return Number(p.toFixed(2))
         })(),
         ei: eiV,
         recebido: n(v(r, 6)) || 0,
