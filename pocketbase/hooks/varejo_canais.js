@@ -377,18 +377,23 @@ routerAdd(
     // ==================================================================
     const falhas = []
     if (!cmvIndisponivel) {
+      // SQL em aspas duplas: os literais 'Carone'/'Coutinho' usam aspas
+      // simples (SQL) e estourariam a string se ela fosse simples também.
       const hv = rodar(
-        'SELECT CASE WHEN PLV.CODCENCUS >= 10106000 THEN 'Carone' ELSE 'Coutinho' END REDE, ' +
+        "SELECT CASE WHEN PLV.CODCENCUS >= 10106000 THEN 'Carone' ELSE 'Coutinho' END REDE, " +
           " CASE WHEN P.NOMEPARC LIKE '%-ST -%' THEN 'Sempre Tem' " +
           "      WHEN P.NOMEPARC LIKE '%-EB -%' THEN 'Extrabom' " +
           "      ELSE 'Carone' END BANDEIRA, " +
           ' PLV.CODPARC, P.NOMEPARC, ROUND(SUM(PLV.VLRTOT),2) VLR ' +
           'FROM SANKHYA.AD_VENDASPLV PLV ' +
           'JOIN SANKHYA.TGFPAR P ON P.CODPARC=PLV.CODPARC ' +
-          'WHERE PLV.DTNEG >= ' + iniMes + ' AND PLV.DTNEG < ' + fimMes +
+          'WHERE PLV.DTNEG >= ' +
+          iniMes +
+          ' AND PLV.DTNEG < ' +
+          fimMes +
           '  AND P.AD_SELECIONADO IN (1,2) AND PLV.CODPARC NOT IN (36,37,6959) ' +
           '  AND PLV.VLRTOT > 0 ' +
-          'GROUP BY CASE WHEN PLV.CODCENCUS >= 10106000 THEN 'Carone' ELSE 'Coutinho' END, ' +
+          "GROUP BY CASE WHEN PLV.CODCENCUS >= 10106000 THEN 'Carone' ELSE 'Coutinho' END, " +
           " CASE WHEN P.NOMEPARC LIKE '%-ST -%' THEN 'Sempre Tem' " +
           "      WHEN P.NOMEPARC LIKE '%-EB -%' THEN 'Extrabom' " +
           "      ELSE 'Carone' END, PLV.CODPARC, P.NOMEPARC",
@@ -407,7 +412,10 @@ routerAdd(
       const hd = rodar(
         'SELECT C.CODEMP, P.CODPARC, P.NOMEPARC, ROUND(SUM(C.VLRNOTA),2) VLR ' +
           'FROM SANKHYA.TGFCAB C JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
-          'WHERE C.DTNEG >= ' + iniMes + ' AND C.DTNEG < ' + fimMes +
+          'WHERE C.DTNEG >= ' +
+          iniMes +
+          ' AND C.DTNEG < ' +
+          fimMes +
           "  AND C.STATUSNOTA='L' AND C.CODEMP IN (4,10) " +
           '  AND NVL(P.AD_SELECIONADO,0) NOT IN (1,2) ' +
           'GROUP BY C.CODEMP, P.CODPARC, P.NOMEPARC',
