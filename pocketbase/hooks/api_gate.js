@@ -231,6 +231,15 @@ onRecordViewRequest((e) => {
   }
   function moduloVerConcedido(m, p) {
     if (!p || !p['botoes']) return false
+    // 19/11/2026 — TELA NOVA NASCE SEM PERMISSÃO (diretiva do dono).
+    // Mesma regra do gate de LISTA e do permissoes-service.ts: módulo
+    // explícito não é concedido pela matriz; exige permissoes[m].ver.
+    // (Aplicado também em VIEW/CREATE/UPDATE/DELETE — sem isto a tela
+    // ficaria escondida mas a API gravaria.)
+    if (MODULOS_EXPLICITOS[m]) {
+      const ent = p[m]
+      return !!(ent && ent['ver'] === true)
+    }
     const tela = telaModulo(m)
     if (!tela) return false
     const b = p['botoes']
@@ -401,6 +410,13 @@ onRecordUpdateRequest((e) => {
   }
   function moduloAcaoConcedido(modulo, acao, p) {
     if (!p || !p['botoes']) return false
+    // 19/11/2026 — TELA NOVA NASCE SEM PERMISSÃO (diretiva do dono).
+    // Vale também para as AÇÕES (criar/editar/excluir): módulo explícito
+    // exige permissoes[modulo][acao] === true, nunca a matriz.
+    if (MODULOS_EXPLICITOS[modulo]) {
+      const ent = p[modulo]
+      return !!(ent && ent[acao] === true)
+    }
     const tela = telaModulo(modulo)
     if (!tela) return false
     const b = p['botoes']
