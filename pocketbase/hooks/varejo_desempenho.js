@@ -411,7 +411,10 @@ routerAdd(
         ')',
     )
     const plvAtual = vendaPlvRows[0] || null
-    const plvVenda = n(v(plvAtual, 1))
+    // 19/11/2026 — `let`: o ticket precisa trocar esta base pelo VALOR DO
+    // CUPOM (AD_TKTMEDLOJA) mais abaixo. Com `const`, a reatribuição lançava
+    // e a rota inteira respondia HTTP 400.
+    let plvVenda = n(v(plvAtual, 1))
     const plvQtd = n(v(plvAtual, 2))
 
     // ------------------------------------------------------------------
