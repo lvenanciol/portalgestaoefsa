@@ -2013,6 +2013,8 @@ export default function DesempenhoPage() {
           {(() => {
             const chCanal = 'qr:canal'
             const abCanal = drillAberto.includes(chCanal)
+            // itens do canal: só é possível contar os que já foram carregados;
+            // quando não há detalhe, mostramos o valor (dado que sempre existe)
             const totItens = grupos.reduce(
               (a, g) =>
                 a +
@@ -2020,29 +2022,29 @@ export default function DesempenhoPage() {
                   (b, bd) =>
                     b +
                     bd.lojas.reduce(
-                      (c, l) =>
-                        c + ((itensCarregados[String(l.codparc)] || []).length || l.itens || 0),
+                      (c, l) => c + (itensCarregados[String(l.codparc)] || []).length,
                       0,
                     ),
                   0,
                 ),
               0,
             )
+            // valor do canal: soma o detalhe já carregado; para lojas ainda
+            // não abertas usa `quebra_valor` da GRADE (nunca zero falso)
             const totValor = grupos.reduce(
               (a, g) =>
                 a +
                 g.bandeiras.reduce(
                   (b, bd) =>
                     b +
-                    bd.lojas.reduce(
-                      (c, l) =>
-                        c +
-                        ((itensCarregados[String(l.codparc)] || []) as any[]).reduce(
-                          (d2, x: any) => d2 + (Number(x.valor) || 0),
-                          0,
-                        ),
-                      0,
-                    ),
+                    bd.lojas.reduce((c, l) => {
+                      const det = itensCarregados[String(l.codparc)] || []
+                      const v =
+                        det.length > 0
+                          ? det.reduce((d2, x: any) => d2 + (Number(x.valor) || 0), 0)
+                          : Number(l.quebra_valor) || 0
+                      return c + v
+                    }, 0),
                   0,
                 ),
               0,
@@ -2065,7 +2067,8 @@ export default function DesempenhoPage() {
                     Varejo (Redes)
                   </span>
                   <span className="text-[10px] ml-auto tabular-nums" style={{ color: T.muted }}>
-                    {totItens} itens · {brl(totValor)}
+                    {totItens > 0 ? totItens + ' itens · ' : ''}
+                    {brl(totValor)}
                   </span>
                 </button>
                 {abCanal && (
