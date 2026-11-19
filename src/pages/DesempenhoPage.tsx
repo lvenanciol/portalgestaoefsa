@@ -1906,8 +1906,12 @@ export default function DesempenhoPage() {
                     <td className="text-right tabular-nums" style={{ color: T.muted }}>
                       —
                     </td>
-                    <td className="text-right tabular-nums font-semibold" style={{ color: T.text }}>
-                      {brl(c.realizado)}
+                    <td
+                      className="text-right tabular-nums font-semibold"
+                      style={{ color: c.sem_fonte ? T.muted : T.text }}
+                      title={c.sem_fonte ? c.obs || 'Sem fonte no Sankhya' : undefined}
+                    >
+                      {c.sem_fonte ? '—' : brl(c.realizado)}
                     </td>
                     <td className="text-right tabular-nums" style={{ color: T.muted }}>
                       —

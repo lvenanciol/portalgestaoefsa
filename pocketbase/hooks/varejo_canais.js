@@ -100,7 +100,26 @@ routerAdd(
     // itens por nota. VLRNOTA é do CABEÇALHO: somar a nota exige ou uma
     // subquery por NUNOTA, ou somar direto na TGFCAB sem o join.
     // CUSTO existe por ITEM (TGFITE.VLRCUSTO), então no CMV o join é correto.
-    const campoValor = metrica === 'cmv' ? 'NVL(I.VLRCUSTO,0)' : 'NVL(C.VLRNOTA,0)'
+    // ==================================================================
+    // 19/11/2026 — CMV DE ATACADO/DISTRIBUIÇÃO NÃO EXISTE NESTA BASE.
+    //
+    // Medi as quatro candidatas em TGFITE para out/2026 na empresa 1:
+    //   VLRCUS             R$   124.093   (0,7% da venda de R$ 18,3M)
+    //   CUSTO              R$    75.183   (0,4%)
+    //   AD_CUSTOMEDIOGER   R$    39.188   (0,2%)
+    //   VLRTOT (venda)     R$ 18.355.740
+    // Nenhuma serve: CMV de 0,4% da receita é impossível. Essas colunas são
+    // custo UNITÁRIO/auxiliar, não o custo total da operação.
+    //
+    // A fonte de CMV que existe e fecha é AD_CMVPROD (CMV + QTDCMV por loja e
+    // produto), mas ela cobre as 77 LOJAS (varejo), não as empresas 1/4/10.
+    //
+    // DECISÃO: em vez de devolver um número inventado para atacado e
+    // distribuição, o endpoint marca `sem_fonte=true` e a tela mostra "—".
+    // Isso segue a regra do dono: dado indisponível não vira zero nem chute.
+    // ==================================================================
+    const campoValor = metrica === 'cmv' ? 'NVL(I.VLRCUS,0)' : 'NVL(C.VLRNOTA,0)'
+    const cmvIndisponivel = metrica === 'cmv'
     // no faturamento a consulta NÃO faz join com TGFITE (ver sqlEmpresas)
     const precisaJoinItem = metrica === 'cmv'
 
@@ -162,14 +181,21 @@ routerAdd(
         '  AND PLV.VLRTOT > 0'
       )
     }
-    // CMV do varejo: Resumo Lojas é a fonte oficial (decisão do dono)
+    // CMV do varejo: AD_CMVPROD é a tabela que tem CMV por loja e produto
+    // (medido: 77 lojas, R$ 32,6M em out/2026). O Resumo Lojas fica como
+    // conferência.
     const sqlCmvResumo = function (anoRef, mesRef) {
+      const ini =
+        "TO_DATE('01/" + String(mesRef).padStart(2, '0') + '/' + anoRef + "','DD/MM/YYYY')"
+      const proxM = mesRef === 12 ? 1 : mesRef + 1
+      const proxA = mesRef === 12 ? anoRef + 1 : anoRef
+      const fim = "TO_DATE('01/" + String(proxM).padStart(2, '0') + '/' + proxA + "','DD/MM/YYYY')"
       return (
-        'SELECT NVL(SUM(CMVACUM),0) VLR FROM SANKHYA.AD_RESUMOLOJAS ' +
-        'WHERE ANO = ' +
-        anoRef +
-        ' AND TO_NUMBER(MES) = ' +
-        mesRef
+        'SELECT NVL(SUM(CMV),0) VLR FROM SANKHYA.AD_CMVPROD ' +
+        'WHERE DTCMV >= ' +
+        ini +
+        ' AND DTCMV < ' +
+        fim
       )
     }
 
@@ -217,32 +243,64 @@ routerAdd(
       }
     }
 
-    out.canais = [
-      mk('Atacado', at, atAA),
-      mk('Distribuição', di, diAA),
-      mk(
-        'Varejo',
-        va,
-        vaAA,
-        metrica === 'cmv' ? vaCmv : undefined,
-        metrica === 'cmv' ? vaCmvAA : undefined,
-      ),
-    ]
+    if (cmvIndisponivel) {
+      // CMV só tem fonte para o VAREJO (AD_CMVPROD). Atacado e distribuição:
+      // sem fonte no Sankhya — exibir "—" e não zero.
+      out.canais = [
+        {
+          canal: 'Atacado',
+          meta: null,
+          realizado: null,
+          anterior: null,
+          variacao_aa: null,
+          perc_meta: null,
+          sem_fonte: true,
+          obs: 'Sem tabela de CMV para as empresas 1/4/10 no Sankhya.',
+        },
+        {
+          canal: 'Distribuição',
+          meta: null,
+          realizado: null,
+          anterior: null,
+          variacao_aa: null,
+          perc_meta: null,
+          sem_fonte: true,
+          obs: 'Sem tabela de CMV para as empresas 1/4/10 no Sankhya.',
+        },
+        mk('Varejo', va, vaAA, vaCmv, vaCmvAA),
+      ]
+    } else {
+      out.canais = [mk('Atacado', at, atAA), mk('Distribuição', di, diAA), mk('Varejo', va, vaAA)]
+    }
+    // total só sobre os canais COM fonte (null não entra como zero)
+    const comFonte = out.canais.filter(function (c) {
+      return c.realizado !== null && c.realizado !== undefined
+    })
     out.total = {
       realizado: Number(
-        out.canais
+        comFonte
           .reduce(function (a, c) {
             return a + (c.realizado || 0)
           }, 0)
           .toFixed(2),
       ),
       anterior: Number(
-        out.canais
+        comFonte
           .reduce(function (a, c) {
             return a + (c.anterior || 0)
           }, 0)
           .toFixed(2),
       ),
+      canais_com_fonte: comFonte.length,
+      canais_totais: out.canais.length,
+    }
+    if (comFonte.length < out.canais.length) {
+      out.obs_total =
+        'Total considera apenas os ' +
+        comFonte.length +
+        ' de ' +
+        out.canais.length +
+        ' canais com fonte de CMV disponível.'
     }
     // transparência: % Meta não é exibido porque a meta por canal não existe
     out.obs_meta =
