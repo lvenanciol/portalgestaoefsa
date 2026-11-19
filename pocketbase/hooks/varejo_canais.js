@@ -41,18 +41,18 @@ routerAdd(
     const mm = String(mes).padStart(2, '0')
     const iniMes = "TO_DATE('01/" + mm + '/' + ano + "','DD/MM/YYYY')"
     const fimMesNum = new Date(Date.UTC(ano, mes, 0)).getUTCDate()
-    const fimMes =
-      "TO_DATE('" + String(fimMesNum).padStart(2, '0') + '/' + mm + '/' + ano + "','DD/MM/YYYY')"
+    // 19/11/2026 — LIMITE SUPERIOR EXCLUSIVO.
+    // Eu usava `BETWEEN iniMes AND fimMes` com fimMes = dia 31. Em TGFCAB a
+    // DTNEG tem hora: uma nota emitida em 31/10 às 14h é MAIOR que
+    // TO_DATE('31/10/2026') (que é 00:00) e ficava fora — e as consultas de
+    // atacado/distribuição voltavam ZERO. Uso `< primeiro dia do mês seguinte`.
+    const proxMesNum = mes === 12 ? 1 : mes + 1
+    const proxAnoNum = mes === 12 ? ano + 1 : ano
+    const proxMM = String(proxMesNum).padStart(2, '0')
+    const fimMes = "TO_DATE('01/" + proxMM + '/' + proxAnoNum + "','DD/MM/YYYY')"
     // mesmo período do ano anterior, para o % A.A.
     const iniAA = "TO_DATE('01/" + mm + '/' + (ano - 1) + "','DD/MM/YYYY')"
-    const fimAA =
-      "TO_DATE('" +
-      String(fimMesNum).padStart(2, '0') +
-      '/' +
-      mm +
-      '/' +
-      (ano - 1) +
-      "','DD/MM/YYYY')"
+    const fimAA = "TO_DATE('01/" + proxMM + '/' + (ano - 1) + "','DD/MM/YYYY')"
 
     const edgeUrl = $secrets.get('PGE_EDGE_URL') || ''
     const edgeSecret = $secrets.get('PGE_PROXY_SECRET') || ''
@@ -113,9 +113,9 @@ routerAdd(
         'FROM SANKHYA.TGFCAB C ' +
         (precisaJoinItem ? 'JOIN SANKHYA.TGFITE I ON I.NUNOTA=C.NUNOTA ' : '') +
         'LEFT JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
-        'WHERE C.DTNEG BETWEEN ' +
+        'WHERE C.DTNEG >= ' +
         iniMes +
-        ' AND ' +
+        ' AND C.DTNEG < ' +
         fimMes +
         "  AND C.STATUSNOTA='L' " +
         '  AND C.CODEMP IN (' +
@@ -132,9 +132,9 @@ routerAdd(
         'FROM SANKHYA.TGFCAB C ' +
         (precisaJoinItem ? 'JOIN SANKHYA.TGFITE I ON I.NUNOTA=C.NUNOTA ' : '') +
         'LEFT JOIN SANKHYA.TGFPAR P ON P.CODPARC=C.CODPARC ' +
-        'WHERE C.DTNEG BETWEEN ' +
+        'WHERE C.DTNEG >= ' +
         iniAA +
-        ' AND ' +
+        ' AND C.DTNEG < ' +
         fimAA +
         "  AND C.STATUSNOTA='L' " +
         '  AND C.CODEMP IN (' +
