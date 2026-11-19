@@ -829,6 +829,7 @@ onRecordAfterUpdateSuccess(function (e) {
 
       if (!canais.email) continue
 
+      var tDest = new Date().getTime()
       var html = montarHtml({
         logosHtml: faixaLogos(d.rec, empresaNome),
         tituloBarra: statusMudou ? 'Tarefa atualizada' : 'Tarefa alterada',
@@ -1261,6 +1262,12 @@ onRecordAfterCreateSuccess(function (e) {
     }
 
     var autor = autorDe(e)
+    // 19/11/2026 — declarados AQUI (escopo do handler) para o finally ler.
+    // Dentro do try, o catch/finally não os enxergaria e o marco final daria
+    // ReferenceError silencioso.
+    var tIniEnvio = new Date().getTime()
+    var nEmailEnviado = 0
+    var lista = []
     var tituloTarefa = (tarefa.getString('titulo') || 'Sem título').trim()
     var autorMsg = (msg.getString('autor') || autor.nome || 'Sistema').trim()
     var empresaNome = (tarefa.getString('empresa') || '').trim()
@@ -1332,6 +1339,14 @@ onRecordAfterCreateSuccess(function (e) {
     var link = baseUrl() + '/tarefas?tarefa=' + encodeURIComponent(tarefaId)
     var quando = dataHoraBR()
 
+    // ==================================================================
+    // 19/11/2026 — INSTRUMENTAÇÃO DE TEMPO (o botão Enviar travava ~8 s).
+    //
+    // Este laço envia UM e-mail por destinatário, e cada volta faz consulta
+    // ao banco (faixaLogos → logomarcas/unidades/empresas) + SMTP SÍNCRONO.
+    // Com 3 destinatários, são 3 SMTPs em série dentro do mesmo request.
+    // Os marcos abaixo medem etapa por etapa — sem eles eu só chutava.
+    // ==================================================================
     var jaFoi = {}
     for (var n = 0; n < lista.length; n++) {
       var d = lista[n]
@@ -1418,6 +1433,10 @@ onRecordAfterCreateSuccess(function (e) {
           })
           enviadoAsync = true
         } catch (errGo2) {
+          // 19/11/2026 — LOGA QUAL API FALHOU. Antes eu engolia o erro e caía
+          // no envio síncrono em silêncio, sem saber POR QUE a fila não
+          // funcionava. Este log é o que faltava no diagnóstico.
+          console.log('[chat_email] fila indisponivel (' + String(errGo2).slice(0, 90) + ')')
           try {
             setTimeout(function () {
               try {
@@ -1425,16 +1444,40 @@ onRecordAfterCreateSuccess(function (e) {
               } catch (_e2) {}
             }, 0)
             enviadoAsync = true
-          } catch (_e3) {
+          } catch (errSt) {
+            console.log('[chat_email] setTimeout indisponivel: ' + String(errSt).slice(0, 90))
             enviadoAsync = false
           }
         }
-        if (!enviadoAsync) enviarEmail(d, assunto, html, txtPlano)
+        if (!enviadoAsync) {
+          enviarEmail(d, assunto, html, txtPlano)
+          nEmailEnviado++
+        }
+        console.log(
+          '[chat_email] destinatario ' +
+            (d.email || '?') +
+            ' processado em ' +
+            (new Date().getTime() - tDest) +
+            'ms (async=' +
+            enviadoAsync +
+            ')',
+        )
       }
     }
   } catch (err) {
     console.warn('chat_email (create): ' + String(err).slice(0, 200))
   } finally {
+    // marco final: tempo total do hook x quantos e-mails foram síncronos
+    try {
+      console.log(
+        '[chat_email] TOTAL no hook: ' +
+          (new Date().getTime() - tIniEnvio) +
+          'ms | destinatarios=' +
+          lista.length +
+          ' | emails_sincronos=' +
+          nEmailEnviado,
+      )
+    } catch (_) {}
     e.next()
   }
 }, 'tarefas_chat')
