@@ -1733,7 +1733,22 @@ export default function DesempenhoPage() {
     </div>
   )
 
-  const temComposicao = Object.keys(itensPorLoja).length > 0
+  // ==========================================================================
+  // 20/11/2026 — `itensPorLoja` NÃO EXISTIA e a tela quebrava inteira:
+  // "Uncaught ReferenceError: itensPorLoja is not defined".
+  //
+  // Eu havia removido a declaração (a composição passou a ser carregada sob
+  // demanda em `itensCarregados`), mas o código continuou usando o nome antigo
+  // em 4 lugares. O BUILD NÃO PEGA isso — `vite build` só transpila; o erro é
+  // de execução e só aparece com a tela aberta.
+  //
+  // Correção: derivar do payload já carregado, mantendo o nome antigo como
+  // alias. `quebra_produtos` é o mapa codparc -> itens que o endpoint devolve.
+  // ==========================================================================
+  const itensPorLoja: Record<string, any[]> =
+    ((dados as any)?.quebra_produtos as Record<string, any[]>) || {}
+  const temComposicao =
+    Object.keys(itensPorLoja).length > 0 || Object.keys(itensCarregados).length > 0
   const alternarDrill = (ch: string) =>
     setDrillAberto((p: string[]) => (p.includes(ch) ? p.filter((x) => x !== ch) : p.concat([ch])))
 
