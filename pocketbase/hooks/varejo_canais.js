@@ -208,7 +208,10 @@ routerAdd(
     // A chave inclui a metrica e o período; o payload guarda schema_v para
     // invalidar quando o cálculo muda (mesma regra do varejo_desempenho).
     // ==================================================================
-    const chaveCache = 'canais_v1_' + metrica + '_' + ano + '_' + mm
+    // v2 (20/11/2026): a hierarquia mudou — agora todo nível traz meta,
+    // realizado, % meta e % A.A. Sem trocar a chave, o cache de 6 h serviria
+    // a estrutura antiga (com os níveis zerados) depois do deploy.
+    const chaveCache = 'canais_v2_' + metrica + '_' + ano + '_' + mm
     if (String(q.forcar || '') !== '1') {
       try {
         const rec = $app.findFirstRecordByFilter('sankhya_cache', 'chave = {:c}', { c: chaveCache })
@@ -221,7 +224,7 @@ routerAdd(
           p = {}
         }
         // 6 h de validade: o mês fechado não muda; o mês corrente atualiza
-        if (p && p.schema_canais === 1 && idade >= 0 && idade < 6 * 60 * 60 * 1000) {
+        if (p && p.schema_canais === 2 && idade >= 0 && idade < 6 * 60 * 60 * 1000) {
           return e.json(
             200,
             Object.assign({}, p, {
@@ -434,6 +437,15 @@ routerAdd(
           "      WHEN P.NOMEPARC LIKE '%-EB -%' THEN 'Extrabom' " +
           "      ELSE 'Carone' END, PLV.CODPARC, P.NOMEPARC",
       )
+      // meta por loja (para cada linha e para agregar por bandeira)
+      const hm = rodar(
+        'SELECT CODPARC, NVL(SUM(METAVENDA),0) META FROM SANKHYA.EF_VIEW_METAS_LOJAS ' +
+          'WHERE CODCENCUS >= 10105000 AND CODCENCUS < 10107000 GROUP BY CODPARC',
+      )
+      const metaPorLoja = {}
+      for (const r of hm.rows || []) {
+        metaPorLoja[String(n(v(r, 0)))] = n(v(r, 1)) || 0
+      }
       const varejo = []
       for (const r of hv.rows || []) {
         varejo.push({
@@ -466,7 +478,68 @@ routerAdd(
           valor: n(v(r, 3)) || 0,
         })
       }
-      out.hierarquia = { varejo: varejo, distribuicao: distrib }
+      // ================================================================
+      // AGREGAÇÃO DOS NÍVEIS SUPERIORES (20/11/2026)
+      //
+      // Diretiva do dono: "sempre exibindo os valores do agrupamento nas
+      // respectivas colunas em todos os níveis". A linha da BANDEIRA (varejo)
+      // e da EMPRESA (distribuição) precisa trazer meta, realizado, % meta e
+      // % A.A. somados — antes saía com traços ("—"), que é o "zerado" que
+      // ele relatou.
+      // ================================================================
+      const agrega = function (itens, campo, nivel) {
+        const mapa = {}
+        for (let i = 0; i < itens.length; i++) {
+          const it = itens[i]
+          const k = String(it[campo])
+          if (!mapa[k]) {
+            mapa[k] = { nivel: nivel, nome: k, realizado: 0, meta: 0, temMeta: false, qtd: 0 }
+          }
+          mapa[k].realizado += Number(it.realizado || it.valor || 0)
+          const mv = it.meta !== null && it.meta !== undefined ? Number(it.meta) : null
+          if (mv !== null) {
+            mapa[k].meta += mv
+            mapa[k].temMeta = true
+          }
+          mapa[k].qtd += 1
+        }
+        const arr = []
+        for (const k in mapa) {
+          const g = mapa[k]
+          arr.push({
+            nivel: g.nivel,
+            nome: g.nome,
+            realizado: Number(g.realizado.toFixed(2)),
+            meta: g.temMeta ? Number(g.meta.toFixed(2)) : null,
+            perc_meta:
+              g.temMeta && g.meta > 0 ? Number(((g.realizado / g.meta) * 100).toFixed(2)) : null,
+            itens: g.qtd,
+          })
+        }
+        arr.sort(function (a, b) {
+          return b.realizado - a.realizado
+        })
+        return arr
+      }
+
+      // varejo: loja não tem `meta` no objeto ainda — preenche pelo mapa
+      for (let i = 0; i < varejo.length; i++) {
+        const m = metaPorLoja[String(varejo[i].codparc)]
+        varejo[i].realizado = Number(varejo[i].valor || 0)
+        varejo[i].meta = m !== undefined ? m : null
+      }
+      // distribuição: o valor já vem em `valor`
+      for (let i = 0; i < distrib.length; i++) {
+        distrib[i].realizado = Number(distrib[i].valor || 0)
+        distrib[i].meta = null // não existe meta para distribuição no Sankhya
+      }
+
+      out.hierarquia = {
+        varejo: varejo,
+        distribuicao: distrib,
+        varejo_bandeiras: agrega(varejo, 'bandeira', 'bandeira'),
+        distrib_empresas: agrega(distrib, 'rede', 'empresa'),
+      }
       if (hv.erro) falhas.push('hierarquia_varejo: ' + hv.erro)
       if (hd.erro) falhas.push('hierarquia_distribuicao: ' + hd.erro)
     }
