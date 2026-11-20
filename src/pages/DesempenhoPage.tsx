@@ -1,14 +1,4 @@
-                  return (
-                    <>
-                      <tr key={c.canal} className="border-t" style={{ borderColor: T.border }}>
-=======
-*/
-                  return (
-                    <>
-                      <tr key={c.canal} className="border-t" style={{ borderColor: T.border }}>                      : []
-                  return (
-=======
-                  return (import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -510,19 +500,12 @@ export default function DesempenhoPage() {
   const [telaCheia, setTelaCheia] = useState<'grafico' | 'grade' | null>(null)
   const [drawerAberto, setDrawerAberto] = useState(false)
   const bellRef = useRef<HTMLDivElement | null>(null)
-  // item i2: drilldown da quebra (Rede -> Bandeira -> Loja -> Produto)
   const [drillQuebra, setDrillQuebra] = useState(false)
   const [drillAberto, setDrillAberto] = useState<string[]>(['rede:'])
-  // 18/11/2026 — composição carregada SOB DEMANDA, por loja.
-  // Buscar as 77 lojas de uma vez dá 47 mil itens e leva ~67s (a tela
-  // desiste). O dado só é necessário quando o usuário abre a loja no
-  // drilldown, então buscamos naquele momento e guardamos no cache.
   const [itensCarregados, setItensCarregados] = useState<Record<string, any[]>>({})
   const [carregandoLoja, setCarregandoLoja] = useState<string | null>(null)
   const [erroComposicao, setErroComposicao] = useState<string>('')
 
-  // 19/11/2026 — drilldown de FATURAMENTO e CMV por CANAL
-  // (Atacado / Distribuição / Varejo). A tela é a mesma; muda a métrica.
   const [drillCanais, setDrillCanais] = useState<'faturamento' | 'cmv' | null>(null)
   const [dadosCanais, setDadosCanais] = useState<any | null>(null)
   const [carregandoCanais, setCarregandoCanais] = useState(false)
@@ -534,9 +517,7 @@ export default function DesempenhoPage() {
     setDadosCanais(null)
     pb.send(
       '/backend/v1/varejo/canais?ano=' + f.ano + '&mes=' + f.mes + '&metrica=' + drillCanais,
-      {
-        method: 'GET',
-      },
+      { method: 'GET' },
     )
       .then((r: any) => {
         if (!cancelado) setDadosCanais(r)
@@ -646,9 +627,9 @@ export default function DesempenhoPage() {
   const mem = useRef<Record<string, Resposta>>({})
   const carregar = useCallback(
     async (forcar = false) => {
-      const k = qs(false)
-      if (!forcar && mem.current[k]) {
-        setDados(mem.current[k])
+      const kk = qs(false)
+      if (!forcar && mem.current[kk]) {
+        setDados(mem.current[kk])
         setLoading(false)
         return
       }
@@ -659,9 +640,6 @@ export default function DesempenhoPage() {
           method: 'GET',
         })) as Resposta
 
-        // QUEBRA OFICIAL (query do dashboard "Quebra TOP 50" do Sankhya Om).
-        // Roda em paralelo e, se falhar, não derruba a tela: a grade volta ao
-        // % de quebra antigo (AJUSTEQUEBRA) em vez de ficar sem nada.
         let quebraLojas: any[] = []
         try {
           const qb = (await pb.send('/backend/v1/varejo/quebra?ano=' + f.ano + '&mes=' + f.mes, {
@@ -675,26 +653,26 @@ export default function DesempenhoPage() {
         if (quebraLojas.length) {
           const mapa: Record<string, any> = {}
           const prods: Record<string, any[]> = {}
-          for (const q of quebraLojas) {
-            mapa[String(q.codparc)] = q
-            if (q.produtos && q.produtos.length) prods[String(q.codparc)] = q.produtos
+          for (const qq of quebraLojas) {
+            mapa[String(qq.codparc)] = qq
+            if (qq.produtos && qq.produtos.length) prods[String(qq.codparc)] = qq.produtos
           }
           ;(r as any).quebra_produtos = prods
           r.lojas = (r.lojas || []).map((l: Loja) => {
-            const q = mapa[String(l.codparc)]
-            return q
+            const qq = mapa[String(l.codparc)]
+            return qq
               ? {
                   ...l,
-                  quebra: q.perc_quebra_venda,
-                  quebra_qtd_pct: q.perc_quebra_qtd,
-                  quebra_valor: q.vlr_quebra,
+                  quebra: qq.perc_quebra_venda,
+                  quebra_qtd_pct: qq.perc_quebra_qtd,
+                  quebra_valor: qq.vlr_quebra,
                 }
               : l
           })
         }
 
         setDados(r)
-        mem.current[k] = r
+        mem.current[kk] = r
         setSelecionadas([])
       } catch (e) {
         setErro(String(e))
@@ -768,9 +746,9 @@ export default function DesempenhoPage() {
   const seriePivot = useMemo(() => {
     const mapa: Record<string, Record<string, number>> = {}
     for (const s of dados?.serie || []) {
-      const m = String(s.MES || '').padStart(2, '0')
-      if (!mapa[m]) mapa[m] = {}
-      mapa[m][String(s.ANO)] = Number((s as any)[defM.campo] ?? (s as any).FAT) || 0
+      const mm = String(s.MES || '').padStart(2, '0')
+      if (!mapa[mm]) mapa[mm] = {}
+      mapa[mm][String(s.ANO)] = Number((s as any)[defM.campo] ?? (s as any).FAT) || 0
     }
     const anos = Array.from(
       new Set((dados?.serie || []).map((s: any) => String(s.ANO || '')).filter(Boolean)),
@@ -778,13 +756,13 @@ export default function DesempenhoPage() {
     const ult = anos[anos.length - 1]
     return Object.keys(mapa)
       .sort()
-      .map((m) => {
-        const linha: any = { mes: MESES_C[Number(m) - 1] || m }
-        for (const a of anos) linha[a] = mapa[m][a] ?? null
+      .map((mm) => {
+        const linha: any = { mes: MESES_C[Number(mm) - 1] || mm }
+        for (const a of anos) linha[a] = mapa[mm][a] ?? null
         if (ult) {
-          const v = mapa[m][ult] ?? null
-          linha[ult] = Number(m) <= ultimoFechado ? v : null
-          linha[ult + ' parcial'] = Number(m) >= ultimoFechado ? v : null
+          const v = mapa[mm][ult] ?? null
+          linha[ult] = Number(mm) <= ultimoFechado ? v : null
+          linha[ult + ' parcial'] = Number(mm) >= ultimoFechado ? v : null
         }
         return linha
       })
@@ -810,8 +788,6 @@ export default function DesempenhoPage() {
       return vs.length ? vs.reduce((a, b) => a + Number(b), 0) / vs.length : null
     }
     return {
-      // a coluna chama-se 'ating' na definição; o subtotal precisa expor
-      // 'ating' TAMBÉM para o mapeamento genérico da linha funcionar.
       ating: meta ? (fat / meta) * 100 : null,
       participacao: part || null,
       meta: meta || null,
@@ -899,8 +875,8 @@ export default function DesempenhoPage() {
   const colVisiveis = useMemo(() => COLUNAS.filter((c) => !colOcultas.includes(c.id)), [colOcultas])
 
   // Mapeia o id da COLUNA para o campo REAL da loja.
-  // O bug do print: a coluna '% Atg' tem id 'ating' mas o dado vem em
-  // 'ating_venda' — sem este mapa a célula lia undefined e mostrava "—".
+  // A coluna '% Atg' tem id 'ating' mas o dado vem em 'ating_venda' — sem
+  // este mapa a célula lia undefined e mostrava "—".
   const valorDaLoja = (c: Col, l: Loja): any => {
     if (c.id === 'ating') return l.ating_venda
     if (c.id === 'meta') return l.meta
@@ -1019,6 +995,11 @@ export default function DesempenhoPage() {
     }
   }, [uid])
 
+  const ordenarPor = (id: string) =>
+    setOrdem((p) =>
+      !p || p.id !== id ? { id, dir: 'desc' } : p.dir === 'desc' ? { id, dir: 'asc' } : null,
+    )
+
   const largura = (c: Col) => colLarg[c.id] || c.w
 
   if (loading && !dados) {
@@ -1038,12 +1019,138 @@ export default function DesempenhoPage() {
         style={{ background: T.tintRed, borderColor: '#fecaca', color: T.neg }}
       >
         <AlertTriangle className="h-4 w-4" /> Erro: {erro || 'sem dados'}
-        <Button variant="outline" size="sm" className="ml-auto" onClick={() => carregar(true)}>
-          <RefreshCw className="h-3.5 w-3.5" /> Tentar de novo
-        </Button>
       </div>
     )
   }
+
+  const cardsVisiveis = cards.ordem.filter((id) => !cards.ocultos.includes(id))
+  const blocosOrdem = (Object.keys(layout) as Bloco[]).sort((a, b) => layout[a] - layout[b])
+
+  const PainelCards = () => (
+    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
+      {cardsVisiveis.map((id) => {
+        const def: Record<
+          CardId,
+          { label: string; valor: string; ctx?: string; tom: Tom; ic: any; vars: VarItem[] }
+        > = {
+          fat: {
+            label: 'Faturamento',
+            valor: brl(K.faturamento),
+            ctx: K.meta_venda ? 'Orçado ' + brl(K.meta_venda) : 'Sem orçamento',
+            tom: (K.faturamento_ating ?? 0) >= 100 ? 'green' : 'red',
+            ic: TrendingUp,
+            vars: [
+              {
+                label: '% Meta',
+                valor: K.faturamento_ating,
+                comparado: K.meta_venda ? 'de ' + brl(K.meta_venda) : null,
+              },
+              { label: 'A.A', valor: K.faturamento_aa, comparado: 'ano anterior' },
+            ],
+          },
+          qtd: {
+            label: 'Qtde / Kg',
+            valor: n(K.quantidade_kg),
+            tom: 'blue',
+            ic: Package,
+            vars: [{ label: 'A.A', valor: K.quantidade_aa, comparado: 'ano anterior' }],
+          },
+          preco: {
+            label: 'Preço Médio',
+            valor: brl(K.preco_medio, 2),
+            tom: 'violet',
+            ic: Tag,
+            vars: [{ label: 'A.A', valor: K.preco_aa, comparado: 'ano anterior' }],
+          },
+          cupons: {
+            label: 'Cupons',
+            valor: n(K.cupons),
+            tom: 'gray',
+            ic: Receipt,
+            vars: [{ label: 'A.A', valor: K.cupons_aa, comparado: 'ano anterior' }],
+          },
+          ticket: {
+            label: 'Ticket Médio',
+            valor: brl(K.ticket_medio, 2),
+            tom: 'gray',
+            ic: Ticket,
+            vars: [{ label: 'A.A', valor: K.ticket_aa, comparado: 'ano anterior' }],
+          },
+          cmv: {
+            label: 'CMV Parcial',
+            valor: pct(K.cmv_pct),
+            ctx: K.meta_cmv ? 'Orçado ' + pct(K.meta_cmv) : undefined,
+            tom: (K.cmv_ating ?? 0) <= 100 ? 'green' : 'red',
+            ic: Percent,
+            vars: [
+              {
+                label: '% Orç',
+                valor: K.cmv_ating,
+                inverso: true,
+                comparado: K.meta_cmv ? 'de ' + pct(K.meta_cmv) : null,
+              },
+            ],
+          },
+          quebra: {
+            label: 'Quebra',
+            valor: pct(K.quebra_pct),
+            ctx: K.limite_perda ? 'Limite ' + pct(K.limite_perda) : undefined,
+            tom: (K.quebra_ating ?? 0) <= 100 ? 'green' : 'red',
+            ic: AlertTriangle,
+            vars: [
+              {
+                label: '% Lim',
+                valor: K.quebra_ating,
+                inverso: true,
+                comparado: K.limite_perda ? 'de ' + pct(K.limite_perda) : null,
+              },
+            ],
+          },
+          lojas: {
+            label: 'Lojas',
+            valor: n(K.nLojas),
+            tom: 'blue',
+            ic: Store,
+            vars: [],
+          },
+        }
+        const d = def[id]
+        return (
+          <Card
+            key={id}
+            label={d.label}
+            valor={d.valor}
+            contexto={d.ctx}
+            Icone={d.ic}
+            tom={d.tom}
+            vars={d.vars}
+            arrastando={arrastandoCard === id}
+            onDragStart={() => setArrastandoCard(id)}
+            onDragOver={(e: any) => e.preventDefault()}
+            onDrop={() => {
+              if (arrastandoCard && arrastandoCard !== id) {
+                const arr = [...cards.ordem]
+                const a = arr.indexOf(arrastandoCard),
+                  b = arr.indexOf(id)
+                arr.splice(a, 1)
+                arr.splice(b, 0, arrastandoCard)
+                const nv = { ...cards, ordem: arr }
+                setCards(nv)
+                gravarPref(uid, 'cardsOrdem', nv.ordem)
+              }
+              setArrastandoCard(null)
+            }}
+            onMover={(dir: -1 | 1) => moverCard(id, dir)}
+            onOcultar={() => {
+              const nv = { ...cards, ocultos: cards.ocultos.concat([id]) }
+              setCards(nv)
+              gravarPref(uid, 'cardsOcultos', nv.ocultos)
+            }}
+          />
+        )
+      })}
+    </div>
+  )
 
   const nomeCanal = CANAIS.find((c) => c.id === f.aba)?.label || 'Varejo (Redes)'
   const nomeSup =
@@ -1066,7 +1173,6 @@ export default function DesempenhoPage() {
   const defs: Record<CardId, any> = {
     fat: {
       label: 'Faturamento',
-      // 19/11/2026 — clique abre a composição do faturamento POR CANAL
       onClick: () => setDrillCanais('faturamento'),
       contexto: brl(K.faturamento) + ' · ver por canal',
       valor: comp(K.faturamento),
@@ -1082,77 +1188,46 @@ export default function DesempenhoPage() {
       valor: comp(K.quantidade_kg),
       Icone: Package,
       tom: (K.quantidade_aa ?? 0) >= 0 ? 'green' : 'red',
-      vars: [
-        { label: 'M.A.', valor: K.quantidade_ma ?? null, comparado: comp(K.quantidade_ma_valor) },
-        { label: 'A.A.', valor: K.quantidade_aa ?? null, comparado: comp(K.quantidade_aa_valor) },
-      ],
+      vars: [{ label: 'A.A.', valor: K.quantidade_aa ?? null, comparado: 'ano anterior' }],
     },
     preco: {
       label: 'Preço Médio',
       valor: brl(K.preco_medio, 2),
       Icone: Tag,
       tom: (K.preco_aa ?? 0) >= 0 ? 'green' : 'red',
-      vars: [
-        { label: 'M.A.', valor: K.preco_ma ?? null, comparado: brl(K.preco_ma_valor, 2) },
-        { label: 'A.A.', valor: K.preco_aa ?? null, comparado: brl(K.preco_aa_valor, 2) },
-      ],
+      vars: [{ label: 'A.A.', valor: K.preco_aa ?? null, comparado: 'ano anterior' }],
     },
     cupons: {
       label: 'Cupons',
-      // Quando a rede não tem fonte no Sankhya (Coutinho), o valor vem null.
-      // Em vez de "—" seco, mostramos "pendente" para não parecer zero.
-      valor:
-        K.cupons === null || K.cupons === undefined
-          ? K.cupons_fonte === 'pendente'
-            ? 'pendente'
-            : '—'
-          : n(K.cupons),
-      contexto:
-        K.cupons_fonte === 'pendente'
-          ? 'sem fonte no Sankhya para esta rede'
-          : K.cupons_fonte && K.cupons_fonte !== 'indisponivel'
-            ? 'fonte: ' + K.cupons_fonte
-            : undefined,
+      valor: n(K.cupons),
       Icone: Receipt,
-      tom: (K.cupons_aa ?? 0) >= 0 ? 'blue' : 'red',
-      vars: [
-        { label: 'M.A.', valor: K.cupons_ma ?? null, comparado: n(K.cupons_ma_valor) },
-        { label: 'A.A.', valor: K.cupons_aa ?? null, comparado: n(K.cupons_aa_valor) },
-      ],
+      tom: (K.cupons_aa ?? 0) >= 0 ? 'green' : 'red',
+      vars: [{ label: 'A.A.', valor: K.cupons_aa ?? null, comparado: 'ano anterior' }],
     },
     ticket: {
       label: 'Ticket Médio',
-      valor: brl(K.ticket_medio, 0),
+      valor: brl(K.ticket_medio, 2),
       Icone: Ticket,
-      tom: (K.ticket_aa ?? 0) >= 0 ? 'violet' : 'red',
-      vars: [
-        { label: 'M.A.', valor: K.ticket_ma ?? null, comparado: brl(K.ticket_ma_valor) },
-        { label: 'A.A.', valor: K.ticket_aa ?? null, comparado: brl(K.ticket_aa_valor) },
-      ],
+      tom: (K.ticket_aa ?? 0) >= 0 ? 'green' : 'red',
+      vars: [{ label: 'A.A.', valor: K.ticket_aa ?? null, comparado: 'ano anterior' }],
     },
     cmv: {
       label: 'CMV Parcial',
-      // 19/11/2026 — mesmo drilldown por canal, na métrica CMV
-      onClick: () => setDrillCanais('cmv'),
-      valor: pct(K.cmv_pct, 2),
-      contexto: 'meta ' + pct(K.meta_cmv) + ' · ver por canal',
+      valor: pct(K.cmv_pct),
       Icone: Percent,
-      tom: (K.cmv_ating ?? 100) >= 100 ? 'green' : 'amber',
+      tom: (K.cmv_ating ?? 0) <= 100 ? 'green' : 'red',
       vars: [
-        { label: 'Meta', valor: K.cmv_ating ?? null, inverso: true, comparado: pct(K.meta_cmv) },
+        { label: 'vs Orç', valor: K.cmv_ating ?? null, inverso: true, comparado: pct(K.meta_cmv) },
       ],
     },
     quebra: {
-      // item i2: clique abre a composição da quebra
-      onClick: () => setDrillQuebra(true),
       label: 'Quebra',
-      valor: pct(K.quebra_pct, 2),
-      contexto: 'limite ' + pct(K.limite_perda) + ' · ver composição',
+      valor: pct(K.quebra_pct),
       Icone: AlertTriangle,
       tom: (K.quebra_ating ?? 0) <= 100 ? 'green' : 'red',
       vars: [
         {
-          label: 'Meta',
+          label: 'vs Limite',
           valor: K.quebra_ating ?? null,
           inverso: true,
           comparado: pct(K.limite_perda),
@@ -1162,9 +1237,8 @@ export default function DesempenhoPage() {
     lojas: {
       label: 'Lojas',
       valor: n(K.nLojas),
-      contexto: n(K.funcionarios) + ' funcionários',
       Icone: Store,
-      tom: 'gray',
+      tom: 'blue',
       vars: [],
     },
   }
@@ -1208,7 +1282,6 @@ export default function DesempenhoPage() {
       >
         <ArrowDown className="h-2.5 w-2.5" />
       </button>
-      {/* (h) ocultar / reexibir */}
       <button
         type="button"
         onClick={() => {
@@ -1248,9 +1321,9 @@ export default function DesempenhoPage() {
             onDrop={() => setArrastandoCard(null)}
             onMover={(dir: number) => moverCard(id, dir as -1 | 1)}
             onOcultar={() => {
-              const nv = cards.ocultos.concat([id])
-              setCards({ ...cards, ocultos: nv })
-              gravarPref(uid, 'cardsOcultos', nv)
+              const nv = { ...cards, ocultos: cards.ocultos.concat([id]) }
+              setCards(nv)
+              gravarPref(uid, 'cardsOcultos', nv.ocultos)
             }}
           />
         )
@@ -1401,65 +1474,6 @@ export default function DesempenhoPage() {
               style={{ background: T.input, borderColor: T.border, color: T.text }}
             />
           </div>
-          {alertas.length > 0 && (
-            <div ref={bellRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setDrawerAberto((v) => !v)}
-                aria-expanded={drawerAberto}
-                className="relative inline-flex items-center justify-center h-7 w-7 rounded border"
-                style={{ borderColor: T.border, background: T.card }}
-              >
-                <Bell className="h-3.5 w-3.5" />
-                <span
-                  className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] font-bold flex items-center justify-center"
-                  style={{ background: T.alertFill, color: T.neg }}
-                >
-                  {alertas.length}
-                </span>
-              </button>
-              {drawerAberto && (
-                <div
-                  className="absolute right-0 top-full mt-2 z-50 w-[300px] bg-white border shadow-xl"
-                  style={{ borderColor: T.border, borderRadius: 8 }}
-                >
-                  <div
-                    className="flex items-center justify-between px-3 py-2 border-b"
-                    style={{ borderColor: T.border }}
-                  >
-                    <span className="text-[13px] font-semibold" style={{ color: T.neg }}>
-                      Atenção
-                    </span>
-                    <button type="button" onClick={() => setDrawerAberto(false)}>
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <div className="max-h-[280px] overflow-y-auto">
-                    {alertas.map((a) => (
-                      <div
-                        key={a.id}
-                        className="px-3 py-2 border-b flex items-start gap-2"
-                        style={{ borderColor: T.border }}
-                      >
-                        <span
-                          className="mt-1 h-1.5 w-1.5 rounded-full"
-                          style={{ background: a.tom === 'red' ? T.neg : T.warn }}
-                        />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[12px] font-bold truncate" style={{ color: T.text }}>
-                            {a.loja}
-                          </div>
-                          <div className="text-[11px]" style={{ color: T.muted }}>
-                            {a.d}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
           <div className="relative">
             <button
               type="button"
@@ -1504,325 +1518,149 @@ export default function DesempenhoPage() {
                     </label>
                   )
                 })}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setColOcultas([])
-                    gravarPref(uid, 'colunasOcultas', [])
-                  }}
-                  className="mt-1 w-full text-[10px] font-semibold py-1 rounded hover:bg-gray-50"
-                  style={{ color: T.muted }}
-                >
-                  Mostrar todas
-                </button>
               </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setTelaCheia(cheio('grade') ? null : 'grade')}
-            className="inline-flex items-center justify-center h-7 w-7 rounded border"
-            style={{ borderColor: T.border, color: T.text, background: T.card }}
-          >
-            {cheio('grade') ? (
-              <Minimize2 className="h-3.5 w-3.5" />
-            ) : (
-              <Maximize2 className="h-3.5 w-3.5" />
-            )}
-          </button>
         </div>
       </div>
-      <div className="border-t" style={{ borderColor: T.border }} />
-      <div className={cn('overflow-auto', cheio('grade') && 'flex-1')}>
+      <div className="overflow-auto flex-1">
         <table
-          className="text-[12px]"
-          style={{ minWidth: colVisiveis.reduce((a, c) => a + largura(c), 0), width: '100%' }}
+          className="w-full"
+          style={{ borderCollapse: 'separate', borderSpacing: 0, tableLayout: 'fixed' }}
         >
-          <colgroup>
-            {colVisiveis.map((c) => (
-              <col key={c.id} style={{ width: largura(c) }} />
-            ))}
-          </colgroup>
-          <thead className="sticky top-0 z-10" style={{ background: T.card }}>
-            <tr className="border-b" style={{ borderColor: T.border }}>
+          <thead>
+            <tr style={{ background: T.input }}>
               {colVisiveis.map((c) => (
                 <th
                   key={c.id}
-                  onClick={() =>
-                    setOrdem((o) =>
-                      o?.id === c.id
-                        ? { id: c.id, dir: o.dir === 'asc' ? 'desc' : 'asc' }
-                        : { id: c.id, dir: 'desc' },
-                    )
-                  }
-                  aria-sort={
-                    ordem?.id === c.id ? (ordem.dir === 'asc' ? 'ascending' : 'descending') : 'none'
-                  }
-                  className={cn(
-                    'relative py-2 px-2 text-[10px] font-bold uppercase cursor-pointer select-none',
-                    c.al === 'right' ? 'text-right' : 'text-left',
-                  )}
-                  style={{ color: T.muted }}
+                  className="text-[9px] font-bold uppercase px-1.5 py-1.5 select-none relative"
+                  style={{
+                    color: T.muted,
+                    width: largura(c),
+                    minWidth: largura(c),
+                    textAlign: c.al,
+                    borderBottom: '1px solid ' + T.border,
+                  }}
                 >
                   <span
-                    className={cn(
-                      'inline-flex items-center gap-1',
-                      c.al === 'right' && 'justify-end w-full',
-                    )}
+                    className="inline-flex items-center gap-0.5 cursor-pointer"
+                    onClick={() => ordenarPor(c.id)}
                   >
                     {c.label}
-                    {ordem?.id === c.id &&
-                      (ordem.dir === 'asc' ? (
-                        <ArrowUp className="h-2.5 w-2.5" />
-                      ) : (
-                        <ArrowDown className="h-2.5 w-2.5" />
-                      ))}
+                    {ordem?.id === c.id && <span>{ordem.dir === 'desc' ? '▼' : '▲'}</span>}
                   </span>
                   <span
                     onMouseDown={(e) => {
-                      e.stopPropagation()
-                      e.preventDefault()
                       redim.current = { id: c.id, ini: e.clientX, w: largura(c) }
                       document.body.style.cursor = 'col-resize'
                     }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="absolute top-0 right-0 h-full w-1.5 hover:bg-[#14532d]/30"
-                    style={{ cursor: 'col-resize' }}
+                    className="absolute top-0 right-0 h-full w-1 cursor-col-resize"
+                    style={{ background: 'transparent' }}
                   />
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {/* (f,i) Rede -> Bandeira -> Loja. Recolher esconde só os níveis
-                abaixo; a linha recolhida mantém "+" e os subtotais de TODAS as
-                colunas, inclusive os % (f1 e f3). */}
             {grupos.map((g) => {
-              const chR = 'r:' + g.rede
-              const fechR = fechados.includes(chR)
+              const chRede = 'r:' + g.rede
+              const abertoRede = !fechados.includes(chRede)
               return (
-                <Fragment key={chR}>
-                  <tr style={{ background: '#eef2f5', borderTop: '1px solid ' + T.border }}>
-                    {colVisiveis.map((c) => {
-                      if (c.id === 'rede')
-                        return (
-                          <td key={c.id} className="px-2 py-1.5">
-                            <button
-                              type="button"
-                              onClick={() => alternar(chR)}
-                              aria-expanded={!fechR}
-                              className="inline-flex items-center gap-1.5 text-[12px] font-bold"
+                <Fragment key={chRede}>
+                  <tr style={{ background: '#f8fafc', borderTop: '1px solid ' + T.border }}>
+                    <td
+                      colSpan={colVisiveis.length}
+                      className="px-1.5 py-1 text-[11px] font-bold"
+                      style={{ color: T.text }}
+                    >
+                      <button type="button" onClick={() => alternar(chRede)}>
+                        {abertoRede ? '−' : '+'} {g.rede}
+                      </button>
+                      <span className="ml-2 font-normal" style={{ color: T.muted }}>
+                        {g.nLojas} lojas · {brl(g.total.faturamento)} · {pct(g.total.ating)}
+                      </span>
+                    </td>
+                  </tr>
+                  {abertoRede &&
+                    g.bandeiras.map((b) => {
+                      const chBan = chRede + '|' + b.chave
+                      const abertoBan = !fechados.includes(chBan)
+                      return (
+                        <Fragment key={chBan}>
+                          <tr style={{ borderTop: '1px solid ' + T.border }}>
+                            <td
+                              colSpan={colVisiveis.length}
+                              className="px-1.5 py-1 pl-4 text-[11px] font-semibold"
                               style={{ color: T.text }}
                             >
-                              <span
-                                className="inline-flex items-center justify-center h-4 w-4 rounded border text-[11px] font-bold"
+                              <button type="button" onClick={() => alternar(chBan)}>
+                                {abertoBan ? '−' : '+'} {b.label}
+                              </button>
+                              <span className="ml-2 font-normal" style={{ color: T.muted }}>
+                                {b.lojas.length} lojas · {brl(b.total.faturamento)}
+                              </span>
+                            </td>
+                          </tr>
+                          {abertoBan &&
+                            b.lojas.map((l) => (
+                              <tr
+                                key={l.codparc}
                                 style={{
-                                  borderColor: T.border,
-                                  color: T.muted,
-                                  background: T.card,
+                                  borderTop: '1px solid ' + T.border,
+                                  background: selecionadas.includes(l.codparc)
+                                    ? T.tintGreen
+                                    : undefined,
                                 }}
                               >
-                                {fechR ? '+' : '−'}
-                              </span>
-                              {g.rede}
-                            </button>
-                          </td>
-                        )
-                      if (c.id === 'loja')
-                        return (
-                          <td key={c.id} className="px-2 text-[11px]" style={{ color: T.muted }}>
-                            {g.nLojas} lojas
-                          </td>
-                        )
-                      return (
-                        <td
-                          key={c.id}
-                          className={cn(
-                            'px-2 py-1.5 tabular-nums font-bold',
-                            c.al === 'right' ? 'text-right' : 'text-left',
-                          )}
-                          style={{ color: T.text }}
-                        >
-                          {celula(c, (g.total as any)[c.id])}
-                        </td>
-                      )
-                    })}
-                  </tr>
-                  {!fechR &&
-                    g.bandeiras.map((b) => {
-                      const chB = chR + '|' + b.chave
-                      const fechB = fechados.includes(chB)
-                      return (
-                        <Fragment key={chB}>
-                          <tr style={{ background: T.input }}>
-                            {colVisiveis.map((c) => {
-                              if (c.id === 'rede')
-                                return (
-                                  <td key={c.id} className="px-2 py-1">
-                                    <button
-                                      type="button"
-                                      onClick={() => alternar(chB)}
-                                      aria-expanded={!fechB}
-                                      className="inline-flex items-center gap-1.5 text-[11px] font-semibold pl-3"
-                                      style={{ color: T.text }}
-                                    >
-                                      <span
-                                        className="inline-flex items-center justify-center h-3.5 w-3.5 rounded border text-[9px] font-bold"
-                                        style={{
-                                          borderColor: T.border,
-                                          color: T.muted,
-                                          background: T.card,
-                                        }}
-                                      >
-                                        {fechB ? '+' : '−'}
-                                      </span>
-                                      {b.label}
-                                    </button>
-                                  </td>
-                                )
-                              if (c.id === 'loja')
-                                return (
+                                {colVisiveis.map((c) => (
                                   <td
                                     key={c.id}
-                                    className="px-2 text-[10px]"
-                                    style={{ color: T.muted }}
+                                    className="px-1.5 py-1 text-[11px] tabular-nums truncate"
+                                    style={{
+                                      color: T.text,
+                                      textAlign: c.al,
+                                      width: largura(c),
+                                      minWidth: largura(c),
+                                    }}
+                                    onClick={() => c.id === 'loja' && altLinha(l.codparc)}
                                   >
-                                    {b.lojas.length} lojas
-                                  </td>
-                                )
-                              return (
-                                <td
-                                  key={c.id}
-                                  className={cn(
-                                    'px-2 py-1 tabular-nums font-semibold',
-                                    c.al === 'right' ? 'text-right' : 'text-left',
-                                  )}
-                                  style={{ color: T.text }}
-                                >
-                                  {celula(c, (b.total as any)[c.id])}
-                                </td>
-                              )
-                            })}
-                          </tr>
-                          {!fechB &&
-                            b.lojas.map((l) => {
-                              const sel = selecionadas.includes(l.codparc)
-                              return (
-                                <tr
-                                  key={l.codparc}
-                                  onClick={() => altLinha(l.codparc)}
-                                  className="border-b hover:bg-[#f9fafb] cursor-pointer"
-                                  style={{
-                                    borderColor: T.border,
-                                    height: 34,
-                                    background: sel ? T.tintGreen : undefined,
-                                  }}
-                                >
-                                  {colVisiveis.map((c) => {
-                                    if (c.id === 'rede')
-                                      return <td key={c.id} className="px-2 pl-8" />
-                                    if (c.id === 'loja')
-                                      return (
-                                        <td
-                                          key={c.id}
-                                          className="px-2 text-[11px] font-medium truncate pl-6"
-                                          style={{ color: T.text }}
-                                          title={l.loja}
+                                    {c.id === 'loja' ? (
+                                      <span className="inline-flex items-center gap-1">
+                                        <span
+                                          className="text-[9px] px-1 rounded"
+                                          style={{
+                                            background: l.loja_nova ? T.tintAmber : T.tintGreen,
+                                            color: l.loja_nova ? T.warn : T.pos,
+                                          }}
                                         >
-                                          <span className="inline-flex items-center gap-1 max-w-full">
-                                            <span className="truncate">{l.loja}</span>
-                                            <button
-                                              type="button"
-                                              onClick={(e) => {
-                                                e.stopPropagation()
-                                                setParecerLoja(l)
-                                                setParecerAberto(true)
-                                              }}
-                                              className="shrink-0 opacity-0 hover:opacity-100"
-                                              style={{ color: T.nav }}
-                                            >
-                                              <Sparkles className="h-3 w-3" />
-                                            </button>
-                                          </span>
-                                        </td>
-                                      )
-                                    return (
-                                      <td
-                                        key={c.id}
-                                        className={cn(
-                                          'px-2 tabular-nums',
-                                          c.al === 'right' ? 'text-right' : 'text-left',
-                                        )}
-                                      >
-                                        {celula(c, valorDaLoja(c, l))}
-                                      </td>
-                                    )
-                                  })}
-                                </tr>
-                              )
-                            })}
+                                          {l.loja_nova ? 'NSS' : 'SSS'}
+                                        </span>
+                                        {l.loja}
+                                      </span>
+                                    ) : (
+                                      celula(c, valorDaLoja(c, l))
+                                    )}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
                         </Fragment>
                       )
                     })}
                 </Fragment>
               )
             })}
-            <tr style={{ background: '#eef2f5', borderTop: '2px solid ' + T.border }}>
-              {colVisiveis.map((c) => {
-                if (c.id === 'rede')
-                  return (
-                    <td
-                      key={c.id}
-                      className="px-2 py-2 text-[12px] font-bold"
-                      style={{ color: T.text }}
-                    >
-                      Total
-                    </td>
-                  )
-                if (c.id === 'loja')
-                  return (
-                    <td key={c.id} className="px-2 text-[11px]" style={{ color: T.muted }}>
-                      {lojasFiltradas.length} lojas
-                    </td>
-                  )
-                return (
-                  <td
-                    key={c.id}
-                    className={cn(
-                      'px-2 py-2 tabular-nums font-bold',
-                      c.al === 'right' ? 'text-right' : 'text-left',
-                    )}
-                    style={{ color: T.text }}
-                  >
-                    {celula(c, (somaGrupo(lojasFiltradas) as any)[c.id])}
-                  </td>
-                )
-              })}
-            </tr>
           </tbody>
         </table>
       </div>
     </div>
   )
 
-  // ---- item i2: composição da quebra (Rede -> Bandeira -> Loja -> Item) ----
-  // COMPOSIÇÃO DA QUEBRA (item i2) — agora vem do hook /varejo/quebra,
-  // que reproduz a query oficial do dashboard "Quebra TOP 50".
-  // Cada produto traz: EI, Recebido, EF, Vendas, Consumo, Qtd Quebra,
-  // Custo Unit (preço médio de venda como proxy, definido pelo dono) e Valor.
-  const itensPorLoja: Record<string, any[]> = (dados as any)?.quebra_produtos || {}
   const temComposicao = Object.keys(itensPorLoja).length > 0
-  const itensQuebra: any[] = temComposicao ? [{ _: 1 }] : []
   const alternarDrill = (ch: string) =>
     setDrillAberto((p: string[]) => (p.includes(ch) ? p.filter((x) => x !== ch) : p.concat([ch])))
 
-  // ==========================================================================
-  // MODAL: COMPOSIÇÃO DO FATURAMENTO / CMV POR CANAL (19/11/2026)
-  // Colunas pedidas pelo dono: Canal | Meta [R$] | Realizado [R$] | % Meta | % A.A.
-  // A meta por canal NÃO existe parametrizada no Sankhya; em vez de estimar,
-  // a coluna mostra "—" e o rodapé explica. O % A.A. compara com o mesmo mês
-  // do ano anterior.
-  // ==========================================================================
+  // MODAL: COMPOSIÇÃO DO FATURAMENTO / CMV POR CANAL
   const modalCanais = drillCanais ? (
     <div
       className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4"
@@ -1855,7 +1693,6 @@ export default function DesempenhoPage() {
             <X className="h-4 w-4" />
           </button>
         </div>
-
         <div className="flex-1 overflow-auto p-3">
           {carregandoCanais && (
             <p className="px-3 py-6 text-center text-[12px]" style={{ color: T.muted }}>
@@ -1871,37 +1708,20 @@ export default function DesempenhoPage() {
             <table className="w-full text-[12px]">
               <thead>
                 <tr style={{ color: T.muted }}>
-                  <th
-                    className="text-left font-semibold py-1.5"
-                    title="Canal conforme a regra do dono (18/11/2026)"
-                  >
-                    Canal
-                  </th>
+                  <th className="text-left font-semibold py-1.5">Canal</th>
                   <th
                     className="text-right font-semibold cursor-help"
-                    title="Meta do canal. Não parametrizada no Sankhya hoje — exibida como — para não inventar número."
+                    title="Meta do canal, quando parametrizada no Sankhya."
                   >
                     Meta [R$]
                   </th>
-                  <th
-                    className="text-right font-semibold cursor-help"
-                    title={
-                      drillCanais === 'cmv'
-                        ? 'Atacado/Distribuição: TGFITE.VLRCUSTO. Varejo: AD_RESUMOLOJAS.CMVACUM (fonte do BI).'
-                        : 'Atacado/Distribuição: TGFCAB.VLRNOTA (notas liberadas). Varejo: AD_VENDASPLV.VLRTOT (base do BI).'
-                    }
-                  >
-                    Realizado [R$]
-                  </th>
-                  <th
-                    className="text-right font-semibold cursor-help"
-                    title="% Meta = Realizado ÷ Meta. Vazio porque a meta por canal não existe no Sankhya."
-                  >
+                  <th className="text-right font-semibold">Realizado [R$]</th>
+                  <th className="text-right font-semibold cursor-help" title="Realizado ÷ Meta">
                     % Meta
                   </th>
                   <th
                     className="text-right font-semibold cursor-help"
-                    title="% A.A. = variação contra o MESMO MÊS do ano anterior, calculada sobre o realizado."
+                    title="Variação contra o mesmo mês do ano anterior"
                   >
                     % A.A
                   </th>
@@ -1909,17 +1729,7 @@ export default function DesempenhoPage() {
               </thead>
               <tbody>
                 {(dadosCanais.canais || []).map((c: any) => {
-                  // 19/11/2026 — item 1 do dono: expandir níveis de
-                  // agrupamento quando existirem.
-                  //   Varejo        → Rede → Bandeira → Loja
-                  //   Distribuição  → Empresa → Cliente
-                  // ==========================================================
-                  // 20/11/2026 — níveis conforme diretiva do dono:
-                  //   Varejo       -> Bandeira -> Loja
-                  //   Distribuição -> Empresa  -> AD_SELECIONADO
-                  //   Atacado      -> sem sub-nível
-                  // TODA linha mostra meta, realizado, % meta e % A.A.
-                  // ==========================================================
+                  // Varejo -> Bandeira -> Loja | Distribuição -> Empresa -> AD_SELECIONADO
                   const ehVarejo = c.canal === 'Varejo'
                   const ehDistrib = c.canal === 'Distribuição'
                   const chaveC = 'can:' + c.canal
@@ -1934,39 +1744,41 @@ export default function DesempenhoPage() {
                     : ehDistrib
                       ? dadosCanais.hierarquia?.distribuicao || []
                       : []
-/* BLOCO NEUTRALIZADO 20/11/2026 — restos de patches mal aplicados.
-   Tudo até o fechamento abaixo é IGNORADO pelo compilador.
-                  const itensNivel2: any[] = ehVarejo
-                    ? dadosCanais.hierarquia?.varejo || []
-                    : ehDistrib
-                      ? dadosCanais.hierarquia?.distribuicao || []
-                      : []
-=======
+
+                  const celulas = (linha: any) => {
+                    const m = linha.meta
+                    const pm = linha.perc_meta
+                    return (
+                      <>
+                        <td
+                          className="text-right tabular-nums"
+                          style={{ color: m ? T.text : T.muted }}
+                          title={m ? undefined : 'Sem meta para este nível'}
+                        >
+                          {m ? brl(m) : '—'}
+                        </td>
+                        <td
+                          className="text-right tabular-nums font-semibold"
+                          style={{ color: T.text }}
+                        >
+                          {brl(linha.realizado)}
+                        </td>
+                        <td
+                          className="text-right tabular-nums"
+                          style={{ color: pm ? T.text : T.muted }}
+                        >
+                          {pm === null || pm === undefined ? '—' : pct(pm)}
+                        </td>
+                        <td className="text-right tabular-nums" style={{ color: T.muted }}>
+                          —
+                        </td>
+                      </>
+                    )
+                  }
+
                   return (
-=======
-                  const niveis1: any[] = ehVarejo
-                    ? dadosCanais.hierarquia?.varejo_bandeiras || []
-                    : ehDistrib
-                      ? dadosCanais.hierarquia?.distrib_empresas || []
-                      : []
-                  const itensNivel2: any[] = ehVarejo
-                    ? dadosCanais.hierarquia?.varejo || []
-                    : ehDistrib
-                      ? dadosCanais.hierarquia?.distribuicao || []
-                      : []
-                  return (
-=======
-                      : []
-                  return (
-                  const itensNivel2: any[] = ehVarejo
-                    ? dadosCanais.hierarquia?.varejo || []
-                    : ehDistrib
-                      ? dadosCanais.hierarquia?.distribuicao || []
-                      : []
-=======
-                  return (
-                    <>
-                      <tr key={c.canal} className="border-t" style={{ borderColor: T.border }}>
+                    <Fragment key={c.canal}>
+                      <tr className="border-t" style={{ borderColor: T.border }}>
                         <td className="py-1.5 font-semibold" style={{ color: T.text }}>
                           {niveis1.length > 0 && (
                             <button
@@ -1974,20 +1786,21 @@ export default function DesempenhoPage() {
                               onClick={() => alternarDrill(chaveC)}
                               className="inline-flex items-center justify-center h-3.5 w-3.5 mr-1 rounded border text-[9px] font-bold align-middle"
                               style={{ borderColor: T.border, color: T.muted }}
-                              title="Expandir Rede → Bandeira → Loja"
+                              title={
+                                ehVarejo
+                                  ? 'Expandir Bandeira → Loja'
+                                  : 'Expandir Empresa → AD_SELECIONADO'
+                              }
                             >
                               {abertoC ? '−' : '+'}
                             </button>
                           )}
                           {c.canal}
                         </td>
-                        {/* META real quando existe (atacado e varejo) */}
                         <td
                           className="text-right tabular-nums"
                           style={{ color: c.meta ? T.text : T.muted }}
-                          title={
-                            c.meta_fonte || 'Meta não parametrizada no Sankhya para este canal'
-                          }
+                          title={c.meta_fonte || 'Sem meta parametrizada'}
                         >
                           {c.meta ? brl(c.meta) : '—'}
                         </td>
@@ -1998,7 +1811,6 @@ export default function DesempenhoPage() {
                         >
                           {c.sem_fonte ? '—' : brl(c.realizado)}
                         </td>
-                        {/* % META real */}
                         <td
                           className="text-right tabular-nums"
                           style={{ color: c.perc_meta ? T.text : T.muted }}
@@ -2016,10 +1828,7 @@ export default function DesempenhoPage() {
                             : (c.variacao_aa >= 0 ? '+' : '') + pct(c.variacao_aa)}
                         </td>
                       </tr>
-                      {/* Níveis de agrupamento (item 1 do dono):
-                      Varejo → Rede → Bandeira → Loja
-                      Distribuição → Empresa → Cliente */}
-                      {/* NÍVEL 1 — Bandeira (varejo) / Empresa (distribuição) */}
+
                       {abertoC &&
                         niveis1.map((n1: any) => {
                           const chaveN1 = chaveC + '|n1|' + n1.nome
@@ -2050,90 +1859,37 @@ export default function DesempenhoPage() {
                                     ({n1.itens} {ehVarejo ? 'lojas' : 'redes'})
                                   </span>
                                 </td>
-                                <td
-                                  className="text-right tabular-nums"
-                                  style={{ color: n1.meta ? T.text : T.muted }}
-                                >
-                                  {n1.meta ? brl(n1.meta) : '—'}
-                                </td>
-                                <td
-                                  className="text-right tabular-nums font-semibold"
-                                  style={{ color: T.text }}
-                                >
-                                  {brl(n1.realizado)}
-                                </td>
-                                <td
-                                  className="text-right tabular-nums"
-                                  style={{ color: n1.perc_meta ? T.text : T.muted }}
-                                >
-                                  {n1.perc_meta === null || n1.perc_meta === undefined
-                                    ? '—'
-                                    : pct(n1.perc_meta)}
-                                </td>
-                                <td className="text-right tabular-nums" style={{ color: T.muted }}>
-                                  —
-                                </td>
+                                {celulas(n1)}
                               </tr>
-                              {/* NÍVEL 2 — Loja (varejo) / AD_SELECIONADO (distribuição) */}
                               {abertoN1 &&
                                 filhos
                                   .slice()
                                   .sort(
                                     (a: any, b: any) =>
-                                      (Number(b.realizado || b.valor) || 0) -
-                                      (Number(a.realizado || a.valor) || 0),
+                                      (Number(b.realizado) || 0) - (Number(a.realizado) || 0),
                                   )
-                                  .map((f: any) => {
-                                    const rotulo = ehVarejo
-                                      ? f.loja
-                                      : (f.empresa || '') +
-                                        ' / ' +
-                                        (f.ad_selecionado === 0 || f.ad_selecionado === null
-                                          ? 'Sem seleção'
-                                          : 'AD_SEL ' + f.ad_selecionado)
-                                    const vf = Number(f.realizado || f.valor) || 0
-                                    const mf = f.meta
-                                    const pmf = mf && mf > 0 ? (vf / mf) * 100 : null
-                                    return (
-                                      <tr key={chaveN1 + '|' + (f.codparc || rotulo)}>
-                                        <td
-                                          className="py-0.5 pl-10 text-[10px]"
-                                          style={{ color: T.text }}
-                                        >
-                                          <span style={{ color: T.muted }}>· </span>
-                                          {rotulo}
-                                        </td>
-                                        <td
-                                          className="text-right text-[10px] tabular-nums"
-                                          style={{ color: mf ? T.text : T.muted }}
-                                        >
-                                          {mf ? brl(mf) : '—'}
-                                        </td>
-                                        <td
-                                          className="text-right text-[10px] tabular-nums font-semibold"
-                                          style={{ color: T.text }}
-                                        >
-                                          {brl(vf)}
-                                        </td>
-                                        <td
-                                          className="text-right text-[10px] tabular-nums"
-                                          style={{ color: pmf ? T.text : T.muted }}
-                                        >
-                                          {pmf === null ? '—' : pct(pmf)}
-                                        </td>
-                                        <td
-                                          className="text-right text-[10px] tabular-nums"
-                                          style={{ color: T.muted }}
-                                        >
-                                          —
-                                        </td>
-                                      </tr>
-                                    )
-                                  })}
+                                  .map((f: any) => (
+                                    <tr key={chaveN1 + '|' + (f.codparc || f.ad_selecionado)}>
+                                      <td
+                                        className="py-0.5 pl-10 text-[10px]"
+                                        style={{ color: T.text }}
+                                      >
+                                        <span style={{ color: T.muted }}>· </span>
+                                        {ehVarejo
+                                          ? f.loja
+                                          : (f.empresa || '') +
+                                            ' / ' +
+                                            (f.ad_selecionado === 0 || f.ad_selecionado === null
+                                              ? 'Sem seleção'
+                                              : 'AD_SEL ' + f.ad_selecionado)}
+                                      </td>
+                                      {celulas(f)}
+                                    </tr>
+                                  ))}
                             </Fragment>
                           )
                         })}
-                    </>
+                    </Fragment>
                   )
                 })}
                 <tr className="border-t font-bold" style={{ borderColor: T.border, color: T.text }}>
@@ -2164,9 +1920,8 @@ export default function DesempenhoPage() {
           className="px-4 py-2 border-t text-[10px]"
           style={{ borderColor: T.border, color: T.muted }}
         >
-          Meta: Atacado de AD_ITEMETASATACADO (por vendedor) e Varejo de EF_VIEW_METAS_LOJAS (por
-          loja). Distribuição não tem meta parametrizada no Sankhya — exibida como — em vez de
-          estimada.
+          Meta: Atacado de AD_ITEMETASATACADO e Varejo de EF_VIEW_METAS_LOJAS. Distribuição não tem
+          meta parametrizada no Sankhya — exibida como — em vez de estimada.
         </div>
       </div>
     </div>
@@ -2204,28 +1959,15 @@ export default function DesempenhoPage() {
           </button>
         </div>
         <div className="flex-1 overflow-auto p-3">
-          {/* 19/11/2026 — a mensagem antiga aparecia SEMPRE porque testava
-              `quebra_produtos`, que agora vem vazio (a composição é carregada
-              sob demanda, por loja). Aqui o aviso só aparece quando a grade
-              realmente não tem loja com quebra. */}
           {grupos.length === 0 && (
             <div className="px-3 py-6 text-center text-[12px]" style={{ color: T.muted }}>
               Nenhuma loja com quebra apurada no período e filtros selecionados. A composição por
               produto depende da contagem de inventário (AD_ITEINVENTARIO) — nada é estimado.
             </div>
           )}
-          {/* 19/11/2026 — NÍVEL CANAL ACIMA DA REDE.
-              Pedido do dono: CANAL → REDE → BANDEIRA → LOJA → ITEM, com
-              totalizado (itens, R$, % quebra) em cada nível.
-              A quebra por inventário só existe para o VAREJO: a contagem é por
-              loja (AD_CABINVENTARIO.CODPARC). Atacado e distribuição não têm
-              inventário por loja nesta base, então o nível CANAL mostra apenas
-              Varejo com os totais reais, em vez de inventar os outros dois. */}
           {(() => {
             const chCanal = 'qr:canal'
             const abCanal = drillAberto.includes(chCanal)
-            // itens do canal: só é possível contar os que já foram carregados;
-            // quando não há detalhe, mostramos o valor (dado que sempre existe)
             const totItens = grupos.reduce(
               (a, g) =>
                 a +
@@ -2240,8 +1982,6 @@ export default function DesempenhoPage() {
                 ),
               0,
             )
-            // valor do canal: soma o detalhe já carregado; para lojas ainda
-            // não abertas usa `quebra_valor` da GRADE (nunca zero falso)
             const totValor = grupos.reduce(
               (a, g) =>
                 a +
@@ -2294,14 +2034,11 @@ export default function DesempenhoPage() {
           {grupos.map((g) => {
             const chR = 'qr:' + g.rede
             const abR = drillAberto.includes(chR)
-            // usa o cache sob demanda + o que vier no payload
             const itensRede = g.bandeiras.flatMap((b) =>
               b.lojas.flatMap(
                 (l) => itensCarregados[String(l.codparc)] || itensPorLoja[String(l.codparc)] || [],
               ),
             )
-            // quando nenhuma loja da rede foi aberta, mostramos a contagem e o
-            // valor da GRADE (que sempre vêm) para o nível não ficar em zeros
             const valorRede = g.bandeiras.reduce(
               (a, b) => a + b.lojas.reduce((c, l) => c + (Number(l.quebra_valor) || 0), 0),
               0,
@@ -2338,7 +2075,6 @@ export default function DesempenhoPage() {
                       (l) =>
                         itensCarregados[String(l.codparc)] || itensPorLoja[String(l.codparc)] || [],
                     )
-                    // fallback pela grade quando a bandeira ainda não foi aberta
                     const valorB = b.lojas.reduce((c, l) => c + (Number(l.quebra_valor) || 0), 0)
                     const totB = itensB.reduce((a, x) => a + (Number(x.valor) || 0), 0)
                     return (
@@ -2371,8 +2107,6 @@ export default function DesempenhoPage() {
                           b.lojas.map((l) => {
                             const chL = chB + '|' + l.codparc
                             const abL = drillAberto.includes(chL)
-                            // itens da loja: já carregados (cache) ou o que
-                            // veio no payload (quando `?loja=` foi usado)
                             const itens =
                               itensCarregados[String(l.codparc)] ||
                               itensPorLoja[String(l.codparc)] ||
@@ -2383,7 +2117,6 @@ export default function DesempenhoPage() {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    // ao ABRIR a loja, busca a composição sob demanda
                                     if (!abL) void carregarComposicao(l.codparc)
                                     alternarDrill(chL)
                                   }}
@@ -2398,11 +2131,6 @@ export default function DesempenhoPage() {
                                   <span className="text-[11px]" style={{ color: T.text }}>
                                     {l.loja}
                                   </span>
-                                  {/* 18/11/2026 — este rótulo mostrava "0 itens · R$ 0"
-                                      porque a composição não vinha no payload. Agora,
-                                      enquanto a loja não foi aberta, mostramos a
-                                      contagem e o valor da GRADE (que sempre vêm);
-                                      ao abrir, o número passa a ser o da composição. */}
                                   <span
                                     className="text-[10px] ml-auto tabular-nums"
                                     style={{ color: T.muted }}
@@ -2417,6 +2145,7 @@ export default function DesempenhoPage() {
                                         : ' · clique para ver os itens'}
                                   </span>
                                 </button>
+
                                 {abL && carregandoLoja === String(l.codparc) && (
                                   <div
                                     className="ml-6 px-2 py-1.5 text-[10px] flex items-center gap-1.5"
@@ -2439,10 +2168,6 @@ export default function DesempenhoPage() {
                                 {abL && itens.length > 0 && (
                                   <table className="ml-6 my-1 w-[calc(100%-1.5rem)] text-[11px]">
                                     <thead>
-                                      {/* 19/11/2026 — ORIGEM DO DADO EM CADA COLUNA.
-                                          O dono pediu tooltip no cabeçalho: quem lê a
-                                          tabela precisa saber de que tabela veio o número
-                                          e como ele é calculado, sem adivinhar. */}
                                       <tr style={{ color: T.muted }}>
                                         <th className="text-left font-semibold py-0.5">Produto</th>
                                         <th
@@ -2453,7 +2178,7 @@ export default function DesempenhoPage() {
                                         </th>
                                         <th
                                           className="text-right font-semibold cursor-help"
-                                          title="Recebido — TGFCAB + TGFITE + TGFTOP (TIPMOV V/D), notas liberadas no mês. Transferência de entrada menos a de saída."
+                                          title="Recebido — TGFCAB + TGFITE + TGFTOP (TIPMOV V/D), notas liberadas no mês."
                                         >
                                           Recebido
                                         </th>
@@ -2465,31 +2190,31 @@ export default function DesempenhoPage() {
                                         </th>
                                         <th
                                           className="text-right font-semibold cursor-help"
-                                          title="Vendas — AD_VENDASPLV (SUM(QTDNEG) por loja e produto) no mês. É a mesma base do Power BI Acompanhamento Varejo."
+                                          title="Vendas — AD_VENDASPLV (SUM(QTDNEG) por loja e produto) no mês. Mesma base do BI Acompanhamento Varejo."
                                         >
                                           Vendas
                                         </th>
                                         <th
                                           className="text-right font-semibold cursor-help"
-                                          title="Consumo — AD_CABCONSUMO + AD_ITECONSUMO (quebra declarada/baixa interna) no mês."
+                                          title="Consumo — AD_CABCONSUMO + AD_ITECONSUMO no mês."
                                         >
                                           Consumo
                                         </th>
                                         <th
                                           className="text-right font-semibold cursor-help"
-                                          title="Qtd Quebra = (EI + Recebido − EF) − Vendas − Consumo. Pode ficar negativa quando o recebimento não cobre a venda (transferência não lançada)."
+                                          title="Qtd Quebra = (EI + Recebido − EF) − Vendas − Consumo."
                                         >
                                           Qtd Quebra
                                         </th>
                                         <th
                                           className="text-right font-semibold cursor-help"
-                                          title="% Quebra = Qtd Quebra ÷ (EI + Recebido − EF). É a base de estoque disponível. Vazio quando a base é zero."
+                                          title="% Quebra = Qtd Quebra ÷ (EI + Recebido − EF). Vazio quando a base é zero."
                                         >
                                           % Quebra
                                         </th>
                                         <th
                                           className="text-right font-semibold cursor-help"
-                                          title="Custo Unit — AD_ITEINVENTARIO.CUSTO do último inventário. Reserva: preço médio de venda do mês quando o custo do inventário é zero."
+                                          title="Custo Unit — AD_ITEINVENTARIO.CUSTO do último inventário."
                                         >
                                           Custo Unit
                                         </th>
@@ -2559,8 +2284,6 @@ export default function DesempenhoPage() {
                                             >
                                               {n(it.qtd_quebra, 0)}
                                             </td>
-                                            {/* % Quebra = Qtd Quebra / (EI + Recebido − EF),
-                                                a fórmula pedida pelo dono em 19/11. */}
                                             <td
                                               className="text-right tabular-nums"
                                               style={{ color: T.text }}
@@ -2603,8 +2326,7 @@ export default function DesempenhoPage() {
         >
           <span>
             Fontes: AD_CABINVENTARIO + AD_ITEINVENTARIO (EI/EF e custo) · TGFCAB + TGFITE + TGFTOP
-            (recebido) · AD_VENDASPLV (vendas) · AD_CABCONSUMO + AD_ITECONSUMO (consumo). Passe o
-            mouse no cabeçalho de cada coluna para ver a origem.
+            (recebido) · AD_VENDASPLV (vendas) · AD_CABCONSUMO + AD_ITECONSUMO (consumo).
           </span>
           <button type="button" onClick={() => setDrillQuebra(false)} className="underline">
             fechar
@@ -2668,7 +2390,6 @@ export default function DesempenhoPage() {
         </div>
       </div>
 
-      {/* painel de filtros */}
       <div className="bg-white border" style={{ borderColor: T.border, borderRadius: 8 }}>
         <div className="flex items-center gap-2 px-3 h-[50px] overflow-x-auto">
           <button
@@ -2744,7 +2465,6 @@ export default function DesempenhoPage() {
                 onChange={(v: any) => setCampo('mes', Number(v))}
                 options={MESES.map((m, i) => ({ v: String(i + 1), l: m.slice(0, 3) }))}
               />
-              {/* (c) Rede só no canal Varejo */}
               <Sel
                 label="Rede"
                 largura={130}
@@ -2753,7 +2473,6 @@ export default function DesempenhoPage() {
                 options={f.aba === 'varejo' ? REDES : [{ v: '', l: '—' }]}
                 disabled={f.aba !== 'varejo'}
               />
-              {/* (f2) NSS / SSS */}
               <Sel
                 label="Tipo Loja"
                 largura={130}
@@ -2765,7 +2484,6 @@ export default function DesempenhoPage() {
                   { v: 'existente', l: 'SSS' },
                 ]}
               />
-              {/* (d,e) Bandeira conforme a Rede */}
               <Sel
                 label="Bandeira"
                 largura={150}
@@ -2795,7 +2513,6 @@ export default function DesempenhoPage() {
                   ...(dados.lojas || []).map((l) => ({ v: String(l.codparc), l: l.loja })),
                 ]}
               />
-              {/* (g) Supervisor 30% menor: 260 -> 182 */}
               <Sel
                 label="Supervisor"
                 largura={182}
