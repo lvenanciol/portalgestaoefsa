@@ -25,7 +25,7 @@
 // Motivo de existir: sem isso, o primeiro usuário de cada hora paga os ~21 s
 // do cálculo. Com o aquecimento, ninguém paga.
 // ==========================================================================
-cronAdd('varejo_aquecer_comercial', '0 11-22 * * *', () => {
+cronAdd('varejo_aquecer_comercial', '*/30 * * * *', () => {
   const baseI = String($secrets.get('PB_INSTANCE_URL') || '').replace(/\/$/, '')
   const tk = String($secrets.get('PB_SUPERUSER_TOKEN') || '')
   if (!baseI || !tk) return
