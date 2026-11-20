@@ -87,6 +87,12 @@ routerAdd(
           ? " AND NVL(PAR.AD_LOJANOVA,'N') <> 'S' "
           : ''
     const filtroVarejo = filtroRede + filtroBandeira + filtroLoja + filtroTipoLoja
+    // 20/11/2026 — DUAS VARIANTES, POR CAUSA DO ALIAS.
+    // A query do canal usa `INNER JOIN TGFPAR PAR`; a da hierarquia usa
+    // `JOIN TGFPAR P`. Um filtro só, com `PAR.`, quebra a hierarquia com
+    // ORA-00904 e as bandeiras voltavam VAZIAS com o filtro de rede ligado
+    // (o erro caía num catch e virava lista vazia, silenciosamente).
+    const filtroVarejoP = filtroVarejo.replace(/PAR\./g, 'P.')
     const temFiltro = !!(fRede || fGrupo || fLoja || fTipoLoja)
 
     const mm = String(mes).padStart(2, '0')
@@ -515,8 +521,9 @@ routerAdd(
           fimMes +
           '  AND P.AD_SELECIONADO IN (1,2) AND PLV.CODPARC NOT IN (36,37,6959) ' +
           '  AND PLV.VLRTOT > 0 ' +
-          // item 1b: os níveis têm de respeitar o MESMO recorte do card
-          filtroVarejo +
+          // item 1b: os níveis têm de respeitar o MESMO recorte do card.
+          // Aqui o alias é P (não PAR) — usar filtroVarejo daria ORA-00904.
+          filtroVarejoP +
           "GROUP BY CASE WHEN PLV.CODCENCUS >= 10106000 THEN 'Carone' ELSE 'Coutinho' END, " +
           " CASE WHEN P.NOMEPARC LIKE '%-ST -%' THEN 'Sempre Tem' " +
           "      WHEN P.NOMEPARC LIKE '%-EB -%' THEN 'Extrabom' " +
