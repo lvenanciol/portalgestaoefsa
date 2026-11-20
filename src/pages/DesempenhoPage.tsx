@@ -1903,26 +1903,33 @@ export default function DesempenhoPage() {
                   // agrupamento quando existirem.
                   //   Varejo        → Rede → Bandeira → Loja
                   //   Distribuição  → Empresa → Cliente
-                  const hier =
-                    c.canal === 'Varejo'
-                      ? dadosCanais.hierarquia?.varejo || []
-                      : c.canal === 'Distribuição'
-                        ? dadosCanais.hierarquia?.distribuicao || []
-                        : []
+                  // ==========================================================
+                  // 20/11/2026 — níveis conforme diretiva do dono:
+                  //   Varejo       -> Bandeira -> Loja
+                  //   Distribuição -> Empresa  -> AD_SELECIONADO
+                  //   Atacado      -> sem sub-nível
+                  // TODA linha mostra meta, realizado, % meta e % A.A.
+                  // ==========================================================
+                  const ehVarejo = c.canal === 'Varejo'
+                  const ehDistrib = c.canal === 'Distribuição'
                   const chaveC = 'can:' + c.canal
                   const abertoC = drillAberto.includes(chaveC)
-                  // agrupa rede → bandeira
-                  const porRede: Record<string, Record<string, any[]>> = {}
-                  for (const it of hier) {
-                    if (!porRede[it.rede]) porRede[it.rede] = {}
-                    if (!porRede[it.rede][it.bandeira]) porRede[it.rede][it.bandeira] = []
-                    porRede[it.rede][it.bandeira].push(it)
-                  }
+                  const niveis1: any[] = ehVarejo
+                    ? dadosCanais.hierarquia?.varejo_bandeiras || []
+                    : ehDistrib
+                      ? dadosCanais.hierarquia?.distrib_empresas || []
+                      : []
+                  const itensNivel2: any[] = ehVarejo
+                    ? dadosCanais.hierarquia?.varejo || []
+                    : ehDistrib
+                      ? dadosCanais.hierarquia?.distribuicao || []
+                      : []
+=======
                   return (
                     <>
                       <tr key={c.canal} className="border-t" style={{ borderColor: T.border }}>
                         <td className="py-1.5 font-semibold" style={{ color: T.text }}>
-                          {hier.length > 0 && (
+                          {niveis1.length > 0 && (
                             <button
                               type="button"
                               onClick={() => alternarDrill(chaveC)}
@@ -1973,32 +1980,120 @@ export default function DesempenhoPage() {
                       {/* Níveis de agrupamento (item 1 do dono):
                       Varejo → Rede → Bandeira → Loja
                       Distribuição → Empresa → Cliente */}
+                      {/* NÍVEL 1 — Bandeira (varejo) / Empresa (distribuição) */}
                       {abertoC &&
-                        Object.keys(porRede)
-                          .sort()
-                          .map((rede) => (
-                            <tr
-                              key={chaveC + rede}
-                              className="border-t"
-                              style={{ borderColor: T.border }}
-                            >
-                              <td className="py-1 pl-4 text-[11px]" style={{ color: T.text }}>
-                                <span style={{ color: T.muted }}>└ </span>
-                                {rede}
-                              </td>
-                              <td
-                                colSpan={4}
-                                className="text-right text-[10px] tabular-nums"
-                                style={{ color: T.muted }}
-                              >
-                                {brl(
-                                  Object.values(porRede[rede])
-                                    .flat()
-                                    .reduce((a: number, x: any) => a + (Number(x.valor) || 0), 0),
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                        niveis1.map((n1: any) => {
+                          const chaveN1 = chaveC + '|n1|' + n1.nome
+                          const abertoN1 = drillAberto.includes(chaveN1)
+                          const filhos = ehVarejo
+                            ? itensNivel2.filter((x: any) => x.bandeira === n1.nome)
+                            : itensNivel2.filter((x: any) => x.rede === n1.nome)
+                          return (
+                            <Fragment key={chaveN1}>
+                              <tr className="border-t bg-gray-50" style={{ borderColor: T.border }}>
+                                <td
+                                  className="py-1 pl-5 text-[11px] font-medium"
+                                  style={{ color: T.text }}
+                                >
+                                  {filhos.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => alternarDrill(chaveN1)}
+                                      className="inline-flex items-center justify-center h-3 w-3 mr-1 rounded border text-[8px] font-bold align-middle"
+                                      style={{ borderColor: T.border, color: T.muted }}
+                                    >
+                                      {abertoN1 ? '−' : '+'}
+                                    </button>
+                                  )}
+                                  <span style={{ color: T.muted }}>└ </span>
+                                  {n1.nome}
+                                  <span className="text-[9px] ml-1" style={{ color: T.muted }}>
+                                    ({n1.itens} {ehVarejo ? 'lojas' : 'redes'})
+                                  </span>
+                                </td>
+                                <td
+                                  className="text-right tabular-nums"
+                                  style={{ color: n1.meta ? T.text : T.muted }}
+                                >
+                                  {n1.meta ? brl(n1.meta) : '—'}
+                                </td>
+                                <td
+                                  className="text-right tabular-nums font-semibold"
+                                  style={{ color: T.text }}
+                                >
+                                  {brl(n1.realizado)}
+                                </td>
+                                <td
+                                  className="text-right tabular-nums"
+                                  style={{ color: n1.perc_meta ? T.text : T.muted }}
+                                >
+                                  {n1.perc_meta === null || n1.perc_meta === undefined
+                                    ? '—'
+                                    : pct(n1.perc_meta)}
+                                </td>
+                                <td className="text-right tabular-nums" style={{ color: T.muted }}>
+                                  —
+                                </td>
+                              </tr>
+                              {/* NÍVEL 2 — Loja (varejo) / AD_SELECIONADO (distribuição) */}
+                              {abertoN1 &&
+                                filhos
+                                  .slice()
+                                  .sort(
+                                    (a: any, b: any) =>
+                                      (Number(b.realizado || b.valor) || 0) -
+                                      (Number(a.realizado || a.valor) || 0),
+                                  )
+                                  .map((f: any) => {
+                                    const rotulo = ehVarejo
+                                      ? f.loja
+                                      : (f.empresa || '') +
+                                        ' / ' +
+                                        (f.ad_selecionado === 0 || f.ad_selecionado === null
+                                          ? 'Sem seleção'
+                                          : 'AD_SEL ' + f.ad_selecionado)
+                                    const vf = Number(f.realizado || f.valor) || 0
+                                    const mf = f.meta
+                                    const pmf = mf && mf > 0 ? (vf / mf) * 100 : null
+                                    return (
+                                      <tr key={chaveN1 + '|' + (f.codparc || rotulo)}>
+                                        <td
+                                          className="py-0.5 pl-10 text-[10px]"
+                                          style={{ color: T.text }}
+                                        >
+                                          <span style={{ color: T.muted }}>· </span>
+                                          {rotulo}
+                                        </td>
+                                        <td
+                                          className="text-right text-[10px] tabular-nums"
+                                          style={{ color: mf ? T.text : T.muted }}
+                                        >
+                                          {mf ? brl(mf) : '—'}
+                                        </td>
+                                        <td
+                                          className="text-right text-[10px] tabular-nums font-semibold"
+                                          style={{ color: T.text }}
+                                        >
+                                          {brl(vf)}
+                                        </td>
+                                        <td
+                                          className="text-right text-[10px] tabular-nums"
+                                          style={{ color: pmf ? T.text : T.muted }}
+                                        >
+                                          {pmf === null ? '—' : pct(pmf)}
+                                        </td>
+                                        <td
+                                          className="text-right text-[10px] tabular-nums"
+                                          style={{ color: T.muted }}
+                                        >
+                                          —
+                                        </td>
+                                      </tr>
+                                    )
+                                  })}
+                            </Fragment>
+                          )
+                        })}
                     </>
                   )
                 })}
