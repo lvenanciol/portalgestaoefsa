@@ -110,7 +110,7 @@ const SWOT: ItemSwot[] = [
     origem: 'forca',
     texto: 'Malha de distribuição própria com entrega programada',
     empresa: 'Extrafruti',
-    evidência: 'Ruptura média de 2,1% no trimestre contra 5,4% do mercado local.',
+    evidencia: 'Ruptura média de 2,1% no trimestre contra 5,4% do mercado local.',
     responsavel: 'Diretoria de Operações',
   },
   {
@@ -118,7 +118,7 @@ const SWOT: ItemSwot[] = [
     origem: 'forca',
     texto: 'Relação longa com fornecedores de hortifruti',
     empresa: 'Casafruti',
-    evidência: '92% das compras com contrato vigente e prazo médio de 38 dias.',
+    evidencia: '92% das compras com contrato vigente e prazo médio de 38 dias.',
     responsavel: 'Comercial Casafruti',
   },
   {
@@ -126,7 +126,7 @@ const SWOT: ItemSwot[] = [
     origem: 'fraqueza',
     texto: 'Turnover operacional de 5,4% ao mês',
     empresa: 'Extrafruti',
-    evidência: 'Meta de 3,0%; 16 tarefas atrasadas concentradas em operação de loja.',
+    evidencia: 'Meta de 3,0%; 16 tarefas atrasadas concentradas em operação de loja.',
     responsavel: 'Gestão de Pessoas',
   },
   {
@@ -134,7 +134,7 @@ const SWOT: ItemSwot[] = [
     origem: 'fraqueza',
     texto: 'Inventário em ondas impede apurar a quebra com precisão',
     empresa: 'Extrafruti',
-    evidência: 'EI de 413 produtos contra EF de 254 em outubro — bases diferentes.',
+    evidencia: 'EI de 413 produtos contra EF de 254 em outubro — bases diferentes.',
     responsavel: 'Controladoria',
   },
   {
@@ -142,7 +142,7 @@ const SWOT: ItemSwot[] = [
     origem: 'oportunidade',
     texto: 'Embalagem retornável sob contrato no atacarejo',
     empresa: 'FoldBox',
-    evidência: 'Receita de R$ 3,65 mi com 3 operadores em negociação.',
+    evidencia: 'Receita de R$ 3,65 mi com 3 operadores em negociação.',
     responsavel: 'Diretoria FoldBox',
   },
   {
@@ -150,7 +150,7 @@ const SWOT: ItemSwot[] = [
     origem: 'oportunidade',
     texto: 'Automação fiscal liberando time de controladoria',
     empresa: 'Extrafruti',
-    evidência: '35% do processo já automatizado; meta de 70% no ciclo.',
+    evidencia: '35% do processo já automatizado; meta de 70% no ciclo.',
     responsavel: 'Tecnologia e Controladoria',
   },
   {
@@ -158,7 +158,7 @@ const SWOT: ItemSwot[] = [
     origem: 'ameaca',
     texto: 'Entrada de atacarejo regional com preço agressivo',
     empresa: 'Casafruti',
-    evidência: 'Duas inaugurações no raio de 3 km das lojas âncora.',
+    evidencia: 'Duas inaugurações no raio de 3 km das lojas âncora.',
     responsavel: 'Comercial Casafruti',
   },
   {
@@ -166,7 +166,7 @@ const SWOT: ItemSwot[] = [
     origem: 'ameaca',
     texto: 'Escassez de mão de obra para reposição',
     empresa: 'Extrafruti',
-    evidência: 'Tempo médio de vaga aberta subiu de 12 para 27 dias.',
+    evidencia: 'Tempo médio de vaga aberta subiu de 12 para 27 dias.',
     responsavel: 'Gestão de Pessoas',
   },
 ]

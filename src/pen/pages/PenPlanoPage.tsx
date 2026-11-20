@@ -174,7 +174,7 @@ export default function PenPlanoPage() {
     )
     setSalvando(false)
     if (!r.ok) {
-      setErroModal(r.erro)
+      setErroModal((r as { ok: false; erro: string }).erro)
       return
     }
     // atualiza só o item no estado (sem recarregar a página inteira)

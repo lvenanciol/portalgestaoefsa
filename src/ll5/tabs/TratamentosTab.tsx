@@ -659,10 +659,6 @@ export default function TratamentosTab({ aba }: { aba: any }) {
       try {
         const tarefa: any = await pb.collection('tarefas').create({
           titulo: `${tipoNome} · ${dataBR(dia)}`,
-          descricao:
-            (dados.instituto ? dados.instituto + ' · ' : '') +
-            (dados.profissional || '') +
-            (dados.observacoes ? ' · ' + dados.observacoes : ''),
           // (c) hora da agenda escolhida pelo usuário; 12:00 é o padrão seguro
           prazo: dia + 'T' + (dados.hora || '09:00') + ':00Z',
           status: 'pendente',

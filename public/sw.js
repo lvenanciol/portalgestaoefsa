@@ -126,7 +126,9 @@
 // v70 (20/11/2026): correção do ReferenceError "itensPorLoja is not defined"
 // que quebrava a montagem de /desempenho — identificador órfão usado em 4
 // lugares; agora é alias de dados.quebra_produtos (mapa codparc -> itens).
-const CACHE_NAME = 'pge-pwa-v70'
+// v71 (20/11/2026): limpeza de typechecks (TratamentosTab, PenDiagnostico,
+// PenPlano) — sem mudança de comportamento.
+const CACHE_NAME = 'pge-pwa-v71'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas
