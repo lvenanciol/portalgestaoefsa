@@ -123,7 +123,10 @@
 // v69 (13/11/2026): correção do ReferenceError "sessoes is not defined" ao
 // clicar numa linha da tabela de Tratamentos (/ll5/saude) — abrirEdicao usava
 // a variável órfã `sessoes`; agora lê t.proximas_sessoes (mesma fonte da lista).
-const CACHE_NAME = 'pge-pwa-v69'
+// v70 (20/11/2026): correção do ReferenceError "itensPorLoja is not defined"
+// que quebrava a montagem de /desempenho — identificador órfão usado em 4
+// lugares; agora é alias de dados.quebra_produtos (mapa codparc -> itens).
+const CACHE_NAME = 'pge-pwa-v70'
 
 self.addEventListener('install', (event) => {
   // Ativação imediata da nova versão sem esperar fechamento das abas

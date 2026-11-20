@@ -2196,7 +2196,6 @@ export default function DesempenhoPage() {
               0,
             )
             void itensRede
-            void totRede
             void valorRede
             const rR = resumoNivel(g.bandeiras.flatMap((b) => b.lojas))
             return (

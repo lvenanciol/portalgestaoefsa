@@ -12,4 +12,4 @@
 // bundle antigo.
 // ============================================================================
 export const APP_VERSION = '0.0.789'
-export const APP_BUILD = '12c5105'
+export const APP_BUILD = 'c319aad'
