@@ -1477,7 +1477,12 @@ export default function TarefasKanbanPage() {
           chatFd.append('tarefa_id', tarefaGravadaId)
           chatFd.append('tarefa', tarefaGravadaId)
           chatFd.append('autor', user?.email || 'Assistente IA')
-          chatFd.append('autor_tipo', 'ia')
+          // 20/11/2026 — BUG: 'ia' NÃO existe no select autor_tipo
+          // (valores válidos: 'portal' | 'parceiro'). O PocketBase devolvia
+          // 400 validation_invalid_value e a mensagem de histórico da
+          // captura por IA NUNCA era gravada — falhava em silêncio porque
+          // estava num catch que só fazia console.warn.
+          chatFd.append('autor_tipo', 'portal')
           chatFd.append('texto', textoHistorico)
           await pb.collection('tarefas_chat').create(chatFd)
         } catch (chatErr) {
