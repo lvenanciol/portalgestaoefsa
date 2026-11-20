@@ -1914,6 +1914,15 @@ export default function DesempenhoPage() {
                   const ehDistrib = c.canal === 'Distribuição'
                   const chaveC = 'can:' + c.canal
                   const abertoC = drillAberto.includes(chaveC)
+                  const niveis1: any[] = ehVarejo
+                    ? dadosCanais.hierarquia?.varejo_bandeiras || []
+                    : ehDistrib
+                      ? dadosCanais.hierarquia?.distrib_empresas || []
+                      : []
+                  const itensNivel2: any[] = ehVarejo
+                    ? dadosCanais.hierarquia?.varejo || []
+                    : ehDistrib
+                      ? dadosCanais.hierarquia?.distribuicao || []
                       : []
                   return (
                   const itensNivel2: any[] = ehVarejo
