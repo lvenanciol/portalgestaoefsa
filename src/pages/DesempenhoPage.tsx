@@ -1215,6 +1215,10 @@ export default function DesempenhoPage() {
     },
     qtd: {
       label: 'Qtde / Kg',
+      // item 2: os cards de métrica abrem a MESMA composição por canal,
+      // com os níveis Empresa→AD_SELECIONADO (distribuição) e
+      // Bandeira→Loja (varejo).
+      onClick: () => setDrillCanais('faturamento'),
       valor: comp(K.quantidade_kg),
       Icone: Package,
       tom: (K.quantidade_aa ?? 0) >= 0 ? 'green' : 'red',
@@ -1222,6 +1226,7 @@ export default function DesempenhoPage() {
     },
     preco: {
       label: 'Preço Médio',
+      onClick: () => setDrillCanais('faturamento'),
       valor: brl(K.preco_medio, 2),
       Icone: Tag,
       tom: (K.preco_aa ?? 0) >= 0 ? 'green' : 'red',
@@ -1229,6 +1234,7 @@ export default function DesempenhoPage() {
     },
     cupons: {
       label: 'Cupons',
+      onClick: () => setDrillCanais('faturamento'),
       valor: n(K.cupons),
       Icone: Receipt,
       tom: (K.cupons_aa ?? 0) >= 0 ? 'green' : 'red',
@@ -1236,6 +1242,7 @@ export default function DesempenhoPage() {
     },
     ticket: {
       label: 'Ticket Médio',
+      onClick: () => setDrillCanais('faturamento'),
       valor: brl(K.ticket_medio, 2),
       Icone: Ticket,
       tom: (K.ticket_aa ?? 0) >= 0 ? 'green' : 'red',
@@ -1273,6 +1280,7 @@ export default function DesempenhoPage() {
     },
     lojas: {
       label: 'Lojas',
+      onClick: () => setDrillCanais('faturamento'),
       valor: n(K.nLojas),
       Icone: Store,
       tom: 'blue',
