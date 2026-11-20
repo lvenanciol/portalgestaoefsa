@@ -1252,6 +1252,13 @@ export default function DesempenhoPage() {
     },
     quebra: {
       label: 'Quebra',
+      // 20/11/2026 — item 2d do dono: o card Quebra abre a composição
+      // agrupada em níveis (Rede → Bandeira → Loja → Item), cada nível
+      // abrindo só ao clique, com as colunas do próprio nível.
+      onClick: () => {
+        setDrillQuebra(true)
+        setDrillAberto(['qr:canal', 'qr:Carone'])
+      },
       valor: pct(K.quebra_pct),
       Icone: AlertTriangle,
       tom: (K.quebra_ating ?? 0) <= 100 ? 'green' : 'red',
