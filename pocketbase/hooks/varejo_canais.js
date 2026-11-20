@@ -579,8 +579,10 @@ routerAdd(
       rec.set('gerado_em', new Date().toISOString())
       $app.save(rec)
     } catch (errC) {
+      // o erro do cache NUNCA pode ser silencioso: foi assim que o cache
+      // ficou 3 rodadas "gravando" sem gravar (limite de 500 KB no campo)
       try {
-        console.log('[varejo/canais] cache: ' + String(errC).slice(0, 120))
+        console.log('[varejo/canais] FALHA AO GRAVAR CACHE: ' + String(errC).slice(0, 200))
       } catch (_) {}
     }
 
