@@ -224,7 +224,19 @@ routerAdd(
           p = {}
         }
         // 6 h de validade: o mês fechado não muda; o mês corrente atualiza
-        if (p && p.schema_canais === 2 && idade >= 0 && idade < 6 * 60 * 60 * 1000) {
+        // 20/11/2026 — TTL ESTENDIDO PARA 24 h COM ENTREGA IMEDIATA.
+        //
+        // Item 1a do dono: "carregamento da tela está lento". O cálculo leva
+        // ~21 s; o cache responde em 0,1 s. Um mês FECHADO não muda, então 6 h
+        // de validade obrigavam a recalcular várias vezes ao dia sem motivo.
+        //
+        // 24 h: durante o dia o usuário sempre encontra o cache pronto (o cron
+        // das 22 h renova). O mês CORRENTE continua com 6 h, porque esse muda
+        // a cada venda.
+        const ehMesCorrente =
+          ano === new Date().getUTCFullYear() && mes === new Date().getUTCMonth() + 1
+        const ttlCanais = ehMesCorrente ? 6 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
+        if (p && p.schema_canais === 2 && idade >= 0 && idade < ttlCanais) {
           return e.json(
             200,
             Object.assign({}, p, {

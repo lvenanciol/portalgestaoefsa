@@ -15,6 +15,60 @@
 //
 // TUDO INLINE: a VM do PocketBase não enxerga declaração de topo.
 
+// ==========================================================================
+// 20/11/2026 — AQUECEDOR DE HORÁRIO COMERCIAL (item 1a do dono).
+//
+// O cron das 22 h prepara o dia seguinte, mas o MÊS CORRENTE muda a cada
+// venda: às 9 h o cache já está velho. Este roda de hora em hora no horário
+// comercial (11h–22h UTC = 8h–19h BRT) e renova só o mês corrente.
+//
+// Motivo de existir: sem isso, o primeiro usuário de cada hora paga os ~21 s
+// do cálculo. Com o aquecimento, ninguém paga.
+// ==========================================================================
+cronAdd('varejo_aquecer_comercial', '0 11-22 * * *', () => {
+  const baseI = String($secrets.get('PB_INSTANCE_URL') || '').replace(/\/$/, '')
+  const tk = String($secrets.get('PB_SUPERUSER_TOKEN') || '')
+  if (!baseI || !tk) return
+  const h = new Date()
+  const a = h.getUTCFullYear()
+  const m = h.getUTCMonth() + 1
+  const feitos = []
+  const ms = ['faturamento', 'cmv']
+  for (let i = 0; i < ms.length; i++) {
+    try {
+      $http.send({
+        url:
+          baseI +
+          '/backend/v1/varejo/canais?ano=' +
+          a +
+          '&mes=' +
+          m +
+          '&metrica=' +
+          ms[i] +
+          '&forcar=1',
+        method: 'GET',
+        headers: { Authorization: tk },
+        timeout: 90,
+      })
+      feitos.push('canais ' + ms[i])
+    } catch (e) {
+      console.log('[aquecer comercial] ' + ms[i] + ': ' + String(e).slice(0, 90))
+    }
+  }
+  try {
+    $http.send({
+      url: baseI + '/backend/v1/varejo/quebra?ano=' + a + '&mes=' + m + '&forcar=1',
+      method: 'GET',
+      headers: { Authorization: tk },
+      timeout: 90,
+    })
+    feitos.push('quebra')
+  } catch (e) {
+    console.log('[aquecer comercial] quebra: ' + String(e).slice(0, 90))
+  }
+  console.log('[aquecer comercial] ' + m + '/' + a + ' -> ' + feitos.join(' | '))
+})
+
 cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
   const edgeUrl = $secrets.get('PGE_EDGE_URL') || ''
   const edgeSecret = $secrets.get('PGE_PROXY_SECRET') || ''
@@ -458,6 +512,91 @@ cronAdd('varejo_aquecer_22h', '0 1 * * *', () => {
     })
   } catch (err) {
     falhas.gravar_varejo = String(err).slice(0, 150)
+  }
+
+  // ==================================================================
+  // 20/11/2026 — AQUECIMENTO DA COMPOSIÇÃO POR CANAL E DA QUEBRA.
+  //
+  // DIRETIVA DO DONO (itens 1a e 2c): "carregamento da tela está lento,
+  // rever estratégias para melhor performance".
+  //
+  // MEDIDO: a primeira abertura de "Composição por canal" leva ~21 s
+  // (6 consultas sequenciais ao DbExplorer: atacado, distribuição, varejo,
+  // ano anterior e 2 metas) e a grade da quebra ~7 s. Com cache, ambos
+  // respondem em ~0,1 s.
+  //
+  // Aqui o servidor PRÉ-AQUECE as duas rotas nas chaves que o front usa,
+  // para o mês corrente e o anterior, em faturamento e CMV. O usuário
+  // passa a abrir a tela já com o cache pronto — a espera de 21 s deixa
+  // de existir no caminho dele.
+  //
+  // Chamada INTERNA (localhost): as rotas exigem autenticação, então
+  // usamos as credenciais de superusuário do próprio PocketBase. Nenhum
+  // segredo novo: não há senha em texto, só o token de sistema.
+  // ==================================================================
+  try {
+    const baseInterna = String($secrets.get('PB_INSTANCE_URL') || '').replace(/\/$/, '')
+    const tokenAdm = String($secrets.get('PB_SUPERUSER_TOKEN') || '')
+    if (!baseInterna || !tokenAdm) {
+      console.log('varejo_aquecer: sem PB_INSTANCE_URL/PB_SUPERUSER_TOKEN — pulando canais')
+    } else {
+      const hjAq = new Date()
+      const alvos = []
+      for (let k = 0; k < 2; k++) {
+        const d = new Date(Date.UTC(hjAq.getUTCFullYear(), hjAq.getUTCMonth() - k, 1))
+        alvos.push({ ano: d.getUTCFullYear(), mes: d.getUTCMonth() + 1 })
+      }
+      const aquecidos = []
+      for (let ia = 0; ia < alvos.length; ia++) {
+        const alvo = alvos[ia]
+        // composição por canal: faturamento e CMV
+        const metricas = ['faturamento', 'cmv']
+        for (let im = 0; im < metricas.length; im++) {
+          try {
+            $http.send({
+              url:
+                baseInterna +
+                '/backend/v1/varejo/canais?ano=' +
+                alvo.ano +
+                '&mes=' +
+                alvo.mes +
+                '&metrica=' +
+                metricas[im] +
+                '&forcar=1',
+              method: 'GET',
+              headers: { Authorization: tokenAdm },
+              timeout: 90,
+            })
+            aquecidos.push('canais ' + metricas[im] + ' ' + alvo.mes + '/' + alvo.ano)
+          } catch (eC) {
+            console.log('[aquecer] canais: ' + String(eC).slice(0, 100))
+          }
+        }
+        // grade da quebra (77 lojas)
+        try {
+          $http.send({
+            url:
+              baseInterna +
+              '/backend/v1/varejo/quebra?ano=' +
+              alvo.ano +
+              '&mes=' +
+              alvo.mes +
+              '&forcar=1',
+            method: 'GET',
+            headers: { Authorization: tokenAdm },
+            timeout: 90,
+          })
+          aquecidos.push('quebra ' + alvo.mes + '/' + alvo.ano)
+        } catch (eQ) {
+          console.log('[aquecer] quebra: ' + String(eQ).slice(0, 100))
+        }
+      }
+      console.log('varejo_aquecer: caches prontos -> ' + aquecidos.join(' | '))
+    }
+  } catch (errAq) {
+    console.log(
+      'varejo_aquecer: falha no aquecimento de canais/quebra: ' + String(errAq).slice(0, 120),
+    )
   }
 
   console.log(

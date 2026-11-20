@@ -529,10 +529,19 @@ export default function DesempenhoPage() {
   const [drillCanais, setDrillCanais] = useState<'faturamento' | 'cmv' | null>(null)
   const [dadosCanais, setDadosCanais] = useState<any | null>(null)
   const [carregandoCanais, setCarregandoCanais] = useState(false)
+  // cache em memória por período+métrica (item 1a: reabrir é instantâneo)
+  const memoCanais = useRef<Record<string, any>>({})
 
   useEffect(() => {
     if (!drillCanais) return
     let cancelado = false
+    // item 1a: reabrir o mesmo período na sessão é instantâneo
+    const chaveMemo = drillCanais + '|' + f.ano + '|' + f.mes
+    if (memoCanais.current[chaveMemo]) {
+      setDadosCanais(memoCanais.current[chaveMemo])
+      setCarregandoCanais(false)
+      return
+    }
     setCarregandoCanais(true)
     setDadosCanais(null)
     pb.send(
@@ -540,7 +549,10 @@ export default function DesempenhoPage() {
       { method: 'GET' },
     )
       .then((r: any) => {
-        if (!cancelado) setDadosCanais(r)
+        if (!cancelado) {
+          if (r && r.ok) memoCanais.current[chaveMemo] = r
+          setDadosCanais(r)
+        }
       })
       .catch((err: any) => {
         if (!cancelado)
