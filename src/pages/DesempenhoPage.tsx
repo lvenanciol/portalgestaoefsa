@@ -536,7 +536,17 @@ export default function DesempenhoPage() {
     if (!drillCanais) return
     let cancelado = false
     // item 1a: reabrir o mesmo período na sessão é instantâneo
-    const chaveMemo = drillCanais + '|' + f.ano + '|' + f.mes
+    // item 1b: o modal abre com o MESMO recorte da tela
+    const qsFiltro =
+      '&rede=' +
+      encodeURIComponent(f.rede || '') +
+      '&tipogrupo=' +
+      encodeURIComponent(f.tipoGrupo || '') +
+      '&loja=' +
+      encodeURIComponent(f.loja || '') +
+      '&tipoloja=' +
+      encodeURIComponent(f.tipoLoja || '')
+    const chaveMemo = drillCanais + '|' + f.ano + '|' + f.mes + qsFiltro
     if (memoCanais.current[chaveMemo]) {
       setDadosCanais(memoCanais.current[chaveMemo])
       setCarregandoCanais(false)
@@ -545,7 +555,13 @@ export default function DesempenhoPage() {
     setCarregandoCanais(true)
     setDadosCanais(null)
     pb.send(
-      '/backend/v1/varejo/canais?ano=' + f.ano + '&mes=' + f.mes + '&metrica=' + drillCanais,
+      '/backend/v1/varejo/canais?ano=' +
+        f.ano +
+        '&mes=' +
+        f.mes +
+        '&metrica=' +
+        drillCanais +
+        qsFiltro,
       { method: 'GET' },
     )
       .then((r: any) => {

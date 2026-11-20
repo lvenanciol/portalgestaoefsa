@@ -38,6 +38,57 @@ routerAdd(
     const mes = Number(q.mes || h.getUTCMonth() + 1)
     const metrica = String(q.metrica || 'faturamento') // faturamento | cmv
 
+    // ==================================================================
+    // 20/11/2026 — ITEM 1b DO DONO: "verificar se os filtros aplicados nas
+    // telas e cards estão sendo considerados corretamente".
+    //
+    // ACHADO: NÃO estavam. Este endpoint só lia `ano` e `mes`. Se a tela
+    // estava filtrada por Carone, o modal abria o consolidado de TODAS as
+    // redes — número diferente do card que a pessoa acabou de clicar.
+    //
+    // Agora recebe e aplica: rede, bandeira (tipogrupo), loja e tipo de loja.
+    // Os filtros entram no SQL do varejo, na hierarquia E na chave do cache
+    // (senão um recorte serviria o cache de outro).
+    // ==================================================================
+    const fRede = String(q.rede || '')
+    const fGrupo = String(q.tipogrupo || q.bandeira || '')
+    const fLoja = String(q.loja || '')
+    const fTipoLoja = String(q.tipoloja || '')
+
+    // Bandeira = sufixo do NOMEPARC, o mesmo critério do dashboard do BI.
+    const filtroBandeira =
+      fGrupo === 'carone'
+        ? " AND P.NOMEPARC LIKE '%-CR -%' "
+        : fGrupo === 'sempre_tem'
+          ? " AND P.NOMEPARC LIKE '%-ST -%' "
+          : fGrupo === 'extrabom'
+            ? " AND P.NOMEPARC LIKE '%-EB -%' "
+            : fGrupo === 'atacado'
+              ? " AND P.NOMEPARC LIKE '%-ATV -%' "
+              : ''
+    // Rede: Carone = CODCENCUS 10106+, Coutinho = 10105..10106
+    // 20/11/2026 — em TGFPAR o campo é AD_CODCENCUS (confirmado em
+    // ALL_TAB_COLUMNS). `CODCENCUS` só existe em AD_VENDASPLV. Usar o nome
+    // errado aqui derrubaria a consulta com ORA-00904.
+    const filtroRede =
+      fRede === 'carone'
+        ? ' AND PAR.AD_CODCENCUS >= 10106000 '
+        : fRede === 'extrabom'
+          ? ' AND PAR.AD_CODCENCUS >= 10105000 AND PAR.AD_CODCENCUS < 10106000 '
+          : ''
+    const filtroLoja = fLoja ? ' AND PAR.CODPARC = ' + Number(fLoja) + ' ' : ''
+    // 20/11/2026 — o campo é AD_LOJANOVA (confirmado em ALL_TAB_COLUMNS).
+    // Eu tinha escrito LOAJANOVA, que não existe: o Oracle devolveria ORA-00904
+    // e a consulta cairia no catch, zerando o canal sem explicação.
+    const filtroTipoLoja =
+      fTipoLoja === 'nova'
+        ? " AND NVL(PAR.AD_LOJANOVA,'N') = 'S' "
+        : fTipoLoja === 'existente'
+          ? " AND NVL(PAR.AD_LOJANOVA,'N') <> 'S' "
+          : ''
+    const filtroVarejo = filtroRede + filtroBandeira + filtroLoja + filtroTipoLoja
+    const temFiltro = !!(fRede || fGrupo || fLoja || fTipoLoja)
+
     const mm = String(mes).padStart(2, '0')
     const iniMes = "TO_DATE('01/" + mm + '/' + ano + "','DD/MM/YYYY')"
     const fimMesNum = new Date(Date.UTC(ano, mes, 0)).getUTCDate()
@@ -178,7 +229,9 @@ routerAdd(
         ' AND PLV.DTNEG < ' +
         fim +
         '  AND PAR.AD_SELECIONADO IN (1,2) AND PLV.CODPARC NOT IN (36,37,6959) ' +
-        '  AND PLV.VLRTOT > 0'
+        '  AND PLV.VLRTOT > 0' +
+        // item 1b: o recorte da tela vale também aqui
+        filtroVarejo
       )
     }
     // CMV do varejo: AD_CMVPROD é a tabela que tem CMV por loja e produto
@@ -211,7 +264,25 @@ routerAdd(
     // v2 (20/11/2026): a hierarquia mudou — agora todo nível traz meta,
     // realizado, % meta e % A.A. Sem trocar a chave, o cache de 6 h serviria
     // a estrutura antiga (com os níveis zerados) depois do deploy.
-    const chaveCache = 'canais_v2_' + metrica + '_' + ano + '_' + mm
+    // item 1b: a chave do cache precisa carregar o RECORTE — sem isso um
+    // filtro por Carone receberia o cache consolidado de todas as redes.
+    const chaveCache =
+      'canais_v2_' +
+      metrica +
+      '_' +
+      ano +
+      '_' +
+      mm +
+      (temFiltro
+        ? '_' +
+          (fRede || '-') +
+          '_' +
+          (fGrupo || '-') +
+          '_' +
+          (fLoja || '-') +
+          '_' +
+          (fTipoLoja || '-')
+        : '')
     if (String(q.forcar || '') !== '1') {
       try {
         const rec = $app.findFirstRecordByFilter('sankhya_cache', 'chave = {:c}', { c: chaveCache })
@@ -444,6 +515,8 @@ routerAdd(
           fimMes +
           '  AND P.AD_SELECIONADO IN (1,2) AND PLV.CODPARC NOT IN (36,37,6959) ' +
           '  AND PLV.VLRTOT > 0 ' +
+          // item 1b: os níveis têm de respeitar o MESMO recorte do card
+          filtroVarejo +
           "GROUP BY CASE WHEN PLV.CODCENCUS >= 10106000 THEN 'Carone' ELSE 'Coutinho' END, " +
           " CASE WHEN P.NOMEPARC LIKE '%-ST -%' THEN 'Sempre Tem' " +
           "      WHEN P.NOMEPARC LIKE '%-EB -%' THEN 'Extrabom' " +
@@ -452,7 +525,9 @@ routerAdd(
       // meta por loja (para cada linha e para agregar por bandeira)
       const hm = rodar(
         'SELECT CODPARC, NVL(SUM(METAVENDA),0) META FROM SANKHYA.EF_VIEW_METAS_LOJAS ' +
-          'WHERE CODCENCUS >= 10105000 AND CODCENCUS < 10107000 GROUP BY CODPARC',
+          'WHERE CODCENCUS >= 10105000 AND CODCENCUS < 10107000' +
+          (fLoja ? ' AND CODPARC = ' + Number(fLoja) : '') +
+          ' GROUP BY CODPARC',
       )
       const metaPorLoja = {}
       for (const r of hm.rows || []) {
