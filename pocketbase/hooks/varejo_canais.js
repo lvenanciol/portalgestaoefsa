@@ -563,7 +563,12 @@ routerAdd(
 
     // grava o payload para a próxima chamada (o painel reabre instantâneo)
     try {
-      out.schema_canais = 1
+      // 20/11/2026 — ESTA LINHA ERA O BUG DA LENTIDADE.
+      // A leitura passou a exigir schema_canais === 2 (quando a hierarquia
+      // mudou), mas a gravação ficou em 1. Resultado: o cache era gravado a
+      // cada chamada e NUNCA servido — a rota recalculava os ~21 s toda vez,
+      // e o dono só via "carregando a composição por canal…".
+      out.schema_canais = 2
       const col = $app.findCollectionByNameOrId('sankhya_cache')
       let rec = null
       try {
