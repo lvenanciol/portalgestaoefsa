@@ -1733,6 +1733,66 @@ export default function DesempenhoPage() {
   const alternarDrill = (ch: string) =>
     setDrillAberto((p: string[]) => (p.includes(ch) ? p.filter((x) => x !== ch) : p.concat([ch])))
 
+  // ==========================================================================
+  // 20/11/2026 — ITEM 2d DO DONO: cada nível da quebra é uma LINHA DE TABELA
+  // com as suas colunas, não um botão solto.
+  //
+  // PEDIDO LITERAL: "exibindo na linha do nível as colunas qtd de itens,
+  // valor total, % quebra, o nível que exibe os itens deve exibir as colunas
+  // qtd, valor uni, valor total, % quebra".
+  //
+  // REGRA DE HONESTIDADE DO CÁLCULO: o valor e a % de um nível só podem sair
+  // dos ITENS já carregados daquele ramo. Enquanto as lojas não foram abertas,
+  // o detalhe não existe no cliente — então a linha mostra o valor da GRADE
+  // (que sempre vem) e a % da grade, e NUNCA um zero inventado. O rótulo diz
+  // de onde veio.
+  // ==========================================================================
+  const resumoNivel = (lojasDoNivel: any[]) => {
+    let itens = 0
+    let valorItens = 0
+    let qtdQuebra = 0
+    let carga = 0
+    let algumDetalhe = false
+    let semInventario = 0
+    for (const l of lojasDoNivel) {
+      const det = itensCarregados[String(l.codparc)] || itensPorLoja[String(l.codparc)] || []
+      if (det.length > 0) {
+        algumDetalhe = true
+        itens += det.length
+        for (const x of det) {
+          valorItens += Number(x.vlr_quebra) || 0
+          qtdQuebra += Number(x.qtd_quebra) || 0
+          carga += Number(x.ei || 0) + Number(x.recebido || 0) - Number(x.ef || 0) || 0
+        }
+      } else if (!l.quebra_valor && !l.quebra) {
+        semInventario += 1
+      }
+    }
+    // fallback: valor da GRADE quando o detalhe ainda não foi aberto
+    const valorGrade = lojasDoNivel.reduce((a, l) => a + (Number(l.quebra_valor) || 0), 0)
+    const valor = algumDetalhe ? valorItens : valorGrade
+    // % do nível: usa a carga real quando há detalhe; senão a % da grade
+    const pctNivel = algumDetalhe
+      ? carga > 0
+        ? Number(((qtdQuebra / carga) * 100).toFixed(2))
+        : null
+      : lojasDoNivel.length
+        ? Number(
+            (
+              lojasDoNivel.reduce((a, l) => a + (Number(l.quebra) || 0), 0) / lojasDoNivel.length
+            ).toFixed(2),
+          )
+        : null
+    return {
+      itens: algumDetalhe ? itens : null,
+      valor,
+      perc: pctNivel,
+      algumDetalhe,
+      semInventario,
+      nLojas: lojasDoNivel.length,
+    }
+  }
+
   // MODAL: COMPOSIÇÃO DO FATURAMENTO / CMV POR CANAL
   const modalCanais = drillCanais ? (
     <div
@@ -2116,30 +2176,64 @@ export default function DesempenhoPage() {
               (a, b) => a + b.lojas.reduce((c, l) => c + (Number(l.quebra_valor) || 0), 0),
               0,
             )
-            const totRede = itensRede.reduce((a, x) => a + (Number(x.valor) || 0), 0)
+            void itensRede
+            void totRede
+            void valorRede
+            const rR = resumoNivel(g.bandeiras.flatMap((b) => b.lojas))
             return (
               <div key={chR} className="mb-1">
-                <button
-                  type="button"
-                  onClick={() => alternarDrill(chR)}
-                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-left"
-                  style={{ background: '#eef2f5' }}
-                >
-                  <span
-                    className="inline-flex items-center justify-center h-4 w-4 rounded border text-[11px] font-bold"
-                    style={{ borderColor: T.border, color: T.muted }}
-                  >
-                    {abR ? '−' : '+'}
-                  </span>
-                  <span className="text-[12px] font-bold" style={{ color: T.text }}>
-                    {g.rede}
-                  </span>
-                  <span className="text-[11px] ml-auto tabular-nums" style={{ color: T.muted }}>
-                    {itensRede.length > 0
-                      ? itensRede.length + ' itens · ' + brl(totRede)
-                      : brl(valorRede) + ' · abra a loja para ver os itens'}
-                  </span>
-                </button>
+                {/* item 2d: linha do nível REDE com colunas próprias */}
+                <table className="w-full text-[11px]" style={{ tableLayout: 'fixed' }}>
+                  <tbody>
+                    <tr style={{ background: '#eef2f5' }}>
+                      <td className="px-1 py-1" style={{ width: '36%' }}>
+                        <button
+                          type="button"
+                          onClick={() => alternarDrill(chR)}
+                          className="flex items-center gap-1.5 text-left w-full"
+                        >
+                          <span
+                            className="inline-flex items-center justify-center h-3.5 w-3.5 rounded border text-[9px] font-bold shrink-0"
+                            style={{ borderColor: T.border, color: T.muted }}
+                          >
+                            {abR ? '−' : '+'}
+                          </span>
+                          <span className="font-bold truncate" style={{ color: T.text }}>
+                            {g.rede}
+                          </span>
+                          <span className="text-[9px] shrink-0" style={{ color: T.muted }}>
+                            ({rR.nLojas} lojas)
+                          </span>
+                        </button>
+                      </td>
+                      <td
+                        className="px-1 py-1 text-right tabular-nums"
+                        style={{ color: rR.itens === null ? T.muted : T.text }}
+                        title="Qtd de itens com quebra neste nível (só conta o que já foi carregado)"
+                      >
+                        {rR.itens === null ? '—' : n(rR.itens)}
+                      </td>
+                      <td
+                        className="px-1 py-1 text-right tabular-nums font-semibold"
+                        style={{ color: T.text }}
+                        title={
+                          rR.algumDetalhe
+                            ? 'Soma de Valor Quebra dos itens carregados'
+                            : 'Valor da grade (abra a loja para o detalhe por item)'
+                        }
+                      >
+                        {brl(rR.valor)}
+                      </td>
+                      <td
+                        className="px-1 py-1 text-right tabular-nums font-semibold"
+                        style={{ color: T.neg }}
+                        title="% Quebra do nível = Qtd Quebra ÷ (EI + Recebido − EF)"
+                      >
+                        {rR.perc === null ? '—' : pct(rR.perc)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
                 {abR &&
                   g.bandeiras.map((b) => {
                     const chB = chR + '|' + b.chave
@@ -2148,34 +2242,58 @@ export default function DesempenhoPage() {
                       (l) =>
                         itensCarregados[String(l.codparc)] || itensPorLoja[String(l.codparc)] || [],
                     )
-                    const valorB = b.lojas.reduce((c, l) => c + (Number(l.quebra_valor) || 0), 0)
-                    const totB = itensB.reduce((a, x) => a + (Number(x.valor) || 0), 0)
+                    void itensB
+                    const rB = resumoNivel(b.lojas)
                     return (
                       <div key={chB} className="ml-3">
-                        <button
-                          type="button"
-                          onClick={() => alternarDrill(chB)}
-                          className="w-full flex items-center gap-2 px-2 py-1 rounded text-left"
-                          style={{ background: T.input }}
-                        >
-                          <span
-                            className="inline-flex items-center justify-center h-3.5 w-3.5 rounded border text-[9px] font-bold"
-                            style={{ borderColor: T.border, color: T.muted }}
-                          >
-                            {abB ? '−' : '+'}
-                          </span>
-                          <span className="text-[11px] font-semibold" style={{ color: T.text }}>
-                            {b.label}
-                          </span>
-                          <span
-                            className="text-[10px] ml-auto tabular-nums"
-                            style={{ color: T.muted }}
-                          >
-                            {itensB.length > 0
-                              ? itensB.length + ' itens · ' + brl(totB)
-                              : brl(valorB) + ' · abra a loja para ver os itens'}
-                          </span>
-                        </button>
+                        {/* item 2d: linha do nível BANDEIRA com as mesmas colunas */}
+                        <table className="w-full text-[11px]" style={{ tableLayout: 'fixed' }}>
+                          <tbody>
+                            <tr style={{ background: T.input }}>
+                              <td className="px-1 py-1" style={{ width: '36%' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => alternarDrill(chB)}
+                                  className="flex items-center gap-1.5 text-left w-full"
+                                >
+                                  <span
+                                    className="inline-flex items-center justify-center h-3 w-3 rounded border text-[8px] font-bold shrink-0"
+                                    style={{ borderColor: T.border, color: T.muted }}
+                                  >
+                                    {abB ? '−' : '+'}
+                                  </span>
+                                  <span
+                                    className="font-semibold truncate"
+                                    style={{ color: T.text }}
+                                  >
+                                    {b.label}
+                                  </span>
+                                  <span className="text-[9px] shrink-0" style={{ color: T.muted }}>
+                                    ({rB.nLojas} lojas)
+                                  </span>
+                                </button>
+                              </td>
+                              <td
+                                className="px-1 py-1 text-right tabular-nums"
+                                style={{ color: rB.itens === null ? T.muted : T.text }}
+                              >
+                                {rB.itens === null ? '—' : n(rB.itens)}
+                              </td>
+                              <td
+                                className="px-1 py-1 text-right tabular-nums font-semibold"
+                                style={{ color: T.text }}
+                              >
+                                {brl(rB.valor)}
+                              </td>
+                              <td
+                                className="px-1 py-1 text-right tabular-nums font-semibold"
+                                style={{ color: T.neg }}
+                              >
+                                {rB.perc === null ? '—' : pct(rB.perc)}
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
                         {abB &&
                           b.lojas.map((l) => {
                             const chL = chB + '|' + l.codparc
@@ -2204,20 +2322,29 @@ export default function DesempenhoPage() {
                                   <span className="text-[11px]" style={{ color: T.text }}>
                                     {l.loja}
                                   </span>
-                                  <span
-                                    className="text-[10px] ml-auto tabular-nums"
-                                    style={{ color: T.muted }}
-                                  >
-                                    quebra {pct(l.quebra)}
-                                    {itens.length > 0
-                                      ? ' · ' + itens.length + ' itens · ' + brl(tot)
-                                      : l.quebra_valor
-                                        ? ' · ' +
-                                          brl(l.quebra_valor) +
-                                          ' · clique para ver os itens'
-                                        : ' · clique para ver os itens'}
-                                  </span>
                                 </button>
+                                {/* item 2d: colunas do nível LOJA */}
+                                <div className="ml-4 flex items-center gap-2 px-1 pb-0.5 text-[10px]">
+                                  <span
+                                    className="tabular-nums"
+                                    style={{ color: itens.length ? T.text : T.muted }}
+                                    title="Qtd de itens com quebra nesta loja"
+                                  >
+                                    {itens.length > 0 ? n(itens.length) + ' itens' : '— itens'}
+                                  </span>
+                                  <span
+                                    className="ml-auto tabular-nums font-semibold"
+                                    style={{ color: T.text }}
+                                  >
+                                    {brl(itens.length > 0 ? tot : l.quebra_valor || 0)}
+                                  </span>
+                                  <span
+                                    className="tabular-nums font-semibold w-14 text-right"
+                                    style={{ color: T.neg }}
+                                  >
+                                    {pct(l.quebra)}
+                                  </span>
+                                </div>
 
                                 {abL && carregandoLoja === String(l.codparc) && (
                                   <div
