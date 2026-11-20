@@ -465,15 +465,19 @@ export default function DesempenhoPage() {
   useEffect(() => {
     gravarPref(uid, 'filtroApp', f)
   }, [f, uid])
-  // item 3: persistir a visibilidade do painel de filtros
-  useEffect(() => {
-    gravarPref(uid, 'filtrosAbertos', filtrosAbertos)
-  }, [filtrosAbertos, uid])
 
   const [dados, setDados] = useState<Resposta | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
   const [filtrosAbertos, setFiltrosAbertos] = useState(() => prefs.filtrosAbertos === true)
+  // item 3: persistir a visibilidade do painel de filtros.
+  // 20/11/2026 — ESTE useEffect ESTAVA ANTES DA DECLARAÇÃO do useState e
+  // derrubava a tela inteira com "Cannot access 'filtrosAbertos' before
+  // initialization" (TDZ). O build não pega: é erro de EXECUÇÃO.
+  // Regra: efeito que lê um estado tem de vir DEPOIS do useState dele.
+  useEffect(() => {
+    gravarPref(uid, 'filtrosAbertos', filtrosAbertos)
+  }, [filtrosAbertos, uid])
 
   const [colOcultas, setColOcultas] = useState<string[]>(() =>
     Array.isArray(prefs.colunasOcultas) ? prefs.colunasOcultas : [],
