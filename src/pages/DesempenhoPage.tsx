@@ -465,11 +465,15 @@ export default function DesempenhoPage() {
   useEffect(() => {
     gravarPref(uid, 'filtroApp', f)
   }, [f, uid])
+  // item 3: persistir a visibilidade do painel de filtros
+  useEffect(() => {
+    gravarPref(uid, 'filtrosAbertos', filtrosAbertos)
+  }, [filtrosAbertos, uid])
 
   const [dados, setDados] = useState<Resposta | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState('')
-  const [filtrosAbertos, setFiltrosAbertos] = useState(false)
+  const [filtrosAbertos, setFiltrosAbertos] = useState(() => prefs.filtrosAbertos === true)
 
   const [colOcultas, setColOcultas] = useState<string[]>(() =>
     Array.isArray(prefs.colunasOcultas) ? prefs.colunasOcultas : [],
@@ -496,12 +500,28 @@ export default function DesempenhoPage() {
   const [arrastandoCard, setArrastandoCard] = useState<CardId | null>(null)
   const [arrastandoBloco, setArrastandoBloco] = useState<Bloco | null>(null)
 
-  const [fechados, setFechados] = useState<string[]>([])
+  // ==========================================================================
+  // 20/11/2026 — ITEM 3 DO DONO: "ao sair do PGE para outra aba do navegador
+  // ou outro sistema e voltar, o app deve manter a tela no status deixado".
+  //
+  // O que se perdia ao voltar: filtros abertos, ramos recolhidos da grade,
+  // drilldown expandido, busca e lojas selecionadas — tudo vivia só em
+  // memória, e qualquer remontagem do componente zerava.
+  //
+  // Agora cada um desses estados é gravado por usuário (localStorage) e
+  // restaurado na montagem. O estado é o MESMO que a pessoa deixou.
+  // ==========================================================================
+  const [fechados, setFechados] = useState<string[]>(() =>
+    Array.isArray(prefs.fechados) ? prefs.fechados : [],
+  )
   const [telaCheia, setTelaCheia] = useState<'grafico' | 'grade' | null>(null)
   const [drawerAberto, setDrawerAberto] = useState(false)
   const bellRef = useRef<HTMLDivElement | null>(null)
   const [drillQuebra, setDrillQuebra] = useState(false)
-  const [drillAberto, setDrillAberto] = useState<string[]>(['rede:'])
+  // item 3: os ramos expandidos do drilldown também sobrevivem à volta
+  const [drillAberto, setDrillAberto] = useState<string[]>(() =>
+    Array.isArray(prefs.drillAberto) ? prefs.drillAberto : ['rede:'],
+  )
   const [itensCarregados, setItensCarregados] = useState<Record<string, any[]>>({})
   const [carregandoLoja, setCarregandoLoja] = useState<string | null>(null)
   const [erroComposicao, setErroComposicao] = useState<string>('')
@@ -561,7 +581,17 @@ export default function DesempenhoPage() {
   }
   const [parecerAberto, setParecerAberto] = useState(false)
   const [parecerLoja, setParecerLoja] = useState<Loja | null>(null)
-  const [busca, setBusca] = useState('')
+  // item 3: a busca digitada continua ao voltar
+  const [busca, setBusca] = useState(() => String(prefs.busca || ''))
+  useEffect(() => {
+    gravarPref(uid, 'busca', busca)
+  }, [busca, uid])
+  useEffect(() => {
+    gravarPref(uid, 'fechados', fechados)
+  }, [fechados, uid])
+  useEffect(() => {
+    gravarPref(uid, 'drillAberto', drillAberto)
+  }, [drillAberto, uid])
   const [selecionadas, setSelecionadas] = useState<number[]>([])
 
   const METRICAS = [
