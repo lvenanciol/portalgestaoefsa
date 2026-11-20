@@ -1,4 +1,14 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+                  return (
+                    <>
+                      <tr key={c.canal} className="border-t" style={{ borderColor: T.border }}>
+=======
+*/
+                  return (
+                    <>
+                      <tr key={c.canal} className="border-t" style={{ borderColor: T.border }}>                      : []
+                  return (
+=======
+                  return (import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -1924,7 +1934,8 @@ export default function DesempenhoPage() {
                     : ehDistrib
                       ? dadosCanais.hierarquia?.distribuicao || []
                       : []
-                  return (
+/* BLOCO NEUTRALIZADO 20/11/2026 — restos de patches mal aplicados.
+   Tudo até o fechamento abaixo é IGNORADO pelo compilador.
                   const itensNivel2: any[] = ehVarejo
                     ? dadosCanais.hierarquia?.varejo || []
                     : ehDistrib
